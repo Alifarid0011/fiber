@@ -398,6 +398,7 @@ func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pat
 	methodLower := utilsstrings.ToLower(r.Method)
 	// The router dispatches to the first match, so the earlier registration wins.
 	if _, exists := b.paths[variant.Path][methodLower]; exists {
+		b.addHost(variant.Path, methodLower, r)
 		return
 	}
 	// Templates identical up to parameter names MUST NOT coexist in OpenAPI; first wins.
@@ -406,6 +407,7 @@ func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pat
 		// Join the already published path item, or drop the operation if its method is taken.
 		if canonical.path != variant.Path {
 			if _, taken := b.paths[canonical.path][methodLower]; taken {
+				b.addHost(canonical.path, methodLower, r)
 				return
 			}
 			// Parameters must be renamed too, or the document is invalid.
@@ -423,6 +425,22 @@ func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pat
 		b.paths[variant.Path] = make(map[string]operation)
 	}
 	b.paths[variant.Path][methodLower] = b.buildOperation(r, facts, variant)
+}
+
+// addHost lists the host of a domain route that lost the path and method to an earlier registration on the
+// operation that won, since OpenAPI allows one operation per path and method but an operation may name several
+// servers. An operation registered for every host already covers it.
+func (b *specBuilder) addHost(path, method string, r *fiber.Route) {
+	op := b.paths[path][method]
+	if len(op.Servers) == 0 {
+		return
+	}
+	for _, server := range domainServers(r.Domain()) {
+		if !slices.ContainsFunc(op.Servers, func(known Server) bool { return known.URL == server.URL }) {
+			op.Servers = append(slices.Clone(op.Servers), server)
+		}
+	}
+	b.paths[path][method] = op
 }
 
 func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant *pathVariant) operation {
@@ -502,8 +520,8 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 
 // domainServers describes the host of an app.Domain route as an operation-level
 // server, or nil for any host. Each ":param" label becomes a server variable
-// defaulting to its name. Routes sharing path and method across hosts still
-// collapse to the first, as OpenAPI allows one operation per path and method.
+// defaulting to its name. Routes sharing path and method across hosts collapse into the first, which
+// then lists every host (see addHost), as OpenAPI allows one operation per path and method.
 func domainServers(pattern string) []Server {
 	if pattern == "" {
 		return nil

@@ -653,3 +653,35 @@ func Test_OpenAPI_GroupTagSkipsVersionMarkersInNamesToo(t *testing.T) {
 	require.Equal(t, []any{"api"}, modelOperation(t, spec, "/api/v1/users", "get")["tags"])
 	require.Equal(t, []any{"api"}, modelOperation(t, spec, "/api/v1/items", "get")["tags"])
 }
+
+func Test_OpenAPI_SamePathOnSeveralDomainsListsEveryHost(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Domain("a.example.com").Get("/pets", listUsers).Summary("A pets")
+	app.Domain("b.example.com").Get("/pets", listUsers).Summary("B pets")
+	app.Domain("b.example.com").Get("/pets", listUsers) // a repeated host adds nothing
+	app.Domain("a.example.com").Get("/pets/:id", listUsers)
+	app.Domain(":tenant.example.org").Get("/pets/:name", listUsers) // same template up to the parameter name
+	app.Get("/shared", listUsers)
+	app.Domain("a.example.com").Get("/shared", listUsers) // the route for every host already covers it
+	app.Domain("c.example.com").Get("/only", listUsers)
+	app.Get("/only", listUsers)
+	spec := modelSpec(t, app)
+
+	urls := func(path string) []string {
+		list, _ := modelOperation(t, spec, path, "get")["servers"].([]any) //nolint:errcheck // absent means none
+		out := make([]string, 0, len(list))
+		for _, server := range list {
+			out = append(out, requireMap(t, server)["url"].(string)) //nolint:errcheck,forcetypeassert // the url is always a string
+		}
+		return out
+	}
+
+	pets := modelOperation(t, spec, "/pets", "get")
+	require.Equal(t, "A pets", pets["summary"], "the first registration is the one described")
+	require.Equal(t, []string{"//a.example.com", "//b.example.com"}, urls("/pets"))
+	require.Equal(t, []string{"//a.example.com", "//{tenant}.example.org"}, urls("/pets/{id}"))
+	require.Empty(t, urls("/shared"))
+	require.Equal(t, []string{"//c.example.com"}, urls("/only"), "a route registered for every host later does not widen the first")
+}

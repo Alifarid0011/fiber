@@ -301,6 +301,35 @@ must send `Access-Control-Allow-Origin`, or the browser will refuse the scripts;
 URLs you set without an `integrity` value get no `crossorigin` attribute.
 :::
 
+### Domain routers
+
+The middleware works with [`Domain`](../api/app.md#domain) routers. Register it on a
+host and the document and the Swagger UI page answer only for that host, and for
+any port on it:
+
+```go
+api := app.Domain("api.example.com")
+api.Get("/pets", listPets).Summary("List pets")
+api.Use(openapi.New())                  // /openapi.json and /swagger on api.example.com only
+api.Use("/docs", openapi.New())         // or under a prefix: /docs/openapi.json
+api.Group("/v1").Use(openapi.New())     // or in a group of the domain router
+api.RouteChain("/openapi.json").Get(openapi.New())
+```
+
+A host pattern with parameters, such as `:tenant.example.com`, works the same way.
+Each registration is its own handler with its own `Config`, so two hosts can serve
+two differently titled documents. A sub-app that registers the middleware and is
+mounted with `Domain(...).Use` serves its document on that host under the mount
+prefix.
+
+Every document describes the whole application, whatever host it is fetched
+from; use `Config.Next` to narrow it. The routes registered through a domain
+router carry an operation-level `servers` entry naming their host, so Swagger
+UI sends **Try it out** requests to the right host. Documentation helpers,
+recognized middleware (`keyauth` registered with `api.Use(...)` documents the
+security requirement of the routes under it) and `Hidden` work on domain
+routers, groups and `RouteChain` chains exactly as they do on the app.
+
 ### Document a route
 
 The shortest way to document a route is to hand it the Go types it already
@@ -871,7 +900,7 @@ route's media type.
   URL such as `//api.example.com`, with each `:param` label as a server variable
   defaulting to its name). OpenAPI allows one operation per path and method, so
   when two domains share both, the document describes the first-registered one
-  and labels it with its host. The server URL has no scheme, so it resolves
+  and its `servers` lists every host that serves the path. The server URL has no scheme, so it resolves
   against how the document was fetched, and an operation-level server replaces
   the document-level `ServerURL`, base path included.
 - The specification always describes the whole application the middleware runs
