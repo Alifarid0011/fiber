@@ -113,8 +113,7 @@ type App struct {
 	// Ctx pool
 	pool sync.Pool
 
-	// docTarget provides the route-documentation helpers, applied to the latest registration. It is last so
-	// the fields the request path reads, config first, keep their offsets.
+	// docTarget provides the route-documentation helpers, applied to the latest registration.
 	docTarget[Router]
 	// Fasthttp server
 	server *fasthttp.Server
