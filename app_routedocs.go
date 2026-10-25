@@ -19,7 +19,6 @@ func docSetDescription(desc string) func(route *Route) {
 	return func(route *Route) { route.Description = desc }
 }
 
-// validateMediaType panics unless typ is a "type/subtype" media type, and returns it.
 func validateMediaType(typ string) string {
 	if _, _, err := mime.ParseMediaType(typ); err != nil || !strings.Contains(typ, "/") {
 		panic("invalid media type: " + typ)
@@ -27,7 +26,6 @@ func validateMediaType(typ string) string {
 	return typ
 }
 
-// optionalMediaType trims and validates typ; empty clears the route's setting.
 func optionalMediaType(typ string) string {
 	typ = utils.TrimSpace(typ)
 	if typ == "" {
@@ -56,8 +54,7 @@ func hasSchema(schema any) bool {
 	return true
 }
 
-// copySchema detaches a schema from its caller. An empty map reads as no schema, and a Go model
-// struct is kept as it is because only its type is read; any other map or slice is cloned.
+// copySchema detaches a schema from its caller; a Go model struct is kept as it is, since only its type is read.
 func copySchema(schema any) any {
 	if value, ok := schemautil.AsMap(schema); ok {
 		if len(value) == 0 {
@@ -74,7 +71,6 @@ func copySchema(schema any) any {
 }
 
 func docRequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
-	// No media type is fine: the middleware documents its DefaultConsumes.
 	sanitized := sanitizeMediaTypes(mediaTypes)
 
 	body := &RouteRequestBody{
@@ -91,8 +87,7 @@ func docRequestBodyWithExample(description string, required bool, schema any, sc
 		body.Schema = schema
 	}
 
-	// A schema or example documented here replaces the body an earlier call set; a description, the required
-	// flag or media types alone keep it, as the response helpers do.
+	// A schema or example documented here replaces an earlier body; a description or media types alone keep it.
 	definesBody := body.Schema != nil || example != nil || len(examples) > 0
 
 	return func(route *Route) {
@@ -106,7 +101,6 @@ func docRequestBodyWithExample(description string, required bool, schema any, sc
 				carryEarlierRequestBody(route.RequestBody, previous)
 			}
 		}
-		// Adopt the body's media type only when Consumes() set none.
 		if len(sanitized) > 0 && route.Consumes == "" {
 			route.Consumes = sanitized[0]
 		}
@@ -128,7 +122,6 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	injectType := false
 	switch {
 	case len(param.Content) > 0:
-		// A Parameter Object has a schema or exactly one content entry, never both.
 		if len(param.Content) > 1 {
 			panic("AddParameter: parameter content must contain exactly one media type: " + param.Name)
 		}
@@ -138,7 +131,6 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	case param.SchemaRef != "":
 		param.Schema = map[string]any{openapiRefKey: param.SchemaRef}
 	case location == ParamInQuerystring:
-		// 3.2 querystring uses content, so no default schema.
 	default:
 		injectType = true
 	}
@@ -151,7 +143,6 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 		paramCopy := param
 		paramCopy.Schema = copySchema(param.Schema)
 		if injectType {
-			// Only a map or no schema gets the string default; a Go value documents its own type.
 			schema, ok := paramCopy.Schema.(map[string]any)
 			if paramCopy.Schema == nil {
 				schema, ok = map[string]any{}, true
@@ -163,7 +154,6 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 				paramCopy.Schema = schema
 			}
 		}
-		// Copy so a map or slice example does not alias the caller.
 		paramCopy.Example = copyAnyValue(param.Example)
 		paramCopy.Examples = copyAnyMap(param.Examples)
 		paramCopy.Content = cloneRouteMediaTypeMap(param.Content)
@@ -195,7 +185,6 @@ func defaultResponseDescription(status int) string {
 	return "Status " + utils.FormatInt(int64(status))
 }
 
-// getOrCreateResponse returns the entry for key, creating it if absent. The caller must hold app.mutex.
 func getOrCreateResponse(route *Route, key string, status int) RouteResponse {
 	if route.Responses == nil {
 		route.Responses = make(map[string]RouteResponse)
@@ -210,7 +199,6 @@ func getOrCreateResponse(route *Route, key string, status int) RouteResponse {
 func docAddResponse(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
 	sanitized := sanitizeMediaTypes(mediaTypes)
 
-	// An empty description keeps what an earlier call set, as ResponseContent does.
 	explicitDescription := description != ""
 	if !explicitDescription {
 		description = defaultResponseDescription(status)
@@ -226,8 +214,7 @@ func docAddResponse(status int, description string, schema any, schemaRef string
 		resp.Schema = schema
 	}
 
-	// A schema or example documented here replaces the body an earlier call set, content map included,
-	// which would otherwise win. A description or media types alone keep it.
+	// A schema or example documented here replaces an earlier body; a description or media types alone keep it.
 	definesBody := resp.Schema != nil || example != nil || len(examples) > 0
 
 	return func(route *Route) {
@@ -239,7 +226,6 @@ func docAddResponse(status int, description string, schema any, schemaRef string
 		copyResp.Schema = copySchema(resp.Schema)
 		copyResp.Example = copyAnyValue(resp.Example)
 		copyResp.Examples = copyAnyMap(resp.Examples)
-		// Keep headers, links and the description set earlier, and the body too unless this call documents one.
 		if existing, ok := route.Responses[key]; ok {
 			copyResp.Headers = existing.Headers
 			copyResp.Links = existing.Links
@@ -258,7 +244,6 @@ func docAddResponse(status int, description string, schema any, schemaRef string
 			}
 		}
 		route.Responses[key] = copyResp
-		// Adopt the response media type only when Produces() set none.
 		if status == StatusOK && len(copyResp.MediaTypes) > 0 && route.Produces == "" {
 			route.Produces = copyResp.MediaTypes[0]
 		}
@@ -327,7 +312,6 @@ func docResponseHeader(status int, name, description string, schema any) func(ro
 	if hasSchema(schema) {
 		header["schema"] = schema
 	} else {
-		// A Header Object needs a schema or content, so default to a string schema.
 		header["schema"] = map[string]any{"type": openapiTypeString}
 	}
 
@@ -335,7 +319,6 @@ func docResponseHeader(status int, name, description string, schema any) func(ro
 }
 
 func docOperationExternalDocs(description, url string) func(route *Route) {
-	// The External Documentation Object requires its url.
 	if utils.TrimSpace(url) == "" {
 		panic("OperationExternalDocs: url is required")
 	}
@@ -350,7 +333,6 @@ func docOperationExternalDocs(description, url string) func(route *Route) {
 
 func docOperationExtension(fields map[string]any) func(route *Route) {
 	if len(fields) == 0 {
-		// A nil mutation is a no-op.
 		return nil
 	}
 	return func(route *Route) {
@@ -363,8 +345,7 @@ func docOperationExtension(fields map[string]any) func(route *Route) {
 	}
 }
 
-// sanitizeContentMediaTypes returns content keyed by trimmed, validated media types
-// so a padded key never reaches the generated document.
+// sanitizeContentMediaTypes returns content keyed by trimmed, validated media types.
 func sanitizeContentMediaTypes(content map[string]RouteMediaType) map[string]RouteMediaType {
 	rekey := false
 	for mediaType := range content {
@@ -404,8 +385,7 @@ func docRequestBodyContent(description string, required bool, content map[string
 	}
 }
 
-// carryEarlierRequestBody gives body the schema, examples, content and media types of the body that came before
-// it, for a call that documented none of its own.
+// carryEarlierRequestBody gives body the content of the body before it, for a call that documented none.
 func carryEarlierRequestBody(body, previous *RouteRequestBody) {
 	earlier := cloneRouteRequestBody(previous)
 	body.Schema, body.SchemaRef = earlier.Schema, earlier.SchemaRef
@@ -422,7 +402,6 @@ func docResponseContent(status int, description string, content map[string]Route
 	key := responseKey(status)
 	return func(route *Route) {
 		resp := getOrCreateResponse(route, key, status)
-		// An empty description keeps what an earlier call set.
 		if description != "" {
 			resp.Description = description
 		}
@@ -476,9 +455,7 @@ func docReturns(status int, model any, mediaTypes ...string) func(route *Route) 
 	return docAddResponse(status, "", model, "", nil, nil, mediaTypes...)
 }
 
-// validParamLocation reports whether location, already normalized, is one a parameter may
-// have. "querystring" is the OpenAPI 3.2 location for the whole query string, described by
-// content, and a parameter model cannot use it.
+// validParamLocation reports whether the normalized location is one a parameter may have; models cannot use "querystring".
 func validParamLocation(location ParamLocation, querystring bool) bool {
 	switch location {
 	case ParamInPath, ParamInQuery, ParamInHeader, ParamInCookie:

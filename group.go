@@ -42,7 +42,6 @@ func (grp *Group) Name(name string) Router {
 	snapshot := *grp
 	grp.app.mutex.Unlock()
 
-	// Hooks fire unlocked so they may call locking app methods.
 	if err := grp.app.hooks.executeOnGroupNameHooks(snapshot); err != nil {
 		panic(err)
 	}
@@ -198,11 +197,9 @@ func (grp *Group) All(path string, handler any, handlers ...any) Router {
 func (grp *Group) Group(prefix string, handlers ...any) Router {
 	prefix = getGroupPath(grp.Prefix, prefix)
 
-	// Create new group
 	newGrp := newGroup(grp.app, prefix, grp)
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
-		// Record on the sub-group; the parent's doc helpers must not retarget this Use route.
 		newGrp.cursor.Store(grp.app.register([]string{methodUse}, prefix, grp, allHosts, converted...))
 	}
 	if err := grp.app.hooks.executeOnGroupHooks(*newGrp); err != nil {

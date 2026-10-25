@@ -6,9 +6,7 @@ import (
 	"reflect"
 )
 
-// DefaultType reports the type to add to a parameter schema that names none. A schema that already
-// says what it is through a type, a $ref, a composition or a const gets nothing, an enum takes the
-// type its values share, and any other schema gets fallback.
+// DefaultType reports the type to add to a parameter schema that names none, or false if it already says what it is.
 func DefaultType(schema map[string]any, fallback string) (string, bool) {
 	for _, keyword := range [...]string{"type", "$ref", "allOf", "anyOf", "oneOf", "not", "const"} {
 		if _, has := schema[keyword]; has {
@@ -29,8 +27,7 @@ const (
 
 var jsonNumberType = reflect.TypeFor[json.Number]()
 
-// enumType names the JSON Schema type all the enum's values share. A null is ignored, as it only makes
-// the schema nullable, and integers and numbers together make "number".
+// enumType names the JSON Schema type all the enum's values share; nulls are ignored.
 func enumType(values any) (string, bool) {
 	list := reflect.ValueOf(values)
 	if list.Kind() != reflect.Slice {
@@ -72,8 +69,7 @@ func enumType(values any) (string, bool) {
 	return shared, shared != ""
 }
 
-// AsMap returns v as a map[string]any when it is one, or a defined map type with string keys and any values
-// such as fiber.Map, copied into a plain map. A nil map of such a type reads as an empty one.
+// AsMap returns v as a map[string]any when it is one, or a defined string-keyed map such as fiber.Map, copied.
 func AsMap(v any) (map[string]any, bool) {
 	if plain, ok := v.(map[string]any); ok {
 		return plain, true

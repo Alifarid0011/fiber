@@ -7,24 +7,19 @@ import (
 	"strings"
 )
 
-// dialect is what an OpenAPI version permits. Callers ask for a capability, not a version number, so
-// what each release adds, and how a document is downgraded without it, is decided here and nowhere else.
+// dialect is what an OpenAPI version permits; callers ask for a capability, not a version number.
 type dialect struct {
-	// minor is the release's minor number: 0 for 3.0.x, 1 for 3.1.x, 2 for 3.2.x.
 	minor int
 }
 
-// The minor numbers of the supported releases, which a capability names as the release that added it.
 const (
 	release31 = 1
 	release32 = 2
 )
 
-// since reports whether the dialect is the given release or a later one.
 func (d dialect) since(release int) bool { return d.minor >= release }
 
-// newDialect reads version, which Config validation has already limited to a supported release. An
-// unsupported string ranks as 3.0, the most restrictive dialect.
+// newDialect reads a version already validated; an unsupported one ranks as 3.0.
 func newDialect(version string) dialect {
 	minor, ok := parseVersion(version)
 	if !ok {
@@ -33,7 +28,6 @@ func newDialect(version string) dialect {
 	return dialect{minor: minor}
 }
 
-// parseVersion reads the minor version of a 3.0.x, 3.1.x or 3.2.x release (0, 1 or 2).
 func parseVersion(version string) (minor int, ok bool) { //nolint:nonamedreturns // an int and a bool read better named
 	major, rest, found := strings.Cut(version, ".")
 	if !found || major != "3" {
@@ -51,25 +45,18 @@ func parseVersion(version string) (minor int, ok bool) { //nolint:nonamedreturns
 	return int(minorText[0] - '0'), true
 }
 
-// hasQueryMethod reports whether Path Items can carry the QUERY operation (3.2+).
 func (d dialect) hasQueryMethod() bool { return d.since(release32) }
 
-// hasQuerystringLocation reports whether a parameter can be located "in: querystring" (3.2+).
 func (d dialect) hasQuerystringLocation() bool { return d.since(release32) }
 
-// hasServerName reports whether a Server Object may carry a name (3.2+).
 func (d dialect) hasServerName() bool { return d.since(release32) }
 
-// hasSelf reports whether the document may state its own URI in $self (3.2+).
 func (d dialect) hasSelf() bool { return d.since(release32) }
 
-// hasJSONSchemaDialect reports whether the document aligns with JSON Schema 2020-12 (3.1+): it may carry
-// info.summary, webhooks and jsonSchemaDialect, a License Object may name an identifier, a schema type may
-// be "null", and a Reference Object may sit beside sibling keys.
+// hasJSONSchemaDialect reports whether the document aligns with JSON Schema 2020-12 (3.1+).
 func (d dialect) hasJSONSchemaDialect() bool { return d.since(release31) }
 
-// license trims a License Object to what the dialect allows: identifier or url, never both, and
-// identifier only from 3.1. Identifier is the more precise of the two.
+// license trims a License Object to what the dialect allows: identifier or url, never both.
 func (d dialect) license(license License) License {
 	if d.hasJSONSchemaDialect() {
 		license.URL = ""
@@ -79,11 +66,8 @@ func (d dialect) license(license License) License {
 	return license
 }
 
-// nullable returns a copy of a property schema that also accepts null, the way the dialect spells it: a
-// nullable keyword next to the type in 3.0, and a "null" type in 3.1 and later. A schema with no type, which is a
-// $ref or a composition, takes an anyOf with a branch that holds only null: 3.0 defines nullable only next to a
-// type, so that branch is {type: object, nullable: true, enum: [null]}, and in 3.1 it is {type: null}. A schema
-// with none of type, $ref, allOf, anyOf or oneOf already accepts anything.
+// nullable returns a copy of a property schema that also accepts null, spelled the dialect's way.
+// A schema with no type (a $ref or composition) takes an anyOf with a null-only branch.
 func (d dialect) nullable(schema map[string]any) map[string]any {
 	schema = maps.Clone(schema)
 	if enum, ok := enumValues(schema["enum"]); ok && !slices.Contains(enum, nil) {
@@ -127,7 +111,6 @@ func (d dialect) nullable(schema map[string]any) map[string]any {
 	return schema
 }
 
-// appendNullType adds "null" to a list of types that does not name it.
 func appendNullType(types []any) []any {
 	if slices.Contains(types, any(schemaTypeNull)) {
 		return types
@@ -135,7 +118,6 @@ func appendNullType(types []any) []any {
 	return append(types, schemaTypeNull)
 }
 
-// enumValues returns the values of an enum of any slice type as a fresh []any.
 func enumValues(enum any) ([]any, bool) {
 	if values, ok := enum.([]any); ok {
 		return slices.Clone(values), true

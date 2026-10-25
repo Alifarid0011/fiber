@@ -269,8 +269,7 @@ type domainRouter struct {
 	matcher domainMatcher
 }
 
-// remember records regID as the registration the helpers target, on the router and on its group, so a
-// name given through the group afterwards reaches it.
+// remember records regID as the registration the helpers target, on the router and on its group.
 func (d *domainRouter) remember(regID uint64) {
 	d.cursor.Store(regID)
 	if d.group != nil {
@@ -278,7 +277,6 @@ func (d *domainRouter) remember(regID uint64) {
 	}
 }
 
-// pattern returns the canonical domain form; it keeps same-path routes on different domains from merging.
 func (d *domainRouter) pattern() string {
 	return d.matcher.pattern
 }
@@ -286,7 +284,6 @@ func (d *domainRouter) pattern() string {
 // Verify domainRouter implements Router at compile time.
 var _ Router = (*domainRouter)(nil)
 
-// registerWrapped registers handlers behind the host check, keeping the originals on the route for documentation.
 func (d *domainRouter) registerWrapped(methods []string, path string, group *Group, handlers []Handler) uint64 {
 	return d.app.registerChain(methods, path, group, d.pattern(), handlers, d.wrapHandlers(handlers))
 }
@@ -678,8 +675,7 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 				dst.addPrefixToRoute(walk.prefix, clonedRoute, src.config.RegexHandler, constraints...)
 			}
 			clonedRoute.docHandlers = clonedRoute.InnerHandlers()
-			// A route of the mounted app answers on this domain, which Route.Domain reports.
-			// One the sub-app already scoped to a domain of its own keeps that one.
+			// A route of the mounted app answers on this domain unless the sub-app already scoped it to its own.
 			if clonedRoute.domain == "" {
 				clonedRoute.domain = d.pattern()
 			}
@@ -787,7 +783,6 @@ func (d *domainRouter) All(path string, handler any, handlers ...any) Router {
 func (d *domainRouter) Group(prefix string, handlers ...any) Router {
 	fullPrefix := d.registerPath(prefix)
 
-	// Record on the new router; this one's doc helpers must not retarget the Use route.
 	var regID uint64
 	if len(handlers) > 0 {
 		converted := collectHandlers("domain", handlers...)
@@ -836,7 +831,6 @@ func (d *domainRouter) Name(name string) Router {
 	}
 	regID := d.cursor.Load()
 	if regID == 0 && d.group != nil {
-		// A router made from a group that already has routes names the group's latest registration.
 		regID = d.group.cursor.Load()
 	}
 	d.app.applyNameToRegistration(regID, name)

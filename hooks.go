@@ -331,7 +331,7 @@ func (h *Hooks) executeOnRouteHooks(route *Route) error {
 
 	cloned := *route
 
-	// Read the hook list and mount path under the lock that guards registering hooks; the hooks run without it.
+	// Read the hook list and mount path under the lock; the hooks run without it.
 	h.app.mutex.Lock()
 	handlers := h.onRoute
 	mountPath := h.app.mountFields.mountPath
@@ -359,7 +359,6 @@ func (h *Hooks) executeOnNameHooks(route *Route) error {
 
 	cloned := *route
 
-	// Read the hook list and mount path under the lock that guards registering hooks; the hooks run without it.
 	h.app.mutex.Lock()
 	handlers := h.onName
 	mountPath := h.app.mountFields.mountPath
@@ -380,8 +379,7 @@ func (h *Hooks) executeOnNameHooks(route *Route) error {
 	return nil
 }
 
-// runGroupHooks gives each handler the group with the mount path in front of its prefix. The hook list is read
-// under the lock that guards registering hooks, and the handlers run without it.
+// runGroupHooks gives each handler the group with the mount path in front of its prefix.
 //
 //nolint:gocritic // hugeParam: the hook API passes the Group by value.
 func (h *Hooks) runGroupHooks(group Group, handlersOf func(*Hooks) []OnGroupHandler) error {

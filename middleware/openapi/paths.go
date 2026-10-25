@@ -11,7 +11,6 @@ import (
 
 const wildcardParamName = "wildcard"
 
-// maxPathVariants bounds the exponential optional-parameter expansion.
 const maxPathVariants = 64
 
 type pathVariant struct {
@@ -26,7 +25,6 @@ type resolvedParamName struct {
 	raw     string
 }
 
-// normalizePathHierarchy blanks template names so paths identical up to parameter names share a key.
 func normalizePathHierarchy(path string) string {
 	var b strings.Builder
 	b.Grow(len(path))
@@ -107,7 +105,6 @@ func buildOpenAPIPathVariants(fiberPath string, params []string, strict bool) []
 				i = tokenStart
 				for i < length {
 					c := fiberPath[i]
-					// Mirrors path.go's parameterEndChars; '<' opens a constraint.
 					if c == '<' || c == '?' || c == '/' || c == '-' || c == '.' || c == ':' || c == '\\' {
 						break
 					}
@@ -126,15 +123,12 @@ func buildOpenAPIPathVariants(fiberPath string, params []string, strict bool) []
 				resolved = resolveOpenAPIPathParamName(current.paramIdx, tokenName, params)
 
 			case '*', '+':
-				// "*" may match no segment; "+" needs one.
 				isOptional = fiberPath[i] == '*'
 				resolved = resolveOpenAPIWildcardParamName(current.paramIdx, params)
 				i++
 
 			case '\\':
-				// Escaped characters match literally (path.go escapeChar).
 				if i+1 < length {
-					// Slice the byte; string(byte) would corrupt multi-byte UTF-8.
 					current.path += encodeLiteralBraces(fiberPath[i+1 : i+2])
 				}
 				i += 2
@@ -149,8 +143,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string, strict bool) []
 					}
 					i++
 				}
-				// As in path.go, a run of parameter starters ("::", ":*") begins the parameter at its last byte,
-				// so the others are literal text.
+				// A run of parameter starters ("::", ":*") begins the parameter at its last byte; the others are literal.
 				if i < length && fiberPath[i] != '\\' && fiberPath[i] != '*' {
 					end := i + 1
 					for end < length && (fiberPath[end] == ':' || fiberPath[end] == '*' || fiberPath[end] == '+') {
@@ -167,7 +160,6 @@ func buildOpenAPIPathVariants(fiberPath string, params []string, strict bool) []
 				exclude.paramIdx++
 				current.addParam(resolved, tokenName, rawConstraints)
 				walk(i, current)
-				// Each optional parameter doubles the walk; stop forking at the cap but always emit the full variant.
 				if len(variants) < maxPathVariants {
 					walk(i, exclude)
 				}
@@ -200,9 +192,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string, strict bool) []
 	keepSlash := strict && strings.HasSuffix(fiberPath, "/")
 	for _, variant := range variants {
 		path := variant.Path
-		// A path of only slashes is the root. Under StrictRouting a pattern that ends in "/" keeps it,
-		// and a variant that drops an optional segment then ends in "//" and is discarded below, as no
-		// request reaches it. A pattern without a trailing slash is trimmed as usual.
+		// A path of only slashes is the root; under StrictRouting a trailing slash is kept, so a variant dropping an optional segment ends in "//" and is discarded.
 		if path != "" && !keepSlash {
 			if path = utils.TrimRight(path, '/'); path == "" {
 				path = "/"
@@ -225,7 +215,6 @@ func buildOpenAPIPathVariants(fiberPath string, params []string, strict bool) []
 	return unique
 }
 
-// encodeLiteralBraces percent-encodes literal braces, which OpenAPI would read as template expressions.
 func encodeLiteralBraces(literal string) string {
 	if !strings.ContainsAny(literal, "{}") {
 		return literal
@@ -234,7 +223,6 @@ func encodeLiteralBraces(literal string) string {
 	return strings.ReplaceAll(replaced, "}", "%7D")
 }
 
-// uniquePathParamName suffixes a repeated name; templates forbid repeats but distinct Fiber parameters can sanitize alike.
 func uniquePathParamName(name string, used []string) string {
 	candidate := name
 	for i := 2; slices.Contains(used, candidate); i++ {
@@ -265,7 +253,6 @@ func resolveOpenAPIWildcardParamName(paramIdx int, params []string) resolvedPara
 	}
 }
 
-// trimWildcardMarkers drops a wildcard name's leading "*" or "+", falling back when nothing is left.
 func trimWildcardMarkers(name, fallback string) string {
 	if trimmed := strings.TrimLeft(name, "*+"); trimmed != "" {
 		return trimmed
@@ -293,7 +280,6 @@ func sanitizeOpenAPIParamName(name string, idx int) string {
 	return sanitized
 }
 
-// keyName replaces each character outside [a-zA-Z0-9._-] with an underscore.
 func keyName(name string) string {
 	var builder strings.Builder
 	builder.Grow(len(name))

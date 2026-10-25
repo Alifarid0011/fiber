@@ -9,8 +9,7 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// swaggerInitScript starts Swagger UI from the settings the page carries in data attributes. It is the same
-// for every page, so a strict Content-Security-Policy can allow it by hash instead of by 'unsafe-inline'.
+// swaggerInitScript is constant for every page, so a strict CSP can allow it by hash.
 const swaggerInitScript = `
       window.addEventListener("load", function () {
         const root = document.getElementById("swagger-ui");
@@ -34,8 +33,7 @@ const swaggerInitScript = `
       });
     `
 
-// UIScriptCSPSource is the Content-Security-Policy source expression for the page's one inline script,
-// for a policy such as script-src 'self' https://unpkg.com followed by this value.
+// UIScriptCSPSource is the Content-Security-Policy source expression for the page's one inline script.
 const UIScriptCSPSource = "'sha256-aqKS8L4uzWkkwwtrhn5Atl/nhTF9eruvTkjOhUZArQs='"
 
 type swaggerUITemplateData struct {
@@ -84,7 +82,6 @@ var swaggerUITemplate = htemplate.Must(htemplate.New("swagger-ui").Parse(`<!doct
 </html>
 `))
 
-// buildSwaggerUIPage renders the UI page; html/template escapes the options whichever encoder ran.
 func buildSwaggerUIPage(openAPIURL string, cfg *Config, encode utils.JSONMarshal) ([]byte, error) {
 	if encode == nil {
 		encode = json.Marshal

@@ -22,8 +22,6 @@ type Register interface {
 
 	RouteChain(path string) Register
 
-	// Route documentation helpers; they target the most recently registered route.
-
 	Name(name string) Register
 	Summary(sum string) Register
 	Description(desc string) Register
@@ -58,8 +56,7 @@ var _ Register = (*Registering)(nil)
 type Registering struct {
 	docTarget[Register]
 
-	group *Group
-	// domain is the router a domain chain was created from; it filters handlers by host. Nil otherwise.
+	group  *Group
 	domain *domainRouter
 
 	path string
@@ -155,7 +152,6 @@ func (r *Registering) Add(methods []string, handler any, handlers ...any) Regist
 	}
 	regID := r.app.registerChain(methods, r.path, r.group, pattern, inner, converted)
 	r.cursor.Store(regID)
-	// The router the chain came from names and documents its latest registration too.
 	switch {
 	case r.domain != nil:
 		r.domain.remember(regID)

@@ -6,27 +6,21 @@ import (
 	"github.com/gofiber/fiber/v3/internal/deepcopy"
 )
 
-// copyRoute clones a route without its group, so the clone belongs to whichever app it is placed in
-// and Name() does not prefix it with the source app's group name. A caller that wants the group
-// assigns it back, as ensureAutoHeadRoutesLocked does. The omission is load-bearing for a mount
-// placeholder, which keeps its target app in group.app: cloning it would serve the mounted handlers
-// on every host under a domain mount, so domainRouter.cloneRoutesForDomain expands the mount instead.
+// copyRoute clones a route without its group, so Name() does not prefix it with the source app's group name.
+// The omission is load-bearing for a mount placeholder, which domainRouter.cloneRoutesForDomain expands instead.
 func (app *App) copyRoute(route *Route) *Route {
 	copied := new(Route)
 	app.copyRouteInto(copied, route)
 	return copied
 }
 
-// isDocumented reports whether the route carries metadata a copy must clone.
 func (r *Route) isDocumented() bool {
 	return r.RequestBody != nil || r.Parameters != nil || r.ParameterModels != nil ||
 		r.Responses != nil || r.Tags != nil || r.Security != nil ||
 		r.ExternalDocs != nil || r.OperationExtensions != nil
 }
 
-// copyRouteInto copies route into dst, cloning its documentation metadata. Handlers, Params
-// and the registered handler chain are shared with route. It writes through a pointer to
-// avoid moving the large Route.
+// copyRouteInto copies route into dst, cloning its documentation metadata; Handlers and Params are shared.
 func (app *App) copyRouteInto(dst, route *Route) {
 	*dst = *route
 	dst.group = nil
@@ -38,7 +32,6 @@ func (app *App) copyRouteInto(dst, route *Route) {
 	app.cloneRouteDocInto(dst, route)
 }
 
-// cloneRouteDocInto deep-clones the documentation containers; out of line to keep the fast path small.
 func (*App) cloneRouteDocInto(dst, route *Route) {
 	dst.RequestBody = cloneRouteRequestBody(route.RequestBody)
 	dst.Parameters = cloneRouteParameters(route.Parameters)
@@ -50,15 +43,13 @@ func (*App) cloneRouteDocInto(dst, route *Route) {
 	dst.OperationExtensions = copyAnyMap(route.OperationExtensions)
 }
 
-// copyRouteBase copies routing data without the documentation clone (auto-HEAD twins never read it).
 func (app *App) copyRouteBase(route *Route) *Route {
 	copied := new(Route)
 	app.copyRouteBaseInto(copied, route)
 	return copied
 }
 
-// copyRouteBaseInto is copyRouteBase filling the caller's slot; a wholesale copy
-// then clear beats many field writes on a struct this large.
+// copyRouteBaseInto is copyRouteBase filling the caller's slot.
 func (*App) copyRouteBaseInto(dst, route *Route) {
 	*dst = *route
 
@@ -172,7 +163,6 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 	return cloned
 }
 
-// copyAnyMap copies a documentation object; an empty one reads as unset, so it becomes nil.
 func copyAnyMap(src map[string]any) map[string]any {
 	if len(src) == 0 {
 		return nil

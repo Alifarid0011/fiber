@@ -29,7 +29,6 @@ const (
 
 const authMiddleware middlewareSet = 1<<kindKeyAuth | 1<<kindBasicAuth | 1<<kindJWT
 
-// fiberMiddlewareDirs lists the Fiber middleware directories the document can describe.
 var fiberMiddlewareDirs = [...]struct {
 	dir  string
 	kind middlewareKind
@@ -43,9 +42,7 @@ var fiberMiddlewareDirs = [...]struct {
 	{"cache", kindCache},
 }
 
-// contribMiddleware matches gofiber/contrib middleware by source path fragment. Fiber v3 uses
-// gofiber/contrib/v3/jwt; the unversioned contrib/jwt is v2 and returns a v2 handler. Fragments end at
-// the package directory so a versioned module cache ("@v1.2.3") and a checkout both match.
+// contribMiddleware matches gofiber/contrib middleware by source path fragment (contrib/v3/jwt; the unversioned jwt is v2).
 var contribMiddleware = [...]struct {
 	dir  string
 	kind middlewareKind
@@ -54,8 +51,7 @@ var contribMiddleware = [...]struct {
 	{"/gofiber/contrib/v3/jwt/", kindJWT},
 }
 
-// fiberRoot is the directory of Fiber's own source (checkout, module cache, vendor or -trimpath),
-// so middleware is matched against Fiber's files and not any "middleware/keyauth" directory.
+// fiberRoot is the directory of Fiber's own source, so only its middleware is matched.
 var fiberRoot = sync.OnceValue(func() string {
 	fn := runtime.FuncForPC(reflect.ValueOf(fiber.New).Pointer())
 	if fn == nil {
@@ -74,8 +70,7 @@ func (s middlewareSet) has(kind middlewareKind) bool { return s&(1<<kind) != 0 }
 
 func (s *middlewareSet) add(kind middlewareKind) { *s |= 1 << kind }
 
-// middlewareInFile reports which recognized middleware a source file belongs to. Matching is by
-// file because an inlined New names its closure after the caller's package.
+// middlewareInFile reports which recognized middleware a source file belongs to, by file because an inlined New names its closure after the caller.
 func middlewareInFile(file string) middlewareSet {
 	var set middlewareSet
 	file = filepath.ToSlash(file)
@@ -116,9 +111,8 @@ type coveringMiddleware struct {
 	set    middlewareSet
 }
 
-// coversRoute reports whether every request the route can answer passes through a Use route with
-// the given prefix. Literal prefix segments only cover the same literal and optional ones may consume
-// nothing, so neither is claimed where the route has a parameter or the prefix may vanish.
+// coversRoute reports whether every request the route can answer passes through a Use route with the given prefix.
+// Parameter and optional prefix segments are not claimed where they might not match.
 func coversRoute(prefix, path string, equal segmentEqual) bool {
 	prefix = utils.TrimRight(prefix, '/')
 	if prefix == "" {
@@ -155,10 +149,8 @@ func coversRoute(prefix, path string, equal segmentEqual) bool {
 	}
 }
 
-// paramSegmentCovers reports whether a prefix segment that is a parameter is passed by every request the route
-// segment answers. A parameter needs a non-empty value, so the route must have a segment there that is
-// neither optional nor greedy. A constraint narrows the values, so one is covered only by a parameter with
-// the same constraint; a literal might not satisfy it.
+// paramSegmentCovers reports whether a parameter prefix segment is passed by every request the route segment answers;
+// a constraint is covered only by the same constraint.
 func paramSegmentCovers(prefixSegment, routeSegment string) bool {
 	if routeSegment == "" {
 		return false
@@ -183,8 +175,6 @@ func paramSegmentCovers(prefixSegment, routeSegment string) bool {
 	return literalSatisfies(want, routeSegment)
 }
 
-// literalSatisfies reports whether a literal route segment is accepted by one of the simple constraints it
-// can be checked against; any other constraint is assumed not to accept it.
 func literalSatisfies(constraint, literal string) bool {
 	if literal == "" {
 		return false
@@ -216,12 +206,10 @@ func middlewareOn(covering []coveringMiddleware, route *fiber.Route, equal segme
 	return set
 }
 
-// securitySchemes collects the schemes recognized middleware asked for, so components.securitySchemes
-// can declare the ones the user did not.
+// securitySchemes collects the schemes recognized middleware asked for.
 type securitySchemes struct {
-	bearer bool
-	basic  bool
-	// jwtOnly stays true while every bearer scheme came from the JWT middleware (the token format is then nameable).
+	bearer  bool
+	basic   bool
 	jwtOnly bool
 }
 
@@ -229,7 +217,6 @@ func newSecuritySchemes() *securitySchemes {
 	return &securitySchemes{jwtOnly: true}
 }
 
-// requirement returns the requirement for all middleware at once, since each chained one must pass.
 func (*securitySchemes) requirement(set middlewareSet) map[string][]string {
 	requirement := map[string][]string{}
 	if set.has(kindKeyAuth) || set.has(kindJWT) {
@@ -244,8 +231,7 @@ func (*securitySchemes) requirement(set middlewareSet) map[string][]string {
 	return requirement
 }
 
-// use records the schemes an operation that made it into the document refers to, so a route dropped as a
-// duplicate declares none.
+// use records the schemes an operation that made it into the document refers to.
 func (s *securitySchemes) use(set middlewareSet) {
 	if set.has(kindKeyAuth) || set.has(kindJWT) {
 		s.bearer = true
@@ -279,7 +265,6 @@ func (s *securitySchemes) declarations() map[string]any {
 	return schemes
 }
 
-// isSafeMethod reports whether CSRF lets the method through without a token (RFC 9110 safe methods and QUERY).
 func isSafeMethod(method string) bool {
 	switch method {
 	case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace, fiber.MethodQuery:
@@ -317,8 +302,7 @@ func errorResponse(description string, cfg *Config, reg *schemaRegistry) respons
 	return resp
 }
 
-// applyMiddlewareResponses adds the responses and headers recognized middleware writes. Responses the
-// route already declares keep their description and content and only gain missing headers.
+// applyMiddlewareResponses adds the responses and headers recognized middleware writes; declared responses only gain missing headers.
 func applyMiddlewareResponses(responses map[string]response, method string, set middlewareSet, cfg *Config, reg *schemaRegistry) {
 	readsOnly := method == fiber.MethodGet || method == fiber.MethodHead
 	addError := func(status, description string) {
@@ -337,7 +321,6 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 	}
 	if set.has(kindLimiter) {
 		addError("429", "Too Many Requests")
-		// The limiter drops Retry-After along with the rate limit headers when its headers are disabled.
 		if !cfg.DisableRateLimitHeaders {
 			resp := responses["429"]
 			addHeader(&resp, fiber.HeaderRetryAfter, headerObject("Seconds until the limit resets", schemaTypeInteger))
@@ -355,19 +338,16 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 			addHeader(&resp, cfg.RequestIDHeader, headerObject("The request identifier", schemaTypeString))
 		}
 		success := len(status) == 3 && status[0] == '2'
-		// The limiter reports its window after the handler ran, so only on the responses it lets through; its
-		// own 429 carries Retry-After instead, and a response an earlier middleware sent never reached it.
+		// The limiter reports its window only on the responses it lets through.
 		if set.has(kindLimiter) && !cfg.DisableRateLimitHeaders && success {
 			addHeader(&resp, cfg.RateLimitHeaders.Limit, headerObject("Requests allowed per window", schemaTypeInteger))
 			addHeader(&resp, cfg.RateLimitHeaders.Remaining, headerObject("Requests left in the window", schemaTypeInteger))
 			addHeader(&resp, cfg.RateLimitHeaders.Reset, headerObject("Seconds until the window resets", schemaTypeInteger))
 		}
-		// ETag is generated for a 200 with a body, whatever the method, and repeated on the 304 it answers.
 		if set.has(kindETag) && (status == "200" || (status == "304" && readsOnly)) {
 			addHeader(&resp, fiber.HeaderETag, headerObject("The entity tag of the response", schemaTypeString))
 		}
-		// The cache reports its status on every response the handler produced, errors included, but not on
-		// the ones an earlier middleware sent (a 401, a 403) or the limiter's 429.
+		// The cache reports its status on every response the handler produced, but not on earlier middleware's.
 		if set.has(kindCache) && status != "401" && status != "403" && status != "429" {
 			addHeader(&resp, cfg.CacheHeader, headerObject("Whether the response was served from cache", schemaTypeString))
 		}

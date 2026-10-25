@@ -73,7 +73,6 @@ type domainMountedApp struct {
 	declared []CustomConstraint
 }
 
-// mountedRoute is a mounted app's route, copied under that app's lock, with what re-parsing it needs.
 type mountedRoute struct {
 	clone        *Route
 	owner        *App
@@ -231,7 +230,6 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 
 	// register mounted group
 	mountGroup := newGroup(subApp, groupPath, nil)
-	// Move the cursor onto the mount, as App.Use does, so chained helpers do not hit the previous route.
 	grp.cursor.Store(grp.app.register([]string{methodUse}, groupPath, mountGroup, allHosts))
 
 	// Execute onMount hooks
@@ -773,9 +771,8 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 	}
 }
 
-// expandMountsOnce expands the mounts of a mounted app once, under its lock, as it rewrites its own stack. The
-// lock is taken before the Once, in the order the app's own startup takes them: taking it inside would deadlock
-// a parent expanding the app against the app starting by itself, each holding what the other waits on.
+// expandMountsOnce expands the mounts of a mounted app once, under its lock, taken before the Once as in
+// the app's own startup, so a parent expanding it cannot deadlock against it starting by itself.
 func (app *App) expandMountsOnce() {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
@@ -811,9 +808,7 @@ func (app *App) processSubAppsRoutes() {
 
 			subApp := route.group.app
 
-			// Snapshot under the sub-app's lock. prepareStartup holds the parent's lock around this, so locks are taken parent first,
-			// then sub-app, and the sub-app's lock is released before its routes are re-parsed.
-			// Read by method: the sub-app may configure its own RequestMethods.
+			// Locks are taken parent first, then sub-app, and released before the routes are re-parsed.
 			subApp.mutex.Lock()
 			subAppRoutes := subApp.routesForMethod(app.method(m))
 			subConstraints := slices.Clone(subApp.customConstraints)
@@ -826,7 +821,6 @@ func (app *App) processSubAppsRoutes() {
 			for j, subAppRoute := range subAppRoutes {
 				clone := app.copyRoute(subAppRoute)
 
-				// For a domain mount the sub-app is a wrapper; the apps behind it own the config.
 				owner := subApp.routeOwner(subAppRoute)
 				if owner == nil {
 					owner = subApp
@@ -841,7 +835,6 @@ func (app *App) processSubAppsRoutes() {
 			}
 			subApp.mutex.Unlock()
 
-			// The re-parsed routes need the sub-app's constraints resolvable here.
 			app.customConstraints = mergeCustomConstraints(app.customConstraints, subConstraints)
 
 			// Create a slice to hold the sub-app's routes

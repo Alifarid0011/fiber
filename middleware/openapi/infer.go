@@ -12,8 +12,7 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
-// groupTag derives an operation tag from the route's group: the last segment of its name, else the
-// last static prefix segment, skipping parameters and version markers like "v1" in both.
+// groupTag derives a tag from the route's group: its name's last segment, else the last static prefix segment.
 func groupTag(route *fiber.Route) string {
 	name := utils.TrimRight(route.GroupName(), '.')
 	for name != "" {
@@ -53,7 +52,6 @@ func isParamSegment(segment string) bool {
 	}
 }
 
-// isVersionSegment reports whether a segment is a version marker such as "v1" or "v2.1".
 func isVersionSegment(segment string) bool {
 	if len(segment) < 2 || (segment[0] != 'v' && segment[0] != 'V') {
 		return false
@@ -66,7 +64,6 @@ func isVersionSegment(segment string) bool {
 	return true
 }
 
-// handlerSummary derives a summary from the final handler's name (listUsers -> "List users"); function literals yield "".
 func handlerSummary(handlers []fiber.Handler) string {
 	if len(handlers) == 0 {
 		return ""
@@ -82,8 +79,7 @@ func handlerSummary(handlers []fiber.Handler) string {
 	return summaryFromFuncName(fn.Name())
 }
 
-// stripTypeArguments removes every bracketed type-argument list from a runtime function name, wherever it
-// sits: "main.S[...].List-fm" and "main.(*S[...]).Get-fm" name the methods List and Get of a generic type.
+// stripTypeArguments removes bracketed type-argument lists from a runtime function name.
 func stripTypeArguments(name string) string {
 	if !strings.Contains(name, "[") {
 		return name
@@ -104,7 +100,7 @@ func stripTypeArguments(name string) string {
 	return b.String()
 }
 
-// summaryFromFuncName turns a runtime function name into a sentence, stripping package, receiver, "-fm" and type lists. Anonymous functions yield "".
+// summaryFromFuncName turns a runtime function name into a sentence; anonymous functions yield "".
 func summaryFromFuncName(name string) string {
 	name = stripTypeArguments(name)
 	name = strings.TrimSuffix(name, "-fm")
@@ -140,7 +136,6 @@ func summaryFromFuncName(name string) string {
 	return b.String()
 }
 
-// isAnonymousFuncName reports whether the last name segment is a function literal or compiler wrapper.
 func isAnonymousFuncName(name string) bool {
 	if name[0] >= '0' && name[0] <= '9' {
 		return true
@@ -153,7 +148,6 @@ func isAnonymousFuncName(name string) bool {
 	return false
 }
 
-// splitIdentifier splits a Go identifier at underscores and camel-case boundaries, keeping acronyms whole.
 func splitIdentifier(name string) []string {
 	var words []string
 	start := 0
@@ -170,7 +164,7 @@ func splitIdentifier(name string) []string {
 			continue
 		}
 		prev := name[i-1]
-		// A word starts at an upper-case letter after a lower-case letter or digit, or ending an acronym; plural acronyms ("IDs") stay whole.
+		// A word starts after a lower-case letter or digit, or ends an acronym; plural acronyms ("IDs") stay whole.
 		if !isUpper(prev) || (i+1 < len(name) && isLower(name[i+1]) && !isPluralAcronymEnd(name, i)) {
 			words = append(words, name[start:i])
 			start = i
@@ -186,7 +180,6 @@ func isPluralAcronymEnd(name string, i int) bool {
 	return name[i+1] == 's' && (i+2 == len(name) || isUpper(name[i+2]) || name[i+2] == '_')
 }
 
-// isAcronym reports whether a word is upper case (optionally plural), so it keeps its case in a sentence.
 func isAcronym(word string) bool {
 	word = strings.TrimSuffix(word, "s")
 	if len(word) < 2 {
@@ -203,7 +196,6 @@ func isAcronym(word string) bool {
 func isUpper(c byte) bool { return c >= 'A' && c <= 'Z' }
 func isLower(c byte) bool { return c >= 'a' && c <= 'z' }
 
-// statusHasNoBody reports whether RFC 9110 forbids content for the status (1xx, 204, 205, 304).
 func statusHasNoBody(code string) bool {
 	switch code {
 	case "204", "205", "304":

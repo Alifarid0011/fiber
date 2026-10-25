@@ -20,80 +20,58 @@ const (
 
 // Contact holds contact information for the exposed API.
 type Contact struct {
-	// Name is the identifying name of the contact person/organization.
-	Name string `json:"name,omitempty"`
-	// URL is the URL pointing to the contact information.
-	URL string `json:"url,omitempty"`
-	// Email is the email address of the contact person/organization.
+	Name  string `json:"name,omitempty"`
+	URL   string `json:"url,omitempty"`
 	Email string `json:"email,omitempty"`
 }
 
 // License holds license information for the exposed API.
 type License struct {
-	// Name is the license name used for the API.
 	Name string `json:"name"`
-	// Identifier is an SPDX license expression for the API (OpenAPI 3.1+).
-	// It is mutually exclusive with URL.
+	// Identifier is an SPDX license expression (OpenAPI 3.1+); exclusive with URL.
 	Identifier string `json:"identifier,omitempty"`
-	// URL is a URL to the license used for the API.
-	URL string `json:"url,omitempty"`
+	URL        string `json:"url,omitempty"`
 }
 
 // Server represents a server hosting the API.
 type Server struct {
-	// Variables is a map of server variables used for URL template substitution.
-	Variables map[string]ServerVariable `json:"variables,omitempty"`
-	// URL is the server URL.
-	URL string `json:"url"`
-	// Description is an optional description of the server.
-	Description string `json:"description,omitempty"`
-	// Name is an optional unique string to refer to the host designated by the
-	// URL (OpenAPI 3.2+).
+	Variables   map[string]ServerVariable `json:"variables,omitempty"`
+	URL         string                    `json:"url"`
+	Description string                    `json:"description,omitempty"`
+	// Name uniquely refers to the host (OpenAPI 3.2+).
 	Name string `json:"name,omitempty"`
 }
 
 // ServerVariable describes a single variable for server URL template substitution.
 type ServerVariable struct {
-	// Default is the value to use when none is supplied. Required.
-	Default string `json:"default"`
-	// Description is an optional description for the variable.
-	Description string `json:"description,omitempty"`
-	// Enum is an optional set of allowed values.
-	Enum []string `json:"enum,omitempty"`
+	Default     string   `json:"default"`
+	Description string   `json:"description,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
 }
 
 // Tag adds metadata to a single tag used by operations.
 type Tag struct {
-	// ExternalDocs references external documentation for this tag.
 	ExternalDocs *ExternalDocs `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	// Name is the name of the tag.
-	Name string `json:"name"`
-	// Description is an optional description for the tag.
-	Description string `json:"description,omitempty"`
+	Name         string        `json:"name"`
+	Description  string        `json:"description,omitempty"`
 }
 
 // ExternalDocs references external documentation for the API.
 type ExternalDocs struct {
-	// Description is an optional description of the external documentation.
 	Description string `json:"description,omitempty"`
-	// URL is the URL for the external documentation.
-	URL string `json:"url"`
+	URL         string `json:"url"`
 }
 
 // RateLimitHeaders names the headers the limiter middleware sets on a response.
 type RateLimitHeaders struct {
-	// Limit is the header carrying the requests allowed per window.
-	Limit string
-	// Remaining is the header carrying the requests left in the window.
+	Limit     string
 	Remaining string
-	// Reset is the header carrying the seconds until the window resets.
-	Reset string
+	Reset     string
 }
 
-// Config defines the config for middleware. It controls top-level document
-// metadata only; operation metadata comes from the route helpers.
+// Config defines the config for middleware.
 type Config struct {
-	// ErrorSchema is the schema, or a Go value reflected into one, documented for those error responses. Optional. Default: nil
+	// ErrorSchema is the schema, or a Go value reflected into one, documented for error responses. Optional. Default: nil
 	ErrorSchema any
 
 	// ExternalDocs references external documentation for the API. Optional. Default: nil
@@ -102,7 +80,7 @@ type Config struct {
 	// SwaggerOptions holds extra options merged into the SwaggerUIBundle call. Optional. Default: nil
 	SwaggerOptions map[string]any
 
-	// Components holds reusable definitions emitted under "components", so $ref targets resolve. Optional. Default: nil
+	// Components holds reusable definitions emitted under "components". Optional. Default: nil
 	Components map[string]any
 
 	// SecuritySchemes holds scheme definitions emitted under "components.securitySchemes". Optional. Default: nil
@@ -120,7 +98,7 @@ type Config struct {
 	// License holds license information for the exposed API. Optional. Default: nil
 	License *License
 
-	// RateLimitHeaders names the headers the limiter middleware sets; an empty field keeps its default. Optional. Default: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+	// RateLimitHeaders names the headers the limiter sets; empty fields keep their default. Optional. Default: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
 	RateLimitHeaders RateLimitHeaders
 
 	// TermsOfService is a URL to the Terms of Service for the API. Optional. Default: ""
@@ -138,7 +116,7 @@ type Config struct {
 	// ServerURL is the server URL used in the generated specification. Optional. Default: ""
 	ServerURL string
 
-	// OpenAPIVersion selects the spec version: any 3.0.x, 3.1.x or 3.2.x release ("3.0.3", "3.1.1"), written to the document as given; New panics on anything else. Optional. Default: "3.1.0"
+	// OpenAPIVersion selects any 3.0.x, 3.1.x or 3.2.x release, written as given; New panics on anything else. Optional. Default: "3.1.0"
 	OpenAPIVersion string
 
 	// SwaggerStandalonePresetURL is the preset script URL; empty selects the default, never omits it. Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"
@@ -165,31 +143,31 @@ type Config struct {
 	// SwaggerCSSURL is the stylesheet URL used by the generated Swagger UI page. Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"
 	SwaggerCSSURL string
 
-	// SwaggerCSSIntegrity is the Subresource Integrity value (for example "sha384-...") the browser checks SwaggerCSSURL against. The default applies only while SwaggerCSSURL is the default; a custom URL has none unless set here. Optional. Default: the hash of the default stylesheet
+	// SwaggerCSSIntegrity is the SRI value checked against SwaggerCSSURL. The default applies only with the default URL. Optional. Default: the hash of the default stylesheet
 	SwaggerCSSIntegrity string
 
-	// SwaggerBundleIntegrity is the Subresource Integrity value the browser checks SwaggerBundleURL against, defaulting as SwaggerCSSIntegrity does. Optional. Default: the hash of the default bundle
+	// SwaggerBundleIntegrity is the SRI value checked against SwaggerBundleURL, defaulting like SwaggerCSSIntegrity. Optional. Default: the hash of the default bundle
 	SwaggerBundleIntegrity string
 
-	// SwaggerStandalonePresetIntegrity is the Subresource Integrity value the browser checks SwaggerStandalonePresetURL against, defaulting as SwaggerCSSIntegrity does. Optional. Default: the hash of the default preset
+	// SwaggerStandalonePresetIntegrity is the SRI value checked against SwaggerStandalonePresetURL, defaulting like SwaggerCSSIntegrity. Optional. Default: the hash of the default preset
 	SwaggerStandalonePresetIntegrity string
 
-	// DefaultProduces is the response media type documented for a response that declares none. Optional. Default: "application/json"
+	// DefaultProduces is the response media type documented when a response declares none. Optional. Default: "application/json"
 	DefaultProduces string
 
-	// DefaultConsumes is the request media type documented for a request body that declares none. Optional. Default: "application/json"
+	// DefaultConsumes is the request media type documented when a body declares none. Optional. Default: "application/json"
 	DefaultConsumes string
 
-	// ErrorProduces is the media type documented for the responses the app's error handler writes. Optional. Default: "text/plain; charset=utf-8", or "application/json" when ErrorSchema is set
+	// ErrorProduces is the media type of error handler responses. Optional. Default: "text/plain; charset=utf-8", or "application/json" when ErrorSchema is set
 	ErrorProduces string
 
-	// RequestIDHeader is the header the requestid middleware sets, as documented on every response of a route it covers. Set it to the requestid middleware's Header when that is not the default. Optional. Default: "X-Request-ID"
+	// RequestIDHeader is the header the requestid middleware sets, documented on routes it covers. Optional. Default: "X-Request-ID"
 	RequestIDHeader string
 
-	// CacheHeader is the header the cache middleware sets, as documented on every response of a route it covers. Set it to the cache middleware's CacheHeader when that is not the default. Optional. Default: "X-Cache"
+	// CacheHeader is the header the cache middleware sets, documented on routes it covers. Optional. Default: "X-Cache"
 	CacheHeader string
 
-	// CSRFHeader is the header the csrf middleware reads its token from, as documented on an unsafe operation it covers. Set it to the header your csrf Extractor reads when that is not the default. Optional. Default: "X-Csrf-Token"
+	// CSRFHeader is the header the csrf middleware reads its token from, documented on unsafe operations it covers. Optional. Default: "X-Csrf-Token"
 	CSRFHeader string
 
 	// Tags lists top-level tag definitions (with descriptions) used by operations. Optional. Default: nil
@@ -201,22 +179,22 @@ type Config struct {
 	// Servers lists the servers hosting the API; it takes precedence over ServerURL. Optional. Default: nil
 	Servers []Server
 
-	// DisableDefaultMediaTypes stops filling in DefaultProduces, DefaultConsumes and ErrorProduces when they are unset, leaving a response or body that declares no media type without content; values you set still apply. Optional. Default: false
+	// DisableDefaultMediaTypes stops filling in unset DefaultProduces, DefaultConsumes and ErrorProduces. Optional. Default: false
 	DisableDefaultMediaTypes bool
 
-	// DisableMiddlewareInference stops documenting the security, headers, parameters and responses of recognized middleware on a route's path. Optional. Default: false
+	// DisableMiddlewareInference stops documenting what recognized middleware on a route's path adds. Optional. Default: false
 	DisableMiddlewareInference bool
 
-	// DisableValidationResponses stops documenting the 400 response a configured StructValidator makes possible on routes with a body or parameters. Optional. Default: false
+	// DisableValidationResponses stops documenting the 400 a configured StructValidator makes possible. Optional. Default: false
 	DisableValidationResponses bool
 
-	// DisableRateLimitHeaders stops documenting the headers a limiter sets on every response, for a limiter configured with DisableHeaders. Its 429 and Retry-After header are still documented. Optional. Default: false
+	// DisableRateLimitHeaders stops documenting limiter headers sent on every response (the 429 stays). Optional. Default: false
 	DisableRateLimitHeaders bool
 
-	// DisableGroupTags stops tagging an untagged route with its group's name or last static prefix segment. Optional. Default: false
+	// DisableGroupTags stops tagging untagged routes with their group's name. Optional. Default: false
 	DisableGroupTags bool
 
-	// DisableHandlerSummaries stops deriving a missing summary from the handler function's name. Optional. Default: false
+	// DisableHandlerSummaries stops deriving a missing summary from the handler name. Optional. Default: false
 	DisableHandlerSummaries bool
 }
 
@@ -233,7 +211,6 @@ var ConfigDefault = Config{
 	SwaggerBundleURL:           "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
 	SwaggerStandalonePresetURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js",
 
-	// Hashes of the three files above; update them together with the URLs.
 	SwaggerCSSIntegrity:              "sha384-9Q2fpS+xeS4ffJy6CagnwoUl+4ldAYhOs9pgZuEKxypVModhmZFzeMlvVsAjf7uT",
 	SwaggerBundleIntegrity:           "sha384-EYdOaiRwn44zNjrw+Tfs06qYz9BGQVo2f4/pLY5i7VorbjnZNhdplAbTBk8FXHUJ",
 	SwaggerStandalonePresetIntegrity: "sha384-49fpFaVrAWI/qdgl9Vv5E/4NXxRUiJX5vGuLws1NUpTWGtEqzWEx8gHTw2UTehFK",
@@ -258,7 +235,6 @@ var ConfigDefault = Config{
 	DisableRateLimitHeaders: false,
 }
 
-// defaultAsset defaults an empty URL; the default integrity applies only with the default URL.
 func defaultAsset(url, integrity *string, defaultURL, defaultIntegrity string) {
 	if *url != "" {
 		return
@@ -312,14 +288,12 @@ func configDefault(config ...Config) Config {
 	defaultAsset(&cfg.SwaggerCSSURL, &cfg.SwaggerCSSIntegrity, ConfigDefault.SwaggerCSSURL, ConfigDefault.SwaggerCSSIntegrity)
 	defaultAsset(&cfg.SwaggerBundleURL, &cfg.SwaggerBundleIntegrity, ConfigDefault.SwaggerBundleURL, ConfigDefault.SwaggerBundleIntegrity)
 	defaultAsset(&cfg.SwaggerStandalonePresetURL, &cfg.SwaggerStandalonePresetIntegrity, ConfigDefault.SwaggerStandalonePresetURL, ConfigDefault.SwaggerStandalonePresetIntegrity)
-	// Detach reference-typed fields: the handler reads this config while serving.
 	cfg.SwaggerOptions = deepcopy.Map(cfg.SwaggerOptions)
 	cfg.Components = deepcopy.Map(cfg.Components)
 	cfg.SecuritySchemes = deepcopy.Map(cfg.SecuritySchemes)
 	cfg.Webhooks = deepcopy.Map(cfg.Webhooks)
 	cfg.Servers = slices.Clone(cfg.Servers)
 	for i := range cfg.Servers {
-		// maps.Clone is shallow; Enum slices must be cloned too.
 		if variables := cfg.Servers[i].Variables; variables != nil {
 			cloned := make(map[string]ServerVariable, len(variables))
 			for name, variable := range variables {
@@ -352,7 +326,6 @@ func configDefault(config ...Config) Config {
 	if cfg.OpenAPIVersion == "" {
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion
 	}
-	// With defaults disabled, unset media types stay empty.
 	if !cfg.DisableDefaultMediaTypes {
 		if cfg.DefaultProduces == "" {
 			cfg.DefaultProduces = ConfigDefault.DefaultProduces
@@ -361,7 +334,7 @@ func configDefault(config ...Config) Config {
 			cfg.DefaultConsumes = ConfigDefault.DefaultConsumes
 		}
 		if cfg.ErrorProduces == "" {
-			// The default error handler writes text; a schema describes a body, which only makes sense as JSON.
+			// The default error handler writes text; a schema only makes sense as JSON.
 			cfg.ErrorProduces = ConfigDefault.ErrorProduces
 			if cfg.ErrorSchema != nil {
 				cfg.ErrorProduces = fiber.MIMEApplicationJSON
@@ -381,9 +354,7 @@ func configDefault(config ...Config) Config {
 	return cfg
 }
 
-// validateServers panics on a server the specification would reject: a variable without a default, a
-// default outside its enum, or a "{name}" in the URL that no variable declares. A server with an empty
-// URL is not checked, as it is skipped when the document is built.
+// validateServers panics on a server the specification would reject.
 func validateServers(servers []Server) {
 	for i := range servers {
 		server := &servers[i]

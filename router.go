@@ -20,11 +20,9 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// skipSlashFilters tells match to skip its slash-count quick rejects; 0 is safe
-// because a real detection path holds at least one '/'.
+// skipSlashFilters makes match skip its slash-count quick rejects.
 const skipSlashFilters = 0
 
-// routeIDs hands out the ids shared by the per-method copies of a registration.
 var routeIDs atomic.Uint64
 
 const (
@@ -81,8 +79,6 @@ type Router interface {
 	Route(prefix string, fn func(router Router), name ...string) Router
 
 	Name(name string) Router
-
-	// Route documentation helpers target the most recently registered route.
 
 	Summary(sum string) Router
 	Description(desc string) Router
@@ -161,41 +157,29 @@ type Route struct { // betteralign:ignore - see below
 
 	domain string // Host pattern from app.Domain(), empty otherwise
 
-	// Group values captured so copies from GetRoutes keep them after group is cleared.
 	groupPrefix string
 	groupName   string
 
-	// docHandlers is the chain as registered, kept when the router wrapped every handler.
 	docHandlers []Handler
 
-	// Summary is the one-line operation summary.
-	Summary string `json:"summary,omitempty"`
-	// Description is the longer operation description.
+	Summary     string `json:"summary,omitempty"`
 	Description string `json:"description,omitempty"`
-	// Consumes is the media type of the request body.
-	Consumes string `json:"consumes,omitempty"`
-	// Produces is the media type of the responses.
-	Produces string `json:"produces,omitempty"`
+	Consumes    string `json:"consumes,omitempty"`
+	Produces    string `json:"produces,omitempty"`
 
-	// Responses are the documented responses, keyed by status ("default" for none).
-	Responses map[string]RouteResponse `json:"responses,omitempty"`
-	// RequestBody is the documented request payload.
-	RequestBody *RouteRequestBody `json:"requestBody,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Responses   map[string]RouteResponse `json:"responses,omitempty"`
+	RequestBody *RouteRequestBody        `json:"requestBody,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 
-	// Parameters are the documented path, query, header and cookie parameters.
 	Parameters []RouteParameter `json:"parameters,omitempty"`
 	// ParameterModels are structs expanded into parameters when the spec is built.
 	ParameterModels []RouteParameterModel `json:"parameterModels,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	// Tags group the operation in the generated documentation.
-	Tags []string `json:"tags,omitempty"`
+	Tags            []string              `json:"tags,omitempty"`
 	// Security holds the OpenAPI security requirements; a non-nil empty slice means none are needed.
-	Security []map[string][]string `json:"security,omitempty"`
-	// ExternalDocs is the operation's externalDocs object.
-	ExternalDocs map[string]any `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI operation externalDocs
+	Security     []map[string][]string `json:"security,omitempty"`
+	ExternalDocs map[string]any        `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI operation externalDocs
 	// OperationExtensions are extra operation-object fields, such as "x-" extensions.
 	OperationExtensions map[string]any `json:"operationExtensions,omitempty"` //nolint:tagliatelle // internal route metadata
 
-	// Deprecated marks the operation as deprecated.
 	Deprecated bool `json:"deprecated,omitempty"`
 	hidden     bool // Excluded from the generated OpenAPI specification
 }
@@ -533,7 +517,6 @@ func (r *Route) IsHidden() bool {
 	return r.hidden
 }
 
-// captureGroupLocked records the group's prefix and name; the caller must hold app.mutex.
 func (r *Route) captureGroupLocked() {
 	if r.group == nil {
 		r.groupPrefix, r.groupName = "", ""
@@ -1309,8 +1292,7 @@ func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string
 	app.deleteRouteSnapshot(methods, matchFunc)
 }
 
-// deleteRoute removes the routes matchFunc selects. matchFunc runs under app.mutex
-// on live entries, so user code must go through deleteRouteSnapshot.
+// deleteRoute removes the routes matchFunc selects; matchFunc runs under app.mutex on live entries.
 func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	methods, indexes := app.removalScope(methods)
 
@@ -1328,8 +1310,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	app.removeMatchedLocked(methods, indexes, matched)
 }
 
-// deleteRouteSnapshot is deleteRoute for user matchers: they run unlocked on snapshots
-// so they may call locking app methods; matches are removed by identity.
+// deleteRouteSnapshot is deleteRoute for user matchers, which run unlocked on snapshots.
 func (app *App) deleteRouteSnapshot(methods []string, matchFunc func(r *Route) bool) {
 	methods, indexes := app.removalScope(methods)
 
@@ -1363,7 +1344,6 @@ func (app *App) deleteRouteSnapshot(methods []string, matchFunc func(r *Route) b
 	app.removeMatchedLocked(methods, indexes, matched)
 }
 
-// removalScope resolves the methods a removal covers to their stack indexes, skipping invalid ones.
 func (app *App) removalScope(methods []string) ([]string, []int) { //nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter
 	if len(methods) == 0 {
 		methods = app.config.RequestMethods
@@ -1378,13 +1358,11 @@ func (app *App) removalScope(methods []string) ([]string, []int) { //nolint:gocr
 	return methods, indexes
 }
 
-// removeMatchedLocked drops the matched entries; the caller must hold app.mutex.
 func (app *App) removeMatchedLocked(methods []string, indexes []int, matched map[*Route]struct{}) {
 	if len(matched) == 0 {
 		return
 	}
 
-	// A middleware route sits in every method stack; count its handlers down once.
 	all := slices.Equal(methods, app.config.RequestMethods)
 	removedUseRoutes := make(map[autoHeadKey]struct{})
 
@@ -1402,7 +1380,6 @@ func (app *App) removeMatchedLocked(methods []string, indexes []int, matched map
 			app.bumpRoutesRevision()
 			app.unindexRouteLocked(route)
 
-			// Decrement global handler count; middleware routes once, keyed by domain and path.
 			useKey := app.autoHeadKey(route)
 			if _, ok := removedUseRoutes[useKey]; (route.use && all && !ok) || !route.use {
 				if route.use {
@@ -1419,8 +1396,7 @@ func (app *App) removeMatchedLocked(methods []string, indexes []int, matched map
 	}
 }
 
-// unindexRouteLocked drops a removed entry from its registrations so later helpers
-// are no-ops; the caller must hold app.mutex.
+// unindexRouteLocked drops a removed entry from its registrations; the caller must hold app.mutex.
 func (app *App) unindexRouteLocked(route *Route) {
 	for _, id := range app.entryRegs[route] {
 		entries := slices.DeleteFunc(app.regEntries[id], func(entry *Route) bool { return entry == route })
@@ -1453,9 +1429,7 @@ func (app *App) pruneAutoHeadRouteLocked(route *Route) {
 	atomic.AddUint32(&app.handlersCount, ^uint32(len(twin.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
 }
 
-// autoHeadTwinLocked finds the auto-HEAD route built for key, or -1 and nil. Twins are
-// per key, so matching on path alone would reach another domain's twin.
-// The caller must hold app.mutex.
+// autoHeadTwinLocked finds the auto-HEAD route built for key, or -1 and nil; the caller must hold app.mutex.
 func (app *App) autoHeadTwinLocked(headIndex int, key autoHeadKey) (int, *Route) {
 	for i, head := range app.stack[headIndex] {
 		if !head.autoHead || head.path != key.path || head.domain != key.domain {
@@ -1469,9 +1443,8 @@ func (app *App) autoHeadTwinLocked(headIndex int, key autoHeadKey) (int, *Route)
 	return -1, nil
 }
 
-// explicitHeadPositionLocked returns where route goes in the stack of method index m: the end, except for an
-// explicit HEAD route, which goes before the first generated HEAD twin of the same path left by another
-// domain, as that twin sits earlier in the stack and would answer first. The caller must hold app.mutex.
+// explicitHeadPositionLocked returns where route goes in the stack of method index m; an explicit HEAD
+// goes before the first generated twin of the same path left by another domain. The caller must hold app.mutex.
 func (app *App) explicitHeadPositionLocked(m int, route *Route) int {
 	if route.Method != MethodHead || route.mount || route.use {
 		return len(app.stack[m])
@@ -1489,14 +1462,11 @@ func (app *App) explicitHeadPositionLocked(m int, route *Route) int {
 	return len(app.stack[m])
 }
 
-// register creates one stack entry per method and returns the registration ID.
 func (app *App) register(methods []string, pathRaw string, group *Group, domain string, handlers ...Handler) uint64 {
 	return app.registerChain(methods, pathRaw, group, domain, nil, handlers)
 }
 
-// registerChain is register for a chain a domain router wrapped in its host check. inner is the chain as
-// registered, which the routes carry for InnerHandlers from the moment they exist, so the OnRoute hooks see it
-// too; it is nil for a chain that was not wrapped.
+// registerChain is register for a chain a domain router wrapped in its host check; inner is the chain as registered.
 func (app *App) registerChain(methods []string, pathRaw string, group *Group, domain string, inner, handlers []Handler) uint64 {
 	// A regular route requires at least one ctx handler
 	if len(handlers) == 0 && group == nil {
@@ -1509,13 +1479,11 @@ func (app *App) registerChain(methods []string, pathRaw string, group *Group, do
 		}
 	}
 
-	// One ID per call so helpers reach the routes of every method registered together.
 	routeID := routeIDs.Add(1)
 
 	// Precompute path normalization ONCE
 	pathRaw, pathPretty, pathClean := normalizeRoutePattern(pathRaw, &app.config)
 
-	// Startup adds the constraints of mounted apps under the router lock, so the list is read under it too.
 	app.mutex.Lock()
 	constraints := app.customConstraints
 	app.mutex.Unlock()
@@ -1557,10 +1525,9 @@ func (app *App) registerChain(methods []string, pathRaw string, group *Group, do
 			Params:      parsedRaw.params,
 			group:       group,
 
-			Path:     pathRaw,
-			Method:   method,
-			Handlers: handlers,
-			// Clipped so that a merge appending to one method's copy reallocates instead of writing into another's.
+			Path:        pathRaw,
+			Method:      method,
+			Handlers:    handlers,
 			docHandlers: slices.Clip(inner),
 		}
 		route.buildPrefixFilter()
@@ -1593,8 +1560,7 @@ func (app *App) addRoute(method string, route *Route) {
 	}
 }
 
-// insertRoute adds the route under the router lock, released even if the insertion panics, and
-// returns the snapshot the OnRoute hooks receive, or nil when there is none to run.
+// insertRoute adds the route under the router lock and returns the snapshot the OnRoute hooks receive, if any.
 func (app *App) insertRoute(method string, route *Route) *Route {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
@@ -1608,7 +1574,6 @@ func (app *App) insertRoute(method string, route *Route) *Route {
 		app.pruneAutoHeadRouteLocked(route)
 	}
 
-	// The entry the registration ends up in, possibly a compression-merged one.
 	liveRoute := route
 
 	// prevent identically route registration
@@ -1617,9 +1582,7 @@ func (app *App) insertRoute(method string, route *Route) *Route {
 		!route.mount && !app.stack[m][l-1].mount && app.stack[m][l-1].domain == route.domain {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
-		// The chain as registered grows with it, so InnerHandlers stays aligned with Handlers.
 		preRoute.docHandlers = append(preRoute.docHandlers, route.docHandlers...)
-		// The entry keeps its id and is also indexed under this registration.
 		// Name prefixes with the group of the route it renames, which for this
 		// name is the group the merging registration was made through.
 		preRoute.group = route.group
@@ -1627,7 +1590,6 @@ func (app *App) insertRoute(method string, route *Route) *Route {
 		liveRoute = preRoute
 	} else {
 		route.Method = method
-		// Add route to the stack; an explicit HEAD goes ahead of a generated twin of another domain, which would shadow it.
 		app.stack[m] = slices.Insert(app.stack[m], app.explicitHeadPositionLocked(m, route), route)
 		app.hasRoutesRefreshed = true
 	}
@@ -1638,21 +1600,18 @@ func (app *App) insertRoute(method string, route *Route) *Route {
 		app.latestRegID = route.id
 	}
 
-	// Snapshot under the lock; the hooks run after it is released so they may call locking methods.
 	if !route.mount && len(app.hooks.onRoute) > 0 {
 		return app.copyRoute(liveRoute)
 	}
 	return nil
 }
 
-// indexRouteLocked records route as an entry of registration id; the caller must hold app.mutex.
 func (app *App) indexRouteLocked(id uint64, route *Route) {
 	if app.regEntries == nil {
 		app.regEntries = make(map[uint64][]*Route)
 		app.entryRegs = make(map[*Route][]uint64)
 	}
 	entries := app.regEntries[id]
-	// A duplicate entry would apply an appending helper twice.
 	if n := len(entries); n > 0 && entries[n-1] == route {
 		return
 	}
@@ -1660,7 +1619,6 @@ func (app *App) indexRouteLocked(id uint64, route *Route) {
 	app.entryRegs[route] = append(app.entryRegs[route], id)
 }
 
-// ensureAutoHeadRoutes creates the missing auto-HEAD routes; the caller fires their hooks unlocked.
 func (app *App) ensureAutoHeadRoutes() []*Route {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
@@ -1672,8 +1630,7 @@ func (app *App) ensureAutoHeadRoutes() []*Route {
 type autoHeadKey struct {
 	// owner is set only where routes are host-scoped, and is what keeps the
 	// HEAD route of one mounted app from standing in for another app's GET
-	owner *App
-	// domain separates same-path routes on different domain routers, which each need a twin
+	owner  *App
 	domain string
 	path   string
 }
@@ -1692,8 +1649,7 @@ func (app *App) autoHeadKey(route *Route) autoHeadKey {
 	return key
 }
 
-// ensureAutoHeadRoutesLocked creates missing auto-HEAD twins and returns snapshots;
-// the caller holds app.mutex and fires hooks after releasing.
+// ensureAutoHeadRoutesLocked creates missing auto-HEAD twins and returns snapshots; the caller holds app.mutex.
 func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	if app.config.DisableHeadAutoRegister {
 		return nil
@@ -1712,8 +1668,7 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	if app.autoHeadRouteID == currentRouteID && app.autoHeadStackLen == len(app.stack[headIndex]) {
 		return nil
 	}
-	// Recorded on the normal exits only: a scan aborted by a panic must not be marked complete, or every
-	// HEAD request that needed a companion would stay at 405 for the lifetime of the process.
+	// Recorded on the normal exits only: a scan aborted by a panic must not be marked complete.
 	recordScan := func() {
 		app.autoHeadRouteID = routeIDs.Load()
 		app.autoHeadStackLen = len(app.stack[headIndex])
@@ -1768,14 +1723,11 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		existing[app.autoHeadKey(route)] = struct{}{}
 		app.hasRoutesRefreshed = true
 		added = true
-		// Hooks run unlocked, so they get a snapshot.
 		if len(app.hooks.onRoute) > 0 {
 			twins = append(twins, app.copyRoute(headRoute))
 		}
 
 		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
-
-		// The twin is never indexed so later helpers cannot re-document it.
 	}
 
 	if added {
@@ -1786,7 +1738,6 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	return twins
 }
 
-// fireOnRouteHooks runs the onRoute hooks, panicking on error like registration. Callers must not hold app.mutex.
 func (app *App) fireOnRouteHooks(routes []*Route) {
 	for _, route := range routes {
 		if err := app.hooks.executeOnRouteHooks(route); err != nil {
@@ -1808,8 +1759,7 @@ func (app *App) RebuildTree() *App {
 	return app
 }
 
-// rebuildTreeLocked rebuilds the tree under the router lock, released even if that panics, and
-// returns the automatic HEAD routes created, whose OnRoute hooks run after the lock is released.
+// rebuildTreeLocked rebuilds the tree under the router lock and returns the automatic HEAD routes created.
 func (app *App) rebuildTreeLocked() []*Route {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()

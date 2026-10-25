@@ -11,8 +11,7 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
-// Route constraints (":id<int>") describe accepted values precisely enough to
-// type the schema. This grammar mirrors path.go's.
+// Route constraints (":id<int>") type the schema; this grammar mirrors path.go's.
 const (
 	constraintSpanStart     = '<'
 	constraintSpanEnd       = '>'
@@ -23,12 +22,10 @@ const (
 	constraintEscapeChar    = '\\'
 )
 
-// parameterEnd marks the bytes that end a ":name" placeholder once its constraint has closed.
 var parameterEnd = paramdelim.PathEndChars()
 
-// scanConstraintSpan reads the "<...>" span at open, returning its inner text and the index past it. As in
-// path.go the span closes at the last unescaped '>' before a byte that ends the parameter, so a pattern
-// such as "<regex(^[^>]+$)>" keeps its inner '>'.
+// scanConstraintSpan reads the "<...>" span at open, returning its inner text and the index past it.
+// As in path.go it closes at the last unescaped '>' before a byte that ends the parameter.
 //
 //nolint:nonamedreturns // gocritic requires names to tell the two results apart
 func scanConstraintSpan(pattern string, open int) (raw string, next int) {
@@ -49,8 +46,6 @@ func scanConstraintSpan(pattern string, open int) (raw string, next int) {
 	return pattern[start:closed], closed + 1
 }
 
-// pathParamSchema derives a parameter schema from a constraint span, defaulting
-// to string.
 func pathParamSchema(rawConstraints string) map[string]any {
 	schema := map[string]any{}
 	for _, entry := range splitNonEscaped(rawConstraints, constraintSeparator) {
@@ -66,8 +61,6 @@ func pathParamSchema(rawConstraints string) map[string]any {
 	return schema
 }
 
-// applyConstraintToSchema merges one constraint in without overwriting
-// keywords already set.
 func applyConstraintToSchema(schema map[string]any, name string, args []string) {
 	switch resolveConstraintName(name) {
 	case fiber.ConstraintInt:
@@ -77,7 +70,6 @@ func applyConstraintToSchema(schema map[string]any, name string, args []string) 
 	case fiber.ConstraintFloat:
 		setSchemaType(schema, schemaTypeNumber)
 	case fiber.ConstraintAlpha:
-		// The runtime check accepts any Unicode letter, not just ASCII.
 		setSchemaType(schema, schemaTypeString)
 	case fiber.ConstraintGUID:
 		setSchemaType(schema, schemaTypeString)
@@ -89,7 +81,6 @@ func applyConstraintToSchema(schema map[string]any, name string, args []string) 
 		}
 	case fiber.ConstraintRegex:
 		setSchemaType(schema, schemaTypeString)
-		// A path segment never contains "/", so a pattern that needs one cannot describe it.
 		if len(args) > 0 && args[0] != "" && !strings.Contains(args[0], "/") {
 			setSchemaKey(schema, "pattern", args[0])
 		}
@@ -121,7 +112,6 @@ func applyConstraintToSchema(schema map[string]any, name string, args []string) 
 	}
 }
 
-// resolveConstraintName maps the router's lowercase aliases to canonical names.
 func resolveConstraintName(name string) string {
 	lower := utilsstrings.ToLower(name)
 	switch lower {
@@ -136,7 +126,6 @@ func resolveConstraintName(name string) string {
 	}
 }
 
-// datetimeLayoutFormat maps Go layouts with an exact OpenAPI format.
 func datetimeLayoutFormat(args []string) string {
 	if len(args) == 0 {
 		return ""
@@ -163,7 +152,6 @@ func setSchemaKey(schema map[string]any, key string, value any) {
 	}
 }
 
-// setIntSchemaKey sets key from args[idx] when it is a plain integer.
 func setIntSchemaKey(schema map[string]any, key string, args []string, idx int) {
 	if idx >= len(args) {
 		return
@@ -175,15 +163,12 @@ func setIntSchemaKey(schema map[string]any, key string, args []string, idx int) 
 	setSchemaKey(schema, key, int(n))
 }
 
-// parsedConstraint is one entry of a "<...>" span.
 type parsedConstraint struct {
 	name string
 	args []string
 }
 
-// splitConstraintEntry separates a constraint's name from its arguments, which
-// run from the first non-escaped '(' to the last ')', as in path.go. A regex
-// keeps its argument whole.
+// splitConstraintEntry separates a constraint's name from its arguments, as in path.go.
 func splitConstraintEntry(entry string) parsedConstraint {
 	entry = utils.TrimSpace(entry)
 	start := indexNonEscaped(entry, constraintArgsStart)
@@ -203,7 +188,6 @@ func splitConstraintEntry(entry string) parsedConstraint {
 	return parsedConstraint{name: name, args: args}
 }
 
-// splitNonEscaped splits s on sep not preceded by a backslash.
 func splitNonEscaped(s string, sep byte) []string {
 	var result []string
 	for {
@@ -216,8 +200,6 @@ func splitNonEscaped(s string, sep byte) []string {
 	}
 }
 
-// indexNonEscaped returns the index of the first char not preceded by a
-// backslash, or -1.
 func indexNonEscaped(s string, char byte) int {
 	for i := range len(s) {
 		if s[i] == char && (i == 0 || s[i-1] != constraintEscapeChar) {

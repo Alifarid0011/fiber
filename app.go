@@ -43,8 +43,7 @@ const (
 	openapiTypeString = "string"
 )
 
-// Parameter locations accepted by the documentation helpers. "querystring" is the
-// whole query string as one value (OpenAPI 3.2).
+// Parameter locations accepted by the documentation helpers.
 const (
 	ParamInPath        ParamLocation = "path"
 	ParamInQuery       ParamLocation = "query"
@@ -61,12 +60,11 @@ func (l ParamLocation) Normalize() ParamLocation {
 	return ParamLocation(utilsstrings.ToLower(utils.TrimSpace(string(l))))
 }
 
-// allHosts is the domain of a route registered outside a domain router: it answers on every host.
+// allHosts is the domain of a route registered outside a domain router.
 const allHosts = ""
 
 const defaultResponseKey = "default"
 
-// smallIndexMax is the name count up to which scanning a slice beats hashing.
 const smallIndexMax = 8
 
 // Handler defines a function to serve HTTP requests.
@@ -113,18 +111,15 @@ type App struct {
 	// Ctx pool
 	pool sync.Pool
 
-	// docTarget provides the route-documentation helpers, applied to the latest registration.
 	docTarget[Router]
 	// Fasthttp server
 	server *fasthttp.Server
 	// Converts byte slice to a string
 	toString func(b []byte) string
 	// Hooks
-	hooks *Hooks
-	// regEntries maps a registration id to its live stack entries. Guarded by mutex.
+	hooks      *Hooks
 	regEntries map[uint64][]*Route
-	// entryRegs is the reverse of regEntries: the registration ids an entry is indexed under, so
-	// removing it touches only those. Guarded by mutex.
+	// entryRegs is the reverse of regEntries. Guarded by mutex.
 	entryRegs map[*Route][]uint64
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
@@ -138,8 +133,7 @@ type App struct {
 	sharedState *SharedState
 	// headerHook is the HeaderReceived callback hookHeaderReceived installed, kept
 	// to tell it from one set since
-	headerHook func(*fasthttp.RequestHeader) fasthttp.RequestConfig
-	// namedRoutes is the by-name route view, rebuilt when routesRevision moves.
+	headerHook  func(*fasthttp.RequestHeader) fasthttp.RequestConfig
 	namedRoutes atomic.Pointer[namedRouteIndex]
 	// Route stack divided by HTTP methods
 	stack [][]*Route
@@ -1062,8 +1056,7 @@ func (app *App) Name(name string) Router {
 }
 
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
-// The returned routes are copies whose documentation metadata is cloned; Handlers and Params
-// still share their backing arrays with the app and must not be modified.
+// The returned routes are copies; Handlers and Params are shared and must not be modified.
 func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 	var filterUse bool
 	if len(filterUseOption) != 0 {
@@ -1083,7 +1076,6 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 			if filterUse && route.use {
 				continue
 			}
-			// Filled in place to avoid moving the large Route struct twice.
 			rs = append(rs, Route{})
 			app.copyRouteInto(&rs[len(rs)-1], route)
 		}
@@ -1242,7 +1234,6 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 	grp := newGroup(app, prefix, nil)
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
-		// The middleware belongs to the group so chained helpers reach it.
 		grp.cursor.Store(app.register([]string{methodUse}, prefix, grp, allHosts, converted...))
 	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {

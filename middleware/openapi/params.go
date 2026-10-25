@@ -7,7 +7,6 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// modelTagByLocation maps a parameter location to the struct tag Bind reads.
 var modelTagByLocation = map[fiber.ParamLocation]string{
 	fiber.ParamInQuery:  fiber.BindSourceQuery,
 	fiber.ParamInHeader: fiber.BindSourceHeader,
@@ -15,8 +14,6 @@ var modelTagByLocation = map[fiber.ParamLocation]string{
 	fiber.ParamInPath:   fiber.BindSourceURI,
 }
 
-// expandParameterModels turns each model into one parameter per exported field,
-// flattening embedded structs as the binder does.
 func expandParameterModels(models []fiber.RouteParameterModel, reg *schemaRegistry) []fiber.RouteParameter {
 	var params []fiber.RouteParameter
 	for i := range models {
@@ -33,7 +30,6 @@ func expandParameterModels(models []fiber.RouteParameterModel, reg *schemaRegist
 	return params
 }
 
-// taggedForAnotherLocation reports whether field carries a binding tag of a location other than tagKey.
 func taggedForAnotherLocation(field *reflect.StructField, tagKey string) bool {
 	for _, key := range modelTagByLocation {
 		if key != tagKey && field.Tag.Get(key) != "" {
@@ -63,7 +59,6 @@ func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in fiber.P
 			continue
 		}
 		if name == "" {
-			// A field tagged only for another location belongs to that location's parameters.
 			if taggedForAnotherLocation(&field, tagKey) {
 				continue
 			}
@@ -83,7 +78,6 @@ func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in fiber.P
 			Schema:   schema,
 			Required: required || in == fiber.ParamInPath,
 		}
-		// Description and example belong to the Parameter Object, not its schema.
 		if description, ok := schema["description"].(string); ok {
 			param.Description = description
 			delete(schema, "description")
@@ -92,7 +86,6 @@ func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in fiber.P
 			param.Example = example
 			delete(schema, "example")
 		}
-		// Under 3.0 a $ref may not have siblings, so the reference moves into allOf beside them.
 		param.Schema = reg.withRefSiblings(schema)
 		params = append(params, param)
 	}

@@ -4,8 +4,7 @@ import (
 	"strings"
 )
 
-// Patterns are lexed twice: here per segment for routing tokens only (mount and prefix coverage), and
-// in paths.go per character for names and constraints. The router does not expose its parsed segments;
+// Patterns are lexed here per segment for routing tokens only, and in paths.go per character;
 // Test_RouteLexers_Agree keeps the two from drifting.
 
 const (
@@ -15,7 +14,6 @@ const (
 	segmentGreedy
 )
 
-// routeTokens returns a segment's routing characters, dropping escapes and <constraint> spans.
 func routeTokens(seg string) string {
 	var b strings.Builder
 	for i := 0; i < len(seg); i++ {
@@ -32,17 +30,14 @@ func routeTokens(seg string) string {
 	return b.String()
 }
 
-// resolveDynamicMountPrefix picks the mount prefix of an optional/greedy pattern: the shortest split whose remainder is a target.
+// resolveDynamicMountPrefix picks the shortest mount prefix of an optional/greedy pattern whose remainder is a target.
 func resolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, equal segmentEqual) (string, bool) {
 	minSegments, maxSegments, dynamic := prefixSegmentBounds(pattern)
 	if !dynamic {
-		// A static mount is its own prefix; routePrefix handles unescaping.
 		return "", false
 	}
 
-	// Each target fixes its own split: the request path must end with it, and what is left in front is the
-	// mount prefix, whose segment count is its number of slashes. The shortest valid prefix wins, the spec
-	// target on a tie.
+	// Each target fixes its split; the shortest valid prefix wins, the spec target on a tie.
 	best, found := "", false
 	for _, target := range [...]string{specPath, uiPath} {
 		if target == "" || !hasSuffix(requestPath, target, equal) {

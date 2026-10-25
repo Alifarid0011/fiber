@@ -6,14 +6,12 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// parameterKey identifies a parameter: names are unique per location.
 type parameterKey struct {
 	in   fiber.ParamLocation
 	name string
 }
 
-// filterParams returns extras without the parameters whose location drop reports true. It returns
-// extras itself when nothing is dropped.
+// filterParams returns extras without the parameters drop reports true for.
 func filterParams(extras []fiber.RouteParameter, drop func(in fiber.ParamLocation) bool) []fiber.RouteParameter {
 	for i := range extras {
 		if !drop(extras[i].In.Normalize()) {
@@ -30,12 +28,10 @@ func filterParams(extras []fiber.RouteParameter, drop func(in fiber.ParamLocatio
 	return extras
 }
 
-// dropQuerystringParameters removes parameters in the OpenAPI 3.2-only "querystring" location.
 func dropQuerystringParameters(extras []fiber.RouteParameter) []fiber.RouteParameter {
 	return filterParams(extras, func(in fiber.ParamLocation) bool { return in == fiber.ParamInQuerystring })
 }
 
-// isReservedHeader reports whether OpenAPI says to ignore a header parameter of this name.
 func isReservedHeader(name string) bool {
 	name = utils.TrimSpace(name)
 	return utils.EqualFold(name, fiber.HeaderAccept) ||
@@ -43,9 +39,7 @@ func isReservedHeader(name string) bool {
 		utils.EqualFold(name, fiber.HeaderAuthorization)
 }
 
-// dropQueryAlongsideQuerystring removes every "query" parameter, whatever declared it, when a
-// "querystring" parameter is present: OpenAPI 3.2 forbids using both, and the querystring
-// parameter describes the whole string, so it is the one kept.
+// dropQueryAlongsideQuerystring removes every "query" parameter when a "querystring" one is present (3.2 forbids both).
 func dropQueryAlongsideQuerystring(extras []fiber.RouteParameter) []fiber.RouteParameter {
 	hasQuerystring := false
 	for i := range extras {
@@ -73,11 +67,9 @@ func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras
 		if location == "" {
 			location = fiber.ParamInQuery
 		}
-		// OpenAPI: a header parameter named Accept, Content-Type or Authorization is ignored.
 		if location == fiber.ParamInHeader && isReservedHeader(extra.Name) {
 			continue
 		}
-		// "example" and "examples" are mutually exclusive; prefer "examples".
 		var paramExample any
 		var paramExamples map[string]any
 		if len(extra.Examples) > 0 {
@@ -97,15 +89,12 @@ func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras
 			AllowEmptyValue: extra.AllowEmptyValue,
 			AllowReserved:   extra.AllowReserved,
 		}
-		// A Parameter Object needs exactly one of "schema" or "content".
 		switch content := routeMediaTypeContent(extra.Content, reg); {
 		case content != nil:
 			param.Content = content
-			// With content, example/examples belong to the media type object.
 			param.Example = nil
 			param.Examples = nil
 		case location == fiber.ParamInQuerystring:
-			// The 3.2 "querystring" location must use content.
 			param.Content = map[string]map[string]any{
 				querystringMediaType: contentEntry(fiber.RouteMediaType{
 					Schema:   schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString, reg),
@@ -124,8 +113,7 @@ func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras
 		}
 		if param.In == fiber.ParamInPath {
 			param.Required = true
-			// AddParameter injects a default string schema, which must not
-			// replace one derived from the route constraint (":id<int>").
+			// AddParameter's default string schema must not replace one derived from the route constraint.
 			if idx, ok := index[parameterKey{param.In, param.Name}]; ok && extra.SchemaRef == "" && param.Content == nil && isDefaultStringSchema(extra.Schema) {
 				param.Schema = params[idx].Schema
 			}
@@ -135,7 +123,6 @@ func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras
 	return params
 }
 
-// isDefaultStringSchema reports whether schema is only the injected string default.
 func isDefaultStringSchema(schema any) bool {
 	if schema == nil {
 		return true
@@ -181,7 +168,7 @@ func schemaFrom(schema any, schemaRef, defaultType string, reg *schemaRegistry) 
 	if copied == nil {
 		copied = map[string]any{}
 	}
-	// A reference, composition or const describes its type elsewhere, and an enum takes its values' type.
+	// A reference, composition or const describes its type elsewhere; an enum takes its values' type.
 	if defaultType != "" {
 		if typ, ok := schemautil.DefaultType(copied, defaultType); ok {
 			copied[schemaKeyType] = typ
@@ -193,11 +180,9 @@ func schemaFrom(schema any, schemaRef, defaultType string, reg *schemaRegistry) 
 	return copied
 }
 
-// adoptCanonicalParamNames renames a variant's path parameters to the canonical
-// template's, position by position.
+// adoptCanonicalParamNames renames a variant's path parameters to the canonical template's.
 func adoptCanonicalParamNames(variant *pathVariant, canonical []string) {
 	if len(canonical) != len(variant.ParamNames) {
-		// Defensive: a hierarchy match implies equal counts.
 		return
 	}
 
@@ -217,7 +202,6 @@ func adoptCanonicalParamNames(variant *pathVariant, canonical []string) {
 		variant.ParamConstraints = constraints
 	}
 
-	// Aliases must follow the rename for AddParameter(in: "path") to match.
 	if len(variant.PathParamAliases) > 0 {
 		aliases := make(map[string]string, len(variant.PathParamAliases))
 		for raw, emitted := range variant.PathParamAliases {

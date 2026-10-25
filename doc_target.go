@@ -5,17 +5,13 @@ import (
 )
 
 // docTarget is what App, Group, domainRouter and Registering share to document the route they registered last.
-// R is the router type their helpers return, so a chain keeps its own type.
 type docTarget[R any] struct {
-	// cursor is the latest registration, shared by copies of the owner. It is nil on App, whose helpers
-	// target the app's latest registration instead.
+	// cursor is the latest registration, shared by copies of the owner; nil on App.
 	cursor *atomic.Uint64
 	app    *App
-	// self is the router the helpers return; a copy of the owner keeps pointing at the original.
-	self R
+	self   R
 }
 
-// document applies a change to the most recently registered route.
 func (t *docTarget[R]) document(apply func(route *Route)) R {
 	if t.cursor == nil {
 		t.app.applyToLatest(apply)
@@ -100,8 +96,7 @@ func (t *docTarget[R]) ResponseHeader(status int, name, description string, sche
 	return t.document(docResponseHeader(status, name, description, schema))
 }
 
-// Accepts documents a required request body whose schema is reflected from model, under the given media
-// types or the middleware's DefaultConsumes.
+// Accepts documents a required request body reflected from model, under the given media types.
 func (t *docTarget[R]) Accepts(model any, mediaTypes ...string) R {
 	return t.document(docAccepts(model, mediaTypes...))
 }
@@ -148,16 +143,12 @@ func (t *docTarget[R]) OperationExtension(fields map[string]any) R {
 	return t.document(docOperationExtension(fields))
 }
 
-// newGroup returns a Group of app under prefix and, when it is nested, parent.
 func newGroup(app *App, prefix string, parent *Group) *Group {
 	grp := &Group{Prefix: prefix, parentGroup: parent}
 	grp.docTarget = docTarget[Router]{cursor: new(atomic.Uint64), app: app, self: grp}
 	return grp
 }
 
-// newDomainRouter returns a domain router for matcher, created from group when it is non-nil, whose
-// helpers target registration lastRegID.
-//
 //nolint:gocritic // hugeParam: the matcher is stored by value.
 func newDomainRouter(app *App, group *Group, matcher domainMatcher, lastRegID uint64) *domainRouter {
 	d := &domainRouter{group: group, matcher: matcher}
@@ -166,7 +157,6 @@ func newDomainRouter(app *App, group *Group, matcher domainMatcher, lastRegID ui
 	return d
 }
 
-// newRegistering returns a Register for path of app, scoped to group and domain when they are non-nil.
 func newRegistering(app *App, group *Group, domain *domainRouter, path string) *Registering {
 	r := &Registering{group: group, domain: domain, path: path}
 	r.docTarget = docTarget[Register]{cursor: new(atomic.Uint64), app: app, self: r}

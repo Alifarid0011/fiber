@@ -1,7 +1,5 @@
-// Package deepcopy clones the loosely typed values OpenAPI metadata is made of
-// (maps, slices, pointers and structs) so a copy shares no map, slice or
-// pointer with its source, with these exceptions: map keys, the unexported
-// fields of a struct, and anything nested deeper than maxDepth are shared.
+// Package deepcopy clones the loosely typed values OpenAPI metadata is made of, sharing only map keys,
+// unexported struct fields and anything nested deeper than maxDepth.
 package deepcopy
 
 import (
@@ -10,60 +8,44 @@ import (
 )
 
 const (
-	// maxDepth bounds the recursion so a very deep value cannot overflow the
-	// stack. Cycles are handled separately, so only an absurdly deep chain
-	// reaches it; past it a value is shared rather than copied.
+	// maxDepth bounds the recursion; past it a value is shared rather than copied.
 	maxDepth = 10000
 
-	// memoAfter is how many containers are copied before every container is
-	// remembered. A small value is copied without the bookkeeping; a large
-	// one with shared children (a diamond of maps, which would otherwise be
-	// copied once per path to it) is copied once per container from then on.
+	// memoAfter is how many containers are copied before every one is remembered, so shared children stop being copied once per path.
 	memoAfter = 1024
 )
 
-// copier clones values. A pointer, map or slice met again while it is still
-// being copied is a cycle: the copy under way is reused, so a value that points
-// back to itself, however many times, is copied once and its copy points back
-// to the copy. After memoAfter containers every one copied is remembered, so a
-// value that shares a child many times stops being copied once per reference;
-// below that threshold a shared child may be copied more than once.
+// copier clones values. A container met again while it is still being copied is a cycle: the copy under way is reused.
 type copier struct {
 	memo  map[visit]reflect.Value
 	path  []frame
 	nodes int
 }
 
-// frame is a container being copied and the copy made of it.
 type frame struct {
 	copied reflect.Value
 	key    visit
 }
 
-// visit identifies a container by its address, type and length.
 type visit struct {
 	typ  reflect.Type
 	ptr  uintptr
 	size int
 }
 
-// Map copies a raw OpenAPI object. A nil map stays nil and an empty one stays
-// empty, so "properties": {} does not become null.
+// Map copies a raw OpenAPI object; nil stays nil and empty stays empty.
 func Map(src map[string]any) map[string]any {
 	var c copier
 	return c.mapValue(src, 0)
 }
 
-// Value copies any value, descending through maps, slices, arrays, pointers and
-// the exported fields of structs.
+// Value copies any value, descending through maps, slices, arrays, pointers and exported struct fields.
 func Value(src any) any {
 	var c copier
 	return c.value(src, 0)
 }
 
-// Security copies security requirements and their scope lists. A nil list stays
-// nil and an empty one stays empty, which differ: empty means "no authentication".
-// A scope list stays non-nil so it marshals as [] rather than null.
+// Security copies security requirements; nil stays nil and empty stays empty, which differ.
 func Security(src []map[string][]string) []map[string][]string {
 	if src == nil {
 		return nil
@@ -79,7 +61,6 @@ func Security(src []map[string][]string) []map[string][]string {
 	return cloned
 }
 
-// enter notes that v is being copied into copied; call leave when it is done.
 func (c *copier) enter(v, copied reflect.Value) {
 	key := visitOf(v)
 	c.path = append(c.path, frame{key: key, copied: copied})
@@ -87,7 +68,6 @@ func (c *copier) enter(v, copied reflect.Value) {
 	if c.memo != nil {
 		c.memo[key] = copied
 	} else if c.nodes > memoAfter {
-		// The copies still under way go in too, so a cycle back to an ancestor entered before this point
 		// is still found.
 		c.memo = make(map[visit]reflect.Value, len(c.path))
 		for _, f := range c.path {
@@ -100,7 +80,6 @@ func (c *copier) leave() {
 	c.path = c.path[:len(c.path)-1]
 }
 
-// recall returns the copy of v when it is under way or, once memoizing, finished.
 func (c *copier) recall(v reflect.Value) (reflect.Value, bool) {
 	if len(c.path) == 0 && c.memo == nil {
 		return reflect.Value{}, false
@@ -221,7 +200,6 @@ func (c *copier) copyValue(v reflect.Value, depth int) reflect.Value {
 	}
 }
 
-// copySlice copies a slice. An empty slice has no address to track, so it is copied without bookkeeping.
 func (c *copier) copySlice(v reflect.Value, depth int) reflect.Value {
 	if v.IsNil() {
 		return v

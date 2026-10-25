@@ -11,13 +11,10 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// componentsSchemasRef prefixes every reference the registry hands out.
 const componentsSchemasRef = "#/components/schemas/"
 
-// schemaRegistry collects named struct types so each is emitted once under
-// components.schemas and referenced elsewhere.
-// schemaKey identifies a registered component: the same Go type documents differently for JSON and
-// form bodies, because each reads its own struct tags.
+// schemaRegistry collects named struct types so each is emitted once under components.schemas.
+// schemaKey identifies a component: JSON and form bodies read different struct tags.
 type schemaKey struct {
 	t   reflect.Type
 	tag string
@@ -31,12 +28,9 @@ const (
 type schemaRegistry struct {
 	schemas map[string]map[string]any
 	names   map[schemaKey]string
-	// taken maps a component name to the type that owns it. A name a user's
-	// Components already uses is taken by a nil type, so it is never reused.
-	taken map[string]reflect.Type
-	// tag is the struct tag the schemas under construction read: json, or form for form media types.
-	tag string
-	// dialect decides how the document's OpenAPI version spells nullable schemas and $ref siblings.
+	// taken maps a component name to the type that owns it; a user-defined name is taken by nil.
+	taken   map[string]reflect.Type
+	tag     string
 	dialect dialect
 }
 
@@ -54,7 +48,6 @@ func newSchemaRegistry(cfg *Config, d dialect) *schemaRegistry {
 	return reg
 }
 
-// resolve turns a schema argument into a schema map; a nil registry reflects inline.
 func (reg *schemaRegistry) resolve(schema any) map[string]any {
 	if schema == nil {
 		return nil
@@ -68,10 +61,8 @@ func (reg *schemaRegistry) resolve(schema any) map[string]any {
 	return typeSchema(reflect.TypeOf(schema), nil, reg)
 }
 
-// ref registers a named struct type and returns a reference to it. The name is
-// claimed before the schema is built so self-referencing types do not recurse. The component is
-// built with an empty visited set: it must not depend on the types of whichever schema reached it
-// first, or the same type would document differently depending on registration order.
+// ref registers a named struct type and returns a reference to it. The name is claimed first so
+// self-referencing types do not recurse; the component is built independent of registration order.
 func (reg *schemaRegistry) ref(t reflect.Type) map[string]any {
 	key := schemaKey{t: t, tag: reg.tagKey()}
 	name, ok := reg.names[key]
@@ -84,7 +75,6 @@ func (reg *schemaRegistry) ref(t reflect.Type) map[string]any {
 	return map[string]any{schemaKeyRef: componentsSchemasRef + name}
 }
 
-// claimName picks a unique component name: the type name, then package-qualified, then numbered.
 func (reg *schemaRegistry) claimName(t reflect.Type, tag string) string {
 	suffix := ""
 	if tag != tagJSON {
@@ -113,8 +103,7 @@ func (reg *schemaRegistry) claimName(t reflect.Type, tag string) string {
 	}
 }
 
-// componentName restricts a name to ^[a-zA-Z0-9.\-_]+$. A generic type's package qualifiers are dropped, so
-// Page[github.com/x/y.User] is named Page_User rather than carrying an import path into the document.
+// componentName restricts a name to ^[a-zA-Z0-9.\-_]+$; generic package qualifiers are dropped.
 func componentName(name string) string {
 	if open := strings.IndexByte(name, '['); open > 0 && strings.HasSuffix(name, "]") {
 		args := splitTypeArguments(name[open+1 : len(name)-1])
@@ -129,7 +118,6 @@ func componentName(name string) string {
 	return "_"
 }
 
-// splitTypeArguments splits a type-argument list at its top-level commas.
 func splitTypeArguments(list string) []string {
 	var args []string
 	depth, from := 0, 0
@@ -149,8 +137,7 @@ func splitTypeArguments(list string) []string {
 	return append(args, list[from:])
 }
 
-// unqualified drops the package path in front of every type name in a type-argument list element:
-// "[]github.com/x/y.User" becomes "[]User".
+// unqualified drops the package path before every type name in a type-argument list element.
 func unqualified(arg string) string {
 	var b strings.Builder
 	run := 0
@@ -168,11 +155,9 @@ func unqualified(arg string) string {
 		}
 		run = i + 1
 	}
-	// Spell the shape out in words so it survives the character restriction on component names.
 	return utils.Trim(strings.NewReplacer("[]", "Array_", "map[", "Map_", "[", "_", "]", "_", ",", "_", "*", "").Replace(b.String()), '_')
 }
 
-// componentSchemas returns the registered schemas keyed for components.schemas.
 func (reg *schemaRegistry) componentSchemas() map[string]any {
 	if reg == nil || len(reg.schemas) == 0 {
 		return nil
@@ -184,8 +169,7 @@ func (reg *schemaRegistry) componentSchemas() map[string]any {
 	return out
 }
 
-// withRefSiblings returns schema ready to carry sibling keys next to a "$ref". OpenAPI 3.1 allows them; in
-// 3.0 a Reference Object holds only "$ref", so the reference moves into "allOf" and the siblings stay beside it.
+// withRefSiblings returns schema ready to carry keys next to a "$ref"; 3.0 moves the reference into "allOf".
 func (reg *schemaRegistry) withRefSiblings(schema map[string]any) map[string]any {
 	target, isRef := schema[schemaKeyRef].(string)
 	if reg == nil || reg.dialect.hasJSONSchemaDialect() || !isRef || len(schema) < 2 {
@@ -201,7 +185,6 @@ func (reg *schemaRegistry) withRefSiblings(schema map[string]any) map[string]any
 	return wrapped
 }
 
-// tagKey is the struct tag the schemas being built read.
 func (reg *schemaRegistry) tagKey() string {
 	if reg == nil || reg.tag == "" {
 		return tagJSON
@@ -209,14 +192,12 @@ func (reg *schemaRegistry) tagKey() string {
 	return reg.tag
 }
 
-// isFormMediaType reports whether a media type carries a form body, which binds by `form` tags.
 func isFormMediaType(mediaType string) bool {
 	base, _, _ := utils.CutByte(mediaType, ';')
 	base = utils.TrimSpace(base)
 	return utils.EqualFold(base, fiber.MIMEMultipartForm) || utils.EqualFold(base, fiber.MIMEApplicationForm)
 }
 
-// contentEntryFor builds the entry for one media type, reading the struct tags that media type binds by.
 func contentEntryFor(mediaType string, mt fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
 	if reg == nil || !isFormMediaType(mediaType) {
 		return contentEntry(mt, reg)
@@ -227,8 +208,7 @@ func contentEntryFor(mediaType string, mt fiber.RouteMediaType, reg *schemaRegis
 	return contentEntry(mt, reg)
 }
 
-// nullable lets a property schema accept null in the document's dialect. A nil registry (SchemaOf)
-// leaves the schema alone.
+// nullable lets a property schema accept null in the document's dialect.
 func (reg *schemaRegistry) nullable(schema map[string]any) map[string]any {
 	if reg == nil {
 		return schema

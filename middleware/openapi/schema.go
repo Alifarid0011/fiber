@@ -17,7 +17,6 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
-// maxPointerDepth stops a self-referential pointer type from looping forever.
 const maxPointerDepth = 32
 
 const (
@@ -43,11 +42,9 @@ var (
 	textMarshalerType = reflect.TypeFor[encoding.TextMarshaler]()
 )
 
-// openapiDirectiveRe locates each directive's start; a value runs to the next
-// directive, so it may contain commas and colons.
+// openapiDirectiveRe finds each directive's start; a value runs to the next one.
 var openapiDirectiveRe = regexp.MustCompile(`(?:^|,)\s*(description|example|format|enum):|(?:^|,)\s*(readOnly|readonly|writeOnly|writeonly|deprecated)\s*`)
 
-// validateFormats maps validator format rules to JSON Schema formats.
 var validateFormats = map[string]string{
 	formatEmail:        formatEmail,
 	formatUUID:         formatUUID,
@@ -64,7 +61,6 @@ var validateFormats = map[string]string{
 	"base64":           formatByte,
 }
 
-// boundKeywords lists the lower and upper limit keywords for each schema type.
 var boundKeywords = map[string][2]string{
 	schemaTypeString:  {"minLength", "maxLength"},
 	schemaTypeArray:   {"minItems", "maxItems"},
@@ -74,17 +70,11 @@ var boundKeywords = map[string][2]string{
 }
 
 // SchemaOf generates an OpenAPI JSON Schema from a Go value by reflection.
-// Embedded structs are flattened as encoding/json does, and fields with no
-// JSON representation (chan, func, complex) are skipped.
+// Embedded structs are flattened as in encoding/json; fields with no JSON form are skipped.
 //
-// Recognized field tags are `json` (name, "-", omitempty, omitzero, string),
-// `openapi` (description, example, format, enum with "|" separators, readOnly,
-// writeOnly, deprecated) and `validate` (required, min, max, len, gte, lte,
-// oneof and common format rules). A value in an openapi tag may contain commas
-// and colons, but not a comma followed by another directive key.
-//
-// Nested structs are inlined here, unlike values passed to the route helpers,
-// which emit named structs once under components.schemas.
+// Recognized tags: `json`, `openapi` (description, example, format, enum with "|",
+// readOnly, writeOnly, deprecated) and `validate` (required, min, max, len, gte, lte,
+// oneof, common formats). Nested structs are inlined here, unlike in the route helpers.
 func SchemaOf(v any) map[string]any {
 	t := reflect.TypeOf(v)
 	if t == nil {
@@ -93,12 +83,10 @@ func SchemaOf(v any) map[string]any {
 	return typeSchema(t, nil, nil)
 }
 
-// implementsMarshaler reports whether t or *t implements iface.
 func implementsMarshaler(t, iface reflect.Type) bool {
 	return t.Implements(iface) || reflect.PointerTo(t).Implements(iface)
 }
 
-// markVisited records t as being expanded and returns the (possibly new) set.
 func markVisited(visited map[reflect.Type]bool, t reflect.Type) map[reflect.Type]bool {
 	if visited == nil {
 		visited = make(map[reflect.Type]bool)
@@ -107,8 +95,7 @@ func markVisited(visited map[reflect.Type]bool, t reflect.Type) map[reflect.Type
 	return visited
 }
 
-// derefType strips pointer indirections; a self-referential type (type P *P)
-// stays a pointer after maxPointerDepth steps.
+// derefType strips pointers; a self-referential pointer type stays a pointer.
 func derefType(t reflect.Type) reflect.Type {
 	for range maxPointerDepth {
 		if t.Kind() != reflect.Pointer {
@@ -119,8 +106,6 @@ func derefType(t reflect.Type) reflect.Type {
 	return t
 }
 
-// typeSchema builds the schema for t; visited holds the types being expanded so
-// cyclic types terminate.
 func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegistry) map[string]any {
 	t = derefType(t)
 	if t.Kind() == reflect.Pointer {
@@ -131,17 +116,14 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegist
 		return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "date-time"}
 	}
 
-	// An uploaded file part is a binary string, which Swagger UI shows as a file picker.
 	if t == fileHeaderType {
 		return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "binary"}
 	}
 
-	// json.Number is a string kind but marshals as a JSON number.
 	if t == jsonNumberType {
 		return map[string]any{schemaKeyType: schemaTypeNumber}
 	}
 
-	// Custom marshaling output cannot be predicted, so accept any value.
 	if implementsMarshaler(t, jsonMarshalerType) {
 		return map[string]any{}
 	}
@@ -160,7 +142,6 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegist
 		return map[string]any{schemaKeyType: schemaTypeBoolean}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		// encoding/json writes uintptr as a number.
 		reflect.Uintptr:
 		return map[string]any{schemaKeyType: schemaTypeInteger}
 	case reflect.Float32, reflect.Float64:
@@ -170,7 +151,6 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegist
 		if t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8 {
 			return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "byte"}
 		}
-		// Recursive element types (type L []L) would expand forever.
 		if visited[t] {
 			return map[string]any{schemaKeyType: schemaTypeArray}
 		}
@@ -178,7 +158,6 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegist
 		items := typeSchema(t.Elem(), visited, reg)
 		delete(visited, t)
 		if items == nil {
-			// encoding/json fails on an unmarshalable element.
 			return nil
 		}
 		return map[string]any{schemaKeyType: schemaTypeArray, "items": items}
@@ -186,7 +165,6 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegist
 		if t.Key().Kind() != reflect.String {
 			return map[string]any{schemaKeyType: schemaTypeObject}
 		}
-		// Recursive element types (type M map[string]M) would expand forever.
 		if visited[t] {
 			return map[string]any{schemaKeyType: schemaTypeObject}
 		}
@@ -194,12 +172,10 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegist
 		additional := typeSchema(t.Elem(), visited, reg)
 		delete(visited, t)
 		if additional == nil {
-			// Same as the slice branch.
 			return nil
 		}
 		return map[string]any{schemaKeyType: schemaTypeObject, "additionalProperties": additional}
 	case reflect.Struct:
-		// Named types go under components when a registry is present.
 		if reg != nil && t.Name() != "" {
 			return reg.ref(t)
 		}
@@ -207,13 +183,11 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegist
 	case reflect.Interface:
 		return map[string]any{}
 	default:
-		// chan, func, complex and unsafe.Pointer have no JSON representation.
 		return nil
 	}
 }
 
 func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegistry) map[string]any {
-	// Break reference cycles with a bare object.
 	if visited[t] {
 		return map[string]any{schemaKeyType: schemaTypeObject}
 	}
@@ -224,11 +198,9 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 	objectExample := make(map[string]any)
 	var required []string
 
-	// Names resolve level by level like encoding/json: the shallowest depth
-	// wins, and there one tagged field wins or the name is dropped.
+	// Names resolve like encoding/json: the shallowest depth wins.
 	type fieldCandidate struct {
-		// example is what the property adds to the object's example, read before a nullable or 3.0 $ref
-		// wrapper hides the reference it may come from.
+		// example is what the property adds to the object's example, read before a wrapper hides its $ref.
 		example    any
 		schema     map[string]any
 		hasExample bool
@@ -236,18 +208,14 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 		tagged     bool
 	}
 	type embedRef struct {
-		t reflect.Type
-		// optional: reached through a pointer or omitempty embed, so never required.
+		t        reflect.Type
 		optional bool
 	}
 
-	// encoding/json always writes a non-omitempty field, so it is required; a form field is only
-	// required when a validate rule says so, as a form has no omitempty.
+	// A non-omitempty JSON field is always written, so required; a form field needs a validate rule.
 	implicitRequired := reg.tagKey() == tagJSON
 
 	level := []embedRef{{t: t}}
-	// expanded holds types flattened at a shallower level; same-level duplicates
-	// must still collide.
 	expanded := map[reflect.Type]bool{t: true}
 	dropped := make(map[string]bool)
 
@@ -294,7 +262,6 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 					continue
 				}
 
-				// The ",string" option wraps the value in a JSON string.
 				if tagInfo.asString {
 					switch fieldSchema[schemaKeyType] {
 					case schemaTypeInteger, schemaTypeNumber, schemaTypeBoolean:
@@ -304,11 +271,9 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 				}
 
 				applyOpenAPITag(&field, fieldSchema)
-				// A validate rule outranks omitempty.
 				mustValidate := applyValidateTag(&field, fieldSchema)
 				fieldExample, hasExample := propertyExample(fieldSchema, reg)
-				// A pointer is written as null when nil, which the schema has to allow.
-				// An uploaded file is a part of a form and is never null.
+				// A nil pointer is written as null; an uploaded file part is never null.
 				if field.Type.Kind() == reflect.Pointer && !holdsFileHeaders(field.Type) {
 					fieldSchema = reg.nullable(fieldSchema)
 				}
@@ -337,7 +302,6 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 			cands := candidates[name]
 			chosen := 0
 			if len(cands) > 1 {
-				// One json-tagged candidate wins; otherwise the name is dropped.
 				taggedIdx, taggedCount := -1, 0
 				for i := range cands {
 					if cands[i].tagged {
@@ -379,9 +343,7 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 	return schema
 }
 
-// propertyExample returns what a property adds to its object's example: its own example, or that of the
-// registered type it references, nested models included. It reads the schema before nullable or a 3.0 allOf
-// wrapper is applied, as both move the "$ref" out of reach; a type still being built has no example yet.
+// propertyExample returns what a property adds to its object's example, read before wrapping hides its $ref.
 func propertyExample(prop map[string]any, reg *schemaRegistry) (any, bool) {
 	if value, found := prop["example"]; found {
 		return value, true
@@ -410,7 +372,7 @@ func parseJSONTag(field *reflect.StructField, key string) jsonTagInfo {
 		return jsonTagInfo{skip: true}
 	}
 	name, opts, _ := utils.CutByte(tag, ',')
-	// Unusual JSON names are resolved against the running encoding/json; an empty one (`json:",omitempty"`) keeps the Go name.
+	// Unusual names are resolved against the running encoding/json.
 	if key == tagJSON && name != "" && !isPlainJSONTagName(name) {
 		name = effectiveJSONTagName(name)
 	}
@@ -429,8 +391,7 @@ func parseJSONTag(field *reflect.StructField, key string) jsonTagInfo {
 	return info
 }
 
-// isPlainJSONTagName reports whether every encoding/json release takes name
-// as written.
+// isPlainJSONTagName reports whether every encoding/json release takes name as written.
 func isPlainJSONTagName(name string) bool {
 	if name == "" {
 		return false
@@ -438,7 +399,6 @@ func isPlainJSONTagName(name string) bool {
 	for _, c := range name {
 		switch {
 		case strings.ContainsRune("!#$%&()*+-./:;<=>?@[]^_{|}~ ", c):
-			// Reserved punctuation is allowed inside a tag name.
 		case !unicode.IsLetter(c) && !unicode.IsDigit(c):
 			return false
 		}
@@ -446,11 +406,9 @@ func isPlainJSONTagName(name string) bool {
 	return true
 }
 
-// effectiveJSONTagName returns the property name encoding/json gives a field
-// tagged with name, or "" when the tag is ignored. Rules for unusual names
-// changed in Go 1.27, so it asks the toolchain instead of reimplementing them.
+// effectiveJSONTagName returns the property name encoding/json gives a field tagged name, or "" if ignored.
+// Rules for unusual names changed in Go 1.27, so it asks the toolchain.
 func effectiveJSONTagName(name string) string {
-	// Quote the name so backslashes and quotes survive StructTag.Get.
 	probe := reflect.StructOf([]reflect.StructField{{
 		Name: "Probe",
 		Type: reflect.TypeFor[string](),
@@ -468,7 +426,6 @@ func effectiveJSONTagName(name string) string {
 	}
 	for key := range decoded {
 		if key == "Probe" {
-			// Tag ignored; the caller uses the field name.
 			return ""
 		}
 		return key
@@ -482,8 +439,7 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 		return
 	}
 
-	// A flag counts only when a comma or the end follows it, so "deprecated" in
-	// "description:Old, deprecated field" stays part of the value.
+	// A flag counts only when a comma or the end follows it.
 	locs := openapiDirectiveRe.FindAllStringSubmatchIndex(tag, -1)
 	locs = slices.DeleteFunc(locs, func(loc []int) bool {
 		return loc[2] < 0 && loc[1] < len(tag) && tag[loc[1]] != ','
@@ -498,7 +454,6 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 			case "deprecated":
 				schema["deprecated"] = true
 			default:
-				// Unreachable: the regexp only matches the flags handled above.
 			}
 			continue
 		}
@@ -520,12 +475,10 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 		case "enum":
 			var enumSlice []any
 			for v := range utils.SplitTrimSeq(val, '|') {
-				// Convert to the field's type so no value is unsatisfiable.
 				enumSlice = append(enumSlice, inferExampleValue(v, schema))
 			}
 			schema["enum"] = enumSlice
 		default:
-			// Unreachable: the regexp only matches the keys handled above.
 		}
 	}
 }
@@ -549,19 +502,13 @@ func inferExampleValue(val string, schema map[string]any) any {
 			return b
 		}
 	default:
-		// String and other types use the raw string value.
 	}
 	return val
 }
 
-// applyValidateTag translates validate rules into schema constraints and reports
-// whether the field is required. Rules it cannot express are ignored, among them gt and lt on a
-// float, whose exclusive bound is spelled differently in each OpenAPI version.
-//
-// The validator's structure is followed: rules after "dive" constrain the elements, so they go to the
-// items (or additionalProperties) schema and never make the field required; rules between "keys" and
-// "endkeys" constrain map keys and are skipped; and after "omitempty" the rules that an empty value
-// would break (lower bounds, len, oneof) are skipped, as the validator does not run them then.
+// applyValidateTag translates validate rules into schema constraints and reports whether the field is required.
+// It follows the validator: rules after "dive" go to the elements, "keys"…"endkeys" is skipped, and
+// after "omitempty" the rules an empty value would break are skipped.
 func applyValidateTag(field *reflect.StructField, schema map[string]any) bool {
 	tag := field.Tag.Get("validate")
 	if tag == "" {
@@ -569,13 +516,10 @@ func applyValidateTag(field *reflect.StructField, schema map[string]any) bool {
 	}
 
 	rules := validateTarget{
-		schema: schema,
-		top:    true,
-		// A []byte is a base64 string, so its byte counts become character counts.
-		bytes: isByteSlice(field.Type),
-		// A quoted number is a string in the document while the validator still compares the number.
+		schema:  schema,
+		top:     true,
+		bytes:   isByteSlice(field.Type),
 		numeric: quotedNumber(field),
-		// A pointer is validated whenever it is not nil, empty or not.
 		pointer: field.Type.Kind() == reflect.Pointer,
 	}
 	required := false
@@ -609,18 +553,15 @@ func applyValidateTag(field *reflect.StructField, schema map[string]any) bool {
 	return required
 }
 
-// validateTarget is the schema a run of validate rules constrains, and what is known about its Go type.
+// validateTarget is the schema a run of validate rules constrains.
 type validateTarget struct {
 	schema map[string]any
-	// bytes is set for a []byte field, numeric for a quoted number, pointer for a pointer field.
+	// bytes: []byte field; numeric: quoted number; pointer: pointer field.
 	bytes, numeric, pointer bool
-	// omitted is set once "omitempty" has been seen at this level.
-	omitted bool
-	// top is set while the target is the field itself and not one of its elements.
-	top bool
+	omitted                 bool
+	top                     bool
 }
 
-// dive moves to the schema of the elements, or to nothing when there is none a rule could be added to.
 func (t validateTarget) dive() validateTarget {
 	next := validateTarget{}
 	for _, keyword := range [...]string{"items", "additionalProperties"} {
@@ -628,7 +569,7 @@ func (t validateTarget) dive() validateTarget {
 		if !ok {
 			continue
 		}
-		// A reference takes no sibling keys under 3.0, so its constraints are left out.
+		// A $ref takes no sibling keys under 3.0.
 		if _, isRef := child[schemaKeyRef]; !isRef {
 			next.schema = child
 		}
@@ -637,13 +578,12 @@ func (t validateTarget) dive() validateTarget {
 	return next
 }
 
-// apply writes one rule onto the target.
 func (t *validateTarget) apply(key, value string) {
 	if key == "omitempty" {
 		t.omitted = !t.pointer
 		return
 	}
-	// An empty value is allowed after omitempty, so a rule that needs a non-empty one cannot be documented.
+	// An empty value is allowed after omitempty.
 	if t.omitted {
 		switch key {
 		case "min", "gte", "gt", "len", "oneof":
@@ -682,7 +622,6 @@ func (t *validateTarget) apply(key, value string) {
 	}
 }
 
-// bound writes a limit under the keyword for the schema's type.
 func (t *validateTarget) bound(value string, side boundSide) {
 	switch {
 	case t.numeric:
@@ -695,7 +634,6 @@ func (t *validateTarget) bound(value string, side boundSide) {
 	}
 }
 
-// exclusiveBound writes a gt or lt limit one step inside the value.
 func (t *validateTarget) exclusiveBound(value string, side boundSide) {
 	switch {
 	case t.numeric:
@@ -712,20 +650,17 @@ func (t *validateTarget) exclusiveBound(value string, side boundSide) {
 	}
 }
 
-// byteCount reads a byte count moved by step, or false when it is not a count.
 func byteCount(value string, step int64) (int64, bool) {
 	n, err := utils.ParseInt(value)
 	n += step
 	return n, err == nil && n >= 0
 }
 
-// encodedLength is the length of n bytes as padded base64.
 func encodedLength(n int64) int64 {
 	return 4 * ((n + 2) / 3)
 }
 
-// splitRuleParams splits a rule's parameter the way the validator does: on whitespace, except inside single
-// quotes, which are dropped.
+// splitRuleParams splits on whitespace except inside single quotes, as the validator does.
 func splitRuleParams(value string) []string {
 	var params []string
 	isSpace := func(c byte) bool { return c == ' ' || c == '\t' || c == '\n' }
@@ -751,7 +686,6 @@ func splitRuleParams(value string) []string {
 	return params
 }
 
-// holdsFileHeaders reports whether t is, or is a pointer to or slice of, a multipart file header.
 func holdsFileHeaders(t reflect.Type) bool {
 	t = derefType(t)
 	if t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
@@ -760,13 +694,11 @@ func holdsFileHeaders(t reflect.Type) bool {
 	return t == fileHeaderType
 }
 
-// isByteSlice reports whether t is a slice of bytes, which JSON writes as a base64 string.
 func isByteSlice(t reflect.Type) bool {
 	t = derefType(t)
 	return t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8
 }
 
-// quotedNumber reports whether the field is a number or boolean written as a JSON string by the ",string" option.
 func quotedNumber(field *reflect.StructField) bool {
 	_, options, _ := utils.CutByte(field.Tag.Get("json"), ',')
 	for option := range utils.SplitTrimSeq(options, ',') {
@@ -785,7 +717,6 @@ func quotedNumber(field *reflect.StructField) bool {
 	return false
 }
 
-// parseFloat reads a finite float, as a document cannot carry NaN or infinity.
 func parseFloat(value string) (float64, error) {
 	f, err := strconv.ParseFloat(value, 64)
 	if err != nil {
@@ -803,11 +734,9 @@ func setFormat(schema map[string]any, format string) {
 	}
 }
 
-// boundSide selects which end of a range a validate rule constrains.
 type boundSide uint8
 
-// setExclusiveBound writes a gt or lt limit as the equivalent inclusive one, which holds for
-// integers and for lengths and counts. A float has no such equivalent and is left unbounded.
+// setExclusiveBound writes gt/lt as the inclusive bound; floats have no equivalent and stay unbounded.
 func setExclusiveBound(schema map[string]any, value string, side boundSide) {
 	if schema[schemaKeyType] == schemaTypeNumber {
 		return
@@ -824,8 +753,6 @@ func setExclusiveBound(schema map[string]any, value string, side boundSide) {
 	setBound(schema, strconv.FormatInt(n, 10), side)
 }
 
-// setBound writes a validate rule's limit under the keyword for the schema's
-// type, or nothing if there is none or the value does not parse.
 func setBound(schema map[string]any, value string, side boundSide) {
 	schemaType, ok := schema[schemaKeyType].(string)
 	if !ok {

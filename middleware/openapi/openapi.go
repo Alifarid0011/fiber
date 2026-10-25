@@ -15,39 +15,32 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// segmentEqual compares route segments under the app's case rule.
 type segmentEqual = func(a, b string) bool
 
 type appEquality struct {
-	// app is weak so remembering the last app never keeps it alive.
 	app   weak.Pointer[fiber.App]
 	equal segmentEqual
 }
 
-// maxCachedEntries bounds both the per-app UI page cache and the app cache map.
 const maxCachedEntries = 32
 
-// appCache holds one app's artifacts; UI pages embed the spec URL so they are keyed per target.
 type appCache struct {
 	uiPages  map[string]cachedBody
 	specBody cachedBody
 	specRev  uint64
 }
 
-// cachedBody is a generated response body and its entity tag.
 type cachedBody struct {
 	etag string
 	data []byte
 }
 
-// newCachedBody tags data with a strong entity tag derived from its content.
 func newCachedBody(data []byte) cachedBody {
 	sum := sha256.Sum256(data)
 	return cachedBody{data: data, etag: `"` + hex.EncodeToString(sum[:16]) + `"`}
 }
 
-// send writes the body with its entity tag and answers a matching If-None-Match with 304. The
-// document changes whenever routes do, so clients always revalidate (Cache-Control: no-cache).
+// send writes the body with its entity tag and answers a matching If-None-Match with 304.
 func (b cachedBody) send(c fiber.Ctx, contentType string) error {
 	c.Set(fiber.HeaderContentType, contentType)
 	c.Set(fiber.HeaderETag, b.etag)
@@ -62,15 +55,12 @@ func (b cachedBody) send(c fiber.Ctx, contentType string) error {
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
-	// Scoped per app: one app's revision counter must not validate another's bytes.
 	var (
 		cacheMu sync.Mutex
-		// Keyed weakly, so a cache never keeps an app that is otherwise unreachable alive.
-		caches = make(map[weak.Pointer[fiber.App]]*appCache)
+		caches  = make(map[weak.Pointer[fiber.App]]*appCache)
 	)
 
-	// cacheFor drops the caches of collected apps and, past the bound, an arbitrary entry, so many apps keep
-	// caching. Caller holds cacheMu.
+	// cacheFor drops the caches of collected apps and, past the bound, an arbitrary entry. Caller holds cacheMu.
 	cacheFor := func(app *fiber.App) *appCache {
 		key := weak.Make(app)
 		cache, ok := caches[key]
@@ -94,7 +84,6 @@ func New(config ...Config) fiber.Handler {
 		return cache
 	}
 
-	// specBytes regenerates when the route revision moved. Deferred unlock so a panic cannot wedge the cache.
 	specBytes := func(app *fiber.App) (cachedBody, error) {
 		cacheMu.Lock()
 		defer cacheMu.Unlock()
@@ -102,7 +91,6 @@ func New(config ...Config) fiber.Handler {
 		cache := cacheFor(app)
 		rev := app.RoutesRevision()
 		if cache.specBody.data == nil || cache.specRev != rev {
-			// GetRoutes copies under the router lock, so generation never races registration.
 			appCfg := app.Config()
 			spec := generateSpec(app.GetRoutes(false), &cfg, specEnv{validator: appCfg.StructValidator, equal: segmentEqualFor(&appCfg), strict: appCfg.StrictRouting})
 			data, err := appCfg.JSONEncoder(spec)
@@ -138,7 +126,6 @@ func New(config ...Config) fiber.Handler {
 	specPath := utils.TrimRight(normalizedPath(cfg.Path), '/')
 	uiPath := utils.TrimRight(normalizedPath(cfg.UIPath), '/')
 
-	// Config() copies the whole struct; resolve the case rule once per app.
 	var lastEquality atomic.Pointer[appEquality]
 	equalityFor := func(app *fiber.App) func(a, b string) bool {
 		if e := lastEquality.Load(); e != nil && e.app.Value() == app {
@@ -163,8 +150,7 @@ func New(config ...Config) fiber.Handler {
 		route := c.Route()
 		isMiddleware := route != nil && route.IsMiddleware()
 
-		// Fast path: most prefix-mounted requests match neither target, which a last-byte check shows
-		// before the app's case rule is looked up.
+		// Fast path: most prefix-mounted requests match neither target.
 		if isMiddleware && !mayEndWith(request, specPath) && !mayEndWith(request, uiPath) {
 			return c.Next()
 		}
@@ -184,8 +170,7 @@ func New(config ...Config) fiber.Handler {
 			}
 			return body.send(c, fiber.MIMEApplicationJSONCharsetUTF8)
 		case targets.uiOK && equal(request, targets.ui):
-			// The spec URL may be built from the request path, so it is kept a rooted path: "//host/..." would be a
-			// network-path reference, and a spec served at the root trims to "" and would leave the page with no URL.
+			// A rooted path: "//host/..." would be a network-path reference, and a root spec trims to "".
 			specURL := urlnorm.RootedPath(targets.spec)
 			body, err := uiBytes(c.App(), specURL)
 			if err != nil {
@@ -200,7 +185,6 @@ func New(config ...Config) fiber.Handler {
 
 func stringsEqual(a, b string) bool { return a == b }
 
-// segmentEqualFor returns the comparison the router uses for route segments under cfg.
 func segmentEqualFor(cfg *fiber.Config) segmentEqual {
 	if cfg.CaseSensitive {
 		return stringsEqual
@@ -208,8 +192,7 @@ func segmentEqualFor(cfg *fiber.Config) segmentEqual {
 	return utils.EqualFold[string]
 }
 
-// mayEndWith is a cheap necessary condition for hasSuffix under any case rule: s is long enough and its last
-// byte matches suffix's, ignoring ASCII case.
+// mayEndWith is a cheap necessary condition for hasSuffix under any case rule.
 func mayEndWith(s, suffix string) bool {
 	if len(s) < len(suffix) {
 		return false
@@ -221,12 +204,10 @@ func mayEndWith(s, suffix string) bool {
 	return last == want || last|0x20 == want|0x20
 }
 
-// hasSuffix reports whether s ends with suffix under equal.
 func hasSuffix(s, suffix string, equal segmentEqual) bool {
 	return len(s) >= len(suffix) && equal(s[len(s)-len(suffix):], suffix)
 }
 
-// specTargets holds the paths this handler answers on. The ok flags exist because an empty path is valid (a root target trims to "").
 type specTargets struct {
 	spec   string
 	ui     string
@@ -234,7 +215,6 @@ type specTargets struct {
 	uiOK   bool
 }
 
-// resolveTargets derives the spec and UI paths from the route the handler runs on.
 func resolveTargets(c fiber.Ctx, specPath, uiPath string, equal segmentEqual) specTargets {
 	route := c.Route()
 	if route == nil {
@@ -251,33 +231,28 @@ func resolveTargets(c fiber.Ctx, specPath, uiPath string, equal segmentEqual) sp
 			base := path[:len(path)-len(uiPath)]
 			return specTargets{spec: base + specPath, ui: path, specOK: true, uiOK: true}
 		case len(route.Params) == 0:
-			// Fixed custom path, e.g. app.Get("/docs", openapi.New()).
 			return specTargets{spec: path, specOK: true}
 		default:
-			// A wildcard matches paths the author never enumerated; serving there would leak the route inventory.
 			return specTargets{}
 		}
 	}
 
 	prefix := routePrefix(route.Path, c.Path())
-	// Optional or greedy segments consume a varying number of request segments, so routePrefix cannot tell where the mount ends.
+	// Optional or greedy segments consume a varying number of segments, so routePrefix cannot tell where the mount ends.
 	if resolved, ok := resolveDynamicMountPrefix(route.Path, utils.TrimRight(c.Path(), '/'), specPath, uiPath, equal); ok {
 		prefix = resolved
 	}
 	switch {
 	case specPath != "" && hasSuffix(prefix, specPath, equal):
-		// The mount itself is the spec target; the UI sits beside it.
 		base := prefix[:len(prefix)-len(specPath)]
 		return specTargets{spec: prefix, ui: base + uiPath, specOK: true, uiOK: uiPath != ""}
 	case uiPath != "" && hasSuffix(prefix, uiPath, equal):
-		// The mount is the UI, so the spec must stay under it for the page to load.
 		return specTargets{spec: prefix + specPath, ui: prefix, specOK: true, uiOK: true}
 	default:
 		return specTargets{spec: prefix + specPath, ui: prefix + uiPath, specOK: true, uiOK: true}
 	}
 }
 
-// normalizedPath returns cfgPath with a leading slash.
 func normalizedPath(cfgPath string) string {
 	if !strings.HasPrefix(cfgPath, "/") {
 		return "/" + cfgPath
@@ -285,7 +260,6 @@ func normalizedPath(cfgPath string) string {
 	return cfgPath
 }
 
-// prefixSegmentBounds reports the min/max segments a mount can consume (-1 max when greedy) and whether it is dynamic.
 func prefixSegmentBounds(pattern string) (minSegments, maxSegments int, dynamic bool) { //nolint:nonamedreturns // three ints and a bool read better named
 	pattern = utils.TrimRight(pattern, '/')
 	if pattern == "" {
@@ -297,7 +271,6 @@ func prefixSegmentBounds(pattern string) (minSegments, maxSegments int, dynamic 
 		kind, tokens := classifySegment(seg)
 		switch kind {
 		case segmentGreedy:
-			// "+" needs at least one segment; "*" may match none.
 			if strings.Contains(tokens, "+") {
 				minSegments++
 			}
@@ -330,7 +303,6 @@ func countPathSegments(requestPath string) int {
 	return strings.Count(trimmed, "/") + 1
 }
 
-// pathPrefixSegments returns the leading n segments of requestPath, or false if it has fewer.
 func pathPrefixSegments(requestPath string, n int) (string, bool) {
 	if n <= 0 {
 		return "", true
@@ -350,14 +322,12 @@ func pathPrefixSegments(requestPath string, n int) (string, bool) {
 	return requestPath[:idx], true
 }
 
-// routePrefix derives a middleware route's mount prefix, taking parameter values from the request and stopping at the first greedy or optional segment.
 func routePrefix(pattern, requestPath string) string {
 	pattern = utils.TrimRight(pattern, '/')
 	if pattern == "" {
 		return ""
 	}
 
-	// Constraints and escaped characters are literals; classify by routing tokens only.
 	parameterized := false
 	segments := 0
 	counting := true
@@ -379,7 +349,6 @@ func routePrefix(pattern, requestPath string) string {
 	if segments == 0 {
 		return ""
 	}
-	// A request ending inside the prefix is its own prefix.
 	if prefix, ok := pathPrefixSegments(requestPath, segments); ok {
 		return prefix
 	}

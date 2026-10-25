@@ -1,6 +1,5 @@
 package fiber
 
-// applyToLatest applies a documentation change to the route the latest registration produced.
 func (app *App) applyToLatest(apply func(route *Route)) {
 	if apply == nil {
 		return
@@ -10,15 +9,13 @@ func (app *App) applyToLatest(apply func(route *Route)) {
 	app.applyAndBumpLocked(app.latestRegID, apply)
 }
 
-// applyAndBumpLocked applies a mutation to the entries of regID and bumps the routes revision when any was
-// touched. The caller must hold app.mutex.
+// applyAndBumpLocked applies a mutation to the entries of regID and bumps the routes revision; the caller must hold app.mutex.
 func (app *App) applyAndBumpLocked(regID uint64, apply func(route *Route)) {
 	if app.applyToRegIDLocked(regID, apply) {
 		app.bumpRoutesRevision()
 	}
 }
 
-// applyNameToRegistration names the routes registration regID produced and fires the OnName hooks.
 func (app *App) applyNameToRegistration(regID uint64, name string) {
 	if regID == 0 {
 		return
@@ -31,8 +28,7 @@ func (app *App) applyNameToRegistration(regID uint64, name string) {
 	app.fireOnNameHooks(named)
 }
 
-// nameRegistrationLocked names the entries of regID and returns a snapshot of the
-// last for the OnName hooks, or nil. The caller must hold app.mutex.
+// nameRegistrationLocked names the entries of regID and returns a snapshot of the last for the OnName hooks.
 func (app *App) nameRegistrationLocked(regID uint64, name string) *Route {
 	named := app.nameRoutesLocked(regID, name)
 	if named == nil {
@@ -46,7 +42,6 @@ func (app *App) nameRegistrationLocked(regID uint64, name string) *Route {
 	return app.copyRoute(named)
 }
 
-// fireOnNameHooks runs the OnName hooks, panicking on error like registration. Callers must not hold app.mutex.
 func (app *App) fireOnNameHooks(named *Route) {
 	if named == nil {
 		return
@@ -56,7 +51,6 @@ func (app *App) fireOnNameHooks(named *Route) {
 	}
 }
 
-// applyToRegistration applies a documentation change to the routes registration regID produced.
 func (app *App) applyToRegistration(regID uint64, apply func(route *Route)) {
 	if regID == 0 || apply == nil {
 		return
@@ -66,8 +60,7 @@ func (app *App) applyToRegistration(regID uint64, apply func(route *Route)) {
 	app.applyAndBumpLocked(regID, apply)
 }
 
-// applyToRegIDLocked applies a mutation to every entry of regID except mount
-// placeholders, and reports whether any was touched. The caller must hold app.mutex.
+// applyToRegIDLocked applies a mutation to every entry of regID except mount placeholders.
 func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool {
 	applied := false
 	for _, route := range app.regEntries[regID] {
@@ -80,8 +73,7 @@ func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool 
 	return applied
 }
 
-// nameRoutesLocked names the entries of regID and the automatic HEAD twin of each
-// GET, returning the last named. The caller must hold app.mutex.
+// nameRoutesLocked names the entries of regID and the auto-HEAD twin of each GET, returning the last named.
 func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 	var (
 		gets  []*Route
@@ -97,8 +89,7 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 		}
 		named = route
 	})
-	// Naming a middleware registration names every middleware route at its path, as Name always has: the same prefix is
-	// often registered more than once, and they are one middleware to the person naming it.
+	// Naming a middleware registration names every middleware route at its path.
 	if named != nil && named.use {
 		for _, routes := range app.stack {
 			for _, route := range routes {
@@ -127,17 +118,14 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 	return named
 }
 
-// namedRouteIndex is an immutable by-name snapshot of the routes at one revision;
-// the first route in stack order wins for each name.
+// namedRouteIndex is an immutable by-name snapshot of the routes at one revision.
 type namedRouteIndex struct {
 	routes   map[string]*Route
 	small    []*Route // the same snapshots in registration order when there are few, to scan instead of hash
 	revision uint64
 }
 
-// namedRoute returns the shared snapshot of the route called name, or nil; callers
-// must not modify it. The index is rebuilt under the lock after a change and read
-// lock-free, as published snapshots are never mutated.
+// namedRoute returns the shared snapshot of the route called name, or nil; callers must not modify it.
 func (app *App) namedRoute(name string) *Route {
 	index := app.namedRoutes.Load()
 	if index == nil || index.revision != app.routesRevision.Load() {
@@ -154,8 +142,7 @@ func (app *App) namedRoute(name string) *Route {
 	return index.routes[name]
 }
 
-// indexNamedRoutes rebuilds the index unless another goroutine already has. Revision
-// bumps happen under the lock, so a build under it matches its revision.
+// indexNamedRoutes rebuilds the index unless another goroutine already has.
 func (app *App) indexNamedRoutes() *namedRouteIndex {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
@@ -188,8 +175,7 @@ func (app *App) indexNamedRoutes() *namedRouteIndex {
 	return index
 }
 
-// GetRoute returns a copy of the route with the given name. Its documentation metadata is
-// cloned; Handlers and Params still share their backing arrays with the app and must not be modified.
+// GetRoute returns a copy of the route with the given name; Handlers and Params are shared and must not be modified.
 func (app *App) GetRoute(name string) (found Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct move
 	snapshot := app.namedRoute(name)
 	if snapshot == nil {
