@@ -7110,20 +7110,11 @@ func Test_SendFile_ByteRange_DotSegments(t *testing.T) {
 	})
 
 	for _, target := range []string{"/os", "/fs"} {
-		req := httptest.NewRequest(MethodGet, target, http.NoBody)
-		req.Header.Set(HeaderRange, "bytes=100-200")
-		resp := apptest.Do(t, app, req)
-		require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode, target)
+		resp := apptest.Expect(t, app, apptest.Req(MethodGet, target, apptest.WithHeader(HeaderRange, "bytes=100-200")), StatusRequestedRangeNotSatisfiable)
 		require.Equal(t, "bytes */20", resp.Header.Get(HeaderContentRange), target)
-		require.NoError(t, resp.Body.Close())
 
-		req = httptest.NewRequest(MethodGet, target, http.NoBody)
-		req.Header.Set(HeaderRange, "bytes=0-4")
-		resp = apptest.Do(t, app, req)
-		require.Equal(t, StatusPartialContent, resp.StatusCode, target)
-		body := apptest.Body(t, resp)
-		require.Equal(t, "01234", body, target)
-		require.NoError(t, resp.Body.Close())
+		resp = apptest.Expect(t, app, apptest.Req(MethodGet, target, apptest.WithHeader(HeaderRange, "bytes=0-4")), StatusPartialContent)
+		require.Equal(t, "01234", apptest.Body(t, resp), target)
 	}
 }
 
@@ -7158,23 +7149,24 @@ func Test_SendFile_ByteRange_DirectoryIndex(t *testing.T) {
 		return c.SendFile("missing.txt", SendFile{ByteRange: true, FS: os.DirFS(root)})
 	})
 
-	for target, want := range map[string]string{"/os": "bytes */20", "/fs": "bytes */20", "/fs-root": "bytes */4"} {
-		req := httptest.NewRequest(MethodGet, target, http.NoBody)
-		req.Header.Set(HeaderRange, "bytes=100-200")
-		resp := apptest.Do(t, app, req)
-		require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode, target)
-		require.Equal(t, want, resp.Header.Get(HeaderContentRange), target)
-		require.NoError(t, resp.Body.Close())
-	}
+	for _, tc := range []struct {
+		name       string
+		wantRange  string
+		wantStatus int
+	}{
+		{name: "os", wantStatus: StatusRequestedRangeNotSatisfiable, wantRange: "bytes */20"},
+		{name: "fs", wantStatus: StatusRequestedRangeNotSatisfiable, wantRange: "bytes */20"},
+		{name: "fs-root", wantStatus: StatusRequestedRangeNotSatisfiable, wantRange: "bytes */4"},
+		// nothing to stat, so no size to state
+		{name: "os-missing", wantStatus: StatusNotFound},
+		{name: "fs-missing", wantStatus: StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// nothing to stat, so no size to state
-	for _, target := range []string{"/os-missing", "/fs-missing"} {
-		req := httptest.NewRequest(MethodGet, target, http.NoBody)
-		req.Header.Set(HeaderRange, "bytes=100-200")
-		resp := apptest.Do(t, app, req)
-		require.Equal(t, StatusNotFound, resp.StatusCode, target)
-		require.Empty(t, resp.Header.Get(HeaderContentRange), target)
-		require.NoError(t, resp.Body.Close())
+			resp := apptest.Expect(t, app, apptest.Req(MethodGet, "/"+tc.name, apptest.WithHeader(HeaderRange, "bytes=100-200")), tc.wantStatus)
+			require.Equal(t, tc.wantRange, resp.Header.Get(HeaderContentRange))
+		})
 	}
 }
 
@@ -7202,12 +7194,8 @@ func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
 		t.Run(ifRange, func(t *testing.T) {
 			t.Parallel()
 
-			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
-			req.Header.Set(HeaderRange, "bytes=0-4")
-			req.Header.Set(HeaderIfRange, ifRange)
-			resp := apptest.Do(t, app, req)
-			require.NoError(t, resp.Body.Close())
-			require.Equal(t, wantStatus, resp.StatusCode)
+			apptest.Expect(t, app, apptest.Req(MethodGet, "/file",
+				apptest.WithHeader(HeaderRange, "bytes=0-4"), apptest.WithHeader(HeaderIfRange, ifRange)), wantStatus)
 		})
 	}
 }
@@ -7224,6 +7212,19 @@ func Benchmark_Ctx_SendFile(b *testing.B) {
 
 	require.NoError(b, err)
 	require.Contains(b, string(c.Response().Body()), "type DefaultCtx struct")
+}
+
+// ctxTestCEmptyValues encodes, one after the other on c, the four values every
+// serializer meets sooner or later: nil, an empty string, zero and an empty
+// slice. want holds the body each must leave, in that order, so a body left
+// over from the previous value shows.
+func ctxTestCEmptyValues(t *testing.T, c Ctx, encode func(v any) error, want [4]string) {
+	t.Helper()
+
+	for i, v := range []any{nil, "", 0, []int{}} {
+		require.NoError(t, encode(v), "%#v", v)
+		require.Equal(t, want[i], string(c.Response().Body()), "%#v", v)
+	}
 }
 
 // go test -run Test_Ctx_JSON
@@ -7251,34 +7252,7 @@ func Test_Ctx_JSON(t *testing.T) {
 	require.JSONEq(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	require.Equal(t, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 
-	testEmpty := func(v any, r string) {
-		err := c.JSON(v)
-		require.NoError(t, err)
-		require.Equal(t, r, string(c.Response().Body()))
-	}
-
-	testEmpty(nil, "null")
-	testEmpty("", `""`)
-	testEmpty(0, "0")
-	testEmpty([]int{}, "[]")
-
-	t.Run("custom json encoder", func(t *testing.T) {
-		t.Parallel()
-
-		c := apptest.Ctx(t, New(Config{
-			JSONEncoder: func(_ any) ([]byte, error) {
-				return []byte(`["custom","json"]`), nil
-			},
-		}))
-
-		err := c.JSON(Map{ // map has no order
-			"Name": "Grame",
-			"Age":  20,
-		})
-		require.NoError(t, err)
-		require.Equal(t, `["custom","json"]`, string(c.Response().Body()))
-		require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("content-type")))
-	})
+	ctxTestCEmptyValues(t, c, func(v any) error { return c.JSON(v) }, [4]string{"null", `""`, "0", "[]"})
 }
 
 // go test -run=^$ -bench=Benchmark_Ctx_JSON -benchmem -count=4
@@ -7332,34 +7306,7 @@ func Test_Ctx_MsgPack(t *testing.T) {
 	require.Equal(t, "\x81\xa4Name\xa5Grame", string(c.Response().Body()))
 	require.Equal(t, "application/problem+msgpack", string(c.Response().Header.Peek("content-type")))
 
-	testEmpty := func(v any, r string) {
-		err := c.MsgPack(v)
-		require.NoError(t, err)
-		require.Equal(t, r, string(c.Response().Body()))
-	}
-
-	testEmpty(nil, "\xc0")
-	testEmpty("", "\xa0")
-	testEmpty(0, "\x00")
-	testEmpty([]int{}, "\x90")
-
-	t.Run("custom msgpack encoder", func(t *testing.T) {
-		t.Parallel()
-
-		c := apptest.Ctx(t, New(Config{
-			MsgPackEncoder: func(_ any) ([]byte, error) {
-				return []byte(`["custom","msgpack"]`), nil
-			},
-		}))
-
-		err := c.MsgPack(Map{ // map has no order
-			"Name": "Grame",
-			"Age":  20,
-		})
-		require.NoError(t, err)
-		require.Equal(t, `["custom","msgpack"]`, string(c.Response().Body()))
-		require.Equal(t, MIMEApplicationMsgPack, string(c.Response().Header.Peek("content-type")))
-	})
+	ctxTestCEmptyValues(t, c, func(v any) error { return c.MsgPack(v) }, [4]string{"\xc0", "\xa0", "\x00", "\x90"})
 
 	t.Run("error msgpack", func(t *testing.T) {
 		t.Parallel()
@@ -7437,16 +7384,8 @@ func Test_Ctx_CBOR(t *testing.T) {
 	require.Equal(t, `a2644e616d65654772616d656341676514`, hex.EncodeToString(c.Response().Body()))
 	require.Equal(t, "application/problem+cbor", string(c.Response().Header.Peek("content-type")))
 
-	testEmpty := func(v any, r string) {
-		cbErr := c.CBOR(v)
-		require.NoError(t, cbErr)
-		require.Equal(t, r, hex.EncodeToString(c.Response().Body()))
-	}
-
-	testEmpty(nil, "f6")
-	testEmpty("", `60`)
-	testEmpty(0, "00")
-	testEmpty([]int{}, "80")
+	// f6, 60, 00 and 80 in hex
+	ctxTestCEmptyValues(t, c, func(v any) error { return c.CBOR(v) }, [4]string{"\xf6", "\x60", "\x00", "\x80"})
 
 	// Test invalid types
 	err = c.CBOR(make(chan int))
@@ -7454,24 +7393,6 @@ func Test_Ctx_CBOR(t *testing.T) {
 
 	err = c.CBOR(func() {})
 	require.Error(t, err)
-
-	t.Run("custom cbor encoder", func(t *testing.T) {
-		t.Parallel()
-
-		c := apptest.Ctx(t, New(Config{
-			CBOREncoder: func(_ any) ([]byte, error) {
-				return []byte(hex.EncodeToString([]byte("random"))), nil
-			},
-		}))
-
-		err := c.CBOR(Map{ // map has no order
-			"Name": "Grame",
-			"Age":  20,
-		})
-		require.NoError(t, err)
-		require.Equal(t, `72616e646f6d`, string(c.Response().Body()))
-		require.Equal(t, "application/cbor", string(c.Response().Header.Peek("content-type")))
-	})
 }
 
 // go test -run=^$ -bench=Benchmark_Ctx_CBOR -benchmem -count=4
@@ -7541,24 +7462,6 @@ func Test_Ctx_JSONP(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, `john({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
 	require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
-
-	t.Run("custom json encoder", func(t *testing.T) {
-		t.Parallel()
-
-		c := apptest.Ctx(t, New(Config{
-			JSONEncoder: func(_ any) ([]byte, error) {
-				return []byte(`["custom","json"]`), nil
-			},
-		}))
-
-		err := c.JSONP(Map{ // map has no order
-			"Name": "Grame",
-			"Age":  20,
-		})
-		require.NoError(t, err)
-		require.Equal(t, `callback(["custom","json"]);`, string(c.Response().Body()))
-		require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
-	})
 }
 
 // go test -run Test_Ctx_JSONP_SanitizesCallback
@@ -7716,41 +7619,75 @@ func Test_Ctx_XML(t *testing.T) {
 	require.Equal(t, `<Users><Names>Grame</Names><Names>John</Names><Ages>1</Ages><Ages>12</Ages><Ages>20</Ages></Users>`, string(c.Response().Body()))
 	require.Equal(t, "application/xml; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
-	testEmpty := func(v any, r string) {
-		err := c.XML(v)
-		require.NoError(t, err)
-		require.Equal(t, r, string(c.Response().Body()))
-	}
+	ctxTestCEmptyValues(t, c, func(v any) error { return c.XML(v) }, [4]string{"", `<string></string>`, "<int>0</int>", ""})
+}
 
-	testEmpty(nil, "")
-	testEmpty("", `<string></string>`)
-	testEmpty(0, "<int>0</int>")
-	testEmpty([]int{}, "")
+// ctxTestCEncoder returns an encoder that answers every value with body.
+func ctxTestCEncoder(body string) func(any) ([]byte, error) {
+	return func(any) ([]byte, error) { return []byte(body), nil }
+}
 
-	t.Run("custom xml encoder", func(t *testing.T) {
-		t.Parallel()
+// go test -run Test_Ctx_CustomEncoder
+//
+// Every serializer encodes through the encoder its Config names, and sets the
+// Content-Type of its own format.
+func Test_Ctx_CustomEncoder(t *testing.T) {
+	t.Parallel()
 
-		c := apptest.Ctx(t, New(Config{
-			XMLEncoder: func(_ any) ([]byte, error) {
-				return []byte(`<custom>xml</custom>`), nil
-			},
-		}))
+	data := Map{"Name": "Grame", "Age": 20}
+	for _, tc := range []struct {
+		send        func(c Ctx) error
+		config      Config
+		name        string
+		wantBody    string
+		wantContent string
+	}{
+		{
+			name:        "json",
+			config:      Config{JSONEncoder: ctxTestCEncoder(`["custom","json"]`)},
+			send:        func(c Ctx) error { return c.JSON(data) },
+			wantBody:    `["custom","json"]`,
+			wantContent: "application/json; charset=utf-8",
+		},
+		{
+			name:        "jsonp",
+			config:      Config{JSONEncoder: ctxTestCEncoder(`["custom","json"]`)},
+			send:        func(c Ctx) error { return c.JSONP(data) },
+			wantBody:    `callback(["custom","json"]);`,
+			wantContent: "text/javascript; charset=utf-8",
+		},
+		{
+			name:        "msgpack",
+			config:      Config{MsgPackEncoder: ctxTestCEncoder(`["custom","msgpack"]`)},
+			send:        func(c Ctx) error { return c.MsgPack(data) },
+			wantBody:    `["custom","msgpack"]`,
+			wantContent: MIMEApplicationMsgPack,
+		},
+		{
+			name:        "cbor",
+			config:      Config{CBOREncoder: ctxTestCEncoder(hex.EncodeToString([]byte("random")))},
+			send:        func(c Ctx) error { return c.CBOR(data) },
+			wantBody:    `72616e646f6d`,
+			wantContent: "application/cbor",
+		},
+		{
+			name:        "xml",
+			config:      Config{XMLEncoder: ctxTestCEncoder(`<custom>xml</custom>`)},
+			send:        func(c Ctx) error { return c.XML(data) },
+			wantBody:    `<custom>xml</custom>`,
+			wantContent: "application/xml; charset=utf-8",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		type xmlResult struct {
-			XMLName xml.Name `xml:"Users"`
-			Names   []string `xml:"Names"`
-			Ages    []int    `xml:"Ages"`
-		}
+			c := apptest.Ctx(t, New(tc.config))
 
-		err := c.XML(xmlResult{
-			Names: []string{"Grame", "John"},
-			Ages:  []int{1, 12, 20},
+			require.NoError(t, tc.send(c))
+			require.Equal(t, tc.wantBody, string(c.Response().Body()))
+			require.Equal(t, tc.wantContent, string(c.Response().Header.Peek("content-type")))
 		})
-
-		require.NoError(t, err)
-		require.Equal(t, `<custom>xml</custom>`, string(c.Response().Body()))
-		require.Equal(t, "application/xml; charset=utf-8", string(c.Response().Header.Peek("content-type")))
-	})
+	}
 }
 
 // go test -run=^$ -bench=Benchmark_Ctx_XML -benchmem -count=4
@@ -7868,46 +7805,88 @@ func Test_Ctx_Render(t *testing.T) {
 	require.Error(t, err)
 }
 
-func Test_Ctx_RenderWithoutLocals(t *testing.T) {
+// go test -run Test_Ctx_Render_Variants
+//
+// What Render makes of the bind it is given, the view bind, the locals and the
+// engine, whether a file renders as a template or an engine renders it by name.
+func Test_Ctx_Render_Variants(t *testing.T) {
 	t.Parallel()
-	c := apptest.Ctx(t, New(Config{
-		PassLocalsToViews: false,
-	}))
 
-	c.Locals("Title", "Hello, World!")
+	const index = "./.github/testdata/index.tmpl"
 
-	err := c.Render("./.github/testdata/index.tmpl", Map{})
-	require.NoError(t, err)
-	require.Equal(t, "<h1></h1>", string(c.Response().Body()))
-}
+	// New loads the templates of the engine in a Config, so every row has its own.
+	for _, tc := range []struct {
+		config   Config
+		bind     any
+		viewBind Map
+		locals   Map
+		name     string
+		template string
+		want     string
+	}{
+		{
+			name: "locals are not passed to views", config: Config{PassLocalsToViews: false},
+			locals: Map{"Title": "Hello, World!"}, template: index, bind: Map{}, want: "<h1></h1>",
+		},
+		{
+			name: "locals with an empty bind", config: Config{PassLocalsToViews: true},
+			locals: Map{"Title": "Hello, World!"}, template: index, bind: Map{}, want: "<h1>Hello, World!</h1>",
+		},
+		{
+			name: "locals with a nil bind", config: Config{PassLocalsToViews: true},
+			locals: Map{"Title": "Hello, World!"}, template: index, bind: nil, want: "<h1>Hello, World!</h1>",
+		},
+		{
+			name: "view bind", viewBind: Map{"Title": "Hello, World!"},
+			template: index, bind: Map{}, want: "<h1>Hello, World!</h1>",
+		},
+		{
+			name: "bind overwrites the view bind", viewBind: Map{"Title": "Hello, World!"},
+			template: index, bind: Map{"Title": "Hello from Fiber!"}, want: "<h1>Hello from Fiber!</h1>",
+		},
+		{
+			name: "view bind and locals", config: Config{PassLocalsToViews: true},
+			viewBind: Map{"Title": "Hello, World!"}, locals: Map{"Summary": "Test"},
+			template: "./.github/testdata/template.tmpl", bind: Map{}, want: "<h1>Hello, World! Test</h1>",
+		},
+		{
+			name: "engine", config: Config{Views: &testTemplateEngine{}},
+			template: "index.tmpl", bind: Map{"Title": "Hello, World!"}, want: "<h1>Hello, World!</h1>",
+		},
+		{
+			name: "engine, the bind wins over the locals", config: Config{PassLocalsToViews: true, Views: &testTemplateEngine{}},
+			locals: Map{"Title": "This is a test."}, template: "index.tmpl", bind: Map{"Title": "Hello, World!"}, want: "<h1>Hello, World!</h1>",
+		},
+		{
+			name: "engine with a views layout", config: Config{ViewsLayout: "main.tmpl", Views: &testTemplateEngine{}},
+			template: "index.tmpl", bind: Map{"Title": "Hello, World!"}, want: "<h1>Hello, World!</h1><h1>I'm main</h1>",
+		},
+		{
+			name: "typed nil engine", config: Config{Views: (*testTemplateEngine)(nil)},
+			template: index, bind: Map{"Title": "Hello, World!"}, want: "<h1>Hello, World!</h1>",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-func Test_Ctx_RenderWithLocals(t *testing.T) {
-	t.Parallel()
-	app := New(Config{
-		PassLocalsToViews: true,
-	})
+			c := apptest.Ctx(t, New(tc.config))
+			if tc.viewBind != nil {
+				require.NoError(t, c.ViewBind(tc.viewBind))
+			}
+			for key, value := range tc.locals {
+				c.Locals(key, value)
+			}
 
-	t.Run("EmptyBind", func(t *testing.T) {
-		t.Parallel()
-		c := apptest.Ctx(t, app)
+			require.NoError(t, c.Render(tc.template, tc.bind))
 
-		c.Locals("Title", "Hello, World!")
-		err := c.Render("./.github/testdata/index.tmpl", Map{})
+			// The body must not alias the pooled buffer the template was rendered into.
+			buf := bytebufferpool.Get()
+			buf.WriteString("overwrite")
+			defer bytebufferpool.Put(buf)
 
-		require.NoError(t, err)
-		require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
-	})
-
-	t.Run("NilBind", func(t *testing.T) {
-		t.Parallel()
-		c := apptest.Ctx(t, app)
-
-		c.Locals("Title", "Hello, World!")
-		err := c.Render("./.github/testdata/index.tmpl", nil)
-
-		require.NoError(t, err)
-		require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
-	})
+			require.Equal(t, tc.want, string(c.Response().Body()))
+		})
+	}
 }
 
 func Test_Ctx_Matched_AfterNext(t *testing.T) {
@@ -8022,33 +8001,25 @@ func Test_Ctx_HasBody(t *testing.T) {
 		require.True(t, ctx.HasBody())
 	})
 
-	t.Run("transfer encoding chunked", func(t *testing.T) {
-		t.Parallel()
-		ctx := acquire(t)
-		setTransferEncoding(t, ctx, "chunked")
-		require.True(t, ctx.HasBody())
-	})
-
-	t.Run("transfer encoding whitespace", func(t *testing.T) {
-		t.Parallel()
-		ctx := acquire(t)
-		setTransferEncoding(t, ctx, "  ChUnKeD  ")
-		require.True(t, ctx.HasBody())
-	})
-
-	t.Run("transfer encoding parameters", func(t *testing.T) {
-		t.Parallel()
-		ctx := acquire(t)
-		setTransferEncoding(t, ctx, "chunked; q=1")
-		require.True(t, ctx.HasBody())
-	})
-
-	t.Run("transfer encoding multiple values", func(t *testing.T) {
-		t.Parallel()
-		ctx := acquire(t)
-		setTransferEncoding(t, ctx, "gzip, chunked")
-		require.True(t, ctx.HasBody())
-	})
+	for _, tc := range []struct {
+		name  string
+		value string
+		want  bool
+	}{
+		{name: "transfer encoding chunked", value: "chunked", want: true},
+		{name: "transfer encoding whitespace", value: "  ChUnKeD  ", want: true},
+		{name: "transfer encoding parameters", value: "chunked; q=1", want: true},
+		{name: "transfer encoding multiple values", value: "gzip, chunked", want: true},
+		{name: "transfer encoding identity", value: "identity", want: false},
+		{name: "transfer encoding identity then chunked", value: "identity, chunked", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := acquire(t)
+			setTransferEncoding(t, ctx, tc.value)
+			require.Equal(t, tc.want, ctx.HasBody())
+		})
+	}
 
 	t.Run("transfer encoding multiple field lines", func(t *testing.T) {
 		t.Parallel()
@@ -8064,20 +8035,6 @@ func Test_Ctx_HasBody(t *testing.T) {
 		require.True(t, ctx.HasBody())
 	})
 
-	t.Run("transfer encoding identity", func(t *testing.T) {
-		t.Parallel()
-		ctx := acquire(t)
-		setTransferEncoding(t, ctx, "identity")
-		require.False(t, ctx.HasBody())
-	})
-
-	t.Run("transfer encoding identity then chunked", func(t *testing.T) {
-		t.Parallel()
-		ctx := acquire(t)
-		setTransferEncoding(t, ctx, "identity, chunked")
-		require.True(t, ctx.HasBody())
-	})
-
 	t.Run("no body", func(t *testing.T) {
 		t.Parallel()
 		ctx := acquire(t)
@@ -8089,143 +8046,63 @@ func Test_Ctx_IsWebSocket(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	ws := apptest.Ctx(t, app)
-	require.NotNil(t, ws)
-	ws.Request().Header.Set(HeaderConnection, "keep-alive, Upgrade")
-	ws.Request().Header.Set(HeaderUpgrade, "websocket")
-	require.True(t, ws.IsWebSocket())
+	for _, tc := range []struct {
+		name    string
+		headers [][2]string // request field lines, added in order
+		want    bool
+	}{
+		{name: "upgrade", headers: [][2]string{{HeaderConnection, "keep-alive, Upgrade"}, {HeaderUpgrade, "websocket"}}, want: true},
+		{name: "connection is not an upgrade", headers: [][2]string{{HeaderConnection, "not-an-upgrade"}, {HeaderUpgrade, "websocket"}}},
+		// Upgrade is a comma-separated protocol list (RFC 9110 §7.8): websocket
+		// must be found among other protocols and with a "/version" suffix.
+		{name: "websocket among other protocols", headers: [][2]string{{HeaderConnection, "Upgrade"}, {HeaderUpgrade, "h2c, websocket/13"}}, want: true},
+		// Repeated Connection field lines are equivalent to one combined list
+		// (RFC 9110 §5.2).
+		{
+			name:    "repeated connection field lines",
+			headers: [][2]string{{HeaderConnection, "keep-alive"}, {HeaderConnection, "Upgrade"}, {HeaderUpgrade, "websocket"}},
+			want:    true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	non := apptest.Ctx(t, app)
-	require.NotNil(t, non)
-	non.Request().Header.Set(HeaderConnection, "not-an-upgrade")
-	non.Request().Header.Set(HeaderUpgrade, "websocket")
-	require.False(t, non.IsWebSocket())
-
-	// Upgrade is a comma-separated protocol list (RFC 9110 §7.8): websocket
-	// must be found among other protocols and with a "/version" suffix.
-	list := apptest.Ctx(t, app)
-	require.NotNil(t, list)
-	list.Request().Header.Set(HeaderConnection, "Upgrade")
-	list.Request().Header.Set(HeaderUpgrade, "h2c, websocket/13")
-	require.True(t, list.IsWebSocket())
-
-	// Repeated Connection field lines are equivalent to one combined list
-	// (RFC 9110 §5.2).
-	multi := apptest.Ctx(t, app)
-	require.NotNil(t, multi)
-	multi.Request().Header.Add(HeaderConnection, "keep-alive")
-	multi.Request().Header.Add(HeaderConnection, "Upgrade")
-	multi.Request().Header.Set(HeaderUpgrade, "websocket")
-	require.True(t, multi.IsWebSocket())
+			c := apptest.Ctx(t, app)
+			require.NotNil(t, c)
+			for _, header := range tc.headers {
+				c.Request().Header.Add(header[0], header[1])
+			}
+			require.Equal(t, tc.want, c.IsWebSocket())
+		})
+	}
 }
 
 func Test_Ctx_IsPreflight(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	preCtx := &fasthttp.RequestCtx{}
-	preCtx.Request.Header.SetMethod(MethodOptions)
-	preCtx.Request.Header.Set(HeaderAccessControlRequestMethod, MethodGet)
-	preCtx.Request.Header.Set(HeaderOrigin, "https://example.com")
-	pre := apptest.CtxFor(t, app, preCtx)
-	require.NotNil(t, pre)
-	require.True(t, pre.IsPreflight())
+	for _, tc := range []struct {
+		headers map[string]string // request headers besides the OPTIONS method
+		name    string
+		want    bool
+	}{
+		{name: "preflight", headers: map[string]string{HeaderAccessControlRequestMethod: MethodGet, HeaderOrigin: "https://example.com"}, want: true},
+		{name: "no origin", headers: map[string]string{HeaderAccessControlRequestMethod: MethodGet}},
+		{name: "no request method", headers: map[string]string{HeaderOrigin: "https://example.com"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	noOriginCtx := &fasthttp.RequestCtx{}
-	noOriginCtx.Request.Header.SetMethod(MethodOptions)
-	noOriginCtx.Request.Header.Set(HeaderAccessControlRequestMethod, MethodGet)
-	noOrigin := apptest.CtxFor(t, app, noOriginCtx)
-	require.NotNil(t, noOrigin)
-	require.False(t, noOrigin.IsPreflight())
-
-	optCtx := &fasthttp.RequestCtx{}
-	optCtx.Request.Header.SetMethod(MethodOptions)
-	optCtx.Request.Header.Set(HeaderOrigin, "https://example.com")
-	opt := apptest.CtxFor(t, app, optCtx)
-	require.NotNil(t, opt)
-	require.False(t, opt.IsPreflight())
-}
-
-func Test_Ctx_RenderWithViewBind(t *testing.T) {
-	t.Parallel()
-
-	c := apptest.Ctx(t, New())
-
-	err := c.ViewBind(Map{
-		"Title": "Hello, World!",
-	})
-	require.NoError(t, err)
-
-	err = c.Render("./.github/testdata/index.tmpl", Map{})
-	require.NoError(t, err)
-	buf := bytebufferpool.Get()
-	buf.WriteString("overwrite")
-	defer bytebufferpool.Put(buf)
-
-	require.NoError(t, err)
-	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
-}
-
-func Test_Ctx_RenderWithOverwrittenViewBind(t *testing.T) {
-	t.Parallel()
-	c := apptest.Ctx(t, New())
-
-	err := c.ViewBind(Map{
-		"Title": "Hello, World!",
-	})
-	require.NoError(t, err)
-
-	err = c.Render("./.github/testdata/index.tmpl", Map{
-		"Title": "Hello from Fiber!",
-	})
-	require.NoError(t, err)
-
-	buf := bytebufferpool.Get()
-	buf.WriteString("overwrite")
-	defer bytebufferpool.Put(buf)
-
-	require.Equal(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))
-}
-
-func Test_Ctx_RenderWithViewBindLocals(t *testing.T) {
-	t.Parallel()
-	c := apptest.Ctx(t, New(Config{
-		PassLocalsToViews: true,
-	}))
-
-	err := c.ViewBind(Map{
-		"Title": "Hello, World!",
-	})
-	require.NoError(t, err)
-
-	c.Locals("Summary", "Test")
-
-	err = c.Render("./.github/testdata/template.tmpl", Map{})
-	require.NoError(t, err)
-	require.Equal(t, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
-
-	require.Equal(t, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
-}
-
-func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
-	t.Parallel()
-	engine := &testTemplateEngine{}
-	err := engine.Load()
-	require.NoError(t, err)
-
-	c := apptest.Ctx(t, New(Config{
-		PassLocalsToViews: true,
-		Views:             engine,
-	}))
-
-	c.Locals("Title", "This is a test.")
-
-	err = c.Render("index.tmpl", Map{
-		"Title": "Hello, World!",
-	})
-
-	require.NoError(t, err)
-	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(MethodOptions)
+			for key, value := range tc.headers {
+				fctx.Request.Header.Set(key, value)
+			}
+			c := apptest.CtxFor(t, app, fctx)
+			require.NotNil(t, c)
+			require.Equal(t, tc.want, c.IsPreflight())
+		})
+	}
 }
 
 func Benchmark_Ctx_RenderWithLocalsAndViewBind(b *testing.B) {
@@ -8386,51 +8263,6 @@ func (t *testTemplateEngine) Load() error {
 	return nil
 }
 
-// go test -run Test_Ctx_Render_Engine
-func Test_Ctx_Render_Engine(t *testing.T) {
-	t.Parallel()
-	engine := &testTemplateEngine{}
-	require.NoError(t, engine.Load())
-	app := New()
-	app.config.Views = engine
-	c := apptest.Ctx(t, app)
-
-	err := c.Render("index.tmpl", Map{
-		"Title": "Hello, World!",
-	})
-	require.NoError(t, err)
-	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
-}
-
-func Test_Ctx_Render_TypedNilEngine(t *testing.T) {
-	t.Parallel()
-
-	var engine *testTemplateEngine
-	c := apptest.Ctx(t, New(Config{Views: engine}))
-
-	err := c.Render("./.github/testdata/index.tmpl", Map{
-		"Title": "Hello, World!",
-	})
-	require.NoError(t, err)
-	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
-}
-
-// go test -run Test_Ctx_Render_Engine_With_View_Layout
-func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
-	t.Parallel()
-	engine := &testTemplateEngine{}
-	require.NoError(t, engine.Load())
-	app := New(Config{ViewsLayout: "main.tmpl"})
-	app.config.Views = engine
-	c := apptest.Ctx(t, app)
-
-	err := c.Render("index.tmpl", Map{
-		"Title": "Hello, World!",
-	})
-	require.NoError(t, err)
-	require.Equal(t, "<h1>Hello, World!</h1><h1>I'm main</h1>", string(c.Response().Body()))
-}
-
 // go test -v -run=^$ -bench=Benchmark_Ctx_Render_Engine -benchmem -count=4
 func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	engine := &testTemplateEngine{}
@@ -8474,76 +8306,38 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 	t.Parallel()
 
-	t.Run("case-insensitive", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		c := apptest.Ctx(t, app)
-		app.Get("/user/:name", func(c Ctx) error {
-			return c.SendString(c.Params("name"))
-		}).Name("User")
+	for _, tc := range []struct {
+		config Config
+		params Map
+		name   string
+		route  string
+		want   string
+	}{
+		{name: "case-insensitive", route: "/user/:name", params: Map{"name": "fiber"}, want: "/user/fiber"},
+		{name: "case-insensitive, other case", route: "/user/:name", params: Map{"Name": "fiber"}, want: "/user/fiber"},
+		{name: "case-sensitive", config: Config{CaseSensitive: true}, route: "/user/:name", params: Map{"name": "fiber"}, want: "/user/fiber"},
+		{name: "case-sensitive, other case", config: Config{CaseSensitive: true}, route: "/user/:name", params: Map{"Name": "fiber"}, want: "/user/"},
+		{
+			name: "optional greedy", route: "/:phone/*/send/*",
+			params: Map{"phone": "23456789", "*1": "sms", "*2": "test-msg"}, want: "/23456789/sms/send/test-msg",
+		},
+		{
+			name: "optional greedy, one param", route: "/:phone/*/send",
+			params: Map{"phone": "23456789", "*": "sms"}, want: "/23456789/sms/send",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		location, err := c.GetRouteURL("User", Map{"name": "fiber"})
-		require.NoError(t, err)
-		require.Equal(t, "/user/fiber", location)
+			app := New(tc.config)
+			c := apptest.Ctx(t, app)
+			app.Get(tc.route, func(_ Ctx) error { return nil }).Name("Named")
 
-		location, err = c.GetRouteURL("User", Map{"Name": "fiber"})
-		require.NoError(t, err)
-		require.Equal(t, "/user/fiber", location)
-	})
-
-	t.Run("case-sensitive", func(t *testing.T) {
-		t.Parallel()
-		app := New(Config{CaseSensitive: true})
-		c := apptest.Ctx(t, app)
-		app.Get("/user/:name", func(c Ctx) error {
-			return c.SendString(c.Params("name"))
-		}).Name("User")
-
-		location, err := c.GetRouteURL("User", Map{"name": "fiber"})
-		require.NoError(t, err)
-		require.Equal(t, "/user/fiber", location)
-
-		location, err = c.GetRouteURL("User", Map{"Name": "fiber"})
-		require.NoError(t, err)
-		require.Equal(t, "/user/", location)
-	})
-}
-
-// go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy
-func Test_Ctx_Get_Location_From_Route_name_Optional_greedy(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := apptest.Ctx(t, app)
-
-	app.Get("/:phone/*/send/*", func(c Ctx) error {
-		return c.SendString("Phone: " + c.Params("phone") + "\nFirst Param: " + c.Params("*1") + "\nSecond Param: " + c.Params("*2"))
-	}).Name("SendSms")
-
-	location, err := c.GetRouteURL("SendSms", Map{
-		"phone": "23456789",
-		"*1":    "sms",
-		"*2":    "test-msg",
-	})
-	require.NoError(t, err)
-	require.Equal(t, "/23456789/sms/send/test-msg", location)
-}
-
-// go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param
-func Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := apptest.Ctx(t, app)
-
-	app.Get("/:phone/*/send", func(c Ctx) error {
-		return c.SendString("Phone: " + c.Params("phone") + "\nFirst Param: " + c.Params("*1"))
-	}).Name("SendSms")
-
-	location, err := c.GetRouteURL("SendSms", Map{
-		"phone": "23456789",
-		"*":     "sms",
-	})
-	require.NoError(t, err)
-	require.Equal(t, "/23456789/sms/send", location)
+			location, err := c.GetRouteURL("Named", tc.params)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, location)
+		})
+	}
 }
 
 type errorTemplateEngine struct{}
@@ -8632,34 +8426,13 @@ func Test_Ctx_SendStatusNoBodyResponses(t *testing.T) {
 		name   string
 		status int
 	}{
-		{
-			name:   "Informational",
-			status: StatusContinue,
-		},
-		{
-			name:   "Processing",
-			status: StatusProcessing,
-		},
-		{
-			name:   "SwitchingProtocols",
-			status: StatusSwitchingProtocols,
-		},
-		{
-			name:   "EarlyHints",
-			status: StatusEarlyHints,
-		},
-		{
-			name:   "NoContent",
-			status: StatusNoContent,
-		},
-		{
-			name:   "ResetContent",
-			status: StatusResetContent,
-		},
-		{
-			name:   "NotModified",
-			status: StatusNotModified,
-		},
+		{name: "Informational", status: StatusContinue},
+		{name: "Processing", status: StatusProcessing},
+		{name: "SwitchingProtocols", status: StatusSwitchingProtocols},
+		{name: "EarlyHints", status: StatusEarlyHints},
+		{name: "NoContent", status: StatusNoContent},
+		{name: "ResetContent", status: StatusResetContent},
+		{name: "NotModified", status: StatusNotModified},
 	}
 
 	for _, testCase := range testCases {
@@ -8933,41 +8706,31 @@ func Test_Ctx_Type(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
 
-	c.Type(".json")
-	require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
-
-	c.Type("json", "utf-8")
-	require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
-
-	c.Type(".html")
-	require.Equal(t, "text/html; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
-
-	c.Type("html", "utf-8")
-	require.Equal(t, "text/html; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
-
-	// Test other text types get UTF-8 by default
-	c.Type("txt")
-	require.Equal(t, "text/plain; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
-
-	c.Type("css")
-	require.Equal(t, "text/css; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
-
-	c.Type("js")
-	require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
-
-	c.Type("xml")
-	require.Equal(t, "application/xml; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
-
-	// Test binary types don't get charset
-	c.Type("png")
-	require.Equal(t, "image/png", string(c.Response().Header.Peek("Content-Type")))
-
-	c.Type("pdf")
-	require.Equal(t, "application/pdf", string(c.Response().Header.Peek("Content-Type")))
-
-	// Test custom charset override
-	c.Type("html", "iso-8859-1")
-	require.Equal(t, "text/html; charset=iso-8859-1", string(c.Response().Header.Peek("Content-Type")))
+	// The steps run in order on one context: each must replace the Content-Type
+	// the one before it set.
+	for _, tc := range []struct {
+		extension string
+		want      string
+		charset   []string
+	}{
+		{extension: ".json", want: "application/json; charset=utf-8"},
+		{extension: "json", charset: []string{"utf-8"}, want: "application/json; charset=utf-8"},
+		{extension: ".html", want: "text/html; charset=utf-8"},
+		{extension: "html", charset: []string{"utf-8"}, want: "text/html; charset=utf-8"},
+		// Test other text types get UTF-8 by default
+		{extension: "txt", want: "text/plain; charset=utf-8"},
+		{extension: "css", want: "text/css; charset=utf-8"},
+		{extension: "js", want: "text/javascript; charset=utf-8"},
+		{extension: "xml", want: "application/xml; charset=utf-8"},
+		// Test binary types don't get charset
+		{extension: "png", want: "image/png"},
+		{extension: "pdf", want: "application/pdf"},
+		// Test custom charset override
+		{extension: "html", charset: []string{"iso-8859-1"}, want: "text/html; charset=iso-8859-1"},
+	} {
+		c.Type(tc.extension, tc.charset...)
+		require.Equal(t, tc.want, string(c.Response().Header.Peek("Content-Type")), "Type(%q, %v)", tc.extension, tc.charset)
+	}
 }
 
 // registerTestMIMETypes adds extensions the standard library answers with
@@ -9066,42 +8829,34 @@ func Test_Ctx_Is_And_Accepts_ExtensionWithCharset(t *testing.T) {
 func Test_shouldIncludeCharset(t *testing.T) {
 	t.Parallel()
 
-	// Test text/* types - should include charset
-	require.True(t, shouldIncludeCharset("text/html"))
-	require.True(t, shouldIncludeCharset("text/plain"))
-	require.True(t, shouldIncludeCharset("text/css"))
-	require.True(t, shouldIncludeCharset("text/javascript"))
-	require.True(t, shouldIncludeCharset("text/xml"))
+	for _, tc := range []struct {
+		name  string
+		types []string
+		want  bool // whether the types should include a charset
+	}{
+		{name: "text/* types", want: true, types: []string{"text/html", "text/plain", "text/css", "text/javascript", "text/xml"}},
+		{name: "explicit application types", want: true, types: []string{"application/json", "application/javascript", "application/xml"}},
+		{name: "+json suffixes", want: true, types: []string{
+			"application/problem+json", "application/vnd.api+json", "application/hal+json", "application/merge-patch+json",
+		}},
+		{name: "+xml suffixes", want: true, types: []string{
+			"application/soap+xml", "application/xhtml+xml", "application/atom+xml", "application/rss+xml",
+		}},
+		{name: "binary types", want: false, types: []string{
+			"image/png", "image/jpeg", "application/pdf", "application/octet-stream", "video/mp4", "audio/mpeg",
+		}},
+		{name: "other application types", want: false, types: []string{
+			"application/cbor", "application/x-www-form-urlencoded", "application/vnd.msgpack",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Test explicit application types - should include charset
-	require.True(t, shouldIncludeCharset("application/json"))
-	require.True(t, shouldIncludeCharset("application/javascript"))
-	require.True(t, shouldIncludeCharset("application/xml"))
-
-	// Test +json suffixes - should include charset
-	require.True(t, shouldIncludeCharset("application/problem+json"))
-	require.True(t, shouldIncludeCharset("application/vnd.api+json"))
-	require.True(t, shouldIncludeCharset("application/hal+json"))
-	require.True(t, shouldIncludeCharset("application/merge-patch+json"))
-
-	// Test +xml suffixes - should include charset
-	require.True(t, shouldIncludeCharset("application/soap+xml"))
-	require.True(t, shouldIncludeCharset("application/xhtml+xml"))
-	require.True(t, shouldIncludeCharset("application/atom+xml"))
-	require.True(t, shouldIncludeCharset("application/rss+xml"))
-
-	// Test binary types - should NOT include charset
-	require.False(t, shouldIncludeCharset("image/png"))
-	require.False(t, shouldIncludeCharset("image/jpeg"))
-	require.False(t, shouldIncludeCharset("application/pdf"))
-	require.False(t, shouldIncludeCharset("application/octet-stream"))
-	require.False(t, shouldIncludeCharset("video/mp4"))
-	require.False(t, shouldIncludeCharset("audio/mpeg"))
-
-	// Test other application types - should NOT include charset
-	require.False(t, shouldIncludeCharset("application/cbor"))
-	require.False(t, shouldIncludeCharset("application/x-www-form-urlencoded"))
-	require.False(t, shouldIncludeCharset("application/vnd.msgpack"))
+			for _, mimeType := range tc.types {
+				require.Equal(t, tc.want, shouldIncludeCharset(mimeType), mimeType)
+			}
+		})
+	}
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Type -benchmem -count=4
@@ -9126,99 +8881,113 @@ func Benchmark_Ctx_Type_Charset(b *testing.B) {
 	}
 }
 
+// ctxTestCVaryCase is one Vary scenario: a response that already holds the
+// field lines in lines, then one Vary call per entry of calls. The response
+// must end up with exactly the field lines in want.
+type ctxTestCVaryCase struct {
+	name  string
+	lines []string
+	calls [][]string
+	want  []string
+}
+
+// ctxTestCRunVary runs every case as a subtest, each on a context of its own.
+func ctxTestCRunVary(t *testing.T, cases []ctxTestCVaryCase) {
+	t.Helper()
+
+	app := New()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := apptest.Ctx(t, app)
+			for _, line := range tc.lines {
+				c.Response().Header.Add(HeaderVary, line)
+			}
+			for _, fields := range tc.calls {
+				c.Vary(fields...)
+			}
+
+			var got []string
+			for _, line := range c.Response().Header.PeekAll(HeaderVary) {
+				got = append(got, string(line))
+			}
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 // go test -run Test_Ctx_Vary
 func Test_Ctx_Vary(t *testing.T) {
 	t.Parallel()
-	c := apptest.Ctx(t, New())
 
-	c.Vary("Origin")
-	c.Vary("User-Agent")
-	c.Vary("Accept-Encoding", "Accept")
-	require.Equal(t, "Origin, User-Agent, Accept-Encoding, Accept", string(c.Response().Header.Peek("Vary")))
+	ctxTestCRunVary(t, []ctxTestCVaryCase{
+		{
+			name:  "fields are listed in order",
+			calls: [][]string{{"Origin"}, {"User-Agent"}, {"Accept-Encoding", "Accept"}},
+			want:  []string{"Origin, User-Agent, Accept-Encoding, Accept"},
+		},
+	})
 }
 
 // Test_Ctx_Vary_Wildcard verifies the RFC 9110 §12.5.5 rule that "*" is only
 // meaningful as the sole member of the Vary field value.
 func Test_Ctx_Vary_Wildcard(t *testing.T) {
 	t.Parallel()
-	app := New()
 
-	// Adding "*" collapses any previously listed fields to a single "*".
-	c := apptest.Ctx(t, app)
-	c.Vary("Origin")
-	c.Vary("*")
-	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
-
-	// Once "*" is present, further fields are not appended alongside it.
-	c.Vary("Accept")
-	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
-
-	// "*" mixed into a multi-field call also collapses the header.
-	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Vary("Accept-Encoding", "*", "Accept")
-	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
-
-	// A pre-existing mixed value containing "*" (set outside Vary) collapses
-	// on the next Vary call, matching the documented invariant.
-	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Set(HeaderVary, "User-Agent, *")
-	c.Vary("Origin")
-	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
-
-	// Multiple Vary field lines (via Header.Add) are treated as one combined
-	// list (RFC 9110 §5.2): a wildcard on a later line still collapses the
-	// whole header, leaving a single field line.
-	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Response().Header.Add(HeaderVary, "Accept")
-	c.Response().Header.Add(HeaderVary, "*")
-	c.Vary("Origin")
-	require.Equal(t, [][]byte{[]byte("*")}, c.Response().Header.PeekAll(HeaderVary))
-
-	// Dedup also sees members on later field lines: adding an
-	// already-listed member is a no-op, and a real addition folds all the
-	// lines into a single combined field line.
-	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Response().Header.Add(HeaderVary, "Accept")
-	c.Response().Header.Add(HeaderVary, "Origin")
-	c.Vary("Origin") // already present on the second line: no rewrite
-	require.Equal(t, [][]byte{[]byte("Accept"), []byte("Origin")}, c.Response().Header.PeekAll(HeaderVary))
-	c.Vary("Accept-Encoding") // rewrite folds both lines into one
-	require.Equal(t, [][]byte{[]byte("Accept,Origin, Accept-Encoding")}, c.Response().Header.PeekAll(HeaderVary))
+	ctxTestCRunVary(t, []ctxTestCVaryCase{
+		// Adding "*" collapses any previously listed fields to a single "*".
+		{name: "wildcard collapses the fields", calls: [][]string{{"Origin"}, {"*"}}, want: []string{"*"}},
+		// Once "*" is present, further fields are not appended alongside it.
+		{name: "no field joins the wildcard", calls: [][]string{{"Origin"}, {"*"}, {"Accept"}}, want: []string{"*"}},
+		// "*" mixed into a multi-field call also collapses the header.
+		{name: "wildcard in a multi-field call", calls: [][]string{{"Accept-Encoding", "*", "Accept"}}, want: []string{"*"}},
+		// A pre-existing mixed value containing "*" (set outside Vary) collapses
+		// on the next Vary call, matching the documented invariant.
+		{name: "wildcard set outside Vary", lines: []string{"User-Agent, *"}, calls: [][]string{{"Origin"}}, want: []string{"*"}},
+		// Multiple Vary field lines (via Header.Add) are treated as one combined
+		// list (RFC 9110 §5.2): a wildcard on a later line still collapses the
+		// whole header, leaving a single field line.
+		{name: "wildcard on a later field line", lines: []string{"Accept", "*"}, calls: [][]string{{"Origin"}}, want: []string{"*"}},
+		// Dedup also sees members on later field lines: adding an
+		// already-listed member is a no-op (already present on the second line:
+		// no rewrite), ...
+		{
+			name: "member listed on a later field line", lines: []string{"Accept", "Origin"},
+			calls: [][]string{{"Origin"}}, want: []string{"Accept", "Origin"},
+		},
+		// ... and a real addition folds all the lines into a single combined
+		// field line.
+		{
+			name: "addition folds the field lines", lines: []string{"Accept", "Origin"},
+			calls: [][]string{{"Origin"}, {"Accept-Encoding"}}, want: []string{"Accept,Origin, Accept-Encoding"},
+		},
+	})
 }
 
 // Test_Ctx_Vary_CaseInsensitive verifies RFC 9110 §5.1: Vary members are field
 // names, so they are compared case-insensitively and the first spelling is kept.
 func Test_Ctx_Vary_CaseInsensitive(t *testing.T) {
 	t.Parallel()
-	app := New()
 
-	c := apptest.Ctx(t, app)
-	c.Vary("accept")
-	c.Vary("Accept")
-	require.Equal(t, "accept", string(c.Response().Header.Peek("Vary")))
-
-	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Vary("Accept-Encoding")
-	c.Vary("accept-encoding")
-	require.Equal(t, "Accept-Encoding", string(c.Response().Header.Peek("Vary")))
-
-	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Vary("accept", "Accept")
-	require.Equal(t, "accept", string(c.Response().Header.Peek("Vary")))
+	ctxTestCRunVary(t, []ctxTestCVaryCase{
+		{name: "lowercase first", calls: [][]string{{"accept"}, {"Accept"}}, want: []string{"accept"}},
+		{name: "canonical case first", calls: [][]string{{"Accept-Encoding"}, {"accept-encoding"}}, want: []string{"Accept-Encoding"}},
+		{name: "both cases in one call", calls: [][]string{{"accept", "Accept"}}, want: []string{"accept"}},
+		// A case-insensitive match on a later field line is still a no-op.
+		{name: "match on a later field line", lines: []string{"Accept", "Origin"}, calls: [][]string{{"origin"}}, want: []string{"Accept", "Origin"}},
+	})
 
 	// AutoFormat adds Vary("Accept"); a lowercase listing must not be duplicated.
-	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	c.Vary("accept")
-	require.NoError(t, c.AutoFormat("hello"))
-	require.Equal(t, "accept", string(c.Response().Header.Peek("Vary")))
+	t.Run("AutoFormat", func(t *testing.T) {
+		t.Parallel()
 
-	// A case-insensitive match on a later field line is still a no-op.
-	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Response().Header.Add(HeaderVary, "Accept")
-	c.Response().Header.Add(HeaderVary, "Origin")
-	c.Vary("origin")
-	require.Equal(t, [][]byte{[]byte("Accept"), []byte("Origin")}, c.Response().Header.PeekAll(HeaderVary))
+		c := apptest.Ctx(t, New())
+		c.Request().Header.Set(HeaderAccept, MIMETextPlain)
+		c.Vary("accept")
+		require.NoError(t, c.AutoFormat("hello"))
+		require.Equal(t, "accept", string(c.Response().Header.Peek("Vary")))
+	})
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Vary -benchmem -count=4
@@ -9236,9 +9005,10 @@ func Test_Ctx_Write(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
 
-	_, err := c.WriteString("Hello, ")
+	hello, world := []byte("Hello, "), []byte("World!")
+	_, err := c.Write(hello)
 	require.NoError(t, err)
-	_, err = c.WriteString("World!")
+	_, err = c.Write(world)
 	require.NoError(t, err)
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 }
@@ -9511,45 +9281,47 @@ func Test_Ctx_Queries(t *testing.T) {
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1&field1=value1&field1=value2&field2=value3&list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3")
 
-	queries := c.Queries()
-	require.Equal(t, "1", queries["id"])
-	require.Equal(t, "tom", queries["name"])
-	require.Equal(t, "basketball,football", queries["hobby"])
-	require.Equal(t, "milo,coke,pepsi", queries["favouriteDrinks"])
-	require.Empty(t, queries["alloc"])
-	require.Equal(t, "1", queries["no"])
-	require.Equal(t, "value2", queries["field1"])
-	require.Equal(t, "value3", queries["field2"])
-	require.Equal(t, "3", queries["list_a"])
-	require.Equal(t, "3", queries["list_b[]"])
-	require.Equal(t, "1,2,3", queries["list_c"])
+	// The query string is replaced between the steps, on one context: each step
+	// must answer for its own query string and for nothing left from the step
+	// before.
+	for _, tc := range []struct {
+		want  map[string]string
+		query string
+	}{
+		{
+			query: "id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1&field1=value1&field1=value2&field2=value3&list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3",
+			want: map[string]string{
+				"id": "1", "name": "tom", "hobby": "basketball,football", "favouriteDrinks": "milo,coke,pepsi", "alloc": "", "no": "1",
+				"field1": "value2", "field2": "value3", "list_a": "3", "list_b[]": "3", "list_c": "1,2,3",
+			},
+		},
+		{
+			query: "filters.author.name=John&filters.category.name=Technology&filters[customer][name]=Alice&filters[status]=pending",
+			want: map[string]string{
+				"filters.author.name": "John", "filters.category.name": "Technology",
+				"filters[customer][name]": "Alice", "filters[status]": "pending",
+			},
+		},
+		{
+			query: "tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits",
+			want: map[string]string{
+				"tags": "apple,orange,banana", "filters[tags]": "apple,orange,banana", "filters[category][name]": "fruits",
+				"filters.tags": "apple,orange,banana", "filters.category.name": "fruits",
+			},
+		},
+		{
+			query: "filters[tags][0]=apple&filters[tags][1]=orange&filters[tags][2]=banana&filters[category][name]=fruits",
+			want: map[string]string{
+				"filters[tags][0]": "apple", "filters[tags][1]": "orange", "filters[tags][2]": "banana", "filters[category][name]": "fruits",
+			},
+		},
+	} {
+		c.Request().URI().SetQueryString(tc.query)
 
-	c.Request().URI().SetQueryString("filters.author.name=John&filters.category.name=Technology&filters[customer][name]=Alice&filters[status]=pending")
-
-	queries = c.Queries()
-	require.Equal(t, "John", queries["filters.author.name"])
-	require.Equal(t, "Technology", queries["filters.category.name"])
-	require.Equal(t, "Alice", queries["filters[customer][name]"])
-	require.Equal(t, "pending", queries["filters[status]"])
-
-	c.Request().URI().SetQueryString("tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits")
-
-	queries = c.Req().Queries()
-	require.Equal(t, "apple,orange,banana", queries["tags"])
-	require.Equal(t, "apple,orange,banana", queries["filters[tags]"])
-	require.Equal(t, "fruits", queries["filters[category][name]"])
-	require.Equal(t, "apple,orange,banana", queries["filters.tags"])
-	require.Equal(t, "fruits", queries["filters.category.name"])
-
-	c.Request().URI().SetQueryString("filters[tags][0]=apple&filters[tags][1]=orange&filters[tags][2]=banana&filters[category][name]=fruits")
-
-	queries = c.Queries()
-	require.Equal(t, "apple", queries["filters[tags][0]"])
-	require.Equal(t, "orange", queries["filters[tags][1]"])
-	require.Equal(t, "banana", queries["filters[tags][2]"])
-	require.Equal(t, "fruits", queries["filters[category][name]"])
+		require.Equal(t, tc.want, c.Queries(), tc.query)
+		require.Equal(t, tc.want, c.Req().Queries(), tc.query)
+	}
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Queries -benchmem -count=4
@@ -9638,165 +9410,97 @@ func Benchmark_Ctx_String(b *testing.B) {
 }
 
 // go test -run Test_Ctx_IsFromLocal_X_Forwarded
+//
+// X-Forwarded-For is not trusted unless Config.TrustProxy says so, so it never
+// makes a request local.
 func Test_Ctx_IsFromLocal_X_Forwarded(t *testing.T) {
 	t.Parallel()
-	// Test unset X-Forwarded-For header.
-	{
-		c := apptest.Ctx(t, New())
-		// fasthttp returns "0.0.0.0" as IP as there is no remote address.
-		require.Equal(t, "0.0.0.0", c.IP())
-		require.False(t, c.IsFromLocal())
-	}
-	// Test when setting X-Forwarded-For header to localhost "127.0.0.1"
-	{
-		c := apptest.Ctx(t, New())
-		c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
-		require.False(t, c.IsFromLocal())
-	}
-	// Test when setting X-Forwarded-For header to localhost "::1"
-	{
-		c := apptest.Ctx(t, New())
-		c.Request().Header.Set(HeaderXForwardedFor, "::1")
-		require.False(t, c.IsFromLocal())
-	}
-	// Test when setting X-Forwarded-For to full localhost IPv6 address "0:0:0:0:0:0:0:1"
-	{
-		c := apptest.Ctx(t, New())
-		c.Request().Header.Set(HeaderXForwardedFor, "0:0:0:0:0:0:0:1")
-		require.False(t, c.IsFromLocal())
-	}
-	// Test for a random IP address.
-	{
-		c := apptest.Ctx(t, New())
-		c.Request().Header.Set(HeaderXForwardedFor, "93.46.8.90")
 
-		require.False(t, c.Req().IsFromLocal())
+	for _, tc := range []struct {
+		name         string
+		forwardedFor string // left out when empty
+	}{
+		{name: "unset"},
+		{name: "localhost", forwardedFor: "127.0.0.1"},
+		{name: "IPv6 localhost", forwardedFor: "::1"},
+		{name: "full IPv6 localhost", forwardedFor: "0:0:0:0:0:0:0:1"},
+		{name: "random IP address", forwardedFor: "93.46.8.90"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := apptest.Ctx(t, New())
+			if tc.forwardedFor != "" {
+				c.Request().Header.Set(HeaderXForwardedFor, tc.forwardedFor)
+			}
+
+			// fasthttp returns "0.0.0.0" as IP as there is no remote address.
+			require.Equal(t, "0.0.0.0", c.IP())
+			require.False(t, c.IsFromLocal())
+			require.False(t, c.Req().IsFromLocal())
+		})
 	}
 }
 
-// go test -run Test_Ctx_IsFromLocal_RemoteAddr
-func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
+// go test -run Test_Ctx_RemoteAddr
+func Test_Ctx_RemoteAddr(t *testing.T) {
 	t.Parallel()
 
-	localIPv4 := net.Addr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
-	localIPv6 := net.Addr(&net.TCPAddr{IP: net.ParseIP("::1")})
-	localIPv6long := net.Addr(&net.TCPAddr{IP: net.ParseIP("0:0:0:0:0:0:0:1")})
-
-	zeroIPv4 := net.Addr(&net.TCPAddr{IP: net.IPv4zero})
-
-	someIPv4 := net.Addr(&net.TCPAddr{IP: net.ParseIP("93.46.8.90")})
-	someIPv6 := net.Addr(&net.TCPAddr{IP: net.ParseIP("2001:0db8:85a3:0000:0000:8a2e:0370:7334")})
-
-	// Test for the case fasthttp remoteAddr is set to "127.0.0.1".
-	{
-		app := New()
-		fastCtx := &fasthttp.RequestCtx{}
-		fastCtx.SetRemoteAddr(localIPv4)
-		c := apptest.CtxFor(t, app, fastCtx)
-
-		require.Equal(t, "127.0.0.1", c.IP())
-		require.True(t, c.IsFromLocal())
-	}
-	// Test for the case fasthttp remoteAddr is set to "::1".
-	{
-		app := New()
-		fastCtx := &fasthttp.RequestCtx{}
-		fastCtx.SetRemoteAddr(localIPv6)
-		c := apptest.CtxFor(t, app, fastCtx)
-		require.Equal(t, "::1", c.Req().IP())
-		require.True(t, c.Req().IsFromLocal())
-	}
-	// Test for the case fasthttp remoteAddr is set to "0:0:0:0:0:0:0:1".
-	{
-		app := New()
-		fastCtx := &fasthttp.RequestCtx{}
-		fastCtx.SetRemoteAddr(localIPv6long)
-		c := apptest.CtxFor(t, app, fastCtx)
+	for _, tc := range []struct {
+		addr       net.Addr
+		name       string
+		wantIP     string
+		wantLocal  bool
+		wantSocket bool
+	}{
+		{name: "127.0.0.1", addr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}, wantIP: "127.0.0.1", wantLocal: true},
+		{name: "::1", addr: &net.TCPAddr{IP: net.ParseIP("::1")}, wantIP: "::1", wantLocal: true},
 		// fasthttp should return "::1" for "0:0:0:0:0:0:0:1".
 		// otherwise IsFromLocal() will break.
-		require.Equal(t, "::1", c.IP())
-		require.True(t, c.IsFromLocal())
-	}
-	// Test for the case fasthttp remoteAddr is set to "0.0.0.0".
-	{
-		app := New()
-		fastCtx := &fasthttp.RequestCtx{}
-		fastCtx.SetRemoteAddr(zeroIPv4)
-		c := apptest.CtxFor(t, app, fastCtx)
-		require.Equal(t, "0.0.0.0", c.IP())
-		require.False(t, c.IsFromLocal())
-	}
-	// Test for the case fasthttp remoteAddr is set to "93.46.8.90".
-	{
-		app := New()
-		fastCtx := &fasthttp.RequestCtx{}
-		fastCtx.SetRemoteAddr(someIPv4)
-		c := apptest.CtxFor(t, app, fastCtx)
-		require.Equal(t, "93.46.8.90", c.IP())
-		require.False(t, c.IsFromLocal())
-	}
-	// Test for the case fasthttp remoteAddr is set to "2001:0db8:85a3:0000:0000:8a2e:0370:7334".
-	{
-		app := New()
-		fastCtx := &fasthttp.RequestCtx{}
-		fastCtx.SetRemoteAddr(someIPv6)
-		c := apptest.CtxFor(t, app, fastCtx)
-		require.Equal(t, "2001:db8:85a3::8a2e:370:7334", c.IP())
-		require.False(t, c.IsFromLocal())
-	}
-	// Test for the case fasthttp remoteAddr is set to a Unix socket.
-	// IsFromLocal only treats loopback IPs as local.
-	{
-		app := New()
-		fastCtx := &fasthttp.RequestCtx{}
-		unixAddr := &net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"}
-		fastCtx.SetRemoteAddr(unixAddr)
-		c := apptest.CtxFor(t, app, fastCtx)
-		require.False(t, c.IsFromLocal())
-	}
-}
+		{name: "0:0:0:0:0:0:0:1", addr: &net.TCPAddr{IP: net.ParseIP("0:0:0:0:0:0:0:1")}, wantIP: "::1", wantLocal: true},
+		{name: "0.0.0.0", addr: &net.TCPAddr{IP: net.IPv4zero}, wantIP: "0.0.0.0"},
+		{name: "93.46.8.90", addr: &net.TCPAddr{IP: net.ParseIP("93.46.8.90")}, wantIP: "93.46.8.90"},
+		{
+			name: "2001:0db8:85a3:0000:0000:8a2e:0370:7334", addr: &net.TCPAddr{IP: net.ParseIP("2001:0db8:85a3:0000:0000:8a2e:0370:7334")},
+			wantIP: "2001:db8:85a3::8a2e:370:7334",
+		},
+		// IsFromLocal only treats loopback IPs as local.
+		{name: "Unix socket", addr: &net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"}, wantIP: "0.0.0.0", wantSocket: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-// go test -run Test_Ctx_IsFromUnixSocket_RemoteAddr
-func Test_Ctx_IsFromUnixSocket_RemoteAddr(t *testing.T) {
-	t.Parallel()
+			fctx := &fasthttp.RequestCtx{}
+			fctx.SetRemoteAddr(tc.addr)
+			c := apptest.CtxFor(t, New(), fctx)
 
-	{
-		app := New()
-		fastCtx := &fasthttp.RequestCtx{}
-		fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
-		c := apptest.CtxFor(t, app, fastCtx)
-		require.False(t, c.IsFromUnixSocket())
-		require.False(t, c.Req().IsFromUnixSocket())
-	}
-
-	{
-		app := New()
-		fastCtx := &fasthttp.RequestCtx{}
-		fastCtx.SetRemoteAddr(&net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"})
-		c := apptest.CtxFor(t, app, fastCtx)
-		require.True(t, c.IsFromUnixSocket())
-		require.True(t, c.Req().IsFromUnixSocket())
+			require.Equal(t, tc.wantIP, c.IP())
+			require.Equal(t, tc.wantIP, c.Req().IP())
+			require.Equal(t, tc.wantLocal, c.IsFromLocal())
+			require.Equal(t, tc.wantLocal, c.Req().IsFromLocal())
+			require.Equal(t, tc.wantSocket, c.IsFromUnixSocket())
+			require.Equal(t, tc.wantSocket, c.Req().IsFromUnixSocket())
+		})
 	}
 }
 
 // go test -run Test_Ctx_extractIPsFromHeader -v
 func Test_Ctx_extractIPsFromHeader(t *testing.T) {
-	c := apptest.Ctx(t, New())
-	c.Request().Header.Set("x-forwarded-for", "1.1.1.1,8.8.8.8 , /n, \n,1.1, a.c, 6.,6., , a,,42.118.81.169,10.0.137.108")
-	ips := c.IPs()
-	res := ips[len(ips)-2]
-	require.Equal(t, "42.118.81.169", res)
-}
+	t.Parallel()
 
-// go test -run Test_Ctx_extractIPsFromHeader -v
-func Test_Ctx_extractIPsFromHeader_EnableValidateIp(t *testing.T) {
-	app := New()
-	app.config.EnableIPValidation = true
-	c := apptest.Ctx(t, app)
-	c.Request().Header.Set("x-forwarded-for", "1.1.1.1,8.8.8.8 , /n, \n,1.1, a.c, 6.,6., , a,,42.118.81.169,10.0.137.108")
-	ips := c.IPs()
-	res := ips[len(ips)-2]
-	require.Equal(t, "42.118.81.169", res)
+	for _, validate := range []bool{false, true} {
+		t.Run(fmt.Sprintf("EnableIPValidation=%t", validate), func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.config.EnableIPValidation = validate
+			c := apptest.Ctx(t, app)
+			c.Request().Header.Set("x-forwarded-for", "1.1.1.1,8.8.8.8 , /n, \n,1.1, a.c, 6.,6., , a,,42.118.81.169,10.0.137.108")
+			ips := c.IPs()
+			res := ips[len(ips)-2]
+			require.Equal(t, "42.118.81.169", res)
+		})
+	}
 }
 
 // go test -run Test_Ctx_GetRespHeaders
@@ -9810,18 +9514,14 @@ func Test_Ctx_GetRespHeaders(t *testing.T) {
 	c.Response().Header.Add("multi", "two")
 	c.Response().Header.Set(HeaderContentType, "application/json")
 
-	require.Equal(t, map[string][]string{
+	want := map[string][]string{
 		"Content-Type": {"application/json"},
 		"Foo":          {"bar"},
 		"Multi":        {"one", "two"},
 		"Test":         {"Hello, World 👋!"},
-	}, c.GetRespHeaders())
-	require.Equal(t, map[string][]string{
-		"Content-Type": {"application/json"},
-		"Foo":          {"bar"},
-		"Multi":        {"one", "two"},
-		"Test":         {"Hello, World 👋!"},
-	}, c.Res().GetHeaders())
+	}
+	require.Equal(t, want, c.GetRespHeaders())
+	require.Equal(t, want, c.Res().GetHeaders())
 }
 
 func Benchmark_Ctx_GetRespHeaders(b *testing.B) {
@@ -9856,18 +9556,14 @@ func Test_Ctx_GetReqHeaders(t *testing.T) {
 	c.Request().Header.Add("multi", "two")
 	c.Request().Header.Set(HeaderContentType, "application/json")
 
-	require.Equal(t, map[string][]string{
+	want := map[string][]string{
 		"Content-Type": {"application/json"},
 		"Foo":          {"bar"},
 		"Test":         {"Hello, World 👋!"},
 		"Multi":        {"one", "two"},
-	}, c.GetReqHeaders())
-	require.Equal(t, map[string][]string{
-		"Content-Type": {"application/json"},
-		"Foo":          {"bar"},
-		"Test":         {"Hello, World 👋!"},
-		"Multi":        {"one", "two"},
-	}, c.GetHeaders())
+	}
+	require.Equal(t, want, c.GetReqHeaders())
+	require.Equal(t, want, c.GetHeaders())
 }
 
 func Test_Ctx_Set_SanitizeHeaderValue(t *testing.T) {
@@ -9902,6 +9598,17 @@ func Benchmark_Ctx_GetReqHeaders(b *testing.B) {
 	}, headers)
 }
 
+// ctxTestCNoResponse sends a GET for target through app and requires that it
+// fails with wantErr and without a response, as a dropped or timed out
+// connection does.
+func ctxTestCNoResponse(t *testing.T, app *App, target string, wantErr error) {
+	t.Helper()
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+	require.ErrorIs(t, err, wantErr)
+	require.Nil(t, resp)
+}
+
 // go test -run Test_Ctx_Drop -v
 func Test_Ctx_Drop(t *testing.T) {
 	t.Parallel()
@@ -9919,12 +9626,10 @@ func Test_Ctx_Drop(t *testing.T) {
 	})
 
 	// Test the Drop method
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", http.NoBody))
-	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
-	require.Nil(t, resp)
+	ctxTestCNoResponse(t, app, "/block-me", ErrTestGotEmptyResponse)
 
 	// Test the no-response handler
-	resp = apptest.Do(t, app, "/no-response")
+	resp := apptest.Do(t, app, "/no-response")
 	require.NotNil(t, resp)
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, "0", resp.Header.Get("Content-Length"))
@@ -9949,9 +9654,7 @@ func Test_Ctx_DropWithMiddleware(t *testing.T) {
 	})
 
 	// Test the Drop method
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", http.NoBody))
-	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
-	require.Nil(t, resp)
+	ctxTestCNoResponse(t, app, "/block-me", ErrTestGotEmptyResponse)
 }
 
 // go test -run Test_Ctx_End
@@ -9979,9 +9682,7 @@ func Test_Ctx_End_after_timeout(t *testing.T) {
 		return c.End()
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
-	require.Nil(t, resp)
+	ctxTestCNoResponse(t, app, "/", os.ErrDeadlineExceeded)
 }
 
 // go test -run Test_Ctx_End_with_drop_middleware
@@ -10022,9 +9723,7 @@ func Test_Ctx_End_after_drop(t *testing.T) {
 		return c.Drop()
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
-	require.Nil(t, resp)
+	ctxTestCNoResponse(t, app, "/", ErrTestGotEmptyResponse)
 }
 
 // go test -run Test_Ctx_OverrideParam
@@ -10051,119 +9750,61 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 			})
 		})
 
-		req, err := http.NewRequest(http.MethodGet, "/user/original/123", http.NoBody)
-		require.NoError(t, err)
-		resp := apptest.Do(t, app, req)
-		defer func() { require.NoError(t, resp.Body.Close()) }()
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/user/original/123", StatusOK)
 	})
 
-	t.Run("plus_wildcard_params", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get(
-			"/files+/+",
-			func(c Ctx) error {
-				c.OverrideParam("+", "changed")
-				c.OverrideParam("+2", "changed2")
-
-				require.Equal(t, "changed", c.Params("+"))
-				require.Equal(t, "changed2", c.Params("+2"))
-				return nil
-			},
-		)
-
-		req, err := http.NewRequest(http.MethodGet, "/filesoriginal/original2", http.NoBody)
-		require.NoError(t, err)
-		resp := apptest.Do(t, app, req)
-		defer func() { require.NoError(t, resp.Body.Close()) }()
-		require.Equal(t, StatusOK, resp.StatusCode)
-	})
-
-	t.Run("wildcard_params", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/files/*", func(c Ctx) error {
-			c.OverrideParam("*", "changed")
-			require.Equal(t, "changed", c.Params("*"))
-			return nil
-		})
-		req, err := http.NewRequest(http.MethodGet, "/files/testing", http.NoBody)
-		require.NoError(t, err)
-		resp := apptest.Do(t, app, req)
-		defer func() { require.NoError(t, resp.Body.Close()) }()
-		require.Equal(t, StatusOK, resp.StatusCode)
-	})
-
-	t.Run("multi_wildcard_params", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/files/*/*", func(c Ctx) error {
-			c.OverrideParam("*", "changed")
-			c.OverrideParam("*2", "changed2")
-			require.Equal(t, "changed", c.Params("*"))
-			require.Equal(t, "changed2", c.Params("*2"))
-			return nil
-		})
-		req, err := http.NewRequest(http.MethodGet, "/files/testing/testing", http.NoBody)
-		require.NoError(t, err)
-		resp := apptest.Do(t, app, req)
-		defer func() { require.NoError(t, resp.Body.Close()) }()
-		require.Equal(t, StatusOK, resp.StatusCode)
-	})
-
-	t.Run("case_sensitive", func(t *testing.T) {
-		t.Parallel()
-
+	for _, tc := range []struct {
+		config    Config
+		overrides map[string]string // param name -> the value to override it with
+		want      map[string]string // param name -> what Params must answer afterwards
+		name      string
+		pattern   string
+		path      string
+	}{
+		{
+			name: "plus_wildcard_params", pattern: "/files+/+", path: "/filesoriginal/original2",
+			overrides: map[string]string{"+": "changed", "+2": "changed2"},
+			want:      map[string]string{"+": "changed", "+2": "changed2"},
+		},
+		{
+			name: "wildcard_params", pattern: "/files/*", path: "/files/testing",
+			overrides: map[string]string{"*": "changed"},
+			want:      map[string]string{"*": "changed"},
+		},
+		{
+			name: "multi_wildcard_params", pattern: "/files/*/*", path: "/files/testing/testing",
+			overrides: map[string]string{"*": "changed", "*2": "changed2"},
+			want:      map[string]string{"*": "changed", "*2": "changed2"},
+		},
 		// Ensure OverrideParam respects the CaseSensitive configuration
-		app := New(Config{
-			CaseSensitive: true,
-		})
-
-		app.Get("/user/:name", func(c Ctx) error {
-			c.OverrideParam("name", "overridden")
-
-			require.Equal(t, "overridden", c.Params("name"))
-			require.Empty(t, c.Params("NAME"))
-
-			return c.SendStatus(StatusOK)
-		})
-
-		req, err := http.NewRequest(http.MethodGet, "/user/original", http.NoBody)
-		require.NoError(t, err)
-
-		resp := apptest.Do(t, app, req)
-
-		defer func() { require.NoError(t, resp.Body.Close()) }()
-
-		require.Equal(t, StatusOK, resp.StatusCode)
-	})
-
-	t.Run("case_insensitive", func(t *testing.T) {
-		t.Parallel()
-
+		{
+			name: "case_sensitive", config: Config{CaseSensitive: true}, pattern: "/user/:name", path: "/user/original",
+			overrides: map[string]string{"name": "overridden"},
+			want:      map[string]string{"name": "overridden", "NAME": ""},
+		},
 		// CaseInsensitive mode (default)
-		app := New(Config{
-			CaseSensitive: false,
+		{
+			name: "case_insensitive", config: Config{CaseSensitive: false}, pattern: "/user/:name", path: "/user/original",
+			overrides: map[string]string{"NAME": "overridden"},
+			want:      map[string]string{"name": "overridden", "NAME": "overridden"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New(tc.config)
+			app.Get(tc.pattern, func(c Ctx) error {
+				for name, value := range tc.overrides {
+					c.OverrideParam(name, value)
+				}
+				for name, value := range tc.want {
+					require.Equal(t, value, c.Params(name), name)
+				}
+				return nil
+			})
+
+			apptest.Expect(t, app, tc.path, StatusOK)
 		})
-
-		app.Get("/user/:name", func(c Ctx) error {
-			c.OverrideParam("NAME", "overridden")
-
-			require.Equal(t, "overridden", c.Params("name"))
-			require.Equal(t, "overridden", c.Params("NAME"))
-
-			return c.SendStatus(StatusOK)
-		})
-
-		req, err := http.NewRequest(http.MethodGet, "/user/original", http.NoBody)
-		require.NoError(t, err)
-
-		resp := apptest.Do(t, app, req)
-		defer func() { require.NoError(t, resp.Body.Close()) }()
-
-		require.Equal(t, StatusOK, resp.StatusCode)
-	})
+	}
 
 	t.Run("nil_router", func(t *testing.T) {
 		t.Parallel()
@@ -10792,9 +10433,7 @@ func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
 		return c.SendFile("./ctx.go")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
-	req.Header.Set(HeaderAcceptEncoding, "gzip")
-	resp := apptest.Expect(t, app, req, StatusOK)
+	resp := apptest.Expect(t, app, apptest.Req(MethodGet, "/", apptest.WithHeader(HeaderAcceptEncoding, "gzip")), StatusOK)
 	require.Equal(t, "gzip", seen)
 	require.Empty(t, resp.Header.Get(HeaderContentEncoding), "Compress is off, so the file is served as-is")
 }
@@ -10817,9 +10456,7 @@ func Test_Ctx_SendFile_CompressedByMiddleware(t *testing.T) {
 		return c.SendFile("./ctx.go")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
-	req.Header.Set(HeaderAcceptEncoding, "gzip")
-	resp := apptest.Expect(t, app, req, StatusOK)
+	resp := apptest.Expect(t, app, apptest.Req(MethodGet, "/", apptest.WithHeader(HeaderAcceptEncoding, "gzip")), StatusOK)
 	require.Equal(t, "gzip", resp.Header.Get(HeaderContentEncoding))
 }
 
@@ -10994,17 +10631,24 @@ type perIPConnStub struct {
 	*tls.Conn
 }
 
-func Test_UnderlyingConn_UnwrapsTLSWrapper(t *testing.T) {
-	t.Parallel()
+// ctxTestCTLSPipe returns one end of an in-memory pipe and a client TLS
+// connection over it, both closed when the test ends. No handshake runs; the
+// connections only carry identity.
+func ctxTestCTLSPipe(t *testing.T) (raw net.Conn, client *tls.Conn) { //nolint:nonamedreturns // gocritic's unnamedResult asks for names
+	t.Helper()
 
 	raw, peer := net.Pipe()
 	t.Cleanup(func() {
 		require.NoError(t, raw.Close())
 		require.NoError(t, peer.Close())
 	})
+	return raw, tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+}
 
-	// No handshake runs; the connection is only unwrapped.
-	tlsConn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+func Test_UnderlyingConn_UnwrapsTLSWrapper(t *testing.T) {
+	t.Parallel()
+
+	raw, tlsConn := ctxTestCTLSPipe(t)
 	require.Equal(t, raw, underlyingConn(tlsConn))
 	require.Equal(t, raw, underlyingConn(perIPConnStub{Conn: tlsConn}))
 	require.Equal(t, raw, underlyingConn(raw))
@@ -11013,18 +10657,8 @@ func Test_UnderlyingConn_UnwrapsTLSWrapper(t *testing.T) {
 func Test_TLSHandler_ForgetsRecycledWrapper(t *testing.T) {
 	t.Parallel()
 
-	newConn := func() (net.Conn, *tls.Conn) {
-		raw, peer := net.Pipe()
-		t.Cleanup(func() {
-			require.NoError(t, raw.Close())
-			require.NoError(t, peer.Close())
-		})
-		// No handshake runs; the connections only carry identity.
-		return raw, tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
-	}
-
 	handler := &TLSHandler{}
-	raw1, tls1 := newConn()
+	raw1, tls1 := ctxTestCTLSPipe(t)
 	wrapper := &perIPConnStub{Conn: tls1}
 
 	handler.track(wrapper)
@@ -11033,7 +10667,7 @@ func Test_TLSHandler_ForgetsRecycledWrapper(t *testing.T) {
 	require.NotNil(t, handler.clientHelloInfo(wrapper))
 
 	// fasthttp recycles the wrapper before it reports the close of what it carried.
-	raw2, tls2 := newConn()
+	raw2, tls2 := ctxTestCTLSPipe(t)
 	wrapper.Conn = tls2
 	handler.track(wrapper)
 	_, ok := handler.clientHelloInfos.Load(raw1)
@@ -11052,13 +10686,7 @@ func Test_TLSHandler_ForgetsRecycledWrapper(t *testing.T) {
 func Test_TLSHandler_ForgetsHijackedConnection(t *testing.T) {
 	t.Parallel()
 
-	raw, peer := net.Pipe()
-	t.Cleanup(func() {
-		require.NoError(t, raw.Close())
-		require.NoError(t, peer.Close())
-	})
-	// No handshake runs; the connection only carries identity.
-	tlsConn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	raw, tlsConn := ctxTestCTLSPipe(t)
 
 	app := New()
 	app.SetTLSHandler(&TLSHandler{})
