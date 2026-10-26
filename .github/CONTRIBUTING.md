@@ -17,6 +17,8 @@ Titles always we must use prefix according to below:
 
 All pull requests that contain a feature or fix are mandatory to have unit tests. Your PR is only to be merged if you respect this flow.
 
+Please do not copy the request/response plumbing from one test into the next. The helpers in [`internal/apptest`](https://github.com/gofiber/fiber/tree/main/internal/apptest) (`apptest.Do`, `apptest.Expect`, `apptest.ExpectBody`, `apptest.Body`, `apptest.Ctx`) cover the round trip and the context lifecycle, and tests that differ only in their data belong in one table-driven test with a subtest per row. Every test and subtest starts with `t.Parallel()`; the few exceptions are listed in [`AGENTS.md`](https://github.com/gofiber/fiber/blob/main/AGENTS.md).
+
 ## 👍 Contribute
 
 If you want to say **thank you** and/or support the active development of `Fiber`:
