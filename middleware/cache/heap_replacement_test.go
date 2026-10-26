@@ -3,15 +3,14 @@ package cache
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,6 +20,14 @@ type blockingManifestStorage struct {
 	release      chan struct{}
 	manifestSets atomic.Int32
 	failBodySet  atomic.Bool
+}
+
+func newBlockingManifestStorage() *blockingManifestStorage {
+	return &blockingManifestStorage{
+		failingCacheStorage: newFailingCacheStorage(),
+		blocked:             make(chan struct{}),
+		release:             make(chan struct{}),
+	}
 }
 
 func (s *blockingManifestStorage) SetWithContext(ctx context.Context, key string, value []byte, exp time.Duration) error {
@@ -38,14 +45,27 @@ func (s *blockingManifestStorage) Set(key string, value []byte, exp time.Duratio
 	return s.SetWithContext(context.Background(), key, value, exp)
 }
 
-// Both reloads read the same cached generation before entering the origin.
-// The second store must replace the first reload's heap node even though the
-// heap generation it originally read is no longer current.
-func Test_Cache_ConcurrentReloadsReplaceSameKeyHeapNode(t *testing.T) {
-	t.Parallel()
+// cacheTestCReloads is the interleaving the concurrent-reload tests share: a
+// 100-byte answer is cached at GET /entry, and two reloads of it are parked in
+// the origin, the first and then the second.
+type cacheTestCReloads struct {
+	app    *fiber.App
+	probe  *accountingProbe
+	calls  *atomic.Int32
+	first  *cacheTestBParked
+	second *cacheTestBParked
+	varyOn string
+}
+
+// cacheTestCStartReloads caches /entry behind storage, the in-memory store when
+// that is nil, and parks two reloads of it with the origin's second and third
+// calls. Unless varyOn is empty, the origin varies on the request header of that
+// name, which every request sends.
+func cacheTestCStartReloads(t *testing.T, storage fiber.Storage, varyOn string) *cacheTestCReloads {
+	t.Helper()
 
 	probe := &accountingProbe{}
-	var originCalls atomic.Int32
+	calls := new(atomic.Int32)
 	firstEntered := make(chan struct{})
 	secondEntered := make(chan struct{})
 	releaseFirst := make(chan struct{})
@@ -55,10 +75,11 @@ func Test_Cache_ConcurrentReloadsReplaceSameKeyHeapNode(t *testing.T) {
 	app.Use(New(Config{
 		Expiration: time.Hour,
 		MaxBytes:   1000,
+		Storage:    storage,
 		accounting: probe.record,
 	}))
 	app.Get("/entry", func(c fiber.Ctx) error {
-		switch originCalls.Add(1) {
+		switch calls.Add(1) {
 		case 2:
 			close(firstEntered)
 			<-releaseFirst
@@ -66,56 +87,56 @@ func Test_Cache_ConcurrentReloadsReplaceSameKeyHeapNode(t *testing.T) {
 			close(secondEntered)
 			<-releaseSecond
 		}
+		if varyOn != "" {
+			c.Set(fiber.HeaderVary, varyOn)
+		}
 		return c.Send(make([]byte, 100))
 	})
 
-	request := func(revalidate bool) (*http.Response, error) {
-		req := httptest.NewRequest(fiber.MethodGet, "/entry", http.NoBody)
-		if revalidate {
-			req.Header.Set(fiber.HeaderCacheControl, "max-age=0")
-		}
-		return app.Test(req)
+	r := &cacheTestCReloads{app: app, probe: probe, calls: calls, varyOn: varyOn}
+	cacheTestBExpect(t, app, r.request(""), cacheMiss)
+	r.first = cacheTestBPark(t, app, r.request("max-age=0"), firstEntered, releaseFirst)
+	r.second = cacheTestBPark(t, app, r.request("max-age=0"), secondEntered, releaseSecond)
+	return r
+}
+
+// request returns GET /entry with the Cache-Control request header cacheControl,
+// unless that is empty.
+func (r *cacheTestCReloads) request(cacheControl string) *http.Request {
+	var opts []apptest.Option
+	if r.varyOn != "" {
+		opts = append(opts, apptest.WithHeader(r.varyOn, "en"))
 	}
-	initial, err := request(false)
-	require.NoError(t, err)
-	require.Equal(t, cacheMiss, initial.Header.Get("X-Cache"))
-	_, err = io.Copy(io.Discard, initial.Body)
-	require.NoError(t, err)
-	require.NoError(t, initial.Body.Close())
+	if cacheControl != "" {
+		opts = append(opts, apptest.WithHeader(fiber.HeaderCacheControl, cacheControl))
+	}
+	return apptest.Req(fiber.MethodGet, "/entry", opts...)
+}
 
-	firstResult := make(chan error, 1)
-	go func() {
-		resp, requestErr := request(true)
-		if requestErr == nil {
-			requestErr = resp.Body.Close()
-		}
-		firstResult <- requestErr
-	}()
-	<-firstEntered
+// requireSettled requires what every interleaving ends with: the 100 bytes
+// counted once, in one node of the eviction heap, and a hit on /entry, the
+// origin having been reached three times only.
+func (r *cacheTestCReloads) requireSettled(t *testing.T) {
+	t.Helper()
 
-	secondResult := make(chan error, 1)
-	go func() {
-		resp, requestErr := request(true)
-		if requestErr == nil {
-			requestErr = resp.Body.Close()
-		}
-		secondResult <- requestErr
-	}()
-	<-secondEntered
+	cacheTestBRequireAccounting(t, r.probe, 100, 1)
 
-	close(releaseFirst)
-	require.NoError(t, <-firstResult)
-	close(releaseSecond)
-	require.NoError(t, <-secondResult)
+	cacheTestBExpect(t, r.app, r.request(""), cacheHit)
+	require.Equal(t, int32(3), r.calls.Load())
+}
 
-	require.Equal(t, 1, probe.nodes())
-	require.Equal(t, uint(100), probe.counted())
+// Both reloads read the same cached generation before entering the origin.
+// The second store must replace the first reload's heap node even though the
+// heap generation it originally read is no longer current.
+func Test_Cache_ConcurrentReloadsReplaceSameKeyHeapNode(t *testing.T) {
+	t.Parallel()
 
-	final, err := request(false)
-	require.NoError(t, err)
-	require.Equal(t, cacheHit, final.Header.Get("X-Cache"))
-	require.NoError(t, final.Body.Close())
-	require.Equal(t, int32(3), originCalls.Load())
+	r := cacheTestCStartReloads(t, nil, "")
+
+	r.first.finish(t)
+	r.second.finish(t)
+
+	r.requireSettled(t)
 }
 
 // A request can reserve space, wait on storage, and then observe another
@@ -123,177 +144,34 @@ func Test_Cache_ConcurrentReloadsReplaceSameKeyHeapNode(t *testing.T) {
 func Test_Cache_ConcurrentReloadAfterReservationReplacesHeapNode(t *testing.T) {
 	t.Parallel()
 
-	storage := &blockingManifestStorage{
-		failingCacheStorage: newFailingCacheStorage(),
-		blocked:             make(chan struct{}),
-		release:             make(chan struct{}),
-	}
-	probe := &accountingProbe{}
-	var originCalls atomic.Int32
-	firstEntered := make(chan struct{})
-	secondEntered := make(chan struct{})
-	releaseFirst := make(chan struct{})
-	releaseSecond := make(chan struct{})
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: time.Hour,
-		MaxBytes:   1000,
-		Storage:    storage,
-		accounting: probe.record,
-	}))
-	app.Get("/entry", func(c fiber.Ctx) error {
-		switch originCalls.Add(1) {
-		case 2:
-			close(firstEntered)
-			<-releaseFirst
-		case 3:
-			close(secondEntered)
-			<-releaseSecond
-		}
-		c.Set(fiber.HeaderVary, fiber.HeaderAcceptLanguage)
-		return c.Send(make([]byte, 100))
-	})
-
-	request := func(revalidate bool) (*http.Response, error) {
-		req := httptest.NewRequest(fiber.MethodGet, "/entry", http.NoBody)
-		req.Header.Set(fiber.HeaderAcceptLanguage, "en")
-		if revalidate {
-			req.Header.Set(fiber.HeaderCacheControl, "max-age=0")
-		}
-		return app.Test(req)
-	}
-	initial, err := request(false)
-	require.NoError(t, err)
-	require.NoError(t, initial.Body.Close())
-
-	firstResult := make(chan error, 1)
-	go func() {
-		resp, requestErr := request(true)
-		if requestErr == nil {
-			requestErr = resp.Body.Close()
-		}
-		firstResult <- requestErr
-	}()
-	<-firstEntered
-
-	secondResult := make(chan error, 1)
-	go func() {
-		resp, requestErr := request(true)
-		if requestErr == nil {
-			requestErr = resp.Body.Close()
-		}
-		secondResult <- requestErr
-	}()
-	<-secondEntered
+	storage := newBlockingManifestStorage()
+	r := cacheTestCStartReloads(t, storage, fiber.HeaderAcceptLanguage)
 
 	// Store the second reload first, but pause it after reservation and
 	// before heap insertion while the first reload finishes its store.
-	close(releaseSecond)
+	r.second.open()
 	<-storage.blocked
-	close(releaseFirst)
-	require.NoError(t, <-firstResult)
+	r.first.finish(t)
 	close(storage.release)
-	require.NoError(t, <-secondResult)
+	r.second.finish(t)
 
-	require.Equal(t, 1, probe.nodes())
-	require.Equal(t, uint(100), probe.counted())
-
-	final, err := request(false)
-	require.NoError(t, err)
-	require.Equal(t, cacheHit, final.Header.Get("X-Cache"))
-	require.NoError(t, final.Body.Close())
-	require.Equal(t, int32(3), originCalls.Load())
+	r.requireSettled(t)
 }
 
 func Test_Cache_ConcurrentReloadStoreFailureRestoresLatestHeapNode(t *testing.T) {
 	t.Parallel()
 
-	storage := &blockingManifestStorage{
-		failingCacheStorage: newFailingCacheStorage(),
-		blocked:             make(chan struct{}),
-		release:             make(chan struct{}),
-	}
-	probe := &accountingProbe{}
-	var originCalls atomic.Int32
-	firstEntered := make(chan struct{})
-	secondEntered := make(chan struct{})
-	releaseFirst := make(chan struct{})
-	releaseSecond := make(chan struct{})
+	storage := newBlockingManifestStorage()
+	r := cacheTestCStartReloads(t, storage, fiber.HeaderAcceptLanguage)
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: time.Hour,
-		MaxBytes:   1000,
-		Storage:    storage,
-		accounting: probe.record,
-	}))
-	app.Get("/entry", func(c fiber.Ctx) error {
-		switch originCalls.Add(1) {
-		case 2:
-			close(firstEntered)
-			<-releaseFirst
-		case 3:
-			close(secondEntered)
-			<-releaseSecond
-		}
-		c.Set(fiber.HeaderVary, fiber.HeaderAcceptLanguage)
-		return c.Send(make([]byte, 100))
-	})
-
-	request := func(revalidate bool) (*http.Response, error) {
-		req := httptest.NewRequest(fiber.MethodGet, "/entry", http.NoBody)
-		req.Header.Set(fiber.HeaderAcceptLanguage, "en")
-		if revalidate {
-			req.Header.Set(fiber.HeaderCacheControl, "max-age=0")
-		}
-		return app.Test(req)
-	}
-	initial, err := request(false)
-	require.NoError(t, err)
-	require.NoError(t, initial.Body.Close())
-
-	firstResult := make(chan error, 1)
-	go func() {
-		resp, requestErr := request(true)
-		if requestErr == nil {
-			requestErr = resp.Body.Close()
-		}
-		firstResult <- requestErr
-	}()
-	<-firstEntered
-
-	secondResult := make(chan struct {
-		resp *http.Response
-		err  error
-	}, 1)
-	go func() {
-		resp, requestErr := request(true)
-		secondResult <- struct {
-			resp *http.Response
-			err  error
-		}{resp: resp, err: requestErr}
-	}()
-	<-secondEntered
-
-	close(releaseSecond)
+	r.second.open()
 	<-storage.blocked
-	close(releaseFirst)
-	require.NoError(t, <-firstResult)
+	r.first.finish(t)
 	storage.failBodySet.Store(true)
 	close(storage.release)
-	failed := <-secondResult
-	require.NoError(t, failed.err)
-	require.Equal(t, fiber.StatusInternalServerError, failed.resp.StatusCode)
-	require.NoError(t, failed.resp.Body.Close())
+	failed := r.second.finish(t)
+	require.Equal(t, fiber.StatusInternalServerError, failed.StatusCode)
 	storage.failBodySet.Store(false)
 
-	require.Equal(t, 1, probe.nodes())
-	require.Equal(t, uint(100), probe.counted())
-
-	final, err := request(false)
-	require.NoError(t, err)
-	require.Equal(t, cacheHit, final.Header.Get("X-Cache"))
-	require.NoError(t, final.Body.Close())
-	require.Equal(t, int32(3), originCalls.Load())
+	r.requireSettled(t)
 }

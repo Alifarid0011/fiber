@@ -20,6 +20,9 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// cacheTestCClock returns a clock fixed at an instant of the past, which only the test moves.
+func cacheTestCClock() *testClock { return newTestClock(time.Unix(1_700_000_000, 0)) }
+
 // credentialPartition is a way the cache tells sessions apart, and how the fixture sends one.
 type credentialPartition struct {
 	configure    func(*Config)               // makes the cache tell sessions apart
@@ -975,7 +978,7 @@ func Test_Cache_CredentialKeyedEntryIgnoresMaxStale(t *testing.T) {
 					t.Run(fmt.Sprintf("%s/%s/allowed=%t/%s", storage, maxStale, allowed, scenario.name), func(t *testing.T) {
 						t.Parallel()
 
-						clock := newTestClock(time.Unix(1_700_000_000, 0))
+						clock := cacheTestCClock()
 						f := newCredentialFixture(t, &credentialOptions{
 							partition:  scenario.partition,
 							storage:    storage,
@@ -1014,7 +1017,7 @@ func Test_Cache_AllowStaleCredentialResponsesKeepsInvalidatedEntriesOut(t *testi
 			t.Run(partition+"/"+storage, func(t *testing.T) {
 				t.Parallel()
 
-				clock := newTestClock(time.Unix(1_700_000_000, 0))
+				clock := cacheTestCClock()
 				f := newCredentialFixture(t, &credentialOptions{
 					partition:       partition,
 					storage:         storage,
@@ -1222,13 +1225,7 @@ func Test_Cache_RefusalReachesTheVariantsWhateverEachVariesOn(t *testing.T) {
 					return c.SendString("page as " + c.Get(fiber.HeaderAccept))
 				})
 				get := func(accept, cacheControl string) reply {
-					req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-					req.Header.Set(fiber.HeaderCookie, "session=a")
-					req.Header.Set(fiber.HeaderAccept, accept)
-					if cacheControl != "" {
-						req.Header.Set(fiber.HeaderCacheControl, cacheControl)
-					}
-					return doRequest(t, app, req)
+					return cacheTestCGet(t, app, "/", fiber.HeaderCookie, "session=a", fiber.HeaderAccept, accept, fiber.HeaderCacheControl, cacheControl)
 				}
 				other := "application/json"
 				if refused == other {
@@ -1279,7 +1276,7 @@ func Test_Cache_ExpiredDeleteKeepsAConcurrentReplacement(t *testing.T) {
 		t.Run(storage, func(t *testing.T) {
 			t.Parallel()
 
-			clock := newTestClock(time.Unix(1_700_000_000, 0))
+			clock := cacheTestCClock()
 			gate := make(chan struct{})
 			entered := make(chan struct{}, 1)
 			inHandler := make(chan struct{}, 1)
@@ -1347,10 +1344,8 @@ func Test_Cache_InvalidatorRunsBeforeFreshnessIsJudged(t *testing.T) {
 		t.Run(storage, func(t *testing.T) {
 			t.Parallel()
 
-			clock := newTestClock(time.Unix(1_700_000_000, 0))
-			var calls atomic.Int32
-			app := fiber.New()
-			app.Use(New(Config{
+			clock := cacheTestCClock()
+			app, _ := cacheTestAOrigin(New(Config{
 				Storage:    storageOf(storage),
 				Expiration: time.Hour,
 				clock:      clock.Now,
@@ -1360,10 +1355,7 @@ func Test_Cache_InvalidatorRunsBeforeFreshnessIsJudged(t *testing.T) {
 					}
 					return false
 				},
-			}))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("response-" + strconv.Itoa(int(calls.Add(1))))
-			})
+			}), "response-")
 
 			require.Equal(t, "response-1", getRoot(t, app, nil).body)
 			clock.Add(30 * time.Second)
@@ -1445,14 +1437,7 @@ func Test_Cache_RefusalRecordCostsOnlyItsGroupOfURLs(t *testing.T) {
 	})
 	app.Get("/elsewhere", func(c fiber.Ctx) error { return c.SendString("data") })
 	get := func(uri, accept, cacheControl string) reply {
-		t.Helper()
-		req := httptest.NewRequest(fiber.MethodGet, uri, http.NoBody)
-		req.Header.Set("Cookie", "session=abc")
-		req.Header.Set(fiber.HeaderAccept, accept)
-		if cacheControl != "" {
-			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
-		}
-		return doRequest(t, app, req)
+		return cacheTestCGet(t, app, uri, "Cookie", "session=abc", fiber.HeaderAccept, accept, fiber.HeaderCacheControl, cacheControl)
 	}
 
 	for _, uri := range []string{"/refused", "/elsewhere"} {
@@ -1495,14 +1480,7 @@ func Test_Cache_RefusalReachesAnotherInstanceSharingTheStorage(t *testing.T) {
 	}
 	first, second := instance(), instance()
 	get := func(app *fiber.App, accept, cacheControl string) reply {
-		t.Helper()
-		req := httptest.NewRequest(fiber.MethodGet, "/page", http.NoBody)
-		req.Header.Set("Cookie", "session=abc")
-		req.Header.Set(fiber.HeaderAccept, accept)
-		if cacheControl != "" {
-			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
-		}
-		return doRequest(t, app, req)
+		return cacheTestCGet(t, app, "/page", "Cookie", "session=abc", fiber.HeaderAccept, accept, fiber.HeaderCacheControl, cacheControl)
 	}
 
 	for _, accept := range []string{"text/html", "application/json"} {
@@ -1531,14 +1509,12 @@ func Test_Cache_ExpiredDeleteChecksTheEntry(t *testing.T) {
 					reads.Add(1)
 				}
 			}}
-			clock := newTestClock(time.Unix(1_700_000_000, 0))
+			clock := cacheTestCClock()
 			cfg := Config{Storage: storage, Expiration: time.Minute, clock: clock.Now, DisableVaryHeaders: true}
 			if withInvalidator {
 				cfg.CacheInvalidator = func(fiber.Ctx) bool { return false }
 			}
-			app := fiber.New()
-			app.Use(New(cfg))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
+			app, _ := cacheTestAOrigin(New(cfg), "")
 
 			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
 			clock.Add(2 * time.Minute)
@@ -1694,7 +1670,7 @@ func Test_Cache_RefusalAfterAnEntryFoundExpiredOrInvalidatedReachesTheOtherVaria
 				t.Run(kind+"/"+partition+"/"+storage, func(t *testing.T) {
 					t.Parallel()
 
-					clock := newTestClock(time.Unix(1_700_000_000, 0))
+					clock := cacheTestCClock()
 					f := newCredentialFixture(t, &credentialOptions{
 						partition:       partition,
 						storage:         storage,
@@ -1807,24 +1783,18 @@ func Test_Cache_RefusalRecordKeepsTheGroupOfTheLookupWhenThePathIsRewritten(t *t
 				}
 				return c.SendString("account for " + c.Get(fiber.HeaderAccept))
 			})
-			get := func(accept string, headers map[string]string) reply {
-				req := httptest.NewRequest(fiber.MethodGet, "/account", http.NoBody)
-				req.Header.Set(fiber.HeaderCookie, "session=a")
-				req.Header.Set(fiber.HeaderAccept, accept)
-				for name, value := range headers {
-					req.Header.Set(name, value)
-				}
-				return doRequest(t, app, req)
+			// get sends the request of the session to /account, besides the extra headers given as name and value pairs.
+			get := func(accept string, extra ...string) reply {
+				return cacheTestCGet(t, app, "/account", append([]string{fiber.HeaderCookie, "session=a", fiber.HeaderAccept, accept}, extra...)...)
 			}
 
-			require.Equal(t, cacheMiss, get("text/html", nil).cache)
-			require.Equal(t, cacheMiss, get("text/plain", nil).cache)
+			require.Equal(t, cacheMiss, get("text/html").cache)
+			require.Equal(t, cacheMiss, get("text/plain").cache)
 
 			ended.Store(true)
-			reload := map[string]string{"X-Rewrite": "1", fiber.HeaderCacheControl: "no-cache"}
-			require.Equal(t, fiber.StatusUnauthorized, get("text/html", reload).status)
+			require.Equal(t, fiber.StatusUnauthorized, get("text/html", "X-Rewrite", "1", fiber.HeaderCacheControl, "no-cache").status)
 
-			require.Equal(t, fiber.StatusUnauthorized, get("text/plain", nil).status, "the other variant was served from the cache")
+			require.Equal(t, fiber.StatusUnauthorized, get("text/plain").status, "the other variant was served from the cache")
 		})
 	}
 }
@@ -1854,12 +1824,7 @@ func Test_Cache_RefusalRecordOutlivesTheGroupsEntriesWhenThePathIsRewritten(t *t
 		return c.SendString("account")
 	})
 	get := func(uri, cacheControl string) reply {
-		req := httptest.NewRequest(fiber.MethodGet, uri, http.NoBody)
-		req.Header.Set(fiber.HeaderCookie, "session=a")
-		if cacheControl != "" {
-			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
-		}
-		return doRequest(t, app, req)
+		return cacheTestCGet(t, app, uri, fiber.HeaderCookie, "session=a", fiber.HeaderCacheControl, cacheControl)
 	}
 
 	stored := uint64(time.Now().Unix())
@@ -1904,9 +1869,8 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryRuledOut(t *testing.T) {
 				t.Parallel()
 
 				var asked atomic.Int32
-				clock := newTestClock(time.Unix(1_700_000_000, 0))
-				app := fiber.New()
-				app.Use(New(Config{
+				clock := cacheTestCClock()
+				app, _ := cacheTestAOrigin(New(Config{
 					Storage:    storageOf(storage),
 					Expiration: time.Minute,
 					clock:      clock.Now,
@@ -1914,8 +1878,7 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryRuledOut(t *testing.T) {
 						asked.Add(1)
 						return false
 					},
-				}))
-				app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
+				}), "")
 
 				require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
 				require.Zero(t, asked.Load(), "a miss has no entry to ask about")
@@ -1945,16 +1908,14 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryThatHasExpired(t *testing.T) {
 			t.Parallel()
 
 			var asked atomic.Int32
-			app := fiber.New()
-			app.Use(New(Config{
+			app, _ := cacheTestAOrigin(New(Config{
 				Storage:             storageOf(storage),
 				ExpirationGenerator: func(fiber.Ctx, *Config) time.Duration { return 500 * time.Millisecond },
 				CacheInvalidator: func(fiber.Ctx) bool {
 					asked.Add(1)
 					return false
 				},
-			}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
+			}), "")
 
 			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
 			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache, "the entry was found expired")

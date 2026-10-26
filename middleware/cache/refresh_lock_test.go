@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -15,42 +14,58 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type pausedRestoreStorage struct {
-	*failingCacheStorage
-	started chan struct{}
-	resume  chan struct{}
-	key     string
-	armed   atomic.Bool
+// cacheTestCWait receives from ch, failing the test with msg unless a value
+// arrives within two seconds.
+func cacheTestCWait[T any](t *testing.T, ch <-chan T, msg string) T {
+	t.Helper()
+
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(2 * time.Second):
+		t.Fatal(msg)
+	}
+	var unreachable T // Fatal has stopped the test
+	return unreachable
 }
 
-func (s *pausedRestoreStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
-	if key == s.key && s.armed.CompareAndSwap(true, false) {
-		close(s.started)
-		<-s.resume
-	}
-	return s.failingCacheStorage.GetWithContext(ctx, key)
+// cacheTestCEvict sends GET /new through app in the background, a request the
+// test arranged to fail with a 500 because the eviction it starts cannot delete
+// the entry it picked. The channel yields what went wrong with the request or
+// with its answer, nil when nothing did.
+func cacheTestCEvict(app *fiber.App) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/new", http.NoBody))
+		if err == nil {
+			if resp.StatusCode != fiber.StatusInternalServerError {
+				err = errors.New("eviction did not fail")
+			}
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				err = errors.Join(err, closeErr)
+			}
+		}
+		done <- err
+	}()
+	return done
 }
 
 func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	t.Parallel()
 
-	storage := &pausedRestoreStorage{
-		failingCacheStorage: newFailingCacheStorage(),
-		key:                 cacheKeyVersion + "|GET|/old",
-		started:             make(chan struct{}),
-		resume:              make(chan struct{}),
-	}
+	const oldKey = cacheKeyVersion + "|GET|/old"
+	started := make(chan struct{})
+	resume := make(chan struct{})
+	var armed atomic.Bool
+	storage := &hookedStorage{failingCacheStorage: newFailingCacheStorage(), onGet: func(key string) {
+		// The read that restores the entry eviction picked parks until the test lets it go on.
+		if key == oldKey && armed.CompareAndSwap(true, false) {
+			close(started)
+			<-resume
+		}
+	}}
 	probe := &accountingProbe{}
-	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: time.Hour,
-		KeyGenerator: func(c fiber.Ctx) string {
-			return c.Path()
-		},
-		MaxBytes:   10,
-		Storage:    storage,
-		accounting: probe.record,
-	}))
+	app := cacheTestBPathKeyedApp(&Config{MaxBytes: 10, Storage: storage, accounting: probe.record})
 	app.Get("/:name", func(c fiber.Ctx) error {
 		switch c.Path() {
 		case "/old":
@@ -66,41 +81,22 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	})
 
 	for _, path := range []string{"/old", "/hot"} {
-		resp := apptest.Do(t, app, path)
-		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
-		require.NoError(t, resp.Body.Close())
+		cacheTestBExpect(t, app, path, cacheMiss)
 	}
-	require.Equal(t, uint(8), probe.counted())
-	require.Equal(t, 2, probe.nodes())
+	cacheTestBRequireAccounting(t, probe, 8, 2)
 
 	storage.mu.Lock()
-	storage.errs["del|"+storage.key] = errors.New("eviction delete failed")
+	storage.errs["del|"+oldKey] = errors.New("eviction delete failed")
 	storage.mu.Unlock()
-	storage.armed.Store(true)
+	armed.Store(true)
 
-	evictionDone := make(chan error, 1)
-	go func() {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/new", http.NoBody))
-		if err == nil {
-			if resp.StatusCode != fiber.StatusInternalServerError {
-				err = errors.New("eviction did not fail")
-			}
-			if closeErr := resp.Body.Close(); closeErr != nil {
-				err = errors.Join(err, closeErr)
-			}
-		}
-		evictionDone <- err
-	}()
+	evictionDone := cacheTestCEvict(app)
 
 	var resumeOnce sync.Once
-	release := func() { resumeOnce.Do(func() { close(storage.resume) }) }
+	release := func() { resumeOnce.Do(func() { close(resume) }) }
 	defer release()
 
-	select {
-	case <-storage.started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("eviction did not reach restore read")
-	}
+	cacheTestCWait(t, started, "eviction did not reach restore read")
 
 	hitDone := make(chan error, 1)
 	go func() {
@@ -116,24 +112,13 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 		hitDone <- err
 	}()
 
-	select {
-	case err := <-hitDone:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("unrelated cache hit blocked on restore storage I/O")
-	}
+	require.NoError(t, cacheTestCWait(t, hitDone, "unrelated cache hit blocked on restore storage I/O"))
 	require.Equal(t, uint(8), probe.counted(), "pending restore must retain its byte reservation")
 	require.Equal(t, 2, probe.nodes())
 
 	release()
-	select {
-	case evictionErr := <-evictionDone:
-		require.NoError(t, evictionErr)
-	case <-time.After(2 * time.Second):
-		t.Fatal("eviction did not finish after storage resumed")
-	}
-	require.Equal(t, uint(8), probe.counted())
-	require.Equal(t, 2, probe.nodes())
+	require.NoError(t, cacheTestCWait(t, evictionDone, "eviction did not finish after storage resumed"))
+	cacheTestBRequireAccounting(t, probe, 8, 2)
 }
 
 func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
@@ -147,16 +132,7 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 	}
 	probe := &accountingProbe{}
 	var uncacheable atomic.Bool
-	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: time.Hour,
-		KeyGenerator: func(c fiber.Ctx) string {
-			return c.Path()
-		},
-		MaxBytes:   10,
-		Storage:    storage,
-		accounting: probe.record,
-	}))
+	app := cacheTestBPathKeyedApp(&Config{MaxBytes: 10, Storage: storage, accounting: probe.record})
 	app.Get("/:name", func(c fiber.Ctx) error {
 		switch c.Path() {
 		case "/old":
@@ -175,51 +151,22 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 		}
 	})
 
-	resp := apptest.Do(t, app, "/old")
-	require.NoError(t, resp.Body.Close())
+	apptest.BodyBytes(t, apptest.Do(t, app, "/old"))
 
 	storage.armed.Store(true)
-	evictionDone := make(chan error, 1)
-	go func() {
-		result, requestErr := app.Test(httptest.NewRequest(fiber.MethodGet, "/new", http.NoBody))
-		if requestErr == nil {
-			if result.StatusCode != fiber.StatusInternalServerError {
-				requestErr = errors.New("eviction did not fail")
-			}
-			if closeErr := result.Body.Close(); closeErr != nil {
-				requestErr = errors.Join(requestErr, closeErr)
-			}
-		}
-		evictionDone <- requestErr
-	}()
+	evictionDone := cacheTestCEvict(app)
 
 	var releaseOnce sync.Once
 	release := func() { releaseOnce.Do(func() { close(storage.continueDelete) }) }
 	defer release()
-	select {
-	case <-storage.started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("eviction did not reach blocked deletion")
-	}
+	cacheTestCWait(t, storage.started, "eviction did not reach blocked deletion")
 
-	resp = apptest.Do(t, app, "/slot")
-	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
-	require.NoError(t, resp.Body.Close())
+	cacheTestBExpect(t, app, "/slot", cacheMiss)
 	release()
-	select {
-	case evictionErr := <-evictionDone:
-		require.NoError(t, evictionErr)
-	case <-time.After(2 * time.Second):
-		t.Fatal("eviction did not finish")
-	}
-	require.Equal(t, uint(5), probe.counted())
-	require.Equal(t, 2, probe.nodes())
+	require.NoError(t, cacheTestCWait(t, evictionDone, "eviction did not finish"))
+	cacheTestBRequireAccounting(t, probe, 5, 2)
 
 	uncacheable.Store(true)
-	request := httptest.NewRequest(fiber.MethodGet, "/old", http.NoBody)
-	request.Header.Set(fiber.HeaderCacheControl, "max-age=0")
-	resp = apptest.Expect(t, app, request, fiber.StatusOK)
-	require.NoError(t, resp.Body.Close())
-	require.Zero(t, probe.counted())
-	require.Equal(t, 1, probe.nodes())
+	apptest.BodyBytes(t, apptest.Expect(t, app, cacheTestAGetCC("/old", "max-age=0"), fiber.StatusOK))
+	cacheTestBRequireAccounting(t, probe, 0, 1)
 }

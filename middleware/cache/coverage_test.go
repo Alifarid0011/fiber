@@ -47,6 +47,35 @@ func encodeMsgErrorSweep(t *testing.T, marshaledLen int, encode func(*msgp.Write
 	}
 }
 
+// cacheTestCDecoder is the pointer to a T that decodes itself from bytes and from
+// a reader, as the generated msgp code lets item and cachedHeader do.
+type cacheTestCDecoder[T any] interface {
+	*T
+	UnmarshalMsg(bts []byte) ([]byte, error)
+	DecodeMsg(dc *msgp.Reader) error
+}
+
+// cacheTestCRequireLimitExceeded requires both decoders of a T to refuse raw for
+// exceeding a limit of the generated code.
+func cacheTestCRequireLimitExceeded[T any, P cacheTestCDecoder[T]](t *testing.T, raw []byte, msgAndArgs ...any) {
+	t.Helper()
+
+	var out T
+	_, err := P(&out).UnmarshalMsg(raw)
+	require.ErrorIs(t, err, msgp.ErrLimitExceeded, msgAndArgs...)
+
+	var dec T
+	require.ErrorIs(t, P(&dec).DecodeMsg(msgp.NewReader(bytes.NewReader(raw))), msgp.ErrLimitExceeded, msgAndArgs...)
+}
+
+// cacheTestCBytesField returns a map of the one field, holding size zero bytes.
+func cacheTestCBytesField(field string, size int) []byte {
+	var raw []byte
+	raw = msgp.AppendMapHeader(raw, 1)
+	raw = msgp.AppendString(raw, field)
+	return msgp.AppendBytes(raw, make([]byte, size))
+}
+
 func populatedItem() item {
 	return item{
 		headers: []cachedHeader{
@@ -159,12 +188,7 @@ func Test_item_Decode_LimitExceeded(t *testing.T) {
 	raw = msgp.AppendString(raw, "headers")
 	raw = msgp.AppendArrayHeader(raw, 1025)
 
-	var out item
-	_, err := out.UnmarshalMsg(raw)
-	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
-
-	var dec item
-	require.ErrorIs(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(raw))), msgp.ErrLimitExceeded)
+	cacheTestCRequireLimitExceeded[item](t, raw)
 }
 
 func Test_cachedHeader_Roundtrip_Populated(t *testing.T) {
@@ -211,44 +235,37 @@ func Test_cachedHeader_EncodeDecode(t *testing.T) {
 func Test_cachedHeader_Decode_UnknownAndLimits(t *testing.T) {
 	t.Parallel()
 
-	// Unknown field is skipped.
-	var raw []byte
-	raw = msgp.AppendMapHeader(raw, 2)
-	raw = msgp.AppendString(raw, "zz")
-	raw = msgp.AppendString(raw, "ignored")
-	raw = msgp.AppendString(raw, "key")
-	raw = msgp.AppendBytes(raw, []byte("X-Test"))
+	t.Run("unknown field is skipped", func(t *testing.T) {
+		t.Parallel()
 
-	var out cachedHeader
-	_, err := out.UnmarshalMsg(raw)
-	require.NoError(t, err)
-	require.Equal(t, []byte("X-Test"), out.key)
+		var raw []byte
+		raw = msgp.AppendMapHeader(raw, 2)
+		raw = msgp.AppendString(raw, "zz")
+		raw = msgp.AppendString(raw, "ignored")
+		raw = msgp.AppendString(raw, "key")
+		raw = msgp.AppendBytes(raw, []byte("X-Test"))
 
-	var dec cachedHeader
-	require.NoError(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(raw))))
-	require.Equal(t, []byte("X-Test"), dec.key)
+		var out cachedHeader
+		_, err := out.UnmarshalMsg(raw)
+		require.NoError(t, err)
+		require.Equal(t, []byte("X-Test"), out.key)
 
-	// key over the 512-byte limit.
-	var bigKey []byte
-	bigKey = msgp.AppendMapHeader(bigKey, 1)
-	bigKey = msgp.AppendString(bigKey, "key")
-	bigKey = msgp.AppendBytes(bigKey, make([]byte, 513))
-	var k cachedHeader
-	_, err = k.UnmarshalMsg(bigKey)
-	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
-	var kDec cachedHeader
-	require.ErrorIs(t, kDec.DecodeMsg(msgp.NewReader(bytes.NewReader(bigKey))), msgp.ErrLimitExceeded)
+		var dec cachedHeader
+		require.NoError(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(raw))))
+		require.Equal(t, []byte("X-Test"), dec.key)
+	})
 
-	// value over the 16384-byte limit.
-	var bigVal []byte
-	bigVal = msgp.AppendMapHeader(bigVal, 1)
-	bigVal = msgp.AppendString(bigVal, "value")
-	bigVal = msgp.AppendBytes(bigVal, make([]byte, 16385))
-	var vv cachedHeader
-	_, err = vv.UnmarshalMsg(bigVal)
-	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
-	var vvDec cachedHeader
-	require.ErrorIs(t, vvDec.DecodeMsg(msgp.NewReader(bytes.NewReader(bigVal))), msgp.ErrLimitExceeded)
+	t.Run("key over the 512-byte limit", func(t *testing.T) {
+		t.Parallel()
+
+		cacheTestCRequireLimitExceeded[cachedHeader](t, cacheTestCBytesField("key", 513))
+	})
+
+	t.Run("value over the 16384-byte limit", func(t *testing.T) {
+		t.Parallel()
+
+		cacheTestCRequireLimitExceeded[cachedHeader](t, cacheTestCBytesField("value", 16385))
+	})
 }
 
 // Test_item_Decode_FieldLimits covers the per-field ErrLimitExceeded branches
@@ -256,7 +273,7 @@ func Test_cachedHeader_Decode_UnknownAndLimits(t *testing.T) {
 func Test_item_Decode_FieldLimits(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	for _, tc := range []struct {
 		field string
 		size  int
 	}{
@@ -265,19 +282,12 @@ func Test_item_Decode_FieldLimits(t *testing.T) {
 		{"cacheControl", 2049},
 		{"expires", 129},
 		{"etag", 257},
-	}
-	for _, tc := range cases {
-		var raw []byte
-		raw = msgp.AppendMapHeader(raw, 1)
-		raw = msgp.AppendString(raw, tc.field)
-		raw = msgp.AppendBytes(raw, make([]byte, tc.size))
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			t.Parallel()
 
-		var out item
-		_, err := out.UnmarshalMsg(raw)
-		require.ErrorIs(t, err, msgp.ErrLimitExceeded, "field %s", tc.field)
-
-		var dec item
-		require.ErrorIs(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(raw))), msgp.ErrLimitExceeded, "field %s", tc.field)
+			cacheTestCRequireLimitExceeded[item](t, cacheTestCBytesField(tc.field, tc.size), "field %s", tc.field)
+		})
 	}
 }
 
@@ -661,43 +671,15 @@ func Test_Cache_VaryRepeatedFieldLines(t *testing.T) {
 	app.Use(New(Config{Expiration: time.Minute}))
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set("Vary", "X-Tenant")
-		values := c.Request().Header.PeekAll("X-Tenant")
-		parts := make([]string, 0, len(values))
-		for _, v := range values {
-			parts = append(parts, string(v)+";")
-		}
-		return c.SendString("tenant:" + strings.Join(parts, ""))
+		return cacheTestCEchoTenants(c)
 	})
+	wire := cacheTestCWire{t: t, app: app}
 
-	do := func(lines ...string) (body, cacheStatus string) { //nolint:nonamedreturns // names document the pair
-		req := fasthttp.AcquireRequest()
-		defer fasthttp.ReleaseRequest(req)
-		req.Header.SetMethod(fiber.MethodGet)
-		req.SetRequestURI("/")
-		req.SetHost("example.com")
-		for _, l := range lines {
-			req.Header.Add("X-Tenant", l)
-		}
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Init(req, nil, nil)
-		app.Handler()(fctx)
-		return string(fctx.Response.Body()), string(fctx.Response.Header.Peek("X-Cache"))
-	}
-
-	body, status := do("public", "acme-private")
-	require.Equal(t, cacheMiss, status)
-	require.Equal(t, "tenant:public;acme-private;", body)
-
-	body, status = do("public")
-	require.Equal(t, cacheMiss, status, "the single-line request must not hit the two-line entry")
-	require.Equal(t, "tenant:public;", body)
+	cacheTestCRequireReply(t, wire.field("X-Tenant", "public", "acme-private"), cacheMiss, "tenant:public;acme-private;")
+	cacheTestCRequireReply(t, wire.field("X-Tenant", "public"), cacheMiss, "tenant:public;",
+		"the single-line request must not hit the two-line entry")
 
 	// Each variant still caches on its own key.
-	body, status = do("public", "acme-private")
-	require.Equal(t, cacheHit, status)
-	require.Equal(t, "tenant:public;acme-private;", body)
-
-	body, status = do("public")
-	require.Equal(t, cacheHit, status)
-	require.Equal(t, "tenant:public;", body)
+	cacheTestCRequireReply(t, wire.field("X-Tenant", "public", "acme-private"), cacheHit, "tenant:public;acme-private;")
+	cacheTestCRequireReply(t, wire.field("X-Tenant", "public"), cacheHit, "tenant:public;")
 }

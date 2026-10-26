@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -10,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
@@ -225,7 +223,16 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			store := newKeyRecordingStorage()
+			// Every key the middleware reads, in order and without duplicates.
+			var mu sync.Mutex
+			var lookedUp []string
+			store := &hookedStorage{failingCacheStorage: newFailingCacheStorage(), onGet: func(key string) {
+				mu.Lock()
+				defer mu.Unlock()
+				if !slices.Contains(lookedUp, key) {
+					lookedUp = append(lookedUp, key)
+				}
+			}}
 			app := fiber.New()
 			app.Use(New(Config{
 				Storage:            store,
@@ -245,73 +252,11 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 
 			// The body is stored under its own key, which is the entry key plus
 			// the suffix the manager appends.
-			require.Equal(t, tc.want, store.lookedUp())
+			mu.Lock()
+			defer mu.Unlock()
+			require.Equal(t, tc.want, lookedUp)
 		})
 	}
-}
-
-// keyRecordingStorage reports every key it was asked to read, in order and
-// without duplicates, so a test can assert on the keys the middleware built.
-type keyRecordingStorage struct {
-	data map[string][]byte
-	seen []string
-	mu   sync.Mutex
-}
-
-func newKeyRecordingStorage() *keyRecordingStorage {
-	return &keyRecordingStorage{data: make(map[string][]byte)}
-}
-
-func (s *keyRecordingStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
-	return s.Get(key)
-}
-
-func (s *keyRecordingStorage) Get(key string) ([]byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !slices.Contains(s.seen, key) {
-		s.seen = append(s.seen, key)
-	}
-	return s.data[key], nil
-}
-
-func (s *keyRecordingStorage) SetWithContext(_ context.Context, key string, val []byte, exp time.Duration) error {
-	return s.Set(key, val, exp)
-}
-
-func (s *keyRecordingStorage) Set(key string, val []byte, _ time.Duration) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data[key] = val
-	return nil
-}
-
-func (s *keyRecordingStorage) DeleteWithContext(_ context.Context, key string) error {
-	return s.Delete(key)
-}
-
-func (s *keyRecordingStorage) Delete(key string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.data, key)
-	return nil
-}
-
-func (s *keyRecordingStorage) ResetWithContext(context.Context) error { return s.Reset() }
-
-func (s *keyRecordingStorage) Reset() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data = make(map[string][]byte)
-	return nil
-}
-
-func (*keyRecordingStorage) Close() error { return nil }
-
-func (s *keyRecordingStorage) lookedUp() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(s.seen)
 }
 
 // The escaping and bounding below are the reference implementations the key

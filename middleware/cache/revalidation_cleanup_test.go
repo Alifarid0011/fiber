@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -20,7 +18,8 @@ import (
 func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 	t.Parallel()
 
-	for _, external := range []bool{false, true} {
+	for _, kind := range storageKinds {
+		external := kind == "external"
 		for _, directive := range []string{"private", "no-cache", "no-store", "VaryStar"} {
 			for _, scenario := range []string{"success", "absent", "readError", "metadataDeleteError", "bodyDeleteError", "replaced", "plainNoStoreMiss"} {
 				if scenario == "plainNoStoreMiss" && directive != "no-store" {
@@ -29,23 +28,12 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 				if !external && (scenario == "readError" || scenario == "metadataDeleteError" || scenario == "bodyDeleteError") {
 					continue
 				}
-				name := "memory/" + directive + "/" + scenario
-				if external {
-					name = "external/" + directive + "/" + scenario
-				}
-				t.Run(name, func(t *testing.T) {
+				t.Run(kind+"/"+directive+"/"+scenario, func(t *testing.T) {
 					t.Parallel()
 
 					storage := newFailingCacheStorage()
 					clock := newTestClock(time.Now())
-					cfg := Config{
-						Expiration: time.Hour,
-						MaxBytes:   10,
-						clock:      clock.Now,
-						KeyGenerator: func(c fiber.Ctx) string {
-							return c.Path()
-						},
-					}
+					cfg := Config{MaxBytes: 10, clock: clock.Now}
 					if external {
 						cfg.Storage = storage
 					}
@@ -54,8 +42,7 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 					var header fasthttp.RequestHeader
 					header.Set("X-Variant", "a")
 					key := varyKey(baseKey, []string{"x-variant"}, &header, true)
-					app := fiber.New()
-					app.Use(New(cfg))
+					app := cacheTestBPathKeyedApp(&cfg)
 					app.Get("/cached", func(c fiber.Ctx) error {
 						c.Set(fiber.HeaderVary, "X-Variant")
 						c.Set(fiber.HeaderCacheControl, "public, max-age=60")
@@ -65,9 +52,8 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 								if scenario == "absent" {
 									variant = "c" // Evicts a, whose expiry precedes b's.
 								}
-								request := httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody)
-								request.Header.Set("X-Variant", variant)
-								request.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+								request := apptest.Req(fiber.MethodGet, "/cached",
+									apptest.WithHeader("X-Variant", variant), apptest.WithHeader(fiber.HeaderCacheControl, "max-age=0"))
 								response, err := app.Test(request)
 								if err != nil {
 									return err
@@ -103,32 +89,27 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 						return c.SendString("fresh")
 					})
 
-					request := func(variant, action string) (*http.Response, string) {
+					request := func(variant, action string) reply {
 						t.Helper()
-						req := httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody)
-						req.Header.Set("X-Variant", variant)
+						req := apptest.Req(fiber.MethodGet, "/cached", apptest.WithHeader("X-Variant", variant))
 						if action != "" {
 							req.Header.Set("X-Action", action)
 							req.Header.Set(fiber.HeaderCacheControl, "max-age=0")
 						}
-						response := apptest.Do(t, app, req)
-						body := apptest.Body(t, response)
-						require.NoError(t, response.Body.Close())
-						return response, body
+						return doRequest(t, app, req)
 					}
 					for _, variant := range []string{"a", "b"} {
-						response, _ := request(variant, "")
-						require.Equal(t, cacheMiss, response.Header.Get("X-Cache"))
+						require.Equal(t, cacheMiss, request(variant, "").cache)
 						clock.Add(time.Second)
 					}
 					variant := "a"
 					if scenario == "plainNoStoreMiss" {
 						variant = "c"
 					}
-					response, body := request(variant, "cleanup")
-					require.Equal(t, fiber.StatusOK, response.StatusCode)
-					require.Equal(t, "newer", body)
-					require.Equal(t, cacheUnreachable, response.Header.Get("X-Cache"))
+					got := request(variant, "cleanup")
+					require.Equal(t, fiber.StatusOK, got.status)
+					require.Equal(t, "newer", got.body)
+					require.Equal(t, cacheUnreachable, got.cache)
 					preserveManifest := scenario == "replaced" || scenario == "plainNoStoreMiss"
 					if external {
 						storage.mu.Lock()
@@ -137,17 +118,16 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 						storage.mu.Unlock()
 						require.Equal(t, preserveManifest, manifestPresent)
 					}
-					response, body = request("b", "")
-					require.Equal(t, fiber.StatusOK, response.StatusCode)
-					require.Equal(t, "fresh", body)
+					got = request("b", "")
+					require.Equal(t, fiber.StatusOK, got.status)
+					require.Equal(t, "fresh", got.body)
 					wantStatus := cacheMiss
 					if preserveManifest {
 						wantStatus = cacheHit
 					}
-					require.Equal(t, wantStatus, response.Header.Get("X-Cache"))
+					require.Equal(t, wantStatus, got.cache)
 					if scenario == "replaced" {
-						response, _ = request("a", "")
-						require.Equal(t, cacheHit, response.Header.Get("X-Cache"))
+						require.Equal(t, cacheHit, request("a", "").cache)
 					}
 				})
 			}
@@ -182,22 +162,14 @@ func Test_Cache_UncacheableStatusKeepsEntryAndManifest(t *testing.T) {
 		{name: "404 no-store", status: fiber.StatusNotFound, directive: "no-store", purged: true},
 	}
 
-	for _, external := range []bool{false, true} {
+	for _, kind := range storageKinds {
 		for _, reload := range []string{"max-age=0", "no-cache"} {
 			for _, answer := range answers {
-				name := "memory/" + reload + "/" + answer.name
-				if external {
-					name = "external/" + reload + "/" + answer.name
-				}
-				t.Run(name, func(t *testing.T) {
+				t.Run(kind+"/"+reload+"/"+answer.name, func(t *testing.T) {
 					t.Parallel()
 
-					cfg := Config{}
-					if external {
-						cfg.Storage = newFailingCacheStorage()
-					}
 					app := fiber.New()
-					app.Use(New(cfg))
+					app.Use(New(Config{Storage: storageOf(kind)}))
 					app.Get("/cached", func(c fiber.Ctx) error {
 						if c.Get(fiber.HeaderCacheControl) == "" {
 							c.Set(fiber.HeaderVary, "X-Variant")
@@ -214,25 +186,17 @@ func Test_Cache_UncacheableStatusKeepsEntryAndManifest(t *testing.T) {
 						return c.SendStatus(answer.status)
 					})
 
-					request := func(variant, cacheControl string) (int, string) {
+					request := func(variant, cacheControl string) reply {
 						t.Helper()
-						req := httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody)
-						req.Header.Set("X-Variant", variant)
-						if cacheControl != "" {
-							req.Header.Set(fiber.HeaderCacheControl, cacheControl)
-						}
-						response := apptest.Do(t, app, req)
-						require.NoError(t, response.Body.Close())
-						return response.StatusCode, response.Header.Get("X-Cache")
+						return cacheTestCGet(t, app, "/cached", "X-Variant", variant, fiber.HeaderCacheControl, cacheControl)
 					}
 
 					for _, variant := range []string{"a", "b"} {
-						_, cacheStatus := request(variant, "")
-						require.Equal(t, cacheMiss, cacheStatus)
+						require.Equal(t, cacheMiss, request(variant, "").cache)
 					}
-					status, cacheStatus := request("a", reload)
-					require.Equal(t, answer.status, status)
-					require.Equal(t, cacheUnreachable, cacheStatus)
+					got := request("a", reload)
+					require.Equal(t, answer.status, got.status)
+					require.Equal(t, cacheUnreachable, got.cache)
 
 					want := cacheHit
 					if answer.purged {
@@ -240,8 +204,7 @@ func Test_Cache_UncacheableStatusKeepsEntryAndManifest(t *testing.T) {
 					}
 					// Sibling first: a miss on a would store the manifest again.
 					for _, variant := range []string{"b", "a"} {
-						_, cacheStatus = request(variant, "")
-						require.Equal(t, want, cacheStatus)
+						require.Equal(t, want, request(variant, "").cache)
 					}
 				})
 			}
@@ -262,21 +225,13 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			storage := newFailingCacheStorage()
 			probe := &accountingProbe{}
 			key := cacheKeyVersion + "|GET|/a"
-			app := fiber.New()
-			app.Use(New(Config{
-				Storage: storage, MaxBytes: 15, Expiration: time.Hour,
-				accounting: probe.record,
-				KeyGenerator: func(c fiber.Ctx) string {
-					return c.Path()
-				},
-			}))
+			app := cacheTestBPathKeyedApp(&Config{Storage: storage, MaxBytes: 15, accounting: probe.record})
 			app.Get("/:name", func(c fiber.Ctx) error {
 				return c.SendString("0123456789")
 			})
 			request := func(path string, status int) {
 				t.Helper()
-				response := apptest.Expect(t, app, path, status)
-				require.NoError(t, response.Body.Close())
+				apptest.BodyBytes(t, apptest.Expect(t, app, path, status))
 			}
 			request("/a", fiber.StatusOK)
 			storage.mu.Lock()
@@ -286,8 +241,7 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			}
 			storage.mu.Unlock()
 			request("/b", fiber.StatusInternalServerError)
-			require.Equal(t, uint(10), probe.counted())
-			require.Equal(t, 1, probe.nodes())
+			cacheTestBRequireAccounting(t, probe, 10, 1)
 			storage.mu.Lock()
 			require.NotContains(t, storage.data, key)
 			require.Contains(t, storage.data, key+"_body")
@@ -297,8 +251,7 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			storage.mu.RLock()
 			require.NotContains(t, storage.data, key+"_body")
 			storage.mu.RUnlock()
-			require.Equal(t, uint(10), probe.counted())
-			require.Equal(t, 1, probe.nodes())
+			cacheTestBRequireAccounting(t, probe, 10, 1)
 		})
 	}
 }
