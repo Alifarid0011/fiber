@@ -28,44 +28,21 @@ func Test_Fiberlog_SetLevel(t *testing.T) {
 	mockLogger := &defaultLogger{}
 	SetLogger(mockLogger)
 
-	// Test cases
 	testCases := []struct {
-		name     string
-		level    Level
-		expected Level
+		name  string
+		level Level
 	}{
-		{
-			name:     "Test case 1",
-			level:    LevelDebug,
-			expected: LevelDebug,
-		},
-		{
-			name:     "Test case 2",
-			level:    LevelInfo,
-			expected: LevelInfo,
-		},
-		{
-			name:     "Test case 3",
-			level:    LevelWarn,
-			expected: LevelWarn,
-		},
-		{
-			name:     "Test case 4",
-			level:    LevelError,
-			expected: LevelError,
-		},
-		{
-			name:     "Test case 5",
-			level:    LevelFatal,
-			expected: LevelFatal,
-		},
+		{name: "debug", level: LevelDebug},
+		{name: "info", level: LevelInfo},
+		{name: "warn", level: LevelWarn},
+		{name: "error", level: LevelError},
+		{name: "fatal", level: LevelFatal},
 	}
 
-	// Run tests
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			SetLevel(tc.level)
-			require.Equal(t, tc.expected, mockLogger.level)
+			require.Equal(t, tc.level, mockLogger.level)
 		})
 	}
 }

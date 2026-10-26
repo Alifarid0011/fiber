@@ -47,17 +47,15 @@ func buildTestTemplate(t *testing.T, format string, custom map[string]ContextTag
 	return tmpl
 }
 
-func Test_ContextTemplate_ValueTag(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.WithValue(context.Background(), "request_id", "req-42") //nolint:revive,staticcheck // ${value:key} intentionally reads string context keys.
-	tmpl := buildTestTemplate(t, "[${value:request_id}]", nil)
+// executeContextTemplate executes tmpl against ctx and returns what it wrote.
+func executeContextTemplate(t *testing.T, tmpl *logtemplate.Template[any, ContextData], ctx any) string {
+	t.Helper()
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
 	require.NoError(t, tmpl.Execute(buf, ctx, &ContextData{}))
-	require.Equal(t, "[req-42]", buf.String())
+	return buf.String()
 }
 
 type testUserValueContext map[any]any
@@ -66,16 +64,28 @@ func (c testUserValueContext) UserValue(key any) any {
 	return c[key]
 }
 
-func Test_ContextTemplate_ValueTagFromUserValueContext(t *testing.T) {
+func Test_ContextTemplate_ValueTag(t *testing.T) {
 	t.Parallel()
 
-	tmpl := buildTestTemplate(t, "[${value:request_id}]", nil)
+	tests := []struct {
+		ctx  any
+		name string
+	}{
+		{
+			name: "context value",
+			ctx:  context.WithValue(context.Background(), "request_id", "req-42"), //nolint:revive,staticcheck // ${value:key} intentionally reads string context keys.
+		},
+		{name: "user value context", ctx: testUserValueContext{"request_id": "req-42"}},
+	}
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	require.NoError(t, tmpl.Execute(buf, testUserValueContext{"request_id": "req-42"}, &ContextData{}))
-	require.Equal(t, "[req-42]", buf.String())
+			tmpl := buildTestTemplate(t, "[${value:request_id}]", nil)
+			require.Equal(t, "[req-42]", executeContextTemplate(t, tmpl, tt.ctx))
+		})
+	}
 }
 
 func Test_ContextTemplate_ValueTagSanitizesControlChars(t *testing.T) {
@@ -83,18 +93,14 @@ func Test_ContextTemplate_ValueTagSanitizesControlChars(t *testing.T) {
 
 	tmpl := buildTestTemplate(t, "${value:str}|${value:bytes}|${value:struct}", nil)
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
 	type composite struct{ A, B string }
 	ctx := testUserValueContext{
 		"str":    "good\r\nbad",
 		"bytes":  []byte{'a', 0x00, 'b', 0x1B, 'c', '\t', 'd'},
 		"struct": composite{A: "x\ny", B: "z"},
 	}
-	require.NoError(t, tmpl.Execute(buf, ctx, &ContextData{}))
 
-	out := buf.String()
+	out := executeContextTemplate(t, tmpl, ctx)
 	require.NotContains(t, out, "\r")
 	require.NotContains(t, out, "\n")
 	require.NotContains(t, out, "\x00")
@@ -107,16 +113,12 @@ func Test_ContextTemplate_ValueTagWritesSupportedValues(t *testing.T) {
 
 	tmpl := buildTestTemplate(t, "${value:bytes}|${value:string}|${value:number}|${value:missing}", nil)
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
 	ctx := testUserValueContext{
 		"bytes":  []byte("raw"),
 		"string": "text",
 		"number": 42,
 	}
-	require.NoError(t, tmpl.Execute(buf, ctx, &ContextData{}))
-	require.Equal(t, "raw|text|42|", buf.String())
+	require.Equal(t, "raw|text|42|", executeContextTemplate(t, tmpl, ctx))
 }
 
 func Test_ContextTemplate_ValueTagWrapsWriteError(t *testing.T) {
@@ -159,12 +161,8 @@ func Test_ContextTemplate_DefaultTagsRenderEmpty(t *testing.T) {
 	tmpl, err := logtemplate.Build[any, ContextData](format, defaults)
 	require.NoError(t, err)
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	require.NoError(t, tmpl.Execute(buf, context.Background(), &ContextData{}))
 	// Each stub renders empty, so the only bytes left are the "|" separators.
-	require.Len(t, buf.String(), len(defaults))
+	require.Len(t, executeContextTemplate(t, tmpl, context.Background()), len(defaults))
 }
 
 func Test_ContextTemplate_CustomTag(t *testing.T) {
@@ -176,11 +174,7 @@ func Test_ContextTemplate_CustomTag(t *testing.T) {
 		},
 	})
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	require.NoError(t, tmpl.Execute(buf, context.Background(), &ContextData{}))
-	require.Equal(t, "[req-42]", buf.String())
+	require.Equal(t, "[req-42]", executeContextTemplate(t, tmpl, context.Background()))
 }
 
 // Test_SetContextTemplateRejectsReservedValueTag locks in M9 — overriding the
@@ -217,11 +211,7 @@ func Test_SetContextTemplate_RegistersCustomTag(t *testing.T) {
 	tmpl := contextTemplate.Load()
 	require.NotNil(t, tmpl)
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	require.NoError(t, tmpl.Execute(buf, context.Background(), &ContextData{}))
-	require.Equal(t, "[acme]", buf.String())
+	require.Equal(t, "[acme]", executeContextTemplate(t, tmpl, context.Background()))
 }
 
 // Test_RegisterContextTagThenSetFormat runs serially because it mutates the
@@ -239,11 +229,7 @@ func Test_RegisterContextTagThenSetFormat(t *testing.T) {
 	tmpl := contextTemplate.Load()
 	require.NotNil(t, tmpl)
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	require.NoError(t, tmpl.Execute(buf, context.Background(), &ContextData{}))
-	require.Equal(t, "[acme]", buf.String())
+	require.Equal(t, "[acme]", executeContextTemplate(t, tmpl, context.Background()))
 }
 
 // Test_DefaultFormatDisablesContextTemplate runs serially because it mutates

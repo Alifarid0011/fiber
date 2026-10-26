@@ -34,9 +34,7 @@ func Test_GetAndPutToThePool(t *testing.T) {
 func Test_Binders_ErrorPaths(t *testing.T) {
 	t.Run("query binder invalid key", func(t *testing.T) {
 		b := &QueryBinding{}
-		req := fasthttp.AcquireRequest()
-		req.URI().SetQueryString("invalid[%3Dval&name=john")
-		defer fasthttp.ReleaseRequest(req)
+		req := newQueryRequest(t, "invalid[%3Dval&name=john")
 		err := b.Bind(req, &struct{}{})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unmatched brackets")
@@ -44,10 +42,7 @@ func Test_Binders_ErrorPaths(t *testing.T) {
 
 	t.Run("form binder invalid key", func(t *testing.T) {
 		b := &FormBinding{}
-		req := fasthttp.AcquireRequest()
-		req.SetBodyString("invalid[=val")
-		req.Header.SetContentType("application/x-www-form-urlencoded")
-		defer fasthttp.ReleaseRequest(req)
+		req := newFormRequest(t, "invalid[=val")
 		err := b.Bind(req, &struct{}{})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unmatched brackets")
@@ -55,11 +50,66 @@ func Test_Binders_ErrorPaths(t *testing.T) {
 
 	t.Run("form binder bad multipart", func(t *testing.T) {
 		b := &FormBinding{}
-		req := fasthttp.AcquireRequest()
+		req := acquireRequest(t)
 		req.Header.SetContentType(MIMEMultipartForm)
-		defer fasthttp.ReleaseRequest(req)
 		err := b.Bind(req, &struct{}{})
 		require.Error(t, err)
+	})
+}
+
+// resettable is what the name and reset checks need of a binder.
+type resettable interface {
+	Name() string
+	Reset()
+}
+
+// requireNameAndReset requires b to report name, and Reset to clear the
+// splitting flag that points into b.
+func requireNameAndReset(t *testing.T, b resettable, name string, splitting *bool) {
+	t.Helper()
+
+	require.Equal(t, name, b.Name())
+
+	b.Reset()
+	require.False(t, *splitting)
+}
+
+func Test_Binders_NameAndReset(t *testing.T) {
+	t.Parallel()
+
+	t.Run("query", func(t *testing.T) {
+		t.Parallel()
+
+		b := &QueryBinding{EnableSplitting: true}
+		requireNameAndReset(t, b, "query", &b.EnableSplitting)
+	})
+
+	t.Run("form", func(t *testing.T) {
+		t.Parallel()
+
+		b := &FormBinding{EnableSplitting: true}
+		requireNameAndReset(t, b, "form", &b.EnableSplitting)
+	})
+
+	t.Run("header", func(t *testing.T) {
+		t.Parallel()
+
+		b := &HeaderBinding{EnableSplitting: true}
+		requireNameAndReset(t, b, "header", &b.EnableSplitting)
+	})
+
+	t.Run("resp header", func(t *testing.T) {
+		t.Parallel()
+
+		b := &RespHeaderBinding{EnableSplitting: true}
+		requireNameAndReset(t, b, "respHeader", &b.EnableSplitting)
+	})
+
+	t.Run("cookie", func(t *testing.T) {
+		t.Parallel()
+
+		b := &CookieBinding{EnableSplitting: true}
+		requireNameAndReset(t, b, "cookie", &b.EnableSplitting)
 	})
 }
 

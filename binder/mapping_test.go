@@ -1,20 +1,17 @@
 package binder
 
 import (
-	"bytes"
 	"fmt"
 	"maps"
 	"mime/multipart"
 	"reflect"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 
 	"github.com/gofiber/schema"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 func Test_EqualFieldType(t *testing.T) {
@@ -468,12 +465,10 @@ func TestSetParserDecoderConcurrentAccess(t *testing.T) {
 
 func Test_getFieldCache(t *testing.T) {
 	t.Parallel()
-	require.NotNil(t, getFieldCache("header"))
-	require.NotNil(t, getFieldCache("respHeader"))
-	require.NotNil(t, getFieldCache("cookie"))
-	require.NotNil(t, getFieldCache("form"))
-	require.NotNil(t, getFieldCache("uri"))
-	require.NotNil(t, getFieldCache("query"))
+
+	for _, tag := range []string{"header", "respHeader", "cookie", "form", "uri", "query"} {
+		require.NotNil(t, getFieldCache(tag), tag)
+	}
 	require.Panics(t, func() { getFieldCache("unknown") })
 }
 
@@ -897,9 +892,7 @@ func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 	require.Equal(t, bindPairs, bindModeFor(&map[int]string{}), "parse decodes a map without string keys as a struct")
 	require.Equal(t, bindPairs, bindModeFor(nil))
 
-	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-	req.URI().SetQueryString("a=1&b=3&a=2")
+	req := newQueryRequest(t, "a=1&b=3&a=2")
 
 	dst := make(map[string][]string)
 	require.NoError(t, (&QueryBinding{}).Bind(req, &dst))
@@ -907,9 +900,7 @@ func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 
 	// Bind again through the same pools, from another request: the values
 	// are views of their request's buffer, so reusing req would rewrite them.
-	other := fasthttp.AcquireRequest()
-	t.Cleanup(func() { fasthttp.ReleaseRequest(other) })
-	other.URI().SetQueryString("a=overwritten&b=overwritten&a=overwritten")
+	other := newQueryRequest(t, "a=overwritten&b=overwritten&a=overwritten")
 	var into struct {
 		B string   `query:"b"`
 		A []string `query:"a"`
@@ -928,76 +919,26 @@ func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
 	t.Parallel()
 
-	pairs := [][2]string{{"a", "1"}, {"b", "2"}, {"a", "3"}, {"c", ""}, {"b", "4,5"}, {"a", "6"}}
-	encoded := make([]string, 0, len(pairs))
-	for _, p := range pairs {
-		encoded = append(encoded, p[0]+"="+p[1])
-	}
-	query := strings.Join(encoded, "&")
+	const input = "a=1&b=2&a=3&c=&b=4,5&a=6"
 
-	var multipartBody bytes.Buffer
-	mw := multipart.NewWriter(&multipartBody)
-	for _, p := range pairs {
-		require.NoError(t, mw.WriteField(p[0], p[1]))
-	}
-	require.NoError(t, mw.Close())
+	for _, src := range pairSources {
+		t.Run(src.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Not pooled: the bound strings alias the request and are compared after bind returns.
-	binders := []struct {
-		bind func(split bool, out any) error
-		name string
-	}{
-		{name: "query", bind: func(split bool, out any) error {
-			req := &fasthttp.Request{}
-			req.URI().SetQueryString(query)
-			return (&QueryBinding{EnableSplitting: split}).Bind(req, out)
-		}},
-		{name: "form", bind: func(split bool, out any) error {
-			req := &fasthttp.Request{}
-			req.Header.SetContentType("application/x-www-form-urlencoded")
-			req.SetBodyString(query)
-			return (&FormBinding{EnableSplitting: split}).Bind(req, out)
-		}},
-		{name: "multipart", bind: func(split bool, out any) error {
-			req := &fasthttp.Request{}
-			req.Header.SetContentType(mw.FormDataContentType())
-			req.SetBody(multipartBody.Bytes())
-			return (&FormBinding{EnableSplitting: split}).Bind(req, out)
-		}},
-		{name: "header", bind: func(split bool, out any) error {
-			req := &fasthttp.Request{}
-			for _, p := range pairs {
-				req.Header.Add(p[0], p[1])
+			all := make(map[string][]string)
+			require.NoError(t, src.bind(t, input, false, &all))
+			want := map[string]string{"kept": "yes"}
+			for key, values := range all {
+				want[key] = values[len(values)-1]
 			}
-			return (&HeaderBinding{EnableSplitting: split}).Bind(req, out)
-		}},
-		{name: "resp_header", bind: func(split bool, out any) error {
-			resp := &fasthttp.Response{}
-			for _, p := range pairs {
-				resp.Header.Add(p[0], p[1])
-			}
-			return (&RespHeaderBinding{EnableSplitting: split}).Bind(resp, out)
-		}},
-		{name: "cookie", bind: func(split bool, out any) error {
-			req := &fasthttp.Request{}
-			req.Header.Set(fasthttp.HeaderCookie, strings.ReplaceAll(query, "&", "; "))
-			return (&CookieBinding{EnableSplitting: split}).Bind(req, out)
-		}},
-	}
-	for _, b := range binders {
-		all := make(map[string][]string)
-		require.NoError(t, b.bind(false, &all), b.name)
-		want := map[string]string{"kept": "yes"}
-		for key, values := range all {
-			want[key] = values[len(values)-1]
-		}
-		require.Contains(t, slices.Collect(maps.Values(want)), "4,5", b.name)
+			require.Contains(t, slices.Collect(maps.Values(want)), "4,5")
 
-		for _, split := range []bool{false, true} {
-			got := map[string]string{"kept": "yes"}
-			require.NoError(t, b.bind(split, &got), "%s split=%v", b.name, split)
-			require.Equal(t, want, got, "%s split=%v", b.name, split)
-		}
+			for _, split := range []bool{false, true} {
+				got := map[string]string{"kept": "yes"}
+				require.NoError(t, src.bind(t, input, split, &got), "split=%v", split)
+				require.Equal(t, want, got, "split=%v", split)
+			}
+		})
 	}
 }
 
@@ -1008,9 +949,7 @@ func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
 func Test_Bind_StringMap_Destinations(t *testing.T) {
 	t.Parallel()
 
-	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-	req.URI().SetQueryString("a=1&a=2&b=3")
+	req := newQueryRequest(t, "a=1&a=2&b=3")
 	b := &QueryBinding{}
 	want := map[string]string{"a": "2", "b": "3"}
 

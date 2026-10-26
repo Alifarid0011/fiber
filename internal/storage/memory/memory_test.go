@@ -11,6 +11,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// requireKeys requires store to hold exactly n keys; none at all reads as nil.
+func requireKeys(t *testing.T, store *Storage, n int) {
+	t.Helper()
+
+	keys, err := store.Keys()
+	require.NoError(t, err)
+	if n == 0 {
+		require.Nil(t, keys)
+		return
+	}
+	require.Len(t, keys, n)
+}
+
+// requireValue requires store to hold want under key.
+func requireValue(t *testing.T, store *Storage, key string, want []byte) {
+	t.Helper()
+
+	got, err := store.Get(key)
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+}
+
+// requireMissing requires store to hold no value under key.
+func requireMissing(t *testing.T, store *Storage, key string) {
+	t.Helper()
+
+	got, err := store.Get(key)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+// canceledContext returns a context that is already canceled.
+func canceledContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}
+
 func Test_Storage_Memory_Set(t *testing.T) {
 	t.Parallel()
 	var (
@@ -22,28 +60,72 @@ func Test_Storage_Memory_Set(t *testing.T) {
 	err := testStore.Set(key, val, 0)
 	require.NoError(t, err)
 
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Len(t, keys, 1)
+	requireKeys(t, testStore, 1)
 }
 
-func Test_Storage_Memory_SetWithContext(t *testing.T) {
+// Test_Storage_Memory_CanceledContext pins that a WithContext variant called
+// with an already canceled context fails with the context's error and leaves
+// the store as it found it.
+func Test_Storage_Memory_CanceledContext(t *testing.T) {
 	t.Parallel()
-	var (
-		testStore = New()
-		key       = "john"
-		val       = []byte("doe")
-	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	val := []byte("doe")
 
-	err := testStore.SetWithContext(ctx, key, val, 0)
-	require.ErrorIs(t, err, context.Canceled)
+	tests := []struct {
+		call func(ctx context.Context, store *Storage) ([]byte, error)
+		name string
+		// seeded are the keys stored, with val, before the call.
+		seeded []string
+	}{
+		{
+			name: "SetWithContext",
+			call: func(ctx context.Context, store *Storage) ([]byte, error) {
+				return nil, store.SetWithContext(ctx, "john", val, 0)
+			},
+		},
+		{
+			name:   "GetWithContext",
+			seeded: []string{"john"},
+			call: func(ctx context.Context, store *Storage) ([]byte, error) {
+				return store.GetWithContext(ctx, "john")
+			},
+		},
+		{
+			name:   "DeleteWithContext",
+			seeded: []string{"john"},
+			call: func(ctx context.Context, store *Storage) ([]byte, error) {
+				return nil, store.DeleteWithContext(ctx, "john")
+			},
+		},
+		{
+			name:   "ResetWithContext",
+			seeded: []string{"john1", "john2"},
+			call: func(ctx context.Context, store *Storage) ([]byte, error) {
+				return nil, store.ResetWithContext(ctx)
+			},
+		},
+	}
 
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Nil(t, keys)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			testStore := New()
+			for _, key := range tc.seeded {
+				require.NoError(t, testStore.Set(key, val, 0))
+			}
+			requireKeys(t, testStore, len(tc.seeded))
+
+			result, err := tc.call(canceledContext(), testStore)
+			require.ErrorIs(t, err, context.Canceled)
+			require.Nil(t, result)
+
+			for _, key := range tc.seeded {
+				requireValue(t, testStore, key, val)
+			}
+			requireKeys(t, testStore, len(tc.seeded))
+		})
+	}
 }
 
 func Test_Storage_Memory_Set_Override(t *testing.T) {
@@ -60,9 +142,7 @@ func Test_Storage_Memory_Set_Override(t *testing.T) {
 	err = testStore.Set(key, val, 0)
 	require.NoError(t, err)
 
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Len(t, keys, 1)
+	requireKeys(t, testStore, 1)
 }
 
 func Test_Storage_Memory_Get(t *testing.T) {
@@ -76,36 +156,8 @@ func Test_Storage_Memory_Get(t *testing.T) {
 	err := testStore.Set(key, val, 0)
 	require.NoError(t, err)
 
-	result, err := testStore.Get(key)
-	require.NoError(t, err)
-	require.Equal(t, val, result)
-
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Len(t, keys, 1)
-}
-
-func Test_Storage_Memory_GetWithContext(t *testing.T) {
-	t.Parallel()
-	var (
-		testStore = New()
-		key       = "john"
-		val       = []byte("doe")
-	)
-
-	err := testStore.Set(key, val, 0)
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	result, err := testStore.GetWithContext(ctx, key)
-	require.ErrorIs(t, err, context.Canceled)
-	require.Nil(t, result)
-
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Len(t, keys, 1)
+	requireValue(t, testStore, key, val)
+	requireKeys(t, testStore, 1)
 }
 
 func Test_Storage_Memory_Set_Expiration(t *testing.T) {
@@ -125,13 +177,8 @@ func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 	// interval + expire + buffer
 	time.Sleep(1500 * time.Millisecond)
 
-	result, err := testStore.Get(key)
-	require.NoError(t, err)
-	require.Empty(t, result)
-
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Nil(t, keys)
+	requireMissing(t, testStore, key)
+	requireKeys(t, testStore, 0)
 }
 
 // setWithinSecond stores key while the cached clock holds still.
@@ -188,9 +235,7 @@ func Test_Storage_Memory_Set_ExpirationRoundsUp(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, []byte("doe"), result, "a positive expiration must not be stored already expired")
 
-			keys, err := testStore.Keys()
-			require.NoError(t, err)
-			require.Len(t, keys, 1)
+			requireKeys(t, testStore, 1)
 		})
 	}
 }
@@ -225,39 +270,25 @@ func Test_Storage_Memory_Set_Long_Expiration_with_Keys(t *testing.T) {
 		exp       = 3 * time.Second
 	)
 
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Nil(t, keys)
+	requireKeys(t, testStore, 0)
 
-	err = testStore.Set(key, val, exp)
+	err := testStore.Set(key, val, exp)
 	require.NoError(t, err)
 
 	time.Sleep(1100 * time.Millisecond)
 
-	keys, err = testStore.Keys()
-	require.NoError(t, err)
-	require.Len(t, keys, 1)
+	requireKeys(t, testStore, 1)
 
 	time.Sleep(4000 * time.Millisecond)
-	result, err := testStore.Get(key)
-	require.NoError(t, err)
-	require.Empty(t, result)
-
-	keys, err = testStore.Keys()
-	require.NoError(t, err)
-	require.Nil(t, keys)
+	requireMissing(t, testStore, key)
+	requireKeys(t, testStore, 0)
 }
 
 func Test_Storage_Memory_Get_NotExist(t *testing.T) {
 	t.Parallel()
 	testStore := New()
-	result, err := testStore.Get("notexist")
-	require.NoError(t, err)
-	require.Empty(t, result)
-
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Nil(t, keys)
+	requireMissing(t, testStore, "notexist")
+	requireKeys(t, testStore, 0)
 }
 
 func Test_Storage_Memory_Delete(t *testing.T) {
@@ -271,46 +302,13 @@ func Test_Storage_Memory_Delete(t *testing.T) {
 	err := testStore.Set(key, val, 0)
 	require.NoError(t, err)
 
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Len(t, keys, 1)
+	requireKeys(t, testStore, 1)
 
 	err = testStore.Delete(key)
 	require.NoError(t, err)
 
-	result, err := testStore.Get(key)
-	require.NoError(t, err)
-	require.Empty(t, result)
-
-	keys, err = testStore.Keys()
-	require.NoError(t, err)
-	require.Nil(t, keys)
-}
-
-func Test_Storage_Memory_DeleteWithContext(t *testing.T) {
-	t.Parallel()
-	var (
-		testStore = New()
-		key       = "john"
-		val       = []byte("doe")
-	)
-
-	err := testStore.Set(key, val, 0)
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err = testStore.DeleteWithContext(ctx, key)
-	require.ErrorIs(t, err, context.Canceled)
-
-	result, err := testStore.Get(key)
-	require.NoError(t, err)
-	require.Equal(t, val, result)
-
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Len(t, keys, 1)
+	requireMissing(t, testStore, key)
+	requireKeys(t, testStore, 0)
 }
 
 func Test_Storage_Memory_Reset(t *testing.T) {
@@ -324,58 +322,14 @@ func Test_Storage_Memory_Reset(t *testing.T) {
 	err = testStore.Set("john2", val, 0)
 	require.NoError(t, err)
 
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Len(t, keys, 2)
+	requireKeys(t, testStore, 2)
 
 	err = testStore.Reset()
 	require.NoError(t, err)
 
-	result, err := testStore.Get("john1")
-	require.NoError(t, err)
-	require.Empty(t, result)
-
-	result, err = testStore.Get("john2")
-	require.NoError(t, err)
-	require.Empty(t, result)
-
-	keys, err = testStore.Keys()
-	require.NoError(t, err)
-	require.Nil(t, keys)
-}
-
-func Test_Storage_Memory_ResetWithContext(t *testing.T) {
-	t.Parallel()
-	testStore := New()
-	val := []byte("doe")
-
-	err := testStore.Set("john1", val, 0)
-	require.NoError(t, err)
-
-	err = testStore.Set("john2", val, 0)
-	require.NoError(t, err)
-
-	keys, err := testStore.Keys()
-	require.NoError(t, err)
-	require.Len(t, keys, 2)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err = testStore.ResetWithContext(ctx)
-	require.ErrorIs(t, err, context.Canceled)
-
-	result, err := testStore.Get("john1")
-	require.NoError(t, err)
-	require.Equal(t, val, result)
-
-	result, err = testStore.Get("john2")
-	require.NoError(t, err)
-	require.Equal(t, val, result)
-
-	keys, err = testStore.Keys()
-	require.NoError(t, err)
-	require.Len(t, keys, 2)
+	requireMissing(t, testStore, "john1")
+	requireMissing(t, testStore, "john2")
+	requireKeys(t, testStore, 0)
 }
 
 func Test_Storage_Memory_Close(t *testing.T) {

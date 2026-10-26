@@ -56,44 +56,34 @@ func expectCallerOutput(t *testing.T, w *byteSliceWriter, withContextLine, infoL
 // Test_WithContextCaller runs serially because it mutates the package-global
 // logger and output to verify caller attribution.
 func Test_WithContextCaller(t *testing.T) {
-	t.Cleanup(initDefaultLogger)
-
-	logger = &defaultLogger{
-		stdlog: log.New(os.Stderr, "", log.Lshortfile),
-		depth:  4,
+	tests := []struct {
+		ctx  any
+		name string
+	}{
+		{name: "context", ctx: context.TODO()},
+		{name: "nil context", ctx: nil},
 	}
 
-	var w byteSliceWriter
-	SetOutput(&w)
-	ctx := context.TODO()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Cleanup(initDefaultLogger)
 
-	withContextLine := callSiteLine(t) + 1
-	WithContext(ctx).Info("")
-	infoLine := callSiteLine(t) + 1
-	Info("")
+			logger = &defaultLogger{
+				stdlog: log.New(os.Stderr, "", log.Lshortfile),
+				depth:  4,
+			}
 
-	expectCallerOutput(t, &w, withContextLine, infoLine)
-}
+			var w byteSliceWriter
+			SetOutput(&w)
 
-// Test_WithContextNilCaller runs serially because it mutates the package-global
-// logger and output to verify caller attribution.
-func Test_WithContextNilCaller(t *testing.T) {
-	t.Cleanup(initDefaultLogger)
+			withContextLine := callSiteLine(t) + 1
+			WithContext(tt.ctx).Info("")
+			infoLine := callSiteLine(t) + 1
+			Info("")
 
-	logger = &defaultLogger{
-		stdlog: log.New(os.Stderr, "", log.Lshortfile),
-		depth:  4,
+			expectCallerOutput(t, &w, withContextLine, infoLine)
+		})
 	}
-
-	var w byteSliceWriter
-	SetOutput(&w)
-
-	withContextLine := callSiteLine(t) + 1
-	WithContext(nil).Info("")
-	infoLine := callSiteLine(t) + 1
-	Info("")
-
-	expectCallerOutput(t, &w, withContextLine, infoLine)
 }
 
 // Test_WithContextRenderError locks in M8: a misconfigured context tag must
@@ -369,42 +359,37 @@ func Test_LogfKeyAndValues(t *testing.T) {
 }
 
 func Test_SetLevel(t *testing.T) {
-	setLogger := &defaultLogger{
-		stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
-		depth:  4,
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		want  string
+		level Level
+	}{
+		{name: "trace", level: LevelTrace, want: "[Trace] "},
+		{name: "debug", level: LevelDebug, want: "[Debug] "},
+		{name: "info", level: LevelInfo, want: "[Info] "},
+		{name: "warn", level: LevelWarn, want: "[Warn] "},
+		{name: "error", level: LevelError, want: "[Error] "},
+		{name: "fatal", level: LevelFatal, want: "[Fatal] "},
+		{name: "panic", level: LevelPanic, want: "[Panic] "},
+		{name: "unknown level", level: 8, want: "[?8] "},
 	}
 
-	setLogger.SetLevel(LevelTrace)
-	require.Equal(t, LevelTrace, setLogger.level)
-	require.Equal(t, LevelTrace.toString(), setLogger.level.toString())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	setLogger.SetLevel(LevelDebug)
-	require.Equal(t, LevelDebug, setLogger.level)
-	require.Equal(t, LevelDebug.toString(), setLogger.level.toString())
+			setLogger := &defaultLogger{
+				stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
+				depth:  4,
+			}
 
-	setLogger.SetLevel(LevelInfo)
-	require.Equal(t, LevelInfo, setLogger.level)
-	require.Equal(t, LevelInfo.toString(), setLogger.level.toString())
-
-	setLogger.SetLevel(LevelWarn)
-	require.Equal(t, LevelWarn, setLogger.level)
-	require.Equal(t, LevelWarn.toString(), setLogger.level.toString())
-
-	setLogger.SetLevel(LevelError)
-	require.Equal(t, LevelError, setLogger.level)
-	require.Equal(t, LevelError.toString(), setLogger.level.toString())
-
-	setLogger.SetLevel(LevelFatal)
-	require.Equal(t, LevelFatal, setLogger.level)
-	require.Equal(t, LevelFatal.toString(), setLogger.level.toString())
-
-	setLogger.SetLevel(LevelPanic)
-	require.Equal(t, LevelPanic, setLogger.level)
-	require.Equal(t, LevelPanic.toString(), setLogger.level.toString())
-
-	setLogger.SetLevel(8)
-	require.Equal(t, 8, int(setLogger.level))
-	require.Equal(t, "[?8] ", setLogger.level.toString())
+			setLogger.SetLevel(tt.level)
+			require.Equal(t, tt.level, setLogger.level)
+			require.Equal(t, tt.want, setLogger.level.toString())
+		})
+	}
 }
 
 func Test_Logger(t *testing.T) {
@@ -421,90 +406,44 @@ func Test_Logger(t *testing.T) {
 	require.Equal(t, log.LstdFlags|log.Lshortfile|log.Lmicroseconds, setLogger.stdlog.Flags())
 }
 
-func Test_Debugw(t *testing.T) {
-	initDefaultLogger()
-
-	var w byteSliceWriter
-	SetOutput(&w)
-
-	msg := "debug work"
+// Test_Logw runs serially because initDefaultLogger and SetOutput mutate the
+// package-global logger shared with other log tests.
+func Test_Logw(t *testing.T) {
 	keysAndValues := []any{"key1", "value1", "key2", "value2"}
 
-	Debugw(msg, keysAndValues...)
+	tests := []struct {
+		log    func(msg string, keysAndValues ...any)
+		name   string
+		msg    string
+		want   string
+		panics bool
+	}{
+		{name: "Tracew", log: Tracew, msg: "trace work", want: "[Trace] trace work key1=value1 key2=value2\n"},
+		{name: "Debugw", log: Debugw, msg: "debug work", want: "[Debug] debug work key1=value1 key2=value2\n"},
+		{name: "Infow", log: Infow, msg: "info work", want: "[Info] info work key1=value1 key2=value2\n"},
+		{name: "Warnw", log: Warnw, msg: "warning work", want: "[Warn] warning work key1=value1 key2=value2\n"},
+		{name: "Errorw", log: Errorw, msg: "error work", want: "[Error] error work key1=value1 key2=value2\n"},
+		{name: "Panicw", log: Panicw, msg: "panic work", want: "[Panic] panic work key1=value1 key2=value2\n", panics: true},
+	}
 
-	require.Equal(t, "[Debug] debug work key1=value1 key2=value2\n", string(w.b))
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			initDefaultLogger()
 
-func Test_Infow(t *testing.T) {
-	initDefaultLogger()
+			var w byteSliceWriter
+			SetOutput(&w)
 
-	var w byteSliceWriter
-	SetOutput(&w)
+			if tt.panics {
+				require.Panics(t, func() {
+					tt.log(tt.msg, keysAndValues...)
+				})
+			} else {
+				tt.log(tt.msg, keysAndValues...)
+			}
 
-	msg := "info work"
-	keysAndValues := []any{"key1", "value1", "key2", "value2"}
-
-	Infow(msg, keysAndValues...)
-
-	require.Equal(t, "[Info] info work key1=value1 key2=value2\n", string(w.b))
-}
-
-func Test_Warnw(t *testing.T) {
-	initDefaultLogger()
-
-	var w byteSliceWriter
-	SetOutput(&w)
-
-	msg := "warning work"
-	keysAndValues := []any{"key1", "value1", "key2", "value2"}
-
-	Warnw(msg, keysAndValues...)
-
-	require.Equal(t, "[Warn] warning work key1=value1 key2=value2\n", string(w.b))
-}
-
-func Test_Errorw(t *testing.T) {
-	initDefaultLogger()
-
-	var w byteSliceWriter
-	SetOutput(&w)
-
-	msg := "error work"
-	keysAndValues := []any{"key1", "value1", "key2", "value2"}
-
-	Errorw(msg, keysAndValues...)
-
-	require.Equal(t, "[Error] error work key1=value1 key2=value2\n", string(w.b))
-}
-
-func Test_Panicw(t *testing.T) {
-	initDefaultLogger()
-
-	var w byteSliceWriter
-	SetOutput(&w)
-
-	msg := "panic work"
-	keysAndValues := []any{"key1", "value1", "key2", "value2"}
-
-	require.Panics(t, func() {
-		Panicw(msg, keysAndValues...)
-	})
-
-	require.Equal(t, "[Panic] panic work key1=value1 key2=value2\n", string(w.b))
-}
-
-func Test_Tracew(t *testing.T) {
-	initDefaultLogger()
-
-	var w byteSliceWriter
-	SetOutput(&w)
-
-	msg := "trace work"
-	keysAndValues := []any{"key1", "value1", "key2", "value2"}
-
-	Tracew(msg, keysAndValues...)
-
-	require.Equal(t, "[Trace] trace work key1=value1 key2=value2\n", string(w.b))
+			require.Equal(t, tt.want, string(w.b))
+		})
+	}
 }
 
 type stringKey struct {
@@ -518,39 +457,41 @@ func (k stringKey) String() string {
 func Test_DefaultLoggerNonStringKeys(t *testing.T) {
 	t.Parallel()
 
-	t.Run("Tracew with non-string keys", func(t *testing.T) {
-		t.Parallel()
+	tests := []struct {
+		log  func(l *defaultLogger)
+		name string
+		want string
+	}{
+		{
+			name: "Tracew with non-string keys",
+			log:  func(l *defaultLogger) { l.Tracew("trace", 123, "value", stringKey{value: "alpha"}, 42) },
+			want: "[Trace] trace 123=value key:alpha=42\n",
+		},
+		{
+			name: "Infow with non-string keys",
+			log:  func(l *defaultLogger) { l.Infow("info", 456, "value", stringKey{value: "beta"}, 7) },
+			want: "[Info] info 456=value key:beta=7\n",
+		},
+	}
 
-		var buf bytes.Buffer
-		l := &defaultLogger{
-			stdlog: log.New(&buf, "", 0),
-			level:  LevelTrace,
-			depth:  4,
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		require.NotPanics(t, func() {
-			l.Tracew("trace", 123, "value", stringKey{value: "alpha"}, 42)
+			var buf bytes.Buffer
+			l := &defaultLogger{
+				stdlog: log.New(&buf, "", 0),
+				level:  LevelTrace,
+				depth:  4,
+			}
+
+			require.NotPanics(t, func() {
+				tt.log(l)
+			})
+
+			require.Equal(t, tt.want, buf.String())
 		})
-
-		require.Equal(t, "[Trace] trace 123=value key:alpha=42\n", buf.String())
-	})
-
-	t.Run("Infow with non-string keys", func(t *testing.T) {
-		t.Parallel()
-
-		var buf bytes.Buffer
-		l := &defaultLogger{
-			stdlog: log.New(&buf, "", 0),
-			level:  LevelTrace,
-			depth:  4,
-		}
-
-		require.NotPanics(t, func() {
-			l.Infow("info", 456, "value", stringKey{value: "beta"}, 7)
-		})
-
-		require.Equal(t, "[Info] info 456=value key:beta=7\n", buf.String())
-	})
+	}
 }
 
 func Benchmark_LogfKeyAndValues(b *testing.B) {

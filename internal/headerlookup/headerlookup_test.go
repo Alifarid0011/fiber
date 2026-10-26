@@ -135,27 +135,34 @@ func Test_Combined(t *testing.T) {
 		}
 	})
 
-	t.Run("repeated lines are one value", func(t *testing.T) {
-		t.Parallel()
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			name: "repeated lines are one value",
+			raw:  "GET / HTTP/1.1\r\nHost: e.com\r\nAccept: text/html\r\naccept: application/json\r\n\r\n",
+			want: "text/html, application/json",
+		},
+		{
+			// Both halves join every line they were sent, so a present-and-empty
+			// line is a value of nothing, not an absent line.
+			name: "an empty line among repeated ones keeps its place",
+			raw:  "GET / HTTP/1.1\r\nHost: e.com\r\nAccept:\r\naccept: application/json\r\n\r\n",
+			want: ", application/json",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		for _, normalize := range []bool{true, false} {
-			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
-			readRequest(t, c, "GET / HTTP/1.1\r\nHost: e.com\r\nAccept: text/html\r\naccept: application/json\r\n\r\n")
-			require.Equal(t, "text/html, application/json", Combined(c, "Accept"), "normalize=%v", normalize)
-		}
-	})
-
-	t.Run("an empty line among repeated ones keeps its place", func(t *testing.T) {
-		t.Parallel()
-
-		// Both halves join every line they were sent, so a present-and-empty
-		// line is a value of nothing, not an absent line.
-		for _, normalize := range []bool{true, false} {
-			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
-			readRequest(t, c, "GET / HTTP/1.1\r\nHost: e.com\r\nAccept:\r\naccept: application/json\r\n\r\n")
-			require.Equal(t, ", application/json", Combined(c, "Accept"), "normalize=%v", normalize)
-		}
-	})
+			for _, normalize := range []bool{true, false} {
+				c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+				readRequest(t, c, tc.raw)
+				require.Equal(t, tc.want, Combined(c, "Accept"), "normalize=%v", normalize)
+			}
+		})
+	}
 
 	t.Run("Cookie keeps its own separator", func(t *testing.T) {
 		t.Parallel()

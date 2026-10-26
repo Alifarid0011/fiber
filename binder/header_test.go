@@ -7,48 +7,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func Test_HeaderBinder_Bind(t *testing.T) {
-	t.Parallel()
-
-	b := &HeaderBinding{
-		EnableSplitting: true,
-	}
-	require.Equal(t, "header", b.Name())
-
-	type User struct {
-		Name  string   `header:"Name"`
-		Names []string `header:"Names"`
-		Posts []string `header:"Posts"`
-		Age   int      `header:"Age"`
-	}
-	var user User
-
-	req := fasthttp.AcquireRequest()
-	req.Header.Set("name", "john")
-	req.Header.Set("names", "john,doe")
-	req.Header.Set("age", "42")
-	req.Header.Set("posts", "post1,post2,post3")
-
-	t.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-	})
-
-	err := b.Bind(req, &user)
-
-	require.NoError(t, err)
-	require.Equal(t, "john", user.Name)
-	require.Equal(t, 42, user.Age)
-	require.Len(t, user.Posts, 3)
-	require.Equal(t, "post1", user.Posts[0])
-	require.Equal(t, "post2", user.Posts[1])
-	require.Equal(t, "post3", user.Posts[2])
-	require.Contains(t, user.Names, "john")
-	require.Contains(t, user.Names, "doe")
-
-	b.Reset()
-	require.False(t, b.EnableSplitting)
-}
-
 func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
 
@@ -86,19 +44,6 @@ func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	require.Contains(b, user.Posts, "post3")
 }
 
-func Test_HeaderBinder_Bind_ParseError(t *testing.T) {
-	b := &HeaderBinding{}
-	type User struct {
-		Age int `header:"Age"`
-	}
-	var user User
-	req := fasthttp.AcquireRequest()
-	req.Header.Set("age", "invalid")
-	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-	err := b.Bind(req, &user)
-	require.Error(t, err)
-}
-
 func Test_HeaderBinder_Bind_Splitting_StringMapNotSplit(t *testing.T) {
 	t.Parallel()
 
@@ -108,12 +53,8 @@ func Test_HeaderBinder_Bind_Splitting_StringMapNotSplit(t *testing.T) {
 
 	const userAgent = "Mozilla/5.0 (X11; Linux) AppleWebKit/537.36 (KHTML, like Gecko)"
 
-	req := fasthttp.AcquireRequest()
+	req := acquireRequest(t)
 	req.Header.Set("User-Agent", userAgent)
-
-	t.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-	})
 
 	// A map[string]string keeps one value per key, so nothing is split.
 	stringMap := make(map[string]string)
