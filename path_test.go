@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -245,6 +246,18 @@ func Test_RouteParser_SlashBounds(t *testing.T) {
 	}
 }
 
+// pathTestPairs returns the concatenation of every ordered pair of items, an
+// item paired with itself included.
+func pathTestPairs(items []string) []string {
+	pairs := make([]string, 0, len(items)*len(items))
+	for _, first := range items {
+		for _, second := range items {
+			pairs = append(pairs, first+second)
+		}
+	}
+	return pairs
+}
+
 // Test_Route_Match_SlashBoundsDifferential generatively proves the slash-count
 // quick-reject and the probe compare in Route.match are transparent: for every
 // generated pattern and path, the filtered Route.match must agree with a raw
@@ -262,13 +275,7 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 		"/:a?/fixed", "/:x:y/fixed", "/*/fixed", "/:s<int>/x",
 	}
 	// patterns: every single segment and every ordered pair
-	patterns := make([]string, 0, len(segments)*(len(segments)+1))
-	for _, s1 := range segments {
-		patterns = append(patterns, s1)
-		for _, s2 := range segments {
-			patterns = append(patterns, s1+s2)
-		}
-	}
+	patterns := append(slices.Clone(segments), pathTestPairs(segments)...)
 
 	pieces := []string{
 		"", "/a", "/a/b", "/a-b", "/a.b", "/x/y-z", "/enti/ty-x", "/a/",
@@ -277,15 +284,7 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 		"/verylongconstantsegmentx", "/x/1/z", "/x/1/z/", "/1/a/b/c", "//fixed",
 	}
 	// paths: every ordered pair of pieces (skipping the empty result)
-	paths := make([]string, 0, len(pieces)*len(pieces))
-	for _, p1 := range pieces {
-		for _, p2 := range pieces {
-			if p1+p2 == "" {
-				continue
-			}
-			paths = append(paths, p1+p2)
-		}
-	}
+	paths := slices.DeleteFunc(pathTestPairs(pieces), func(path string) bool { return path == "" })
 
 	for _, pattern := range patterns {
 		parser := parseRoute(pattern, regexp.MustCompile)
@@ -431,26 +430,26 @@ func TestHasPartialMatchBoundary(t *testing.T) {
 
 func Test_Utils_GetTrimmedParam(t *testing.T) {
 	t.Parallel()
-	res := GetTrimmedParam("")
-	require.Empty(t, res)
-	res = GetTrimmedParam("*")
-	require.Equal(t, "*", res)
-	res = GetTrimmedParam(":param")
-	require.Equal(t, "param", res)
-	res = GetTrimmedParam(":param1?")
-	require.Equal(t, "param1", res)
-	res = GetTrimmedParam("noParam")
-	require.Equal(t, "noParam", res)
+	for param, want := range map[string]string{
+		"":         "",
+		"*":        "*",
+		":param":   "param",
+		":param1?": "param1",
+		"noParam":  "noParam",
+	} {
+		require.Equal(t, want, GetTrimmedParam(param), "param %q", param)
+	}
 }
 
 func Test_Utils_RemoveEscapeChar(t *testing.T) {
 	t.Parallel()
-	res := RemoveEscapeChar(":test\\:bla")
-	require.Equal(t, ":test:bla", res)
-	res = RemoveEscapeChar("\\abc")
-	require.Equal(t, "abc", res)
-	res = RemoveEscapeChar("noEscapeChar")
-	require.Equal(t, "noEscapeChar", res)
+	for in, want := range map[string]string{
+		":test\\:bla":  ":test:bla",
+		"\\abc":        "abc",
+		"noEscapeChar": "noEscapeChar",
+	} {
+		require.Equal(t, want, RemoveEscapeChar(in), "in %q", in)
+	}
 }
 
 func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
@@ -1110,45 +1109,41 @@ func Test_RouteParser_Probe(t *testing.T) {
 	require.Equal(t, constProbe{}, parser.probe)
 }
 
+// pathTestRejects asserts that probe rejects every one of paths outright when
+// want is set, and rejects none of them otherwise.
+func pathTestRejects(t *testing.T, probe constProbe, want bool, paths ...string) {
+	t.Helper()
+
+	for _, path := range paths {
+		require.Equal(t, want, probe.rejects(path), "path %q", path)
+	}
+}
+
 // Test_ConstProbe_Rejects pins the probe compare and the paths it rejects outright.
 // go test -race -run Test_ConstProbe_Rejects
 func Test_ConstProbe_Rejects(t *testing.T) {
 	t.Parallel()
 	probe := newConstProbe("/issues/", 7, 1)
 
-	require.False(t, probe.rejects("/repos/a/b/issues/1"))
-	require.False(t, probe.rejects("/repos/a/b/issues/"))
-	require.True(t, probe.rejects("/repos/a/b/pulls/1"))
+	pathTestRejects(t, probe, false, "/repos/a/b/issues/1", "/repos/a/b/issues/")
+	pathTestRejects(t, probe, true, "/repos/a/b/pulls/1")
 	// compared in full
-	require.True(t, probe.rejects("/repos/a/b/issues"))
-	require.True(t, probe.rejects("/repos/a/b/issue"))
+	pathTestRejects(t, probe, true, "/repos/a/b/issues", "/repos/a/b/issue")
 	// too few slashes, or too short for the leading constant
-	require.True(t, probe.rejects("/repos/a/b"))
-	require.True(t, probe.rejects("/repos/a"))
-	require.True(t, probe.rejects("/repos/"))
-	require.True(t, probe.rejects("/repos"))
-	require.True(t, probe.rejects(""))
+	pathTestRejects(t, probe, true, "/repos/a/b", "/repos/a", "/repos/", "/repos", "")
 	// the leading constant's own bytes are not compared here
-	require.False(t, probe.rejects("/xxxxx/a/b/issues/1"))
+	pathTestRejects(t, probe, false, "/xxxxx/a/b/issues/1")
 	// slashes in a later word, in the overlapping tail, and at the end
-	require.False(t, probe.rejects("/repos/abcdefghijklmnop/b/issues/1"))
-	require.False(t, probe.rejects("/repos/abcdefghijklmnop/qrstuvwxyz/issues/"))
-	require.True(t, probe.rejects("/repos/abcdefghijklmnop/qrstuvwxyz"))
-	require.True(t, probe.rejects("/repos/abcdefghijklmnop/qrstuvwxyz/"))
-	require.True(t, probe.rejects("/repos/abcdefghijklmnop/"))
-	require.True(t, probe.rejects("/repos/abcdefghi/"))
-	require.True(t, probe.rejects("/repos/abcdefghi"))
+	pathTestRejects(t, probe, false, "/repos/abcdefghijklmnop/b/issues/1", "/repos/abcdefghijklmnop/qrstuvwxyz/issues/")
+	pathTestRejects(t, probe, true,
+		"/repos/abcdefghijklmnop/qrstuvwxyz", "/repos/abcdefghijklmnop/qrstuvwxyz/", "/repos/abcdefghijklmnop/",
+		"/repos/abcdefghi/", "/repos/abcdefghi")
 
 	// a short probe masks the lanes past it; skip 0 follows the first parameter
 	short := newConstProbe("/x", 3, 0)
-	require.False(t, short.rejects("/a/b/x"))
-	require.False(t, short.rejects("/a/b/xyz/q"))
-	require.True(t, short.rejects("/a/b/y"))
-	require.True(t, short.rejects("/a/b/"))
-	require.True(t, short.rejects("/a/b"))
-	require.True(t, short.rejects("/a/"))
-	require.True(t, short.rejects("/a/bcdefghijklmnop"))
-	require.False(t, short.rejects("/a/bcdefghijklmnop/x"))
+	pathTestRejects(t, short, false, "/a/b/x", "/a/b/xyz/q")
+	pathTestRejects(t, short, true, "/a/b/y", "/a/b/", "/a/b", "/a/", "/a/bcdefghijklmnop")
+	pathTestRejects(t, short, false, "/a/bcdefghijklmnop/x")
 
 	// every parameter and tail length around the word boundaries
 	deep := newConstProbe("/k", 3, 1)
@@ -1274,12 +1269,7 @@ func Test_RouteParser_ConstParamDifferential(t *testing.T) {
 		"/api", "/api/v1", "/api/v1/", "/api/v1/x", "/api/v1/x/y",
 		"/verylongprefix", "/verylongprefix/z", "/VERYLONGPREFIX/z",
 	}
-	paths := make([]string, 0, len(pieces)*len(pieces))
-	for _, p1 := range pieces {
-		for _, p2 := range pieces {
-			paths = append(paths, p1+p2)
-		}
-	}
+	paths := pathTestPairs(pieces)
 
 	for _, pattern := range patterns {
 		parser := parseRoute(pattern, regexp.MustCompile)
