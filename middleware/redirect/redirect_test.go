@@ -1,6 +1,7 @@
 package redirect
 
 import (
+	"cmp"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -14,11 +15,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testApp builds an app running the middleware over rules, with a fall-through
-// route so a request no rule redirects answers 200 "fell through".
-func testApp(rules []Rule, unescape bool) *fiber.App {
+// testApp builds an app running the middleware over cfg, redirecting with 302,
+// and a fall-through route so a request no rule redirects answers 200 "fell
+// through".
+func testApp(cfg Config, unescape bool) *fiber.App {
+	cfg.StatusCode = fiber.StatusFound
+
 	app := fiber.New(fiber.Config{UnescapePath: unescape})
-	app.Use(New(Config{RuleList: rules, StatusCode: fiber.StatusFound}))
+	app.Use(New(cfg))
 	app.Get("/*", func(c fiber.Ctx) error {
 		return c.SendString("fell through")
 	})
@@ -32,38 +36,61 @@ func get(t *testing.T, app *fiber.App, path string) (status int, location string
 	return resp.StatusCode, resp.Header.Get("Location")
 }
 
-// requireWin asserts that one GET for path redirects to want.
-func requireWinMap(t *testing.T, rules map[string]string, path, want string) {
+// redirectTestRequireFound asserts that one GET for path redirects to want.
+func redirectTestRequireFound(t *testing.T, app *fiber.App, path, want string) {
 	t.Helper()
-	app := fiber.New()
-	app.Use(New(Config{Rules: rules, StatusCode: fiber.StatusFound}))
-	app.Get("/*", func(c fiber.Ctx) error {
-		return c.SendString("fell through")
-	})
 	status, location := get(t, app, path)
 	require.Equal(t, fiber.StatusFound, status, "request %q", path)
 	require.Equal(t, want, location, "request %q", path)
 }
 
+// requireWinMap asserts that one GET for path redirects to want, over the deprecated Rules map.
+func requireWinMap(t *testing.T, rules map[string]string, path, want string) {
+	t.Helper()
+	redirectTestRequireFound(t, testApp(Config{Rules: rules}, false), path, want)
+}
+
+// requireWin asserts that one GET for path redirects to want, over a RuleList.
 func requireWin(t *testing.T, rules []Rule, path, want string) {
 	t.Helper()
-	status, location := get(t, testApp(rules, false), path)
-	require.Equal(t, fiber.StatusFound, status, "request %q", path)
-	require.Equal(t, want, location, "request %q", path)
+	redirectTestRequireFound(t, testApp(Config{RuleList: rules}, false), path, want)
 }
 
 // requireRule builds a one-rule app and asserts where the request lands:
 // redirected to want, or fallen through with no Location where want is "".
 func requireRule(t *testing.T, unescape bool, pattern, target, request, want string) {
 	t.Helper()
-	status, location := get(t, testApp([]Rule{{From: pattern, To: target}}, unescape), request)
+	app := testApp(Config{RuleList: []Rule{{From: pattern, To: target}}}, unescape)
 	if want == "" {
+		status, location := get(t, app, request)
 		require.Equal(t, fiber.StatusOK, status, "the rule must not fire on %q", request)
 		require.Empty(t, location)
 		return
 	}
-	require.Equal(t, fiber.StatusFound, status, "request %q", request)
-	require.Equal(t, want, location, "request %q", request)
+	redirectTestRequireFound(t, app, request, want)
+}
+
+// redirectTestCase is one request against a one-rule app, as requireRule takes
+// it: want is the Location it is redirected to, or "" where the rule must not
+// fire.
+type redirectTestCase struct {
+	name, pattern, target, request, want string
+}
+
+// redirectTestRun runs every case as a parallel subtest of its own through
+// requireRule, on an app with UnescapePath set to unescape. A case without a
+// pattern uses the one given, and one without a name is named after its target
+// and request.
+func redirectTestRun(t *testing.T, unescape bool, pattern string, cases []redirectTestCase) {
+	t.Helper()
+
+	for _, tc := range cases {
+		t.Run(cmp.Or(tc.name, tc.target+" "+tc.request), func(t *testing.T) {
+			t.Parallel()
+
+			requireRule(t, unescape, cmp.Or(tc.pattern, pattern), tc.target, tc.request, tc.want)
+		})
+	}
 }
 
 func Test_Redirect(t *testing.T) {
@@ -196,13 +223,7 @@ func Test_Redirect_StartAnchor(t *testing.T) {
 func Test_Redirect_SameOriginTargets(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
-		pattern string
-		target  string
-		request string
-		want    string
-	}{
+	redirectTestRun(t, false, "", []redirectTestCase{
 		{"protocol relative", "/api/*", "/$1", "/api//evil.com", "/evil.com"},
 		{"long slash run", "/redirect/*", "$1", "/redirect///evil.com", "/evil.com"},
 		{"absolute url", "/redirect/*", "$1", "/redirect/https://evil.com", "/https://evil.com"},
@@ -216,28 +237,14 @@ func Test_Redirect_SameOriginTargets(t *testing.T) {
 		// A target naming its own authority is the author's call, so it is left as configured.
 		{"absolute target", "/ext/*", "https://cdn.example.com/$1", "/ext/a", "https://cdn.example.com/a"},
 		{"protocol relative target", "/pr/*", "//cdn.example.com/$1", "/pr/a", "//cdn.example.com/a"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			requireRule(t, false, tc.pattern, tc.target, tc.request, tc.want)
-		})
-	}
+	})
 }
 
 // Test_Redirect_SameOriginTargets_Unescaped covers the same guard once UnescapePath decodes the capture.
 func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
-		pattern string
-		target  string
-		request string
-		want    string
-	}{
+	redirectTestRun(t, true, "", []redirectTestCase{
 		{"leading space", "/r/*", "$1", "/r/%20//evil.com", "/evil.com"},
 		{"leading tab", "/r/*", "$1", "/r/%09//evil.com", "/evil.com"},
 		{"tab before scheme", "/r/*", "$1", "/r/%09https://evil.com", "/https://evil.com"},
@@ -246,15 +253,7 @@ func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 		// A space is percent-encoded rather than removed, so an interior one forms no authority.
 		{"interior space", "/api/*", "/$1", "/api/%20/evil.com", "/ /evil.com"},
 		{"ordinary capture", "/api/*", "/$1", "/api/users", "/users"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			requireRule(t, true, tc.pattern, tc.target, tc.request, tc.want)
-		})
-	}
+	})
 }
 
 // Test_Redirect_TenthCaptureInAuthority pins the guard on a two-digit "$N" token inside the authority.
@@ -277,29 +276,16 @@ func Test_Redirect_TwoDigitCaptures(t *testing.T) {
 func Test_Redirect_ExtraSlashesBeforeTheCapture(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
-		target  string
-		request string
-		want    string // "" means the rule must not fire
-	}{
-		{"three slashes", "///$1", "/go/evil.com", ""},
-		{"four slashes", "////$1", "/go/evil.com", ""},
-		{"slash then backslash", `//\$1`, "/go/evil.com", ""},
-		{"scheme with three slashes", "https:///$1", "/go/evil.com", ""},
-		{"scheme then backslash", `https://\$1`, "/go/evil.com", ""},
+	redirectTestRun(t, false, "/go/*", []redirectTestCase{
+		{name: "three slashes", target: "///$1", request: "/go/evil.com"},
+		{name: "four slashes", target: "////$1", request: "/go/evil.com"},
+		{name: "slash then backslash", target: `//\$1`, request: "/go/evil.com"},
+		{name: "scheme with three slashes", target: "https:///$1", request: "/go/evil.com"},
+		{name: "scheme then backslash", target: `https://\$1`, request: "/go/evil.com"},
 
 		// A host the author wrote after the run is still their choice.
-		{"fixed host after the run", "///static/$1", "/go/x", "///static/x"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			requireRule(t, false, "/go/*", tc.target, tc.request, tc.want)
-		})
-	}
+		{name: "fixed host after the run", target: "///static/$1", request: "/go/x", want: "///static/x"},
+	})
 }
 
 // Test_Redirect_OverlappingRulesAreDeterministic pins that two patterns matching one path resolve the same every run.
@@ -307,16 +293,10 @@ func Test_Redirect_OverlappingRulesAreDeterministic(t *testing.T) {
 	t.Parallel()
 
 	build := func() *fiber.App {
-		app := fiber.New()
-		app.Use(New(Config{
-			RuleList: []Rule{
-				{From: "/cdn/*", To: "/first/$1"},
-				{From: "/cdn/*x", To: "/second/$1"},
-			},
-			StatusCode: fiber.StatusFound,
-		}))
-		app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-		return app
+		return testApp(Config{RuleList: []Rule{
+			{From: "/cdn/*", To: "/first/$1"},
+			{From: "/cdn/*x", To: "/second/$1"},
+		}}, false)
 	}
 
 	resp := apptest.Do(t, build(), "/cdn/ax")
@@ -404,102 +384,89 @@ func Test_SchemeEnd(t *testing.T) {
 	}
 }
 
-func Test_Next(t *testing.T) {
-	// Case 1 : Next function always returns true
-	app := fiber.New()
-	app.Use(New(Config{
-		Next:       func(fiber.Ctx) bool { return true },
-		RuleList:   []Rule{{From: "/default", To: "google.com"}},
-		StatusCode: fiber.StatusMovedPermanently,
-	}))
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+// Test_Redirect_ConfigOutcomes covers what GET /default is answered when the
+// middleware is skipped by Next, has no rules, runs the default config, or has
+// an empty or a valid rule list.
+func Test_Redirect_ConfigOutcomes(t *testing.T) {
+	t.Parallel()
 
-	status, _ := get(t, app, "/default")
-	require.Equal(t, fiber.StatusOK, status)
+	rule := []Rule{{From: "/default", To: "google.com"}}
 
-	// Case 2 : Next function always returns false
-	app = fiber.New()
-	app.Use(New(Config{
-		Next:       func(fiber.Ctx) bool { return false },
-		RuleList:   []Rule{{From: "/default", To: "google.com"}},
-		StatusCode: fiber.StatusMovedPermanently,
-	}))
+	for _, tc := range []struct {
+		name     string
+		location string
+		cfg      []Config // the arguments of New
+		status   int
+		route    bool // a route behind the middleware answers 200
+	}{
+		{
+			name:   "Next always returns true",
+			cfg:    []Config{{Next: func(fiber.Ctx) bool { return true }, RuleList: rule, StatusCode: fiber.StatusMovedPermanently}},
+			route:  true,
+			status: fiber.StatusOK,
+		},
+		{
+			name:     "Next always returns false",
+			cfg:      []Config{{Next: func(fiber.Ctx) bool { return false }, RuleList: rule, StatusCode: fiber.StatusMovedPermanently}},
+			status:   fiber.StatusMovedPermanently,
+			location: "google.com",
+		},
+		{
+			name:   "no rules with default route defined",
+			cfg:    []Config{{StatusCode: fiber.StatusMovedPermanently}},
+			route:  true,
+			status: fiber.StatusOK,
+		},
+		{
+			name:   "no rules and no default route defined",
+			cfg:    []Config{{StatusCode: fiber.StatusMovedPermanently}},
+			status: fiber.StatusNotFound,
+		},
+		{
+			name:   "default config and no default route",
+			status: fiber.StatusNotFound,
+		},
+		{
+			name:   "default config and default route",
+			route:  true,
+			status: fiber.StatusOK,
+		},
+		{
+			name:   "empty rules",
+			cfg:    []Config{{RuleList: []Rule{}, StatusCode: fiber.StatusMovedPermanently}},
+			route:  true,
+			status: fiber.StatusOK,
+		},
+		{
+			name:     "valid regex and well-formed replacement URL",
+			cfg:      []Config{{RuleList: rule, StatusCode: fiber.StatusMovedPermanently}},
+			route:    true,
+			status:   fiber.StatusMovedPermanently,
+			location: "google.com",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	status, location := get(t, app, "/default")
-	require.Equal(t, fiber.StatusMovedPermanently, status)
-	require.Equal(t, "google.com", location)
+			app := fiber.New()
+			app.Use(New(tc.cfg...))
+			if tc.route {
+				app.Use(func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusOK)
+				})
+			}
+
+			status, location := get(t, app, "/default")
+			require.Equal(t, tc.status, status)
+			require.Equal(t, tc.location, location)
+		})
+	}
 }
 
-func Test_NoRules(t *testing.T) {
-	// Case 1: No rules with default route defined
+func Test_RegexRules_InvalidRegexPanics(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
-	app.Use(New(Config{StatusCode: fiber.StatusMovedPermanently}))
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	status, _ := get(t, app, "/default")
-	require.Equal(t, fiber.StatusOK, status)
-
-	// Case 2: No rules and no default route defined
-	app = fiber.New()
-	app.Use(New(Config{StatusCode: fiber.StatusMovedPermanently}))
-
-	status, _ = get(t, app, "/default")
-	require.Equal(t, fiber.StatusNotFound, status)
-}
-
-func Test_DefaultConfig(t *testing.T) {
-	// Case 1: Default config and no default route
-	app := fiber.New()
-	app.Use(New())
-
-	status, _ := get(t, app, "/default")
-	require.Equal(t, fiber.StatusNotFound, status)
-
-	// Case 2: Default config and default route
-	app = fiber.New()
-	app.Use(New())
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	status, _ = get(t, app, "/default")
-	require.Equal(t, fiber.StatusOK, status)
-}
-
-func Test_RegexRules(t *testing.T) {
-	// Case 1: Rules regex is empty
-	app := fiber.New()
-	app.Use(New(Config{
-		RuleList:   []Rule{},
-		StatusCode: fiber.StatusMovedPermanently,
-	}))
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	status, _ := get(t, app, "/default")
-	require.Equal(t, fiber.StatusOK, status)
-
-	// Case 2: Rules regex map contains valid regex and well-formed replacement URLs
-	app = fiber.New()
-	app.Use(New(Config{
-		RuleList:   []Rule{{From: "/default", To: "google.com"}},
-		StatusCode: fiber.StatusMovedPermanently,
-	}))
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	status, location := get(t, app, "/default")
-	require.Equal(t, fiber.StatusMovedPermanently, status)
-	require.Equal(t, "google.com", location)
-
-	// Case 3: Test invalid regex throws panic
-	app = fiber.New()
 	require.Panics(t, func() {
 		app.Use(New(Config{
 			RuleList:   []Rule{{From: "(", To: "google.com"}},
@@ -512,25 +479,15 @@ func Test_RegexRules(t *testing.T) {
 func Test_Redirect_TargetIsReadAsTheClientWillRead(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name    string
-		target  string
-		request string
-	}{
-		{"tab before the host", "https://\t$1", "/r/%2Fevil.com"},
-		{"newline before the host", "https://\n$1", "/r/%2Fevil.com"},
-		{"carriage return before the host", "https://\r$1", "/r/%2Fevil.com"},
-		{"protocol relative", "//\t$1", "/r/%2Fevil.com"},
-		{"tab defeating the slash skip", "https://\t/$1", "/r/evil.com"},
-		{"tab hiding a bracketed capture", "https://\t/[$1::1]", "/r/beef"},
-		{"tab before a bracketed capture", "https://\t[2001:db8::$1]", "/r/8080"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			requireRule(t, true, "/r/*", tc.target, tc.request, "")
-		})
-	}
+	redirectTestRun(t, true, "/r/*", []redirectTestCase{
+		{name: "tab before the host", target: "https://\t$1", request: "/r/%2Fevil.com"},
+		{name: "newline before the host", target: "https://\n$1", request: "/r/%2Fevil.com"},
+		{name: "carriage return before the host", target: "https://\r$1", request: "/r/%2Fevil.com"},
+		{name: "protocol relative", target: "//\t$1", request: "/r/%2Fevil.com"},
+		{name: "tab defeating the slash skip", target: "https://\t/$1", request: "/r/evil.com"},
+		{name: "tab hiding a bracketed capture", target: "https://\t/[$1::1]", request: "/r/beef"},
+		{name: "tab before a bracketed capture", target: "https://\t[2001:db8::$1]", request: "/r/8080"},
+	})
 }
 
 // Test_Redirect_HostTextTheParserDeletes pins that the code points UTS #46 deletes cannot make a target look host-pinned.
@@ -563,73 +520,55 @@ func Test_Redirect_ControlCharacterPinsNoHost(t *testing.T) {
 func Test_Redirect_NumericSuffixPinsNoHost(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct{ target, request string }{
-		{"https://$1.1", "/r/127.0.0"},
-		{"https://$1.0x1", "/r/127.0.0"},
-		{"https://$1.0.0.1", "/r/127"},
-		{"https://$1.0", "/r/127.0.0"},
-	} {
-		t.Run(tc.target, func(t *testing.T) {
-			t.Parallel()
-
-			requireRule(t, false, "/r/*", tc.target, tc.request, "")
-		})
-	}
+	redirectTestRun(t, false, "/r/*", []redirectTestCase{
+		{target: "https://$1.1", request: "/r/127.0.0"},
+		{target: "https://$1.0x1", request: "/r/127.0.0"},
+		{target: "https://$1.0.0.1", request: "/r/127"},
+		{target: "https://$1.0", request: "/r/127.0.0"},
+	})
 }
 
 // Test_Redirect_DotlessTailPinsNoHost covers a literal with no dot, only the tail of a label the capture opens.
 func Test_Redirect_DotlessTailPinsNoHost(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct{ rule, target, request string }{
-		{"/r/*", "https://$1x", "/r/127.0.0"},
-		{"/r/*", "https://$1x", "/r/10.0.0"},
-		{"/r/*", "https://$1cafe", "/r/0x"},
-		{"/r/*", "https://$1beef", "/r/0x"},
+	redirectTestRun(t, false, "/r/*", []redirectTestCase{
+		{target: "https://$1x", request: "/r/127.0.0"},
+		{target: "https://$1x", request: "/r/10.0.0"},
+		{target: "https://$1cafe", request: "/r/0x"},
+		{target: "https://$1beef", request: "/r/0x"},
 		// The head can simply end with a dot, leaving the author's text a bare final label.
-		{"/r/*", "https://$1xyz", "/r/evil."},
-		{"/r/*", "https://$1com", "/r/evil."},
-		{"/r/*", "https://$1io", "/r/evil."},
+		{target: "https://$1xyz", request: "/r/evil."},
+		{target: "https://$1com", request: "/r/evil."},
+		{target: "https://$1io", request: "/r/evil."},
 		// The literal sits between two captures, the one place a literal is open on the left without starting the authority.
-		{"/r/*/*", "https://$1xyz:$2", "/r/evil./8080"},
-		{"/r/*/*", "https://$1cafe:$2", "/r/0x/8080"},
+		{pattern: "/r/*/*", target: "https://$1xyz:$2", request: "/r/evil./8080"},
+		{pattern: "/r/*/*", target: "https://$1cafe:$2", request: "/r/0x/8080"},
 		// Its only dot is trailing, and a trailing dot separates nothing from what precedes it.
-		{"/r/*", "https://$1xyz.", "/r/evil."},
-		{"/r/*", "https://$1com.", "/r/evil."},
+		{target: "https://$1xyz.", request: "/r/evil."},
+		{target: "https://$1com.", request: "/r/evil."},
 		// The address rule only sees these once the port is cut off and the last label taken after the trim.
-		{"/r/*", "https://$110.0.0.1:8080", "/r/0"},
-		{"/r/*", "https://$110.0.0.1.", "/r/0"},
-	} {
-		t.Run(tc.target+" "+tc.request, func(t *testing.T) {
-			t.Parallel()
-
-			requireRule(t, false, tc.rule, tc.target, tc.request, "")
-		})
-	}
+		{target: "https://$110.0.0.1:8080", request: "/r/0"},
+		{target: "https://$110.0.0.1.", request: "/r/0"},
+	})
 }
 
 // Test_Redirect_CarriesQueryOntoTargetsOwnQuery pins how the request's query joins a target's own query or fragment.
 func Test_Redirect_CarriesQueryOntoTargetsOwnQuery(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct{ target, request, want string }{
-		{"/new?from=old", "/old?bar=2", "/new?from=old&bar=2"},
-		{"/new#frag", "/old?bar=2", "/new?bar=2#frag"},
-		{"/new?from=old#frag", "/old?bar=2", "/new?from=old&bar=2#frag"},
-		{"https://cdn.example.com/p?a=1", "/old?b=2", "https://cdn.example.com/p?a=1&b=2"},
+	redirectTestRun(t, false, "/old", []redirectTestCase{
+		{target: "/new?from=old", request: "/old?bar=2", want: "/new?from=old&bar=2"},
+		{target: "/new#frag", request: "/old?bar=2", want: "/new?bar=2#frag"},
+		{target: "/new?from=old#frag", request: "/old?bar=2", want: "/new?from=old&bar=2#frag"},
+		{target: "https://cdn.example.com/p?a=1", request: "/old?b=2", want: "https://cdn.example.com/p?a=1&b=2"},
 
 		// Unchanged where there was nothing to merge.
-		{"/new", "/old?bar=2", "/new?bar=2"},
-		{"/new?from=old", "/old", "/new?from=old"},
-		{"/new#frag", "/old", "/new#frag"},
-		{"/new", "/old", "/new"},
-	} {
-		t.Run(tc.target+" "+tc.request, func(t *testing.T) {
-			t.Parallel()
-
-			requireRule(t, false, "/old", tc.target, tc.request, tc.want)
-		})
-	}
+		{target: "/new", request: "/old?bar=2", want: "/new?bar=2"},
+		{target: "/new?from=old", request: "/old", want: "/new?from=old"},
+		{target: "/new#frag", request: "/old", want: "/new#frag"},
+		{target: "/new", request: "/old", want: "/new"},
+	})
 }
 
 // Test_Redirect_DeprecatedMapHeuristicIsNotExact records what the deprecated
@@ -757,27 +696,14 @@ func Test_Redirect_DeprecatedMapOrderIsBySpecificity(t *testing.T) {
 func Test_Redirect_ThirdSlashUnderNonSpecialScheme(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
-		target  string
-		request string
-		want    string // "" means the rule must not fire
-	}{
-		{"empty authority leaves the capture in the path", "myapp:///$1", "/p/evil.com", "myapp:///evil.com"},
-		{"deeper path under an empty authority", "myapp:///x/$1", "/p/evil.com", "myapp:///x/evil.com"},
+	redirectTestRun(t, true, "/p/*", []redirectTestCase{
+		{name: "empty authority leaves the capture in the path", target: "myapp:///$1", request: "/p/evil.com", want: "myapp:///evil.com"},
+		{name: "deeper path under an empty authority", target: "myapp:///x/$1", request: "/p/evil.com", want: "myapp:///x/evil.com"},
 
 		// A special scheme skips them, so the capture is the host and the rule still hands the destination away.
-		{"special scheme still skips them", "https:///$1", "/p/evil.com", ""},
-		{"two slashes still open an authority", "myapp://$1", "/p/evil.com", ""},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			requireRule(t, true, "/p/*", tc.target, tc.request, tc.want)
-		})
-	}
+		{name: "special scheme still skips them", target: "https:///$1", request: "/p/evil.com"},
+		{name: "two slashes still open an authority", target: "myapp://$1", request: "/p/evil.com"},
+	})
 }
 
 // Test_Redirect_FileAuthorityOpensOnBackslashes covers "file:/$1", where a captured "\evil.com/share" names a host.
@@ -809,7 +735,7 @@ func Test_Redirect_FileAuthorityOpensOnBackslashes(t *testing.T) {
 func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 	t.Parallel()
 
-	app := testApp([]Rule{{From: "/a|/b", To: "/moved"}}, false)
+	app := testApp(Config{RuleList: []Rule{{From: "/a|/b", To: "/moved"}}}, false)
 	for _, tc := range []struct {
 		request string
 		want    int
@@ -886,25 +812,12 @@ func Test_Redirect_BareFileSchemeIsAPath(t *testing.T) {
 func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
-		target  string
-		request string
-		want    string // "" means the rule must not fire
-	}{
-		{"local path composes", "file:///$1", "/p/tmp/report", "file:///tmp/report"},
-		{"deeper local path", "file:///var/$1", "/p/log", "file:///var/log"},
+	redirectTestRun(t, true, "/p/*", []redirectTestCase{
+		{name: "local path composes", target: "file:///$1", request: "/p/tmp/report", want: "file:///tmp/report"},
+		{name: "deeper local path", target: "file:///var/$1", request: "/p/log", want: "file:///var/log"},
 		// Two slashes still open an authority, so the capture is the host there.
-		{"capture as the file host", "file://$1/x", "/p/evil.com", ""},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			requireRule(t, true, "/p/*", tc.target, tc.request, tc.want)
-		})
-	}
+		{name: "capture as the file host", target: "file://$1/x", request: "/p/evil.com"},
+	})
 }
 
 // Test_Redirect_LiteralBracesHideNoRun covers "{x*}", whose braces bound no repetition and hide no run.
@@ -1184,12 +1097,7 @@ func Test_Redirect_CaptureInAuthorityIsRefused(t *testing.T) {
 func Test_Redirect_CaptureOutsideAuthorityStillRedirects(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
-		target  string
-		request string
-		want    string
-	}{
+	redirectTestRun(t, false, "/r/*", []redirectTestCase{
 		{name: "path", target: "https://cdn.example.com/$1", request: "/r/a/b", want: "https://cdn.example.com/a/b"},
 		{name: "path under a port", target: "https://cdn.example.com:8080/$1", request: "/r/x", want: "https://cdn.example.com:8080/x"},
 		{name: "query", target: "https://cdn.example.com/?q=$1", request: "/r/x", want: "https://cdn.example.com/?q=x"},
@@ -1197,13 +1105,5 @@ func Test_Redirect_CaptureOutsideAuthorityStillRedirects(t *testing.T) {
 		{name: "userinfo pinned, path captured", target: "https://user@cdn.example.com/$1", request: "/r/x", want: "https://user@cdn.example.com/x"},
 		{name: "relative target", target: "/new/$1", request: "/r/x", want: "/new/x"},
 		{name: "no capture at all", target: "https://cdn.example.com/fixed", request: "/r/x", want: "https://cdn.example.com/fixed"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			requireRule(t, false, "/r/*", tc.target, tc.request, tc.want)
-		})
-	}
+	})
 }

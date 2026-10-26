@@ -47,15 +47,13 @@ func Test_RequestID_InvalidHeaderValue(t *testing.T) {
 	require.Equal(t, "clean-generated-id", rid)
 }
 
-func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
-	t.Parallel()
+// requestidTestID serves one request through an app whose middleware draws its
+// IDs from generate and returns the X-Request-ID it answers with.
+func requestidTestID(t *testing.T, generate func() string) string {
+	t.Helper()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Generator: func() string {
-			return "bad\r\nid"
-		},
-	}))
+	app.Use(New(Config{Generator: generate}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -63,7 +61,16 @@ func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
 
 	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 
-	rid := resp.Header.Get(fiber.HeaderXRequestID)
+	return resp.Header.Get(fiber.HeaderXRequestID)
+}
+
+func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
+	t.Parallel()
+
+	rid := requestidTestID(t, func() string {
+		return "bad\r\nid"
+	})
+
 	require.NotEmpty(t, rid)
 	require.NotContains(t, rid, "\r")
 	require.NotContains(t, rid, "\n")
@@ -73,20 +80,10 @@ func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
 func Test_RequestID_GeneratorAlwaysInvalid(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Generator: func() string {
-			return "invalid\x00id" // Always invalid due to null byte
-		},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
+	rid := requestidTestID(t, func() string {
+		return "invalid\x00id" // Always invalid due to null byte
 	})
 
-	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
-
-	rid := resp.Header.Get(fiber.HeaderXRequestID)
 	require.NotEmpty(t, rid)
 	require.Len(t, rid, 43, "Should fall back to SecureToken after 3 invalid attempts")
 }
@@ -94,20 +91,10 @@ func Test_RequestID_GeneratorAlwaysInvalid(t *testing.T) {
 func Test_RequestID_CustomGenerator(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Generator: func() string {
-			return "custom-valid-id"
-		},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
+	rid := requestidTestID(t, func() string {
+		return "custom-valid-id"
 	})
 
-	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
-
-	rid := resp.Header.Get(fiber.HeaderXRequestID)
 	require.Equal(t, "custom-valid-id", rid)
 }
 
