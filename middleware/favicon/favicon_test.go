@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"math"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,145 +36,95 @@ func Test_Middleware_Favicon(t *testing.T) {
 	require.Equal(t, "GET, HEAD, OPTIONS", resp.Header.Get(fiber.HeaderAllow))
 }
 
-// go test -run Test_Middleware_Favicon_Not_Found
-func Test_Middleware_Favicon_Not_Found(t *testing.T) {
+// go test -run Test_Middleware_Favicon_Panics
+func Test_Middleware_Favicon_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if err := recover(); err == nil {
-			t.Error("should catch panic")
-			return
-		}
-	}()
-
-	fiber.New().Use(New(Config{
-		File: "non-exist.ico",
-	}))
-}
-
-// go test -run Test_Middleware_Favicon_MaxBytes
-func Test_Middleware_Favicon_MaxBytes(t *testing.T) {
-	t.Parallel()
-	defer func() {
-		if err := recover(); err == nil {
-			t.Error("should catch panic")
-		}
-	}()
 
 	dir := t.TempDir()
-	path := dir + "/favicon.ico"
-	err := os.WriteFile(path, bytes.Repeat([]byte("a"), 11), 0o600)
-	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "favicon.ico"), bytes.Repeat([]byte("a"), 11), 0o600))
 
-	fiber.New().Use(New(Config{
-		File:     path,
-		MaxBytes: 10,
-	}))
+	tests := []struct {
+		name   string
+		config Config
+	}{
+		{name: "file not found", config: Config{File: "non-exist.ico"}},
+		{name: "file larger than MaxBytes", config: Config{File: filepath.Join(dir, "favicon.ico"), MaxBytes: 10}},
+		{name: "file in the FileSystem larger than MaxBytes", config: Config{File: "favicon.ico", FileSystem: os.DirFS(dir), MaxBytes: 10}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Panics(t, func() {
+				fiber.New().Use(New(tc.config))
+			}, "should catch panic")
+		})
+	}
 }
 
-// go test -run Test_Middleware_Favicon_MaxBytes_FileSystem
-func Test_Middleware_Favicon_MaxBytes_FileSystem(t *testing.T) {
+// go test -run Test_Middleware_Favicon_Serves
+func Test_Middleware_Favicon_Serves(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if err := recover(); err == nil {
-			t.Error("should catch panic")
-		}
-	}()
 
-	dir := t.TempDir()
-	path := dir + "/favicon.ico"
-	err := os.WriteFile(path, bytes.Repeat([]byte("a"), 11), 0o600)
-	require.NoError(t, err)
-
-	fiber.New().Use(New(Config{
-		File:       "favicon.ico",
-		FileSystem: os.DirFS(dir),
-		MaxBytes:   10,
-	}))
-}
-
-// go test -run Test_Middleware_Favicon_Found
-func Test_Middleware_Favicon_Found(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		File: "../../.github/testdata/favicon.ico",
-	}))
-
-	app.Get("/", func(_ fiber.Ctx) error {
-		return nil
-	})
-
-	resp := apptest.Expect(t, app, "/favicon.ico", fiber.StatusOK)
-	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
-	require.Equal(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
-}
-
-// go test -run Test_Custom_Favicon_Url
-func Test_Custom_Favicon_URL(t *testing.T) {
-	app := fiber.New()
-	const customURL = "/favicon.svg"
-	app.Use(New(Config{
-		File: "../../.github/testdata/favicon.ico",
-		URL:  customURL,
-	}))
-
-	app.Get("/", func(_ fiber.Ctx) error {
-		return nil
-	})
-
-	resp := apptest.Expect(t, app, customURL, fiber.StatusOK)
-	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
-}
-
-// go test -run Test_Custom_Favicon_Data
-func Test_Custom_Favicon_Data(t *testing.T) {
 	data, err := os.ReadFile("../../.github/testdata/favicon.ico")
 	require.NoError(t, err)
 
-	app := fiber.New()
+	tests := []struct {
+		name         string
+		target       string
+		cacheControl string // not checked when empty
+		config       Config
+	}{
+		{
+			name:         "file",
+			config:       Config{File: "../../.github/testdata/favicon.ico"},
+			target:       "/favicon.ico",
+			cacheControl: "public, max-age=31536000",
+		},
+		{
+			name:   "custom URL",
+			config: Config{File: "../../.github/testdata/favicon.ico", URL: "/favicon.svg"},
+			target: "/favicon.svg",
+		},
+		{
+			name:         "data",
+			config:       Config{Data: data},
+			target:       "/favicon.ico",
+			cacheControl: "public, max-age=31536000",
+		},
+		{
+			name:         "file system",
+			config:       Config{File: "favicon.ico", FileSystem: os.DirFS("../../.github/testdata")},
+			target:       "/favicon.ico",
+			cacheControl: "public, max-age=31536000",
+		},
+		{
+			name:         "custom cache control",
+			config:       Config{CacheControl: "public, max-age=100", File: "../../.github/testdata/favicon.ico"},
+			target:       "/favicon.ico",
+			cacheControl: "public, max-age=100",
+		},
+	}
 
-	app.Use(New(Config{
-		Data: data,
-	}))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
 
-	app.Get("/", func(_ fiber.Ctx) error {
-		return nil
-	})
+			app.Use(New(tc.config))
 
-	resp := apptest.Expect(t, app, "/favicon.ico", fiber.StatusOK)
-	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
-	require.Equal(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
-}
+			app.Get("/", func(_ fiber.Ctx) error {
+				return nil
+			})
 
-// go test -run Test_Middleware_Favicon_FileSystem
-func Test_Middleware_Favicon_FileSystem(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		File:       "favicon.ico",
-		FileSystem: os.DirFS("../../.github/testdata"),
-	}))
-
-	resp := apptest.Expect(t, app, "/favicon.ico", fiber.StatusOK)
-	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
-	require.Equal(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
-}
-
-// go test -run Test_Middleware_Favicon_CacheControl
-func Test_Middleware_Favicon_CacheControl(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		CacheControl: "public, max-age=100",
-		File:         "../../.github/testdata/favicon.ico",
-	}))
-
-	resp := apptest.Expect(t, app, "/favicon.ico", fiber.StatusOK)
-	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
-	require.Equal(t, "public, max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+			resp := apptest.Expect(t, app, tc.target, fiber.StatusOK)
+			require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+			if tc.cacheControl != "" {
+				require.Equal(t, tc.cacheControl, resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+			}
+		})
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_Favicon -benchmem -count=4

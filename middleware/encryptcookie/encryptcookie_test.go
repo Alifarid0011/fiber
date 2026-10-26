@@ -45,29 +45,27 @@ func Test_Middleware_InvalidKeys(t *testing.T) {
 		{length: 25},
 		{length: 60},
 	}
+	operations := []struct {
+		run  func(name, value, key string) (string, error)
+		name string
+	}{
+		{name: "encrypt", run: EncryptCookie},
+		{name: "decrypt", run: DecryptCookie},
+	}
 
 	for _, tt := range tests {
-		t.Run(strconv.Itoa(tt.length)+"_length_encrypt", func(t *testing.T) {
-			t.Parallel()
-			key := make([]byte, tt.length)
-			_, err := rand.Read(key)
-			require.NoError(t, err)
-			keyString := base64.StdEncoding.EncodeToString(key)
+		for _, op := range operations {
+			t.Run(strconv.Itoa(tt.length)+"_length_"+op.name, func(t *testing.T) {
+				t.Parallel()
+				key := make([]byte, tt.length)
+				_, err := rand.Read(key)
+				require.NoError(t, err)
+				keyString := base64.StdEncoding.EncodeToString(key)
 
-			_, err = EncryptCookie("test", "SomeThing", keyString)
-			require.Error(t, err)
-		})
-
-		t.Run(strconv.Itoa(tt.length)+"_length_decrypt", func(t *testing.T) {
-			t.Parallel()
-			key := make([]byte, tt.length)
-			_, err := rand.Read(key)
-			require.NoError(t, err)
-			keyString := base64.StdEncoding.EncodeToString(key)
-
-			_, err = DecryptCookie("test", "SomeThing", keyString)
-			require.Error(t, err)
-		})
+				_, err = op.run("test", "SomeThing", keyString)
+				require.Error(t, err)
+			})
+		}
 	}
 }
 
@@ -75,26 +73,26 @@ func Test_Middleware_InvalidBase64(t *testing.T) {
 	t.Parallel()
 	invalidBase64 := "invalid-base64-string-!@#"
 
-	t.Run("encryptor", func(t *testing.T) {
-		t.Parallel()
-		_, err := EncryptCookie("test", "SomeText", invalidBase64)
-		require.Error(t, err)
-		require.ErrorContains(t, err, "failed to base64-decode key")
-	})
+	tests := []struct {
+		run   func(name, value, key string) (string, error)
+		name  string
+		value string
+		key   string
+		want  string
+	}{
+		{name: "encryptor", run: EncryptCookie, value: "SomeText", key: invalidBase64, want: "failed to base64-decode key"},
+		{name: "decryptor_key", run: DecryptCookie, value: "SomeText", key: invalidBase64, want: "failed to base64-decode key"},
+		{name: "decryptor_value", run: DecryptCookie, value: invalidBase64, key: GenerateKey(32), want: "failed to base64-decode value"},
+	}
 
-	t.Run("decryptor_key", func(t *testing.T) {
-		t.Parallel()
-		_, err := DecryptCookie("test", "SomeText", invalidBase64)
-		require.Error(t, err)
-		require.ErrorContains(t, err, "failed to base64-decode key")
-	})
-
-	t.Run("decryptor_value", func(t *testing.T) {
-		t.Parallel()
-		_, err := DecryptCookie("test", invalidBase64, GenerateKey(32))
-		require.Error(t, err)
-		require.ErrorContains(t, err, "failed to base64-decode value")
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := tt.run("test", tt.value, tt.key)
+			require.Error(t, err)
+			require.ErrorContains(t, err, tt.want)
+		})
+	}
 }
 
 func Test_DecryptCookie_InvalidEncryptedValue(t *testing.T) {

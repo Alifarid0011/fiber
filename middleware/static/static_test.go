@@ -2,7 +2,6 @@ package static
 
 import (
 	"embed"
-	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +35,17 @@ type discardLogger struct{}
 
 func (discardLogger) Printf(string, ...any) {}
 
+// staticTestExpect requests target from app and requires the status, a
+// Content-Length header and the Content-Type contentType.
+func staticTestExpect[T apptest.Target](t *testing.T, app *fiber.App, target T, status int, contentType string) *http.Response {
+	t.Helper()
+
+	resp := apptest.Expect(t, app, target, status)
+	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
+	require.Equal(t, contentType, resp.Header.Get(fiber.HeaderContentType))
+	return resp
+}
+
 // go test -run Test_Static_Index_Default
 func Test_Static_Index_Default(t *testing.T) {
 	t.Parallel()
@@ -49,19 +59,11 @@ func Test_Static_Index_Default(t *testing.T) {
 		IndexNames: []string{"index.html"},
 	}))
 
-	resp := apptest.Expect(t, app, "/", 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	resp := staticTestExpect(t, app, "/", 200, fiber.MIMETextHTMLCharsetUTF8)
+	require.Contains(t, apptest.Body(t, resp), "Hello, World!")
 
-	body := apptest.BodyBytes(t, resp)
-	require.Contains(t, string(body), "Hello, World!")
-
-	resp = apptest.Expect(t, app, "/not-found", 404)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	body = apptest.BodyBytes(t, resp)
-	require.Equal(t, "Not Found", string(body))
+	resp = staticTestExpect(t, app, "/not-found", 404, fiber.MIMETextPlainCharsetUTF8)
+	require.Equal(t, "Not Found", apptest.Body(t, resp))
 }
 
 // go test -run Test_Static_Index
@@ -71,24 +73,14 @@ func Test_Static_Direct(t *testing.T) {
 
 	app.Get("/*", New("../../.github"))
 
-	resp := apptest.Expect(t, app, "/index.html", 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	resp := staticTestExpect(t, app, "/index.html", 200, fiber.MIMETextHTMLCharsetUTF8)
+	require.Contains(t, apptest.Body(t, resp), "Hello, World!")
 
-	body := apptest.BodyBytes(t, resp)
-	require.Contains(t, string(body), "Hello, World!")
+	staticTestExpect(t, app, apptest.Req(fiber.MethodPost, "/index.html"), 405, fiber.MIMETextPlainCharsetUTF8)
 
-	resp = apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "/index.html"), 405)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	resp = apptest.Expect(t, app, "/testdata/testRoutes.json", 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMEApplicationJSON, resp.Header.Get("Content-Type"))
+	resp = staticTestExpect(t, app, "/testdata/testRoutes.json", 200, fiber.MIMEApplicationJSON)
 	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
-
-	body = apptest.BodyBytes(t, resp)
-	require.Contains(t, string(body), "test_routes")
+	require.Contains(t, apptest.Body(t, resp), "test_routes")
 }
 
 // go test -run Test_Static_MaxAge
@@ -100,9 +92,7 @@ func Test_Static_MaxAge(t *testing.T) {
 		MaxAge: 100,
 	}))
 
-	resp := apptest.Expect(t, app, "/index.html", 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(fiber.HeaderContentType))
+	resp := staticTestExpect(t, app, "/index.html", 200, "text/html; charset=utf-8")
 	require.Equal(t, "public, max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
@@ -177,10 +167,7 @@ func Test_Static_NotFoundHandler(t *testing.T) {
 		},
 	}))
 
-	resp := apptest.Expect(t, app, "/not-found", 404)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
+	resp := staticTestExpect(t, app, "/not-found", 404, fiber.MIMETextPlainCharsetUTF8)
 	require.Equal(t, "Custom 404", apptest.Body(t, resp))
 }
 
@@ -235,19 +222,13 @@ func Test_Static_Group(t *testing.T) {
 
 	grp.Get("/v2*", New("../../.github/index.html"))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/v1/v2", http.NoBody)
-	resp := apptest.Expect(t, app, req, 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	resp := staticTestExpect(t, app, "/v1/v2", 200, fiber.MIMETextHTMLCharsetUTF8)
 	require.Equal(t, "123", resp.Header.Get("Test-Header"))
 
 	grp = app.Group("/v2")
 	grp.Get("/v3*", New("../../.github/index.html"))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/v2/v3/john/doe", http.NoBody)
-	resp = apptest.Expect(t, app, req, 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	staticTestExpect(t, app, "/v2/v3/john/doe", 200, fiber.MIMETextHTMLCharsetUTF8)
 }
 
 func Test_Static_Wildcard(t *testing.T) {
@@ -256,12 +237,8 @@ func Test_Static_Wildcard(t *testing.T) {
 
 	app.Get("*", New("../../.github/index.html"))
 
-	resp := apptest.Expect(t, app, "/yesyes/john/doe", 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	body := apptest.Body(t, resp)
-	require.Contains(t, body, "Test file")
+	resp := staticTestExpect(t, app, "/yesyes/john/doe", 200, fiber.MIMETextHTMLCharsetUTF8)
+	require.Contains(t, apptest.Body(t, resp), "Test file")
 }
 
 func Test_Static_Prefix_Wildcard(t *testing.T) {
@@ -270,18 +247,12 @@ func Test_Static_Prefix_Wildcard(t *testing.T) {
 
 	app.Get("/test*", New("../../.github/index.html"))
 
-	resp := apptest.Expect(t, app, "/test/john/doe", 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	staticTestExpect(t, app, "/test/john/doe", 200, fiber.MIMETextHTMLCharsetUTF8)
 
 	app.Get("/my/nameisjohn*", New("../../.github/index.html"))
 
-	resp = apptest.Expect(t, app, "/my/nameisjohn/no/its/not", 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	body := apptest.Body(t, resp)
-	require.Contains(t, body, "Test file")
+	resp := staticTestExpect(t, app, "/my/nameisjohn/no/its/not", 200, fiber.MIMETextHTMLCharsetUTF8)
+	require.Contains(t, apptest.Body(t, resp), "Test file")
 }
 
 func Test_Static_Prefix(t *testing.T) {
@@ -289,24 +260,15 @@ func Test_Static_Prefix(t *testing.T) {
 	app := fiber.New()
 	app.Get("/john*", New("../../.github"))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/john/index.html", http.NoBody)
-	resp := apptest.Expect(t, app, req, 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	staticTestExpect(t, app, "/john/index.html", 200, fiber.MIMETextHTMLCharsetUTF8)
 
 	app.Get("/prefix*", New("../../.github/testdata"))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/prefix/index.html", http.NoBody)
-	resp = apptest.Expect(t, app, req, 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	staticTestExpect(t, app, "/prefix/index.html", 200, fiber.MIMETextHTMLCharsetUTF8)
 
 	app.Get("/single*", New("../../.github/testdata/testRoutes.json"))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/single", http.NoBody)
-	resp = apptest.Expect(t, app, req, 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMEApplicationJSON, resp.Header.Get(fiber.HeaderContentType))
+	staticTestExpect(t, app, "/single", 200, fiber.MIMEApplicationJSON)
 }
 
 func Test_Static_Trailing_Slash(t *testing.T) {
@@ -314,36 +276,21 @@ func Test_Static_Trailing_Slash(t *testing.T) {
 	app := fiber.New()
 	app.Get("/john*", New("../../.github"))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/john/", http.NoBody)
-	resp := apptest.Expect(t, app, req, 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	staticTestExpect(t, app, "/john/", 200, fiber.MIMETextHTMLCharsetUTF8)
 
 	app.Get("/john_without_index*", New(testCSSDir))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/john_without_index/", http.NoBody)
-	resp = apptest.Expect(t, app, req, 404)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	staticTestExpect(t, app, "/john_without_index/", 404, fiber.MIMETextPlainCharsetUTF8)
 
 	app.Use("/john", New("../../.github"))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/john/", http.NoBody)
-	resp = apptest.Expect(t, app, req, 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	staticTestExpect(t, app, "/john/", 200, fiber.MIMETextHTMLCharsetUTF8)
 
-	req = httptest.NewRequest(fiber.MethodGet, "/john", http.NoBody)
-	resp = apptest.Expect(t, app, req, 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	staticTestExpect(t, app, "/john", 200, fiber.MIMETextHTMLCharsetUTF8)
 
 	app.Use("/john_without_index/", New(testCSSDir))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/john_without_index/", http.NoBody)
-	resp = apptest.Expect(t, app, req, 404)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	staticTestExpect(t, app, "/john_without_index/", 404, fiber.MIMETextPlainCharsetUTF8)
 }
 
 func Test_Static_Next(t *testing.T) {
@@ -360,119 +307,86 @@ func Test_Static_Next(t *testing.T) {
 		return c.SendString("You've skipped app.Static")
 	})
 
-	t.Run("app.Static is skipped: invoking Get handler", func(t *testing.T) {
-		t.Parallel()
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set("X-Custom-Header", "skip")
-		resp := apptest.Expect(t, app, req, 200)
-		require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-		require.Equal(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	tests := []struct {
+		name        string
+		header      string
+		contentType string
+		body        string
+	}{
+		{name: "app.Static is skipped: invoking Get handler", header: "skip", contentType: fiber.MIMETextPlainCharsetUTF8, body: "You've skipped app.Static"},
+		{name: "app.Static is not skipped: serving index.html", header: "don't skip", contentType: fiber.MIMETextHTMLCharsetUTF8, body: "Hello, World!"},
+	}
 
-		body := apptest.Body(t, resp)
-		require.Contains(t, body, "You've skipped app.Static")
-	})
-
-	t.Run("app.Static is not skipped: serving index.html", func(t *testing.T) {
-		t.Parallel()
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set("X-Custom-Header", "don't skip")
-		resp := apptest.Expect(t, app, req, 200)
-		require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-		require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-		body := apptest.Body(t, resp)
-		require.Contains(t, body, "Hello, World!")
-	})
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Custom-Header", tc.header))
+			resp := staticTestExpect(t, app, req, 200, tc.contentType)
+			require.Contains(t, apptest.Body(t, resp), tc.body)
+		})
+	}
 }
 
+// Test_Route_Static_Root serves a directory from the root route, with and
+// without browsing.
 func Test_Route_Static_Root(t *testing.T) {
 	t.Parallel()
 
-	dir := testCSSDir
-	app := fiber.New()
-	app.Get("/*", New(dir, Config{
-		Browse: true,
-	}))
+	tests := []struct {
+		name       string
+		config     []Config
+		rootStatus int
+	}{
+		{name: "browse", config: []Config{{Browse: true}}, rootStatus: 200},
+		{name: "no browse", rootStatus: 404},
+	}
 
-	apptest.Expect(t, app, "/", 200)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	resp := apptest.Expect(t, app, "/style.css", 200)
+			app := fiber.New()
+			app.Get("/*", New(testCSSDir, tc.config...))
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "color")
+			apptest.Expect(t, app, "/", tc.rootStatus)
 
-	app = fiber.New()
-	app.Get("/*", New(dir))
-
-	apptest.Expect(t, app, "/", 404)
-
-	resp = apptest.Expect(t, app, "/style.css", 200)
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "color")
+			resp := apptest.Expect(t, app, "/style.css", 200)
+			require.Contains(t, apptest.Body(t, resp), "color")
+		})
+	}
 }
 
+// Test_Route_Static_HasPrefix serves a directory from a route with a prefix,
+// with and without browsing.
 func Test_Route_Static_HasPrefix(t *testing.T) {
 	t.Parallel()
 
-	dir := testCSSDir
-	app := fiber.New()
-	app.Get("/static*", New(dir, Config{
-		Browse: true,
-	}))
+	tests := []struct {
+		name      string
+		route     string
+		config    []Config
+		dirStatus int
+	}{
+		{name: "browse on a partial wildcard", route: "/static*", config: []Config{{Browse: true}}, dirStatus: 200},
+		{name: "browse on a slash wildcard", route: "/static/*", config: []Config{{Browse: true}}, dirStatus: 200},
+		{name: "no browse", route: "/static*", dirStatus: 404},
+	}
 
-	apptest.Expect(t, app, "/static", 200)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	apptest.Expect(t, app, "/static/", 200)
+			app := fiber.New()
+			app.Get(tc.route, New(testCSSDir, tc.config...))
 
-	resp := apptest.Expect(t, app, "/static/style.css", 200)
+			apptest.Expect(t, app, "/static", tc.dirStatus)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "color")
+			apptest.Expect(t, app, "/static/", tc.dirStatus)
 
-	app = fiber.New()
-	app.Get("/static/*", New(dir, Config{
-		Browse: true,
-	}))
-
-	apptest.Expect(t, app, "/static", 200)
-
-	apptest.Expect(t, app, "/static/", 200)
-
-	resp = apptest.Expect(t, app, "/static/style.css", 200)
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "color")
-
-	app = fiber.New()
-	app.Get("/static*", New(dir))
-
-	apptest.Expect(t, app, "/static", 404)
-
-	apptest.Expect(t, app, "/static/", 404)
-
-	resp = apptest.Expect(t, app, "/static/style.css", 200)
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "color")
-
-	app = fiber.New()
-	app.Get("/static*", New(dir))
-
-	apptest.Expect(t, app, "/static", 404)
-
-	apptest.Expect(t, app, "/static/", 404)
-
-	resp = apptest.Expect(t, app, "/static/style.css", 200)
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "color")
+			resp := apptest.Expect(t, app, "/static/style.css", 200)
+			require.Contains(t, apptest.Body(t, resp), "color")
+		})
+	}
 }
 
 func Test_Static_FS(t *testing.T) {
@@ -489,10 +403,7 @@ func Test_Static_FS(t *testing.T) {
 
 	resp = apptest.Expect(t, app, "/css/style.css", 200)
 	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "color")
+	require.Contains(t, apptest.Body(t, resp), "color")
 }
 
 /*func Test_Static_FS_DifferentRoot(t *testing.T) {
@@ -544,34 +455,22 @@ func Test_Static_FS_Browse(t *testing.T) {
 
 	resp := apptest.Expect(t, app, "/dirfs", 200)
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "style.css")
+	require.Contains(t, apptest.Body(t, resp), "style.css")
 
 	resp = apptest.Expect(t, app, "/dirfs/style.css", 200)
 	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "color")
+	require.Contains(t, apptest.Body(t, resp), "color")
 
 	resp = apptest.Expect(t, app, "/dirfs/test", 200)
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
 	resp = apptest.Expect(t, app, "/dirfs/test/style2.css", 200)
 	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "color")
+	require.Contains(t, apptest.Body(t, resp), "color")
 
 	resp = apptest.Expect(t, app, "/embed", 200)
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "static.go")
+	require.Contains(t, apptest.Body(t, resp), "static.go")
 }
 
 func Test_Static_FS_Prefix_Wildcard(t *testing.T) {
@@ -583,12 +482,8 @@ func Test_Static_FS_Prefix_Wildcard(t *testing.T) {
 		IndexNames: []string{"not_index.html"},
 	}))
 
-	resp := apptest.Expect(t, app, "/test/john/doe", 200)
-	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	body := apptest.Body(t, resp)
-	require.Contains(t, body, "Test file")
+	resp := staticTestExpect(t, app, "/test/john/doe", 200, fiber.MIMETextHTMLCharsetUTF8)
+	require.Contains(t, apptest.Body(t, resp), "Test file")
 }
 
 func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
@@ -934,12 +829,13 @@ func Test_Router_Mount_n_Static(t *testing.T) {
 }
 
 func Test_Static_PathTraversal(t *testing.T) {
+	t.Parallel()
+
 	// Skip this test if running on Windows
 	if runtime.GOOS == winOS {
 		t.Skip("Skipping Windows-specific tests")
 	}
 
-	t.Parallel()
 	app := fiber.New()
 
 	// Serve only from testCSSDir
@@ -950,16 +846,16 @@ func Test_Static_PathTraversal(t *testing.T) {
 	// A valid request: should succeed
 	validResp := apptest.Expect(t, app, "/style.css", 200)
 	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, validResp.Header.Get(fiber.HeaderContentType))
-	validBody, err := io.ReadAll(validResp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(validBody), "color")
+	require.Contains(t, apptest.Body(t, validResp), "color")
 
 	// Helper function to assert that a given path is blocked.
 	// Blocked can mean different status codes depending on what triggered the block.
 	// We'll accept 400 or 404 as "blocked" statuses:
 	// - 404 is the expected blocked response in most cases.
 	// - 400 might occur if fasthttp rejects the request before it's even processed (e.g., null bytes).
-	assertTraversalBlocked := func(path string) {
+	assertTraversalBlocked := func(t *testing.T, path string) {
+		t.Helper()
+
 		resp := apptest.Do(t, app, path)
 
 		status := resp.StatusCode
@@ -978,90 +874,100 @@ func Test_Static_PathTraversal(t *testing.T) {
 		}
 	}
 
-	// Basic attempts to escape the directory
-	assertTraversalBlocked("/index.html..")
-	assertTraversalBlocked("/style.css..")
-	assertTraversalBlocked("/../index.html")
-	assertTraversalBlocked("/../../index.html")
-	assertTraversalBlocked("/../../../index.html")
+	paths := []string{
+		// Basic attempts to escape the directory
+		"/index.html..",
+		"/style.css..",
+		"/../index.html",
+		"/../../index.html",
+		"/../../../index.html",
 
-	// Attempts with double slashes
-	assertTraversalBlocked("//../index.html")
-	assertTraversalBlocked("/..//index.html")
+		// Attempts with double slashes
+		"//../index.html",
+		"/..//index.html",
 
-	// Encoded attempts: `%2e` is '.' and `%2f` is '/'
-	assertTraversalBlocked("/..%2findex.html")        // ../index.html
-	assertTraversalBlocked("/%2e%2e/index.html")      // ../index.html
-	assertTraversalBlocked("/%2e%2e%2f%2e%2e/secret") // ../../../secret
+		// Encoded attempts: `%2e` is '.' and `%2f` is '/'
+		"/..%2findex.html",        // ../index.html
+		"/%2e%2e/index.html",      // ../index.html
+		"/%2e%2e%2f%2e%2e/secret", // ../../../secret
 
-	// Mixed encoded and normal attempts
-	assertTraversalBlocked("/%2e%2e/../index.html")  // ../../index.html
-	assertTraversalBlocked("/..%2f..%2fsecret.json") // ../../../secret.json
+		// Mixed encoded and normal attempts
+		"/%2e%2e/../index.html",  // ../../index.html
+		"/..%2f..%2fsecret.json", // ../../../secret.json
 
-	// Attempts with current directory references
-	assertTraversalBlocked("/./../index.html")
-	assertTraversalBlocked("/././../index.html")
+		// Attempts with current directory references
+		"/./../index.html",
+		"/././../index.html",
 
-	// Trailing slashes
-	assertTraversalBlocked("/../")
-	assertTraversalBlocked("/../../")
+		// Trailing slashes
+		"/../",
+		"/../../",
 
-	// Attempts to load files from an absolute path outside the root
-	assertTraversalBlocked("/" + rootDir + "/../../index.html")
+		// Attempts to load files from an absolute path outside the root
+		"/" + rootDir + "/../../index.html",
 
-	// Additional edge cases:
+		// Additional edge cases:
 
-	// Double-encoded `..`
-	assertTraversalBlocked("/%252e%252e/index.html") // double-encoded .. -> ../index.html after double decoding
+		// Double-encoded `..`
+		"/%252e%252e/index.html", // double-encoded .. -> ../index.html after double decoding
 
-	// Multiple levels of encoding and traversal
-	assertTraversalBlocked("/%2e%2e%2F..%2f%2e%2e%2fWINDOWS")       // multiple ups and unusual pattern
-	assertTraversalBlocked("/%2e%2e%2F..%2f%2e%2e%2f%2e%2e/secret") // more complex chain of ../
+		// Multiple levels of encoding and traversal
+		"/%2e%2e%2F..%2f%2e%2e%2fWINDOWS",       // multiple ups and unusual pattern
+		"/%2e%2e%2F..%2f%2e%2e%2f%2e%2e/secret", // more complex chain of ../
 
-	// Null byte attempts
-	assertTraversalBlocked("/index.html%00.jpg")
-	assertTraversalBlocked("/%00index.html")
-	assertTraversalBlocked("/somefolder%00/something")
-	assertTraversalBlocked("/%00/index.html")
+		// Null byte attempts
+		"/index.html%00.jpg",
+		"/%00index.html",
+		"/somefolder%00/something",
+		"/%00/index.html",
 
-	// Attempts to access known system files
-	assertTraversalBlocked("/etc/passwd")
-	assertTraversalBlocked("/etc/")
+		// Attempts to access known system files
+		"/etc/passwd",
+		"/etc/",
 
-	// Complex mixed attempts with encoded slashes and dots
-	assertTraversalBlocked("/..%2F..%2F..%2F..%2Fetc%2Fpasswd")
+		// Complex mixed attempts with encoded slashes and dots
+		"/..%2F..%2F..%2F..%2Fetc%2Fpasswd",
 
-	// Attempts inside subdirectories with encoded traversal
-	assertTraversalBlocked("/somefolder/%2e%2e%2findex.html")
-	assertTraversalBlocked("/somefolder/%2e%2e%2f%2e%2e%2findex.html")
+		// Attempts inside subdirectories with encoded traversal
+		"/somefolder/%2e%2e%2findex.html",
+		"/somefolder/%2e%2e%2f%2e%2e%2findex.html",
 
-	// Backslash encoded attempts
-	assertTraversalBlocked("/%5C..%5Cindex.html")
-	assertTraversalBlocked("/%5c..%5c..%5cetc%5cpasswd")
-	assertTraversalBlocked("/%255c..%255c..%255cetc%255cpasswd")
-	assertTraversalBlocked("/..%5c..%5cetc%5cpasswd")
-	assertTraversalBlocked("/%2e%2e%5c%2e%2e%5cetc%5cpasswd")
-	assertTraversalBlocked("/%2e%2e%2f%2e%2e%5cetc%5cpasswd")
-	assertTraversalBlocked("/%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd")
-	assertTraversalBlocked("/.%2e/.%2e/etc/passwd")
-	assertTraversalBlocked("/..%2f..%2f..%2f..%2fetc%2fpasswd")
-	assertTraversalBlocked("/%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd")
-	assertTraversalBlocked("/%2e%2e%2f%2e%2e%2fetc%2fshadow")
-	assertTraversalBlocked("/%2e%2e/%2e%2e/var/log/auth.log")
-	assertTraversalBlocked("/..%2f..%2fvar%2flog%2fauth.log")
-	assertTraversalBlocked("/%2e%2e//%2e%2e//etc/passwd")
-	assertTraversalBlocked("/..//..//etc/passwd")
-	assertTraversalBlocked("/%2e%2e%2f%2e%2e%2f%2e%2e%2fproc%2fself%2fenviron")
-	assertTraversalBlocked("/%2e%2e%2f%2e%2e%2f%2e%2e%2froot%2f.ssh%2fauthorized_keys")
+		// Backslash encoded attempts
+		"/%5C..%5Cindex.html",
+		"/%5c..%5c..%5cetc%5cpasswd",
+		"/%255c..%255c..%255cetc%255cpasswd",
+		"/..%5c..%5cetc%5cpasswd",
+		"/%2e%2e%5c%2e%2e%5cetc%5cpasswd",
+		"/%2e%2e%2f%2e%2e%5cetc%5cpasswd",
+		"/%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd",
+		"/.%2e/.%2e/etc/passwd",
+		"/..%2f..%2f..%2f..%2fetc%2fpasswd",
+		"/%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd",
+		"/%2e%2e%2f%2e%2e%2fetc%2fshadow",
+		"/%2e%2e/%2e%2e/var/log/auth.log",
+		"/..%2f..%2fvar%2flog%2fauth.log",
+		"/%2e%2e//%2e%2e//etc/passwd",
+		"/..//..//etc/passwd",
+		"/%2e%2e%2f%2e%2e%2f%2e%2e%2fproc%2fself%2fenviron",
+		"/%2e%2e%2f%2e%2e%2f%2e%2e%2froot%2f.ssh%2fauthorized_keys",
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			assertTraversalBlocked(t, path)
+		})
+	}
 }
 
 func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
+	t.Parallel()
+
 	// Skip this test if not running on Windows
 	if runtime.GOOS != winOS {
 		t.Skip("Skipping Windows-specific tests")
 	}
 
-	t.Parallel()
 	app := fiber.New()
 
 	// Serve only from testCSSDir
@@ -1071,12 +977,13 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 	// A valid request (relative path without backslash):
 	validResp := apptest.Do(t, app, "/style.css")
 	require.Equal(t, 200, validResp.StatusCode, "Status code for valid file on Windows")
-	body, err := io.ReadAll(validResp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "color")
+	body := apptest.Body(t, validResp)
+	require.Contains(t, body, "color")
 
 	// Helper to test blocked responses
-	assertTraversalBlocked := func(path string) {
+	assertTraversalBlocked := func(t *testing.T, path string) {
+		t.Helper()
+
 		resp := apptest.Do(t, app, path)
 
 		// We expect a blocked request to return either 400 or 404
@@ -1090,48 +997,57 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 			require.Contains(t, respBody, "Not Found",
 				"Blocked traversal should have a \"Not Found\" message for %s", path)
 		} else {
-			require.Contains(t, string(body), "Are you a hacker?",
+			require.Contains(t, body, "Are you a hacker?",
 				"Blocked traversal should have a \"Not Found\" message for %s", path)
 		}
 	}
 
-	// Windows-specific traversal attempts
-	// Backslashes are treated as directory separators on Windows.
-	assertTraversalBlocked("/..\\index.html")
-	assertTraversalBlocked("/..\\..\\index.html")
-	assertTraversalBlocked("/..\\..\\..\\Windows\\win.ini")
-	assertTraversalBlocked("/..\\..\\..\\Windows\\System32\\drivers\\etc\\hosts")
-	assertTraversalBlocked("/%5C..%5C..%5CWindows%5Cwin.ini")
-	assertTraversalBlocked("/%255C..%255C..%255CWindows%255Cwin.ini")
-	assertTraversalBlocked("/%5c..%5c..%5cWindows%5cSystem32%5cdrivers%5cetc%5chosts")
-	assertTraversalBlocked("/C:\\Windows\\System32\\cmd.exe")
-	assertTraversalBlocked("/C:%5CWindows%5CSystem32%5Ccmd.exe")
-	assertTraversalBlocked("/%43:%5CWindows%5CSystem32%5Ccmd.exe")
-	assertTraversalBlocked("/%5c%5cserver%5cshare%5csecret.txt")
-	assertTraversalBlocked("//server\\share\\secret.txt")
-	assertTraversalBlocked("//server/share/secret.txt")
-	assertTraversalBlocked("/%2F%2Fserver%2Fshare%2Fsecret.txt")
+	paths := []string{
+		// Windows-specific traversal attempts
+		// Backslashes are treated as directory separators on Windows.
+		"/..\\index.html",
+		"/..\\..\\index.html",
+		"/..\\..\\..\\Windows\\win.ini",
+		"/..\\..\\..\\Windows\\System32\\drivers\\etc\\hosts",
+		"/%5C..%5C..%5CWindows%5Cwin.ini",
+		"/%255C..%255C..%255CWindows%255Cwin.ini",
+		"/%5c..%5c..%5cWindows%5cSystem32%5cdrivers%5cetc%5chosts",
+		"/C:\\Windows\\System32\\cmd.exe",
+		"/C:%5CWindows%5CSystem32%5Ccmd.exe",
+		"/%43:%5CWindows%5CSystem32%5Ccmd.exe",
+		"/%5c%5cserver%5cshare%5csecret.txt",
+		"//server\\share\\secret.txt",
+		"//server/share/secret.txt",
+		"/%2F%2Fserver%2Fshare%2Fsecret.txt",
 
-	// Attempt with a path that might try to reference Windows drives or absolute paths
-	// Note: These are artificial tests to ensure no drive-letter escapes are allowed.
-	assertTraversalBlocked("/C:\\Windows\\System32\\cmd.exe")
-	assertTraversalBlocked("/C:/Windows/System32/cmd.exe")
+		// Attempt with a path that might try to reference Windows drives or absolute paths
+		// Note: These are artificial tests to ensure no drive-letter escapes are allowed.
+		"/C:\\Windows\\System32\\cmd.exe",
+		"/C:/Windows/System32/cmd.exe",
 
-	// Attempt with UNC-like paths (though unlikely in a web context, good to test)
-	assertTraversalBlocked("//server\\share\\secret.txt")
+		// Attempt with UNC-like paths (though unlikely in a web context, good to test)
+		"//server\\share\\secret.txt",
 
-	// Attempt using a mixture of forward and backward slashes
-	assertTraversalBlocked("/..\\..\\/index.html")
+		// Attempt using a mixture of forward and backward slashes
+		"/..\\..\\/index.html",
 
-	// Attempt that includes a null-byte on Windows
-	assertTraversalBlocked("/index.html%00.txt")
+		// Attempt that includes a null-byte on Windows
+		"/index.html%00.txt",
 
-	// Check behavior on an obviously nonexistent and suspicious file
-	assertTraversalBlocked("/\\this\\path\\does\\not\\exist\\..")
+		// Check behavior on an obviously nonexistent and suspicious file
+		"/\\this\\path\\does\\not\\exist\\..",
 
-	// Attempts involving relative traversal and current directory reference
-	assertTraversalBlocked("/.\\../index.html")
-	assertTraversalBlocked("/./..\\index.html")
+		// Attempts involving relative traversal and current directory reference
+		"/.\\../index.html",
+		"/./..\\index.html",
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			assertTraversalBlocked(t, path)
+		})
+	}
 }
 
 // Test_Static_ServesRoutedPath pins that the file server resolves the path
@@ -1153,10 +1069,7 @@ func Test_Static_ServesRoutedPath(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "a{b}.txt"), []byte("BRACES"), 0o600))
 
 	// the file cache is off so the served files are closed when the temp dir is removed
-	mounts := []struct {
-		mount func(app *fiber.App)
-		name  string
-	}{
+	mounts := []staticTestMount{
 		{name: "get wildcard", mount: func(app *fiber.App) { app.Get("/static/*", New(root, Config{CacheDuration: -1})) }},
 		{name: "use prefix", mount: func(app *fiber.App) { app.Use("/static", New(root, Config{CacheDuration: -1})) }},
 		{name: "fs root", mount: func(app *fiber.App) {
@@ -1293,10 +1206,7 @@ func Test_Static_RootMount_EmptyFirstSegment(t *testing.T) {
 	}
 
 	// each of these mounts has the root as its prefix
-	mounts := []struct {
-		mount func(app *fiber.App)
-		name  string
-	}{
+	mounts := []staticTestMount{
 		{name: "use without a path", mount: func(app *fiber.App) { app.Use(New(root, config(nil))) }},
 		{name: "use root", mount: func(app *fiber.App) { app.Use("/", New(root, config(nil))) }},
 		{name: "use wildcard", mount: func(app *fiber.App) { app.Use("/*", New(root, config(nil))) }},
@@ -1547,6 +1457,83 @@ func Test_Static_RootMount_EmptyFirstSegment_NotFoundHandler(t *testing.T) {
 	}
 }
 
+// staticTestMount mounts a file server on an app.
+type staticTestMount struct {
+	mount func(app *fiber.App)
+	name  string
+}
+
+// staticTestFSFileMount mounts the file shell.html of the fs.FS of root on route.
+// The file cache is off so the served files are closed when the temp dir is
+// removed.
+func staticTestFSFileMount(root, route string) func(app *fiber.App) {
+	return func(app *fiber.App) {
+		app.Get(route, New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
+	}
+}
+
+// staticTestFileMounts returns the mounts of a root that is the file shell.html
+// in root, served by route: once by its path and once through an fs.FS.
+func staticTestFileMounts(root, route string) []staticTestMount {
+	return []staticTestMount{
+		{name: "file", mount: func(app *fiber.App) {
+			app.Get(route, New(filepath.Join(root, "shell.html"), Config{CacheDuration: -1, Next: reached}))
+		}},
+		{name: "fs file", mount: staticTestFSFileMount(root, route)},
+	}
+}
+
+// staticTestShellRequest is a request sent as written to a mount of the file
+// shell.html, and the status it is answered with.
+type staticTestShellRequest struct {
+	target          string
+	status          int
+	unescapedStatus int  // the status under UnescapePath, when it is not status
+	unreached       bool // the request does not get to the file server: the router or a guard answers it
+}
+
+// staticTestShell sends every request to every mount, once under each value of
+// UnescapePath. A 200 is the file, a 403 the answer of the guard mounted on
+// "/admin", and any other answer must not reveal the file or the secret behind
+// the guard. A request that is not unreached must get to the file server, so it
+// is the file server that refused it and not the router that never sent it there.
+func staticTestShell(t *testing.T, mounts []staticTestMount, requests []staticTestShellRequest) {
+	t.Helper()
+
+	for _, m := range mounts {
+		for _, unescape := range []bool{false, true} {
+			app := fiber.New(fiber.Config{UnescapePath: unescape})
+			app.Use("/admin", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusForbidden)
+			})
+			m.mount(app)
+			handler := app.Handler()
+
+			for _, tc := range requests {
+				want := tc.status
+				if unescape && tc.unescapedStatus != 0 {
+					want = tc.unescapedStatus
+				}
+
+				resp := serveRaw(handler, fiber.MethodGet, tc.target)
+				body := string(resp.Body())
+				require.Equal(t, want, resp.StatusCode(), "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				require.Equal(t, !tc.unreached, len(resp.Header.Peek(headerReached)) > 0,
+					"%s unescape=%v target=%s: reached the file server", m.name, unescape, tc.target)
+				switch want {
+				case fiber.StatusOK:
+					require.Equal(t, "SHELL", body, "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				case fiber.StatusForbidden:
+					require.Equal(t, "Forbidden", body, "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				default:
+					require.NotContains(t, body, "SHELL", "%s unescape=%v target=%s", m.name, unescape, tc.target)
+					require.NotContains(t, body, "SECRET", "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				}
+			}
+		}
+	}
+}
+
 // Test_Static_RootFile_EmptyFirstSegment pins how a root that is a file treats
 // a path. A root mount answers a path with an empty first segment with 404
 // whatever it serves, so a file root answers "//x" as a directory root does. For
@@ -1564,18 +1551,7 @@ func Test_Static_RootFile_EmptyFirstSegment(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "admin"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "admin", "secret.txt"), []byte("SECRET"), 0o600))
-	file := filepath.Join(root, "shell.html")
-	require.NoError(t, os.WriteFile(file, []byte("SHELL"), 0o600))
-
-	mounts := []struct {
-		mount func(app *fiber.App)
-		name  string
-	}{
-		{name: "file", mount: func(app *fiber.App) { app.Get("/*", New(file, Config{CacheDuration: -1, Next: reached})) }},
-		{name: "fs file", mount: func(app *fiber.App) {
-			app.Get("/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
-		}},
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "shell.html"), []byte("SHELL"), 0o600))
 
 	const (
 		ok      = fiber.StatusOK
@@ -1583,59 +1559,22 @@ func Test_Static_RootFile_EmptyFirstSegment(t *testing.T) {
 		missing = fiber.StatusNotFound
 	)
 
-	requests := []struct {
-		target        string
-		wantStatus    int
-		wantUnescaped int // the status under UnescapePath, when it is not wantStatus
-	}{
-		{target: "/", wantStatus: ok},
-		{target: "/anything", wantStatus: ok},
-		{target: "//anything", wantStatus: missing},
-		{target: "///anything", wantStatus: missing},
-		{target: "//admin/secret.txt", wantStatus: missing},
-		{target: "/.//anything", wantStatus: missing},
-		{target: "/a//b", wantStatus: ok},
-		{target: "/web/https://example.com/x", wantStatus: ok},
-		{target: "/%2Fanything", wantStatus: ok, wantUnescaped: missing},
-		{target: `/a\b`, wantStatus: ok},
-		{target: "/%5Cb", wantStatus: ok},
-		{target: "/%zz", wantStatus: ok},
-		{target: "/%00", wantStatus: ok},
-		{target: "/admin/secret.txt", wantStatus: guarded},
-	}
-
-	for _, m := range mounts {
-		for _, unescape := range []bool{false, true} {
-			app := fiber.New(fiber.Config{UnescapePath: unescape})
-			app.Use("/admin", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusForbidden)
-			})
-			m.mount(app)
-			handler := app.Handler()
-
-			for _, tc := range requests {
-				want := tc.wantStatus
-				if unescape && tc.wantUnescaped != 0 {
-					want = tc.wantUnescaped
-				}
-
-				resp := serveRaw(handler, fiber.MethodGet, tc.target)
-				body := string(resp.Body())
-				require.Equal(t, want, resp.StatusCode(), "%s unescape=%v target=%s", m.name, unescape, tc.target)
-				require.Equal(t, want != guarded, len(resp.Header.Peek(headerReached)) > 0,
-					"%s unescape=%v target=%s: reached the file server", m.name, unescape, tc.target)
-				switch want {
-				case ok:
-					require.Equal(t, "SHELL", body, "%s unescape=%v target=%s", m.name, unescape, tc.target)
-				case guarded:
-					require.Equal(t, "Forbidden", body, "%s unescape=%v target=%s", m.name, unescape, tc.target)
-				default:
-					require.NotContains(t, body, "SHELL", "%s unescape=%v target=%s", m.name, unescape, tc.target)
-					require.NotContains(t, body, "SECRET", "%s unescape=%v target=%s", m.name, unescape, tc.target)
-				}
-			}
-		}
-	}
+	staticTestShell(t, staticTestFileMounts(root, "/*"), []staticTestShellRequest{
+		{target: "/", status: ok},
+		{target: "/anything", status: ok},
+		{target: "//anything", status: missing},
+		{target: "///anything", status: missing},
+		{target: "//admin/secret.txt", status: missing},
+		{target: "/.//anything", status: missing},
+		{target: "/a//b", status: ok},
+		{target: "/web/https://example.com/x", status: ok},
+		{target: "/%2Fanything", status: ok, unescapedStatus: missing},
+		{target: `/a\b`, status: ok},
+		{target: "/%5Cb", status: ok},
+		{target: "/%zz", status: ok},
+		{target: "/%00", status: ok},
+		{target: "/admin/secret.txt", status: guarded, unreached: true},
+	})
 }
 
 // Test_Static_RootFile_OnAPrefix pins that a root that is a file mounted on a
@@ -1648,48 +1587,15 @@ func Test_Static_RootFile_OnAPrefix(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	file := filepath.Join(root, "shell.html")
-	require.NoError(t, os.WriteFile(file, []byte("SHELL"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "shell.html"), []byte("SHELL"), 0o600))
 
-	mounts := []struct {
-		mount func(app *fiber.App)
-		name  string
-	}{
-		{name: "file", mount: func(app *fiber.App) { app.Get("/static/*", New(file, Config{CacheDuration: -1, Next: reached})) }},
-		{name: "fs file", mount: func(app *fiber.App) {
-			app.Get("/static/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
-		}},
-	}
-
-	requests := []struct {
-		target      string
-		wantStatus  int
-		wantReached bool
-	}{
-		{target: "/static/x", wantStatus: fiber.StatusOK, wantReached: true},
-		{target: "/static//x", wantStatus: fiber.StatusOK, wantReached: true},
-		{target: "/static/web/https://example.com", wantStatus: fiber.StatusOK, wantReached: true},
+	staticTestShell(t, staticTestFileMounts(root, "/static/*"), []staticTestShellRequest{
+		{target: "/static/x", status: fiber.StatusOK},
+		{target: "/static//x", status: fiber.StatusOK},
+		{target: "/static/web/https://example.com", status: fiber.StatusOK},
 		// the router does not send this to the file server at all
-		{target: "//static/x", wantStatus: fiber.StatusNotFound},
-	}
-
-	for _, m := range mounts {
-		for _, unescape := range []bool{false, true} {
-			app := fiber.New(fiber.Config{UnescapePath: unescape})
-			m.mount(app)
-			handler := app.Handler()
-
-			for _, tc := range requests {
-				resp := serveRaw(handler, fiber.MethodGet, tc.target)
-				require.Equal(t, tc.wantStatus, resp.StatusCode(), "%s unescape=%v target=%s", m.name, unescape, tc.target)
-				require.Equal(t, tc.wantReached, len(resp.Header.Peek(headerReached)) > 0,
-					"%s unescape=%v target=%s: reached the file server", m.name, unescape, tc.target)
-				if tc.wantStatus == fiber.StatusOK {
-					require.Equal(t, "SHELL", string(resp.Body()), "%s unescape=%v target=%s", m.name, unescape, tc.target)
-				}
-			}
-		}
-	}
+		{target: "//static/x", status: fiber.StatusNotFound, unreached: true},
+	})
 }
 
 // Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment pins that refusing a path
@@ -1700,49 +1606,22 @@ func Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	file := filepath.Join(root, "shell.html")
-	require.NoError(t, os.WriteFile(file, []byte("SHELL"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "shell.html"), []byte("SHELL"), 0o600))
 
-	mounts := []struct {
-		mount func(app *fiber.App)
-		name  string
-	}{
-		{name: "file", mount: func(app *fiber.App) { app.Get("//assets/*", New(file, Config{CacheDuration: -1, Next: reached})) }},
-		{name: "file with Use", mount: func(app *fiber.App) { app.Use("//assets", New(file, Config{CacheDuration: -1, Next: reached})) }},
-		{name: "fs file", mount: func(app *fiber.App) {
-			app.Get("//assets/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
-		}},
-	}
+	mounts := append(staticTestFileMounts(root, "//assets/*"), staticTestMount{
+		name: "file with Use",
+		mount: func(app *fiber.App) {
+			app.Use("//assets", New(filepath.Join(root, "shell.html"), Config{CacheDuration: -1, Next: reached}))
+		},
+	})
 
-	requests := []struct {
-		target      string
-		wantStatus  int
-		wantReached bool
-	}{
-		{target: "//assets/x", wantStatus: fiber.StatusOK, wantReached: true},
-		{target: "//assets//x", wantStatus: fiber.StatusOK, wantReached: true},
+	staticTestShell(t, mounts, []staticTestShellRequest{
+		{target: "//assets/x", status: fiber.StatusOK},
+		{target: "//assets//x", status: fiber.StatusOK},
 		// the router does not send these to the file server at all
-		{target: "/assets/x", wantStatus: fiber.StatusNotFound},
-		{target: "///assets/x", wantStatus: fiber.StatusNotFound},
-	}
-
-	for _, m := range mounts {
-		for _, unescape := range []bool{false, true} {
-			app := fiber.New(fiber.Config{UnescapePath: unescape})
-			m.mount(app)
-			handler := app.Handler()
-
-			for _, tc := range requests {
-				resp := serveRaw(handler, fiber.MethodGet, tc.target)
-				require.Equal(t, tc.wantStatus, resp.StatusCode(), "%s unescape=%v target=%s", m.name, unescape, tc.target)
-				require.Equal(t, tc.wantReached, len(resp.Header.Peek(headerReached)) > 0,
-					"%s unescape=%v target=%s: reached the file server", m.name, unescape, tc.target)
-				if tc.wantStatus == fiber.StatusOK {
-					require.Equal(t, "SHELL", string(resp.Body()), "%s unescape=%v target=%s", m.name, unescape, tc.target)
-				}
-			}
-		}
-	}
+		{target: "/assets/x", status: fiber.StatusNotFound, unreached: true},
+		{target: "///assets/x", status: fiber.StatusNotFound, unreached: true},
+	})
 }
 
 // Test_Static_RefusedPathIsNotLookedUp pins that a path the file server refuses
@@ -1792,20 +1671,16 @@ func Test_Static_RefusedPathIsNotLookedUp(t *testing.T) {
 			requests: directory,
 		},
 		{
-			name: "fs file",
-			mount: func(app *fiber.App) {
-				app.Get("/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
-			},
+			name:  "fs file",
+			mount: staticTestFSFileMount(root, "/*"),
 			requests: []request{
 				{target: "/x", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
 				{target: "//probe", wantStatus: fiber.StatusNotFound},
 			},
 		},
 		{
-			name: "fs file on a partial wildcard",
-			mount: func(app *fiber.App) {
-				app.Get("/static*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
-			},
+			name:  "fs file on a partial wildcard",
+			mount: staticTestFSFileMount(root, "/static*"),
 			requests: []request{
 				{target: "/static/x", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
 				{target: "/staticx", wantStatus: fiber.StatusNotFound},
@@ -1839,6 +1714,18 @@ func Test_Static_RefusedPathIsNotLookedUp(t *testing.T) {
 	}
 }
 
+// staticTestServeOpaque sends target to app exactly as written, which httptest
+// would refuse or encode, and returns the status and the body of the answer.
+// app.Test writes the opaque form of the URL verbatim.
+func staticTestServeOpaque(t *testing.T, app *fiber.App, target string) (status int, body string) { //nolint:nonamedreturns // gocritic unnamedResult asks for names on these results
+	t.Helper()
+
+	req := httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody)
+	req.URL.Opaque = target
+	resp := apptest.Do(t, app, req)
+	return resp.StatusCode, apptest.Body(t, resp)
+}
+
 // Test_Static_RawBackslashIsNotASeparator pins that a raw backslash, an
 // ordinary character to the router, never becomes a separator for the file
 // server either. httptest would encode it, so the request line is set by hand.
@@ -1848,13 +1735,6 @@ func Test_Static_RawBackslashIsNotASeparator(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
-
-	// app.Test writes the URL's opaque form verbatim
-	rawRequest := func(target string) *http.Request {
-		req := httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody)
-		req.URL.Opaque = target
-		return req
-	}
 
 	for _, unescape := range []bool{false, true} {
 		app := fiber.New(fiber.Config{UnescapePath: unescape})
@@ -1869,14 +1749,13 @@ func Test_Static_RawBackslashIsNotASeparator(t *testing.T) {
 			`/static/private\secret.txt`,
 			`/static/..\..\etc\passwd`,
 		} {
-			resp := apptest.Do(t, app, rawRequest(target))
-			body := apptest.Body(t, resp)
-			require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "unescape=%v target=%s", unescape, target)
+			status, body := staticTestServeOpaque(t, app, target)
+			require.Equal(t, fiber.StatusNotFound, status, "unescape=%v target=%s", unescape, target)
 			require.NotContains(t, body, "SECRET", "unescape=%v target=%s", unescape, target)
 		}
 
-		resp := apptest.Do(t, app, rawRequest("/static/private/secret.txt"))
-		require.Equal(t, fiber.StatusForbidden, resp.StatusCode, "unescape=%v", unescape)
+		status, _ := staticTestServeOpaque(t, app, "/static/private/secret.txt")
+		require.Equal(t, fiber.StatusForbidden, status, "unescape=%v", unescape)
 	}
 }
 
@@ -1894,18 +1773,6 @@ func Test_Static_ForgedEscapeCannotBypassGuard(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
-
-	// app.Test writes the URL's opaque form verbatim
-	rawRequest := func(target string) *http.Request {
-		req := httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody)
-		req.URL.Opaque = target
-		return req
-	}
-	serve := func(app *fiber.App, target string) (int, string) {
-		resp := apptest.Do(t, app, rawRequest(target))
-		body := apptest.Body(t, resp)
-		return resp.StatusCode, body
-	}
 
 	// both spellings normalize to "/static/%70rivate/secret.txt"
 	forged := []string{
@@ -1926,11 +1793,11 @@ func Test_Static_ForgedEscapeCannotBypassGuard(t *testing.T) {
 			}
 
 			// the spelling the router does match the guard on still returns 403
-			status, _ := serve(app, "/static/private/secret.txt")
+			status, _ := staticTestServeOpaque(t, app, "/static/private/secret.txt")
 			require.Equal(t, fiber.StatusForbidden, status, "unescape=%v mount=%s", unescape, mount)
 
 			for _, target := range forged {
-				status, body := serve(app, target)
+				status, body := staticTestServeOpaque(t, app, target)
 				require.Equal(t, fiber.StatusNotFound, status, "unescape=%v mount=%s target=%s", unescape, mount, target)
 				require.NotContains(t, body, "SECRET", "unescape=%v mount=%s target=%s", unescape, mount, target)
 			}
@@ -1986,30 +1853,19 @@ func Test_Static_MalformedEscapeIsNotAName(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "100%zz.txt"), []byte("PERCENT"), 0o600))
 
-	rawRequest := func(target string) *http.Request {
-		req := httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody)
-		req.URL.Opaque = target
-		return req
-	}
-	serve := func(app *fiber.App, target string) (int, string) {
-		resp := apptest.Do(t, app, rawRequest(target))
-		body := apptest.Body(t, resp)
-		return resp.StatusCode, body
-	}
-
 	app := fiber.New()
 	app.Get("/static/*", New(root, Config{CacheDuration: -1}))
-	status, body := serve(app, "/static/100%25zz.txt")
+	status, body := staticTestServeOpaque(t, app, "/static/100%25zz.txt")
 	require.Equal(t, fiber.StatusNotFound, status)
 	require.NotContains(t, body, "PERCENT")
-	status, body = serve(app, "/static/100%zz.txt")
+	status, body = staticTestServeOpaque(t, app, "/static/100%zz.txt")
 	require.Equal(t, fiber.StatusNotFound, status)
 	require.NotContains(t, body, "PERCENT")
 
 	app = fiber.New(fiber.Config{UnescapePath: true})
 	app.Get("/static/*", New(root, Config{CacheDuration: -1}))
 	for _, target := range []string{"/static/100%25zz.txt", "/static/100%zz.txt"} {
-		status, body = serve(app, target)
+		status, body = staticTestServeOpaque(t, app, target)
 		require.Equal(t, fiber.StatusOK, status, "target=%s", target)
 		require.Equal(t, "PERCENT", body, "target=%s", target)
 	}

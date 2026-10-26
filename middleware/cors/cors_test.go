@@ -32,6 +32,41 @@ func Test_CORS_Empty_Config(t *testing.T) {
 	testDefaultOrEmptyConfig(t, app)
 }
 
+// corsTestPreflight sends a preflight request from origin through h and returns
+// the context that holds the answer.
+func corsTestPreflight(h fasthttp.RequestHandler, origin string) *fasthttp.RequestCtx {
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, origin)
+	h(ctx)
+	return ctx
+}
+
+// corsTestAllowOrigin returns the Access-Control-Allow-Origin of the answer in ctx.
+func corsTestAllowOrigin(ctx *fasthttp.RequestCtx) string {
+	return string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin))
+}
+
+// corsTestRaw reads the raw HTTP request raw, which keeps its header names as
+// written when app does not normalize them, and sends it through app.
+func corsTestRaw(t *testing.T, app *fiber.App, raw string) *fasthttp.RequestCtx {
+	t.Helper()
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	if app.Config().DisableHeaderNormalizing {
+		req.Header.DisableNormalizing()
+	}
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init(req, nil, nil)
+	app.Handler()(fctx)
+	return fctx
+}
+
 func Test_CORS_WildcardHeaders(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -41,16 +76,10 @@ func Test_CORS_WildcardHeaders(t *testing.T) {
 		ExposeHeaders: []string{"*"},
 	}))
 
-	h := app.Handler()
-
 	// Test preflight request
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
-	h(ctx)
+	ctx := corsTestPreflight(app.Handler(), "http://localhost")
 
-	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Equal(t, "*", corsTestAllowOrigin(ctx))
 	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)))
 	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
@@ -63,11 +92,7 @@ func Test_CORS_Negative_MaxAge(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{MaxAge: -1}))
 
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
-	app.Handler()(ctx)
+	ctx := corsTestPreflight(app.Handler(), "http://localhost")
 
 	require.Equal(t, "0", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 }
@@ -94,13 +119,7 @@ func Test_CORS_Preserve_Origin_Case(t *testing.T) {
 
 	origin := "HTTP://EXAMPLE.COM"
 
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, origin)
-	app.Handler()(ctx)
-
-	require.Equal(t, origin, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Equal(t, origin, corsTestAllowOrigin(corsTestPreflight(app.Handler(), origin)))
 }
 
 func Test_CORS_AllowOrigins_NormalizedExactLookup(t *testing.T) {
@@ -111,13 +130,7 @@ func Test_CORS_AllowOrigins_NormalizedExactLookup(t *testing.T) {
 
 	origin := "http://example.com"
 
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, origin)
-	app.Handler()(ctx)
-
-	require.Equal(t, origin, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Equal(t, origin, corsTestAllowOrigin(corsTestPreflight(app.Handler(), origin)))
 }
 
 func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
@@ -131,16 +144,12 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	h(ctx)
 
-	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Equal(t, "*", corsTestAllowOrigin(ctx))
 	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
 
 	// Test default OPTIONS (preflight) response headers
-	ctx = &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
-	h(ctx)
+	ctx = corsTestPreflight(h, "http://localhost")
 
 	require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH, QUERY", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)))
 	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
@@ -165,12 +174,7 @@ func Test_CORS_AllowOrigins_Vary(t *testing.T) {
 	require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin, "Vary header should be set")
 
 	// Test Vary header Cors request
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
-	h(ctx)
+	ctx = corsTestPreflight(h, "http://localhost")
 	require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin, "Vary header should be set")
 }
 
@@ -188,18 +192,11 @@ func Test_CORS_Wildcard(t *testing.T) {
 	// Get handler pointer
 	handler := app.Handler()
 
-	// Make request
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-
-	// Perform request
-	handler(ctx)
+	// Make and perform request
+	ctx := corsTestPreflight(handler, "http://localhost")
 
 	// Check result
-	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin))) // Validates request is not reflecting origin in the response
+	require.Equal(t, "*", corsTestAllowOrigin(ctx)) // Validates request is not reflecting origin in the response
 	require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin, "Vary header should be set")
 	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	require.Equal(t, "3600", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
@@ -232,18 +229,11 @@ func Test_CORS_Origin_AllowCredentials(t *testing.T) {
 	// Get handler pointer
 	handler := app.Handler()
 
-	// Make request
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-
-	// Perform request
-	handler(ctx)
+	// Make and perform request
+	ctx := corsTestPreflight(handler, "http://localhost")
 
 	// Check result
-	require.Equal(t, "http://localhost", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Equal(t, "http://localhost", corsTestAllowOrigin(ctx))
 	require.Equal(t, "true", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	require.Equal(t, "3600", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 	require.Equal(t, "Authentication", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
@@ -262,26 +252,13 @@ func Test_CORS_Origin_AllowCredentials(t *testing.T) {
 // Test for fiber-ghsa-fmg4-x8pw-hjhg
 func Test_CORS_Wildcard_AllowCredentials_Panic(t *testing.T) {
 	t.Parallel()
-	// New fiber instance
-	app := fiber.New()
 
-	didPanic := false
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				didPanic = true
-			}
-		}()
-
-		app.Use(New(Config{
+	require.Panics(t, func() {
+		fiber.New().Use(New(Config{
 			AllowOrigins:     []string{"*"},
 			AllowCredentials: true,
 		}))
-	}()
-
-	if !didPanic {
-		t.Error("Expected a panic when AllowOrigins is '*' and AllowCredentials is true")
-	}
+	}, "Expected a panic when AllowOrigins is '*' and AllowCredentials is true")
 }
 
 // Test that a warning is logged when AllowOrigins allows all origins and
@@ -316,26 +293,16 @@ func Test_CORS_Invalid_Origins_Panic(t *testing.T) {
 	}
 
 	for _, origin := range invalidOrigins {
-		// New fiber instance
-		app := fiber.New()
+		t.Run(origin, func(t *testing.T) {
+			t.Parallel()
 
-		didPanic := false
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					didPanic = true
-				}
-			}()
-
-			app.Use(New(Config{
-				AllowOrigins:     []string{origin},
-				AllowCredentials: true,
-			}))
-		}()
-
-		if !didPanic {
-			t.Errorf("Expected a panic for invalid origin: %s", origin)
-		}
+			require.Panics(t, func() {
+				fiber.New().Use(New(Config{
+					AllowOrigins:     []string{origin},
+					AllowCredentials: true,
+				}))
+			}, "Expected a panic for invalid origin: %s", origin)
+		})
 	}
 }
 
@@ -367,60 +334,27 @@ func Test_CORS_Subdomain(t *testing.T) {
 		AllowOrigins: []string{"  http://*.example.com  "},
 	}))
 
-	// Get handler pointer
 	handler := app.Handler()
 
-	// Make request with disallowed origin
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://google.com")
+	tests := []struct {
+		name   string
+		origin string
+		want   string // the Allow-Origin header, none when empty
+	}{
+		// Allow-Origin header should be "" because http://google.com does not satisfy http://*.example.com
+		{name: "disallowed origin", origin: "http://google.com"},
+		{name: "domain only (disallowed)", origin: "http://example.com"},
+		{name: "malformed subdomain (disallowed)", origin: "http://evil.comexample.com"},
+		{name: "allowed origin", origin: "http://test.example.com", want: "http://test.example.com"},
+	}
 
-	// Perform request
-	handler(ctx)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Allow-Origin header should be "" because http://google.com does not satisfy http://*.example.com
-	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
-
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-
-	// Make request with domain only (disallowed)
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
-
-	handler(ctx)
-
-	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
-
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-
-	// Make request with malformed subdomain (disallowed)
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://evil.comexample.com")
-
-	handler(ctx)
-
-	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
-
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-
-	// Make request with allowed origin
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://test.example.com")
-
-	handler(ctx)
-
-	require.Equal(t, "http://test.example.com", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			require.Equal(t, tc.want, corsTestAllowOrigin(corsTestPreflight(handler, tc.origin)))
+		})
+	}
 }
 
 func Test_CORS_AllowOriginScheme(t *testing.T) {
@@ -430,127 +364,46 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 		pattern           []string
 		shouldAllowOrigin bool
 	}{
-		{
-			pattern:           []string{"http://example.com"},
-			reqOrigin:         "http://example.com",
-			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           []string{"HTTP://EXAMPLE.COM"},
-			reqOrigin:         "http://example.com",
-			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           []string{"https://example.com"},
-			reqOrigin:         "https://example.com",
-			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           []string{"http://example.com"},
-			reqOrigin:         "https://example.com",
-			shouldAllowOrigin: false,
-		},
-		{
-			pattern:           []string{"http://*.example.com"},
-			reqOrigin:         "http://aaa.example.com",
-			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           []string{"http://*.example.com"},
-			reqOrigin:         "http://bbb.aaa.example.com",
-			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           []string{"http://*.aaa.example.com"},
-			reqOrigin:         "http://bbb.aaa.example.com",
-			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           []string{"http://*.example.com:8080"},
-			reqOrigin:         "http://aaa.example.com:8080",
-			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           []string{"http://*.example.com"},
-			reqOrigin:         "http://1.2.aaa.example.com",
-			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           []string{"http://example.com"},
-			reqOrigin:         "http://gofiber.com",
-			shouldAllowOrigin: false,
-		},
-		{
-			pattern:           []string{"http://*.aaa.example.com"},
-			reqOrigin:         "http://ccc.bbb.example.com",
-			shouldAllowOrigin: false,
-		},
+		{pattern: []string{"http://example.com"}, reqOrigin: "http://example.com", shouldAllowOrigin: true},
+		{pattern: []string{"HTTP://EXAMPLE.COM"}, reqOrigin: "http://example.com", shouldAllowOrigin: true},
+		{pattern: []string{"https://example.com"}, reqOrigin: "https://example.com", shouldAllowOrigin: true},
+		{pattern: []string{"http://example.com"}, reqOrigin: "https://example.com", shouldAllowOrigin: false},
+		{pattern: []string{"http://*.example.com"}, reqOrigin: "http://aaa.example.com", shouldAllowOrigin: true},
+		{pattern: []string{"http://*.example.com"}, reqOrigin: "http://bbb.aaa.example.com", shouldAllowOrigin: true},
+		{pattern: []string{"http://*.aaa.example.com"}, reqOrigin: "http://bbb.aaa.example.com", shouldAllowOrigin: true},
+		{pattern: []string{"http://*.example.com:8080"}, reqOrigin: "http://aaa.example.com:8080", shouldAllowOrigin: true},
+		{pattern: []string{"http://*.example.com"}, reqOrigin: "http://1.2.aaa.example.com", shouldAllowOrigin: true},
+		{pattern: []string{"http://example.com"}, reqOrigin: "http://gofiber.com", shouldAllowOrigin: false},
+		{pattern: []string{"http://*.aaa.example.com"}, reqOrigin: "http://ccc.bbb.example.com", shouldAllowOrigin: false},
 		{
 			pattern:           []string{"http://*.example.com"},
 			reqOrigin:         "http://1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.example.com",
 			shouldAllowOrigin: true,
 		},
-		{
-			pattern:           []string{"http://example.com"},
-			reqOrigin:         "http://ccc.bbb.example.com",
-			shouldAllowOrigin: false,
-		},
-		{
-			pattern:           []string{"https://--aaa.bbb.com"},
-			reqOrigin:         "https://prod-preview--aaa.bbb.com",
-			shouldAllowOrigin: false,
-		},
-		{
-			pattern:           []string{"http://*.example.com"},
-			reqOrigin:         "http://ccc.bbb.example.com",
-			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           []string{"http://domain-1.com", "http://example.com"},
-			reqOrigin:         "http://example.com",
-			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           []string{"http://domain-1.com", "http://example.com"},
-			reqOrigin:         "http://domain-2.com",
-			shouldAllowOrigin: false,
-		},
-		{
-			pattern:           []string{"http://domain-1.com", "http://example.com"},
-			reqOrigin:         "http://example.com",
-			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           []string{"http://domain-1.com", "http://example.com"},
-			reqOrigin:         "http://domain-2.com",
-			shouldAllowOrigin: false,
-		},
-		{
-			pattern:           []string{"http://domain-1.com", "http://example.com"},
-			reqOrigin:         "http://domain-1.com",
-			shouldAllowOrigin: true,
-		},
+		{pattern: []string{"http://example.com"}, reqOrigin: "http://ccc.bbb.example.com", shouldAllowOrigin: false},
+		{pattern: []string{"https://--aaa.bbb.com"}, reqOrigin: "https://prod-preview--aaa.bbb.com", shouldAllowOrigin: false},
+		{pattern: []string{"http://*.example.com"}, reqOrigin: "http://ccc.bbb.example.com", shouldAllowOrigin: true},
+		{pattern: []string{"http://domain-1.com", "http://example.com"}, reqOrigin: "http://example.com", shouldAllowOrigin: true},
+		{pattern: []string{"http://domain-1.com", "http://example.com"}, reqOrigin: "http://domain-2.com", shouldAllowOrigin: false},
+		{pattern: []string{"http://domain-1.com", "http://example.com"}, reqOrigin: "http://example.com", shouldAllowOrigin: true},
+		{pattern: []string{"http://domain-1.com", "http://example.com"}, reqOrigin: "http://domain-2.com", shouldAllowOrigin: false},
+		{pattern: []string{"http://domain-1.com", "http://example.com"}, reqOrigin: "http://domain-1.com", shouldAllowOrigin: true},
 	}
 
 	for _, tt := range tests {
-		app := fiber.New()
-		app.Use("/", New(Config{AllowOrigins: tt.pattern}))
+		t.Run(strings.Join(tt.pattern, ", ")+" with Origin "+tt.reqOrigin, func(t *testing.T) {
+			t.Parallel()
 
-		handler := app.Handler()
+			app := fiber.New()
+			app.Use("/", New(Config{AllowOrigins: tt.pattern}))
 
-		ctx := &fasthttp.RequestCtx{}
-		ctx.Request.SetRequestURI("/")
-		ctx.Request.Header.SetMethod(fiber.MethodOptions)
-		ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-		ctx.Request.Header.Set(fiber.HeaderOrigin, tt.reqOrigin)
-
-		handler(ctx)
-
-		if tt.shouldAllowOrigin {
-			require.Equal(t, tt.reqOrigin, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
-		} else {
-			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
-		}
+			got := corsTestAllowOrigin(corsTestPreflight(app.Handler(), tt.reqOrigin))
+			if tt.shouldAllowOrigin {
+				require.Equal(t, tt.reqOrigin, got)
+			} else {
+				require.Empty(t, got)
+			}
+		})
 	}
 }
 
@@ -694,47 +547,26 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc(t *testing.T) {
 		},
 	}))
 
-	// Get handler pointer
 	handler := app.Handler()
 
-	// Make request with disallowed origin
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://google.com")
+	tests := []struct {
+		name   string
+		origin string
+		want   string // the Allow-Origin header, none when empty
+	}{
+		// Allow-Origin header should be "" because http://google.com does not satisfy http://example-1.com or 'strings.Contains(origin, "example-2")'
+		{name: "disallowed origin", origin: "http://google.com"},
+		{name: "allowed origin", origin: "http://example-1.com", want: "http://example-1.com"},
+		{name: "allowed origin by the func", origin: "http://example-2.com", want: "http://example-2.com"},
+	}
 
-	// Perform request
-	handler(ctx)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Allow-Origin header should be "" because http://google.com does not satisfy http://example-1.com or 'strings.Contains(origin, "example-2")'
-	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
-
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-
-	// Make request with allowed origin
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example-1.com")
-
-	handler(ctx)
-
-	require.Equal(t, "http://example-1.com", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
-
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-
-	// Make request with allowed origin
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example-2.com")
-
-	handler(ctx)
-
-	require.Equal(t, "http://example-2.com", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			require.Equal(t, tc.want, corsTestAllowOrigin(corsTestPreflight(handler, tc.origin)))
+		})
+	}
 }
 
 func Test_CORS_AllowOriginsFunc(t *testing.T) {
@@ -761,21 +593,13 @@ func Test_CORS_AllowOriginsFunc(t *testing.T) {
 
 	// Allow-Origin header should be empty because http://google.com does not satisfy 'strings.Contains(origin, "example-2")'
 	// and AllowOrigins has not been set
-	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
-
-	ctx.Request.Reset()
-	ctx.Response.Reset()
+	require.Empty(t, corsTestAllowOrigin(ctx))
 
 	// Make request with allowed origin
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example-2.com")
-
-	handler(ctx)
+	ctx = corsTestPreflight(handler, "http://example-2.com")
 
 	// Allow-Origin header should be "http://example-2.com"
-	require.Equal(t, "http://example-2.com", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Equal(t, "http://example-2.com", corsTestAllowOrigin(ctx))
 }
 
 func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
@@ -788,54 +612,15 @@ func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
 		SetPreflightMethod bool
 		ExpectAllowed      bool
 	}{
-		{
-			Name:   "UserInfoPresent",
-			Origin: "http://user:pass@example.com",
-			Method: fiber.MethodGet,
-		},
-		{
-			Name:               "PathPresent",
-			Origin:             "http://example.com/path",
-			Method:             fiber.MethodOptions,
-			SetPreflightMethod: true,
-		},
-		{
-			Name:               "QueryPresent",
-			Origin:             "http://example.com?query=1",
-			Method:             fiber.MethodOptions,
-			SetPreflightMethod: true,
-		},
-		{
-			Name:   "FragmentPresent",
-			Origin: "http://example.com#section",
-			Method: fiber.MethodGet,
-		},
-		{
-			Name:   "WildcardHost",
-			Origin: "http://*.example.com",
-			Method: fiber.MethodGet,
-		},
-		{
-			Name:   "StandaloneWildcard",
-			Origin: "*",
-			Method: fiber.MethodGet,
-		},
-		{
-			Name:   "NullOriginUppercase",
-			Origin: "NULL",
-			Method: fiber.MethodGet,
-		},
-		{
-			Name:   "NullOriginMixedCase",
-			Origin: "Null",
-			Method: fiber.MethodGet,
-		},
-		{
-			Name:          "NullOriginLowercase",
-			Origin:        "null",
-			Method:        fiber.MethodGet,
-			ExpectAllowed: true,
-		},
+		{Name: "UserInfoPresent", Origin: "http://user:pass@example.com", Method: fiber.MethodGet},
+		{Name: "PathPresent", Origin: "http://example.com/path", Method: fiber.MethodOptions, SetPreflightMethod: true},
+		{Name: "QueryPresent", Origin: "http://example.com?query=1", Method: fiber.MethodOptions, SetPreflightMethod: true},
+		{Name: "FragmentPresent", Origin: "http://example.com#section", Method: fiber.MethodGet},
+		{Name: "WildcardHost", Origin: "http://*.example.com", Method: fiber.MethodGet},
+		{Name: "StandaloneWildcard", Origin: "*", Method: fiber.MethodGet},
+		{Name: "NullOriginUppercase", Origin: "NULL", Method: fiber.MethodGet},
+		{Name: "NullOriginMixedCase", Origin: "Null", Method: fiber.MethodGet},
+		{Name: "NullOriginLowercase", Origin: "null", Method: fiber.MethodGet, ExpectAllowed: true},
 	}
 
 	for _, tc := range testCases {
@@ -863,9 +648,9 @@ func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
 			handler(ctx)
 
 			if tc.ExpectAllowed {
-				require.Equal(t, "null", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+				require.Equal(t, "null", corsTestAllowOrigin(ctx))
 			} else {
-				require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+				require.Empty(t, corsTestAllowOrigin(ctx))
 			}
 
 			if tc.Method == fiber.MethodOptions {
@@ -878,153 +663,48 @@ func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
 }
 
 func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
+	t.Parallel()
+
+	allowAll := func(string) bool { return true }
+	allowNone := func(string) bool { return false }
+
 	testCases := []struct {
 		Name           string
 		RequestOrigin  string
 		ResponseOrigin string
 		Config         Config
 	}{
-		{
-			Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/OriginAllowed",
-			Config: Config{
-				AllowOrigins:     []string{"http://aaa.com"},
-				AllowOriginsFunc: nil,
-			},
-			RequestOrigin:  "http://aaa.com",
-			ResponseOrigin: "http://aaa.com",
-		},
-		{
-			Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/MultipleOrigins/OriginAllowed",
-			Config: Config{
-				AllowOrigins:     []string{"http://aaa.com", "http://bbb.com"},
-				AllowOriginsFunc: nil,
-			},
-			RequestOrigin:  "http://bbb.com",
-			ResponseOrigin: "http://bbb.com",
-		},
-		{
-			Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/MultipleOrigins/OriginNotAllowed",
-			Config: Config{
-				AllowOrigins:     []string{"http://aaa.com", "http://bbb.com"},
-				AllowOriginsFunc: nil,
-			},
-			RequestOrigin:  "http://ccc.com",
-			ResponseOrigin: "",
-		},
-		{
-			Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/MultipleOrigins/Whitespace/OriginAllowed",
-			Config: Config{
-				AllowOrigins:     []string{" http://aaa.com ", " http://bbb.com "},
-				AllowOriginsFunc: nil,
-			},
-			RequestOrigin:  "http://aaa.com",
-			ResponseOrigin: "http://aaa.com",
-		},
-		{
-			Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/OriginNotAllowed",
-			Config: Config{
-				AllowOrigins:     []string{"http://aaa.com"},
-				AllowOriginsFunc: nil,
-			},
-			RequestOrigin:  "http://bbb.com",
-			ResponseOrigin: "",
-		},
-		{
-			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsTrue/OriginAllowed",
-			Config: Config{
-				AllowOrigins: []string{"http://aaa.com"},
-				AllowOriginsFunc: func(_ string) bool {
-					return true
-				},
-			},
-			RequestOrigin:  "http://aaa.com",
-			ResponseOrigin: "http://aaa.com",
-		},
-		{
-			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsTrue/OriginNotAllowed",
-			Config: Config{
-				AllowOrigins: []string{"http://aaa.com"},
-				AllowOriginsFunc: func(_ string) bool {
-					return true
-				},
-			},
-			RequestOrigin:  "http://bbb.com",
-			ResponseOrigin: "http://bbb.com",
-		},
-		{
-			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsFalse/OriginAllowed",
-			Config: Config{
-				AllowOrigins: []string{"http://aaa.com"},
-				AllowOriginsFunc: func(_ string) bool {
-					return false
-				},
-			},
-			RequestOrigin:  "http://aaa.com",
-			ResponseOrigin: "http://aaa.com",
-		},
-		{
-			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsFalse/OriginNotAllowed",
-			Config: Config{
-				AllowOrigins: []string{"http://aaa.com"},
-				AllowOriginsFunc: func(_ string) bool {
-					return false
-				},
-			},
-			RequestOrigin:  "http://bbb.com",
-			ResponseOrigin: "",
-		},
-		{
-			Name: "AllowOriginsEmpty/AllowOriginsFuncUndefined/OriginAllowed",
-			Config: Config{
-				AllowOriginsFunc: nil,
-			},
-			RequestOrigin:  "http://aaa.com",
-			ResponseOrigin: "*",
-		},
-		{
-			Name: "AllowOriginsEmpty/AllowOriginsFuncReturnsTrue/OriginAllowed",
-			Config: Config{
-				AllowOriginsFunc: func(_ string) bool {
-					return true
-				},
-			},
-			RequestOrigin:  "http://aaa.com",
-			ResponseOrigin: "http://aaa.com",
-		},
-		{
-			Name: "AllowOriginsEmpty/AllowOriginsFuncReturnsFalse/OriginNotAllowed",
-			Config: Config{
-				AllowOriginsFunc: func(_ string) bool {
-					return false
-				},
-			},
-			RequestOrigin:  "http://aaa.com",
-			ResponseOrigin: "",
-		},
+		{Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/OriginAllowed", Config: Config{AllowOrigins: []string{"http://aaa.com"}}, RequestOrigin: "http://aaa.com", ResponseOrigin: "http://aaa.com"},
+		{Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/MultipleOrigins/OriginAllowed", Config: Config{AllowOrigins: []string{"http://aaa.com", "http://bbb.com"}}, RequestOrigin: "http://bbb.com", ResponseOrigin: "http://bbb.com"},
+		{Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/MultipleOrigins/OriginNotAllowed", Config: Config{AllowOrigins: []string{"http://aaa.com", "http://bbb.com"}}, RequestOrigin: "http://ccc.com", ResponseOrigin: ""},
+		{Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/MultipleOrigins/Whitespace/OriginAllowed", Config: Config{AllowOrigins: []string{" http://aaa.com ", " http://bbb.com "}}, RequestOrigin: "http://aaa.com", ResponseOrigin: "http://aaa.com"},
+		{Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/OriginNotAllowed", Config: Config{AllowOrigins: []string{"http://aaa.com"}}, RequestOrigin: "http://bbb.com", ResponseOrigin: ""},
+		{Name: "AllowOriginsDefined/AllowOriginsFuncReturnsTrue/OriginAllowed", Config: Config{AllowOrigins: []string{"http://aaa.com"}, AllowOriginsFunc: allowAll}, RequestOrigin: "http://aaa.com", ResponseOrigin: "http://aaa.com"},
+		{Name: "AllowOriginsDefined/AllowOriginsFuncReturnsTrue/OriginNotAllowed", Config: Config{AllowOrigins: []string{"http://aaa.com"}, AllowOriginsFunc: allowAll}, RequestOrigin: "http://bbb.com", ResponseOrigin: "http://bbb.com"},
+		{Name: "AllowOriginsDefined/AllowOriginsFuncReturnsFalse/OriginAllowed", Config: Config{AllowOrigins: []string{"http://aaa.com"}, AllowOriginsFunc: allowNone}, RequestOrigin: "http://aaa.com", ResponseOrigin: "http://aaa.com"},
+		{Name: "AllowOriginsDefined/AllowOriginsFuncReturnsFalse/OriginNotAllowed", Config: Config{AllowOrigins: []string{"http://aaa.com"}, AllowOriginsFunc: allowNone}, RequestOrigin: "http://bbb.com", ResponseOrigin: ""},
+		{Name: "AllowOriginsEmpty/AllowOriginsFuncUndefined/OriginAllowed", Config: Config{}, RequestOrigin: "http://aaa.com", ResponseOrigin: "*"},
+		{Name: "AllowOriginsEmpty/AllowOriginsFuncReturnsTrue/OriginAllowed", Config: Config{AllowOriginsFunc: allowAll}, RequestOrigin: "http://aaa.com", ResponseOrigin: "http://aaa.com"},
+		{Name: "AllowOriginsEmpty/AllowOriginsFuncReturnsFalse/OriginNotAllowed", Config: Config{AllowOriginsFunc: allowNone}, RequestOrigin: "http://aaa.com", ResponseOrigin: ""},
 	}
 
-	for _, tc := range testCases {
+	for i := range testCases {
+		tc := &testCases[i]
 		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+
 			app := fiber.New()
 			app.Use("/", New(tc.Config))
 
-			handler := app.Handler()
-
-			ctx := &fasthttp.RequestCtx{}
-			ctx.Request.SetRequestURI("/")
-			ctx.Request.Header.SetMethod(fiber.MethodOptions)
-			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-			ctx.Request.Header.Set(fiber.HeaderOrigin, tc.RequestOrigin)
-
-			handler(ctx)
-
-			require.Equal(t, tc.ResponseOrigin, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			require.Equal(t, tc.ResponseOrigin, corsTestAllowOrigin(corsTestPreflight(app.Handler(), tc.RequestOrigin)))
 		})
 	}
 }
 
 // The fix for issue #2422
 func Test_CORS_AllowCredentials(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		Name                string
 		RequestOrigin       string
@@ -1094,23 +774,18 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
+	for i := range testCases {
+		tc := &testCases[i]
 		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+
 			app := fiber.New()
 			app.Use("/", New(tc.Config))
 
-			handler := app.Handler()
-
-			ctx := &fasthttp.RequestCtx{}
-			ctx.Request.SetRequestURI("/")
-			ctx.Request.Header.SetMethod(fiber.MethodOptions)
-			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-			ctx.Request.Header.Set(fiber.HeaderOrigin, tc.RequestOrigin)
-
-			handler(ctx)
+			ctx := corsTestPreflight(app.Handler(), tc.RequestOrigin)
 
 			require.Equal(t, tc.ResponseCredentials, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
-			require.Equal(t, tc.ResponseOrigin, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			require.Equal(t, tc.ResponseOrigin, corsTestAllowOrigin(ctx))
 		})
 	}
 }
@@ -1119,108 +794,93 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 	t.Parallel()
 
-	// Test scenario where AllowPrivateNetwork is enabled
-	app := fiber.New()
-	app.Use(New(Config{
-		AllowPrivateNetwork: true,
-	}))
-	handler := app.Handler()
+	tests := []struct {
+		name string
+		// method is the method of the request
+		method string
+		// requestPrivateNetwork is the Access-Control-Request-Private-Network header
+		// the client sends, none when empty
+		requestPrivateNetwork string
+		want                  string
+		config                Config
+		// preflight sends the Access-Control-Request-Method header
+		preflight bool
+	}{
+		{
+			// The Access-Control-Allow-Private-Network header is set to "true" when AllowPrivateNetwork is enabled
+			name:                  "enabled preflight",
+			config:                Config{AllowPrivateNetwork: true},
+			method:                fiber.MethodOptions,
+			preflight:             true,
+			requestPrivateNetwork: "true",
+			want:                  "true",
+		},
+		{
+			// Non-preflight request should not have Access-Control-Allow-Private-Network header
+			name:                  "enabled non-preflight GET",
+			config:                Config{AllowPrivateNetwork: true},
+			method:                fiber.MethodGet,
+			requestPrivateNetwork: "true",
+		},
+		{
+			// Non-preflight OPTIONS request should not have Access-Control-Allow-Private-Network header
+			name:                  "enabled non-preflight OPTIONS",
+			config:                Config{AllowPrivateNetwork: true},
+			method:                fiber.MethodOptions,
+			requestPrivateNetwork: "true",
+		},
+		{
+			// The Access-Control-Allow-Private-Network header is not present by default
+			name:      "disabled by default",
+			method:    fiber.MethodOptions,
+			preflight: true,
+		},
+		{
+			// AllowPrivateNetwork is disabled but the client sends the header
+			name:                  "disabled and the client sends the header",
+			method:                fiber.MethodOptions,
+			preflight:             true,
+			requestPrivateNetwork: "true",
+		},
+		{
+			// AllowPrivateNetwork is enabled and the client does NOT send the header
+			name:      "enabled and the client does not send the header",
+			config:    Config{AllowPrivateNetwork: true},
+			method:    fiber.MethodOptions,
+			preflight: true,
+		},
+		{
+			// AllowPrivateNetwork is enabled and the client sends the header with a false value
+			name:                  "enabled and the client sends false",
+			config:                Config{AllowPrivateNetwork: true},
+			method:                fiber.MethodOptions,
+			preflight:             true,
+			requestPrivateNetwork: "false",
+		},
+	}
 
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "true")
-	handler(ctx)
+	for i := range tests {
+		tc := &tests[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Verify the Access-Control-Allow-Private-Network header is set to "true"
-	require.Equal(t, "true", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
+			app := fiber.New()
+			app.Use(New(tc.config))
 
-	// Non-preflight request should not have Access-Control-Allow-Private-Network header
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
-	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "true")
-	handler(ctx)
+			ctx := &fasthttp.RequestCtx{}
+			ctx.Request.Header.SetMethod(tc.method)
+			ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
+			if tc.preflight {
+				ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+			}
+			if tc.requestPrivateNetwork != "" {
+				ctx.Request.Header.Set("Access-Control-Request-Private-Network", tc.requestPrivateNetwork)
+			}
+			app.Handler()(ctx)
 
-	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
-
-	// Non-preflight GET request should not have Access-Control-Allow-Private-Network header
-	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
-
-	// Non-preflight OPTIONS request should not have Access-Control-Allow-Private-Network header
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
-	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "true")
-	handler(ctx)
-
-	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
-
-	// Reset ctx for next test
-	ctx = &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
-
-	// Test scenario where AllowPrivateNetwork is disabled (default)
-	app = fiber.New()
-	app.Use(New())
-	handler = app.Handler()
-	handler(ctx)
-
-	// Verify the Access-Control-Allow-Private-Network header is not present
-	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
-
-	// Test scenario where AllowPrivateNetwork is disabled but client sends header
-	app = fiber.New()
-	app.Use(New())
-	handler = app.Handler()
-
-	ctx = &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
-	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "true")
-	handler(ctx)
-
-	// Verify the Access-Control-Allow-Private-Network header is not present
-	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
-
-	// Test scenario where AllowPrivateNetwork is enabled and client does NOT send header
-	app = fiber.New()
-	app.Use(New(Config{
-		AllowPrivateNetwork: true,
-	}))
-	handler = app.Handler()
-
-	ctx = &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
-	handler(ctx)
-
-	// Verify the Access-Control-Allow-Private-Network header is not present
-	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
-
-	// Test scenario where AllowPrivateNetwork is enabled and client sends header with false value
-	app = fiber.New()
-	app.Use(New(Config{
-		AllowPrivateNetwork: true,
-	}))
-	handler = app.Handler()
-
-	ctx = &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodOptions)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
-	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "false")
-	handler(ctx)
-
-	// Verify the Access-Control-Allow-Private-Network header is not present
-	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
+			require.Equal(t, tc.want, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")))
+		})
+	}
 }
 
 // Test_CORS_Query_RequiresPreflight documents RFC 10008: QUERY is not a
@@ -1769,44 +1429,19 @@ func Test_CORS_Security_CredentialsWithSubdomainWildcard(t *testing.T) {
 		expectOrigin  string
 		expectCredHdr string
 	}{
-		{
-			name:          "matching subdomain reflected with credentials",
-			origin:        "https://api.example.com",
-			expectOrigin:  "https://api.example.com",
-			expectCredHdr: "true",
-		},
-		{
-			name:          "non-matching origin gets nothing",
-			origin:        "https://attacker.evil.com",
-			expectOrigin:  "",
-			expectCredHdr: "",
-		},
-		{
-			name:          "apex domain does not match wildcard",
-			origin:        "https://example.com",
-			expectOrigin:  "",
-			expectCredHdr: "",
-		},
-		{
-			name:          "scheme downgrade does not match",
-			origin:        "http://api.example.com",
-			expectOrigin:  "",
-			expectCredHdr: "",
-		},
+		{name: "matching subdomain reflected with credentials", origin: "https://api.example.com", expectOrigin: "https://api.example.com", expectCredHdr: "true"},
+		{name: "non-matching origin gets nothing", origin: "https://attacker.evil.com"},
+		{name: "apex domain does not match wildcard", origin: "https://example.com"},
+		{name: "scheme downgrade does not match", origin: "http://api.example.com"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ctx := &fasthttp.RequestCtx{}
-			ctx.Request.SetRequestURI("/")
-			ctx.Request.Header.SetMethod(fiber.MethodOptions)
-			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
-			ctx.Request.Header.Set(fiber.HeaderOrigin, tc.origin)
 
-			handler(ctx)
+			ctx := corsTestPreflight(handler, tc.origin)
 
-			gotOrigin := string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin))
+			gotOrigin := corsTestAllowOrigin(ctx)
 			gotCred := string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials))
 			require.Equal(t, tc.expectOrigin, gotOrigin)
 			require.Equal(t, tc.expectCredHdr, gotCred)
@@ -1874,27 +1509,17 @@ func Test_CORS_OriginWithoutHeaderNormalizing(t *testing.T) {
 	})
 
 	do := func(header string) *fasthttp.RequestCtx {
-		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + header + "\r\n\r\n"
-
-		req := fasthttp.AcquireRequest()
-		defer fasthttp.ReleaseRequest(req)
-		req.Header.DisableNormalizing()
-		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
-
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Init(req, nil, nil)
-		app.Handler()(fctx)
-		return fctx
+		return corsTestRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+header+"\r\n\r\n")
 	}
 
 	lower := do("origin: http://example.com")
-	require.Equal(t, "http://example.com", string(lower.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Equal(t, "http://example.com", corsTestAllowOrigin(lower))
 
 	canonical := do("Origin: http://example.com")
-	require.Equal(t, "http://example.com", string(canonical.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Equal(t, "http://example.com", corsTestAllowOrigin(canonical))
 
 	other := do("origin: http://evil.example")
-	require.Empty(t, string(other.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Empty(t, corsTestAllowOrigin(other))
 }
 
 func Test_CORS_PreflightWithoutHeaderNormalizing(t *testing.T) {
@@ -1914,17 +1539,10 @@ func Test_CORS_PreflightWithoutHeaderNormalizing(t *testing.T) {
 		"access-control-request-method: PUT\r\n" +
 		"access-control-request-headers: X-Custom\r\n\r\n"
 
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
-	req.Header.DisableNormalizing()
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Init(req, nil, nil)
-	app.Handler()(fctx)
+	fctx := corsTestRaw(t, app, raw)
 
 	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
-	require.Equal(t, "http://example.com", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Equal(t, "http://example.com", corsTestAllowOrigin(fctx))
 	require.Contains(t, string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), fiber.MethodPut)
 	require.Equal(t, "X-Custom", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
 }
@@ -1947,13 +1565,7 @@ func Test_CORS_PreflightSplitRequestHeaders(t *testing.T) {
 		"Access-Control-Request-Headers: X-One\r\n" +
 		"Access-Control-Request-Headers: X-Two\r\n\r\n"
 
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Init(req, nil, nil)
-	app.Handler()(fctx)
+	fctx := corsTestRaw(t, app, raw)
 
 	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
 	require.Equal(t, "X-One, X-Two", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))

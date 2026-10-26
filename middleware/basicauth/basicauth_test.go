@@ -6,10 +6,10 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
-	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -48,6 +48,12 @@ func Test_BasicAuth_Next(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
+// withBasicCredentials authenticates a request with credentials, a
+// "user:password" pair, in the Basic scheme.
+func withBasicCredentials(credentials string) apptest.Option {
+	return apptest.WithHeader(fiber.HeaderAuthorization, "Basic "+base64.StdEncoding.EncodeToString([]byte(credentials)))
+}
+
 func Test_Middleware_BasicAuth(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -69,45 +75,27 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 	})
 
 	tests := []struct {
-		url        string
+		name       string
 		username   string
 		password   string
 		statusCode int
 	}{
-		{
-			url:        "/testauth",
-			statusCode: 200,
-			username:   "john",
-			password:   "doe",
-		},
-		{
-			url:        "/testauth",
-			statusCode: 200,
-			username:   "admin",
-			password:   "123456",
-		},
-		{
-			url:        "/testauth",
-			statusCode: 401,
-			username:   "ee",
-			password:   "123456",
-		},
+		{name: "sha256 user", statusCode: 200, username: "john", password: "doe"},
+		{name: "bcrypt user", statusCode: 200, username: "admin", password: "123456"},
+		{name: "unknown user", statusCode: 401, username: "ee", password: "123456"},
 	}
 
 	for _, tt := range tests {
-		// Base64 encode credentials for http auth header
-		creds := base64.StdEncoding.EncodeToString(fmt.Appendf(nil, "%s:%s", tt.username, tt.password))
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		req := httptest.NewRequest(fiber.MethodGet, "/testauth", http.NoBody)
-		req.Header.Add("Authorization", "Basic "+creds)
-		resp := apptest.Do(t, app, req)
-
-		body := apptest.Body(t, resp)
-		require.Equal(t, tt.statusCode, resp.StatusCode)
-
-		if tt.statusCode == 200 {
-			require.Equal(t, tt.username, body)
-		}
+			req := apptest.Req(fiber.MethodGet, "/testauth", withBasicCredentials(tt.username+":"+tt.password))
+			if tt.statusCode == 200 {
+				apptest.ExpectBody(t, app, req, tt.statusCode, tt.username)
+				return
+			}
+			apptest.Expect(t, app, req, tt.statusCode)
+		})
 	}
 }
 
@@ -178,10 +166,7 @@ func Test_BasicAuth_UsernameFromContext_Types(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Add(fiber.HeaderAuthorization, "Basic "+creds)
-	apptest.Expect(t, app, req, fiber.StatusOK)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:doe")), fiber.StatusOK)
 }
 
 func Test_BasicAuth_AuthorizerCtx(t *testing.T) {
@@ -201,10 +186,7 @@ func Test_BasicAuth_AuthorizerCtx(t *testing.T) {
 
 	app.Get("/ctx", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
-	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
-	req := httptest.NewRequest(fiber.MethodGet, "/ctx", http.NoBody)
-	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-	apptest.Expect(t, app, req, fiber.StatusOK)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/ctx", withBasicCredentials("john:doe")), fiber.StatusOK)
 	require.True(t, called)
 }
 
@@ -321,95 +303,81 @@ func Test_BasicAuth_Unauthorized_KeepsVary(t *testing.T) {
 
 func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
 
-	hashedJohn := sha256Hash("doe")
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
+	users := map[string]string{"john": sha256Hash("doe")}
 
-	resp := apptest.Expect(t, app, "/", fiber.StatusUnauthorized)
-	require.Equal(t, `Basic realm="Restricted", charset="UTF-8"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
+	tests := []struct {
+		name   string
+		want   string
+		config Config
+	}{
+		{name: "default", config: Config{Users: users}, want: `Basic realm="Restricted", charset="UTF-8"`},
+		{name: "UTF-8 in lower case", config: Config{Users: users, Charset: "utf-8"}, want: `Basic realm="Restricted", charset="UTF-8"`},
+		// The generated challenge parameters use HTTP quoted-string escaping rather than Go syntax.
+		{
+			name:   "quoted string",
+			config: Config{Users: users, Realm: "area \"A\"\\\x01\t\n\r\x7f café"},
+			want:   `Basic realm="area \"A\"\\%01%09\n\r%7F café", charset="UTF-8"`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(tc.config))
+
+			resp := apptest.Expect(t, app, "/", fiber.StatusUnauthorized)
+			require.Equal(t, tc.want, resp.Header.Get(fiber.HeaderWWWAuthenticate))
+		})
+	}
 }
 
-func Test_BasicAuth_WWWAuthenticateHeader_UTF8(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	hashedJohn := sha256Hash("doe")
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}, Charset: "utf-8"}))
-
-	resp := apptest.Expect(t, app, "/", fiber.StatusUnauthorized)
-	require.Equal(t, `Basic realm="Restricted", charset="UTF-8"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
-}
-
-// Test_BasicAuth_WWWAuthenticateHeader_QuotedString verifies that generated
-// challenge parameters use HTTP quoted-string escaping rather than Go syntax.
-func Test_BasicAuth_WWWAuthenticateHeader_QuotedString(t *testing.T) {
+func Test_BasicAuth_AuthorizationHeader(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Users: map[string]string{"john": sha256Hash("doe")},
-		Realm: "area \"A\"\\\x01\t\n\r\x7f café",
-	}))
+	app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
-	resp := apptest.Expect(t, app, "/", fiber.StatusUnauthorized)
-	require.Equal(
-		t,
-		`Basic realm="area \"A\"\\%01%09\n\r%7F café", charset="UTF-8"`,
-		resp.Header.Get(fiber.HeaderWWWAuthenticate),
-	)
-}
+	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
 
-func Test_BasicAuth_InvalidHeader(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
+	tests := []struct {
+		name          string
+		authorization string
+		status        int
+		challenged    bool // the answer carries the Basic challenge
+	}{
+		{name: "invalid base64", authorization: "Basic notbase64", status: fiber.StatusBadRequest},
+		{name: "missing scheme", authorization: "Bearer token", status: fiber.StatusUnauthorized, challenged: true},
+		{name: "missing colon", authorization: "Basic " + base64.StdEncoding.EncodeToString([]byte("john")), status: fiber.StatusBadRequest},
+		{name: "empty", authorization: "", status: fiber.StatusUnauthorized},
+		{name: "blank", authorization: "   ", status: fiber.StatusUnauthorized},
+		{name: "unpadded base64", authorization: "Basic " + strings.TrimRight(creds, "="), status: fiber.StatusTeapot},
+		// whitespace around and inside the header
+		{name: "valid", authorization: "Basic " + creds, status: fiber.StatusTeapot},
+		{name: "leading space", authorization: " Basic " + creds, status: fiber.StatusTeapot},
+		{name: "two spaces after the scheme", authorization: "Basic  " + creds, status: fiber.StatusBadRequest},
+		{name: "three spaces after the scheme", authorization: "Basic   " + creds, status: fiber.StatusBadRequest},
+		{name: "tab after the scheme", authorization: "Basic\t" + creds, status: fiber.StatusBadRequest},
+		{name: "space and tab after the scheme", authorization: "Basic \t" + creds, status: fiber.StatusBadRequest},
+		{name: "no-break space after the scheme", authorization: "Basic\u00A0" + creds, status: fiber.StatusBadRequest},
+		{name: "ideographic space after the scheme", authorization: "Basic\u3000" + creds, status: fiber.StatusBadRequest},
+		{name: "surrounding tabs", authorization: "\tBasic " + creds + "\t", status: fiber.StatusTeapot},
+		{name: "space inside the credentials", authorization: "Basic " + creds[:4] + " " + creds[4:], status: fiber.StatusBadRequest},
+	}
 
-	hashedJohn := sha256Hash("doe")
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderAuthorization, "Basic notbase64")
-	apptest.Expect(t, app, req, fiber.StatusBadRequest)
-}
-
-func Test_BasicAuth_MissingScheme(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	hashedJohn := sha256Hash("doe")
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderAuthorization, "Bearer token")
-	resp := apptest.Expect(t, app, req, fiber.StatusUnauthorized)
-	require.Equal(t, `Basic realm="Restricted", charset="UTF-8"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
-}
-
-func Test_BasicAuth_MissingColon(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	hashedJohn := sha256Hash("doe")
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
-
-	creds := base64.StdEncoding.EncodeToString([]byte("john"))
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-	apptest.Expect(t, app, req, fiber.StatusBadRequest)
-}
-
-func Test_BasicAuth_EmptyAuthorization(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	hashedJohn := sha256Hash("doe")
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
-
-	cases := []string{"", "   "}
-	for _, h := range cases {
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set(fiber.HeaderAuthorization, h)
-		apptest.Expect(t, app, req, fiber.StatusUnauthorized)
+			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, tc.authorization))
+			resp := apptest.Expect(t, app, req, tc.status)
+			if tc.challenged {
+				require.Equal(t, `Basic realm="Restricted", charset="UTF-8"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
+			}
+		})
 	}
 }
 
@@ -491,82 +459,28 @@ func Test_BasicAuth_RepeatedAuthorizationIsRefused(t *testing.T) {
 	})
 }
 
-func Test_BasicAuth_HeaderWhitespace(t *testing.T) {
+func Test_BasicAuth_CredentialPolicies(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
 
-	hashedJohn := sha256Hash("doe")
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
-
-	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
-
-	cases := []struct {
-		header string
-		status int
-	}{
-		{"Basic " + creds, fiber.StatusTeapot},
-		{" Basic " + creds, fiber.StatusTeapot},
-		{"Basic  " + creds, fiber.StatusBadRequest},
-		{"Basic   " + creds, fiber.StatusBadRequest},
-		{"Basic\t" + creds, fiber.StatusBadRequest},
-		{"Basic \t" + creds, fiber.StatusBadRequest},
-		{"Basic\u00A0" + creds, fiber.StatusBadRequest},
-		{"Basic\u3000" + creds, fiber.StatusBadRequest},
-		{"\tBasic " + creds + "\t", fiber.StatusTeapot},
-		{"Basic " + creds[:4] + " " + creds[4:], fiber.StatusBadRequest},
-	}
-
-	for _, tt := range cases {
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set(fiber.HeaderAuthorization, tt.header)
-		apptest.Expect(t, app, req, tt.status)
-	}
-}
-
-func Test_BasicAuth_ControlChars(t *testing.T) {
-	t.Parallel()
-	called := false
-	app := fiber.New()
-	app.Use(New(Config{
-		Authorizer: func(_, _ string, _ fiber.Ctx) bool {
-			called = true
-			return true
-		},
-	}))
-
-	creds := []string{
-		base64.StdEncoding.EncodeToString([]byte("john:\x01doe")),
-		base64.StdEncoding.EncodeToString([]byte("jo\x7Fhn:doe")),
-		base64.StdEncoding.EncodeToString([]byte{'j', 'o', 'h', 'n', ':', 0x85, 'd', 'o', 'e'}),
-		base64.StdEncoding.EncodeToString([]byte{'j', 'o', 'h', 'n', ':', 0x9F, 'd', 'o', 'e'}),
-	}
-
-	for _, c := range creds {
-		called = false
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set(fiber.HeaderAuthorization, "Basic "+c)
-		resp := apptest.Expect(t, app, req, fiber.StatusBadRequest)
-		require.Empty(t, resp.Header.Get(fiber.HeaderWWWAuthenticate))
-		require.False(t, called)
-	}
-}
-
-func Test_BasicAuth_UnicodeControlPolicies(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
+	tests := []struct {
 		name        string
 		credentials string
 		status      int
 		authorized  bool
 	}{
-		{"Unicode password", "john:pässwörd", fiber.StatusTeapot, true},
-		{"tab in username", "jo\thn:doe", fiber.StatusBadRequest, false},
-		{"C1 after Unicode", "john:päss\u0085tail", fiber.StatusBadRequest, false},
-		{"DEL after Unicode", "john:päss\x7f", fiber.StatusBadRequest, false},
-		{"C0 after word boundary", "abcdefghé\x00tail:doe", fiber.StatusBadRequest, false},
+		{name: "Unicode password", credentials: "john:pässwörd", status: fiber.StatusTeapot, authorized: true},
+		{name: "control character in the password", credentials: "john:\x01doe", status: fiber.StatusBadRequest},
+		{name: "DEL in the username", credentials: "jo\x7Fhn:doe", status: fiber.StatusBadRequest},
+		{name: "continuation byte 0x85 in the password", credentials: "john:\x85doe", status: fiber.StatusBadRequest},
+		{name: "continuation byte 0x9F in the password", credentials: "john:\x9fdoe", status: fiber.StatusBadRequest},
+		{name: "invalid UTF-8", credentials: "john:\xffdoe", status: fiber.StatusBadRequest},
+		{name: "tab in username", credentials: "jo\thn:doe", status: fiber.StatusBadRequest},
+		{name: "C1 after Unicode", credentials: "john:päss\u0085tail", status: fiber.StatusBadRequest},
+		{name: "DEL after Unicode", credentials: "john:päss\x7f", status: fiber.StatusBadRequest},
+		{name: "C0 after word boundary", credentials: "abcdefghé\x00tail:doe", status: fiber.StatusBadRequest},
 	}
-	for _, test := range cases {
+
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			called := false
@@ -576,62 +490,49 @@ func Test_BasicAuth_UnicodeControlPolicies(t *testing.T) {
 				Authorizer: func(_, _ string, _ fiber.Ctx) bool { called = true; return true },
 			}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-			req.Header.Set(fiber.HeaderAuthorization, "Basic "+base64.StdEncoding.EncodeToString([]byte(test.credentials)))
-			apptest.Expect(t, app, req, test.status)
+
+			resp := apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials(test.credentials)), test.status)
+			if test.status == fiber.StatusBadRequest {
+				require.Empty(t, resp.Header.Get(fiber.HeaderWWWAuthenticate))
+			}
 			require.Equal(t, test.authorized, called)
 		})
 	}
 }
 
-func Test_BasicAuth_UnpaddedBase64(t *testing.T) {
+func Test_BasicAuth_InvalidHeaderBytes(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	hashedJohn := sha256Hash("doe")
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
+	app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}}))
 
-	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
-	creds = strings.TrimRight(creds, "=")
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-	apptest.Expect(t, app, req, fiber.StatusTeapot)
-}
-
-func Test_BasicAuth_NonASCIIHeader(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	hashedJohn := sha256Hash("doe")
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
 	handler := app.Handler()
 	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.SetRequestURI("/")
-	fctx.Request.Header.SetMethod(fiber.MethodGet)
-	fctx.Request.Header.SetBytesKV([]byte(fiber.HeaderAuthorization), []byte("Basic \x80"+creds))
-	handler(fctx)
-	require.Equal(t, fiber.StatusBadRequest, fctx.Response.StatusCode())
-}
+	tests := []struct {
+		name   string
+		header string
+	}{
+		{name: "non-ASCII byte before the credentials", header: "Basic \x80" + creds},
+		// Note: \r and \n are sanitized to spaces by fasthttp at the protocol level,
+		// so we use other control chars (SOH, BEL) that pass through unchanged.
+		{name: "SOH before the scheme", header: "\x01Basic " + creds},
+		{name: "BEL before the scheme", header: "\x07Basic " + creds},
+		{name: "SOH after the credentials", header: "Basic " + creds + "\x01"},
+		{name: "BEL after the credentials", header: "Basic " + creds + "\x07"},
+	}
 
-func Test_BasicAuth_InvalidUTF8(t *testing.T) {
-	t.Parallel()
-	called := false
-	app := fiber.New()
-	app.Use(New(Config{
-		Charset: "UTF-8",
-		Authorizer: func(_, _ string, _ fiber.Ctx) bool {
-			called = true
-			return true
-		},
-	}))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	creds := base64.StdEncoding.EncodeToString([]byte{'j', 'o', 'h', 'n', ':', 0xff, 'd', 'o', 'e'})
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-	apptest.Expect(t, app, req, fiber.StatusBadRequest)
-	require.False(t, called)
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.SetRequestURI("/")
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.Header.SetBytesKV([]byte(fiber.HeaderAuthorization), []byte(tc.header))
+			handler(fctx)
+			require.Equal(t, fiber.StatusBadRequest, fctx.Response.StatusCode())
+		})
+	}
 }
 
 func Test_BasicAuth_UTF8Normalization(t *testing.T) {
@@ -650,39 +551,8 @@ func Test_BasicAuth_UTF8Normalization(t *testing.T) {
 	}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
-	creds := base64.StdEncoding.EncodeToString([]byte(decomposed + ":doe"))
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-	apptest.Expect(t, app, req, fiber.StatusTeapot)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials(decomposed+":doe")), fiber.StatusTeapot)
 	require.True(t, called)
-}
-
-func Test_BasicAuth_HeaderControlCharEdges(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	hashedJohn := sha256Hash("doe")
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
-
-	handler := app.Handler()
-	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
-	// Note: \r and \n are sanitized to spaces by fasthttp at the protocol level,
-	// so we use other control chars (SOH, BEL) that pass through unchanged.
-	headers := [][]byte{
-		[]byte("\x01Basic " + creds),
-		[]byte("\x07Basic " + creds),
-		[]byte("Basic " + creds + "\x01"),
-		[]byte("Basic " + creds + "\x07"),
-	}
-
-	for _, h := range headers {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.SetRequestURI("/")
-		fctx.Request.Header.SetMethod(fiber.MethodGet)
-		fctx.Request.Header.SetBytesKV([]byte(fiber.HeaderAuthorization), h)
-		handler(fctx)
-		require.Equal(t, fiber.StatusBadRequest, fctx.Response.StatusCode())
-	}
 }
 
 func Test_BasicAuth_Charset(t *testing.T) {
@@ -693,29 +563,34 @@ func Test_BasicAuth_Charset(t *testing.T) {
 	require.NotPanics(t, func() { New(Config{}) })
 }
 
-func Test_BasicAuth_HeaderLimit(t *testing.T) {
+func Test_BasicAuth_Options(t *testing.T) {
 	t.Parallel()
-	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
-	hashedJohn := sha256Hash("doe")
 
-	t.Run("too large", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{Users: map[string]string{"john": hashedJohn}, HeaderLimit: 10}))
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-		apptest.Expect(t, app, req, fiber.StatusRequestHeaderFieldsTooLarge)
-	})
+	users := map[string]string{"john": sha256Hash("doe")}
 
-	t.Run("allowed", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{Users: map[string]string{"john": hashedJohn}, HeaderLimit: 100}))
-		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-		apptest.Expect(t, app, req, fiber.StatusTeapot)
-	})
+	tests := []struct {
+		appConfig fiber.Config
+		name      string
+		config    Config
+		status    int
+	}{
+		{name: "HeaderLimit too large", config: Config{Users: users, HeaderLimit: 10}, status: fiber.StatusRequestHeaderFieldsTooLarge},
+		{name: "HeaderLimit allowed", config: Config{Users: users, HeaderLimit: 100}, status: fiber.StatusTeapot},
+		{name: "Immutable", config: Config{Users: users}, appConfig: fiber.Config{Immutable: true}, status: fiber.StatusTeapot},
+	}
+
+	for i := range tests {
+		tc := &tests[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(tc.appConfig)
+			app.Use(New(tc.config))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
+
+			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:doe")), tc.status)
+		})
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_BasicAuth -benchmem -count=4
@@ -778,23 +653,6 @@ func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-}
-
-func Test_BasicAuth_Immutable(t *testing.T) {
-	t.Parallel()
-	app := fiber.New(fiber.Config{Immutable: true})
-
-	hashedJohn := sha256Hash("doe")
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
-
-	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-
-	apptest.Expect(t, app, req, fiber.StatusTeapot)
 }
 
 func Test_parseHashedPassword(t *testing.T) {
@@ -916,33 +774,6 @@ func Test_buildVerifiers_SameCostAcrossTiers(t *testing.T) {
 func Test_BasicAuth_HashVariants(t *testing.T) {
 	t.Parallel()
 	pass := "doe"
-	bcryptHash, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.MinCost)
-	require.NoError(t, err)
-	cases := []struct {
-		name   string
-		hashed string
-	}{
-		{"bcrypt", string(bcryptHash)},
-		{"sha512", sha512Hash(pass)},
-		{"sha256", sha256Hash(pass)},
-		{"sha256-hex", func() string { h := sha256.Sum256([]byte(pass)); return hex.EncodeToString(h[:]) }()},
-	}
-
-	for _, tt := range cases {
-		app := fiber.New()
-		app.Use(New(Config{Users: map[string]string{"john": tt.hashed}}))
-		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
-
-		creds := base64.StdEncoding.EncodeToString([]byte("john:" + pass))
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-		apptest.Expect(t, app, req, fiber.StatusTeapot)
-	}
-}
-
-func Test_BasicAuth_HashVariants_Invalid(t *testing.T) {
-	t.Parallel()
-	pass := "doe"
 	wrong := "wrong"
 	bcryptHash, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.MinCost)
 	require.NoError(t, err)
@@ -957,35 +788,48 @@ func Test_BasicAuth_HashVariants_Invalid(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		app := fiber.New()
-		app.Use(New(Config{Users: map[string]string{"john": tt.hashed}}))
-		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Users: map[string]string{"john": tt.hashed}}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
-		creds := base64.StdEncoding.EncodeToString([]byte("john:" + wrong))
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-		apptest.Expect(t, app, req, fiber.StatusUnauthorized)
+			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:"+pass)), fiber.StatusTeapot)
+			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:"+wrong)), fiber.StatusUnauthorized)
+		})
 	}
 }
 
 func Test_containsInvalidHeaderChars_WordBoundaries(t *testing.T) {
 	t.Parallel()
 
-	// Valid: HTAB and visible ASCII, across scalar, whole-word, and
-	// overlapping-tail positions.
-	require.False(t, containsInvalidHeaderChars(""))
-	require.False(t, containsInvalidHeaderChars("Basic\tQWxhZGRpbjpvcGVuIHNlc2FtZQ=="))
-	require.False(t, containsInvalidHeaderChars("Basic Q"))
-	require.False(t, containsInvalidHeaderChars(" ~\t"))
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		// Valid: HTAB and visible ASCII, across scalar, whole-word, and
+		// overlapping-tail positions.
+		{in: "", want: false},
+		{in: "Basic\tQWxhZGRpbjpvcGVuIHNlc2FtZQ==", want: false},
+		{in: "Basic Q", want: false},
+		{in: " ~\t", want: false},
 
-	// Invalid bytes at every code path: short input, inside a full word,
-	// and inside the final overlapping word.
-	require.True(t, containsInvalidHeaderChars("\n"))
-	require.True(t, containsInvalidHeaderChars("Basic \x00credentials"))
-	require.True(t, containsInvalidHeaderChars("Basic credential\x7f"))
-	require.True(t, containsInvalidHeaderChars("Basic credentials\x80"))
-	require.True(t, containsInvalidHeaderChars("Basic  credentials"))
-	require.True(t, containsInvalidHeaderChars("abcdefg\r"))
+		// Invalid bytes at every code path: short input, inside a full word,
+		// and inside the final overlapping word.
+		{in: "\n", want: true},
+		{in: "Basic \x00credentials", want: true},
+		{in: "Basic credential\x7f", want: true},
+		{in: "Basic credentials\x80", want: true},
+		{in: "Basic \u00a0credentials", want: true},
+		{in: "abcdefg\r", want: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(strconv.Quote(tc.in), func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, containsInvalidHeaderChars(tc.in))
+		})
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_containsInvalidHeaderChars -benchmem -count=4
@@ -1008,26 +852,38 @@ func Benchmark_containsInvalidHeaderChars(b *testing.B) {
 func Test_containsCTL(t *testing.T) {
 	t.Parallel()
 
-	// Clean ASCII across scalar, word, and overlapping-tail paths.
-	require.False(t, containsCTL(""))
-	require.False(t, containsCTL("user"))
-	require.False(t, containsCTL("averylongusername"))
-	require.False(t, containsCTL("pass word with spaces and ~"))
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		// Clean ASCII across scalar, word, and overlapping-tail paths.
+		{in: "", want: false},
+		{in: "user", want: false},
+		{in: "averylongusername", want: false},
+		{in: "pass word with spaces and ~", want: false},
 
-	// C0 and DEL at every code path position.
-	require.True(t, containsCTL("\x00"))
-	require.True(t, containsCTL("user\npass"))
-	require.True(t, containsCTL("averylongusername\x7f"))
-	require.True(t, containsCTL("abcdefgh\x1fjklmnopq"))
+		// C0 and DEL at every code path position.
+		{in: "\x00", want: true},
+		{in: "user\npass", want: true},
+		{in: "averylongusername\x7f", want: true},
+		{in: "abcdefgh\x1fjklmnopq", want: true},
 
-	// Unicode: C1 controls (multi-byte runes) must still be caught, and
-	// ordinary non-ASCII letters must still pass, wherever the first
-	// non-ASCII byte sits.
-	require.True(t, containsCTL("\u0085"))
-	require.True(t, containsCTL("abcdefgh\u009d"))
-	require.True(t, containsCTL("pässword\u0085tail"))
-	require.False(t, containsCTL("pässwörd"))
-	require.False(t, containsCTL("abcdefghijklmnoöp"))
+		// Unicode: C1 controls (multi-byte runes) must still be caught, and
+		// ordinary non-ASCII letters must still pass, wherever the first
+		// non-ASCII byte sits.
+		{in: "\u0085", want: true},
+		{in: "abcdefgh\u009d", want: true},
+		{in: "pässword\u0085tail", want: true},
+		{in: "pässwörd", want: false},
+		{in: "abcdefghijklmnoöp", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(strconv.Quote(tc.in), func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, containsCTL(tc.in))
+		})
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_containsCTL -benchmem -count=4
