@@ -2,9 +2,7 @@ package rewrite
 
 import (
 	"bufio"
-	"context"
 	"fmt"
-	"net/http"
 	"strings"
 	"testing"
 
@@ -15,153 +13,104 @@ import (
 )
 
 func Test_New(t *testing.T) {
-	// Test with no config
-	m := New()
+	t.Parallel()
 
-	if m == nil {
-		t.Error("Expected middleware to be returned, got nil")
-	}
+	for _, tc := range []struct {
+		name string
+		cfg  []Config
+	}{
+		{name: "no config"},
+		{name: "config", cfg: []Config{{Rules: map[string]string{"/old": "/new"}}}},
+		{name: "full config", cfg: []Config{{
+			Next:  func(fiber.Ctx) bool { return true },
+			Rules: map[string]string{"/old": "/new"},
+		}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Test with config
-	m = New(Config{
-		Rules: map[string]string{
-			"/old": "/new",
-		},
-	})
-
-	if m == nil {
-		t.Error("Expected middleware to be returned, got nil")
-	}
-
-	// Test with full config
-	m = New(Config{
-		Next: func(fiber.Ctx) bool {
-			return true
-		},
-		Rules: map[string]string{
-			"/old": "/new",
-		},
-	})
-
-	if m == nil {
-		t.Error("Expected middleware to be returned, got nil")
+			require.NotNil(t, New(tc.cfg...), "Expected middleware to be returned, got nil")
+		})
 	}
 }
 
 func Test_Rewrite(t *testing.T) {
-	// Case 1: Next function always returns true
-	app := fiber.New()
-	app.Use(New(Config{
-		Next: func(fiber.Ctx) bool {
-			return true
-		},
-		Rules: map[string]string{
-			"/old": "/new",
-		},
-	}))
+	t.Parallel()
 
-	app.Get("/old", func(c fiber.Ctx) error {
-		return c.SendString("Rewrite Successful")
+	oldToNew := map[string]string{"/old": "/new"}
+	tokens := map[string]string{"/users/*/orders/*": "/user/$1/order/$2"}
+
+	// success answers "Rewrite Successful" at path; orders is the route the
+	// token rule rewrites into and answers with the two captured IDs.
+	success := func(path string) func(*fiber.App) {
+		return func(app *fiber.App) {
+			app.Get(path, func(c fiber.Ctx) error {
+				return c.SendString("Rewrite Successful")
+			})
+		}
+	}
+	orders := func(app *fiber.App) {
+		app.Get("/user/:userID/order/:orderID", func(c fiber.Ctx) error {
+			return c.SendString(fmt.Sprintf("User ID: %s, Order ID: %s", c.Params("userID"), c.Params("orderID")))
+		})
+	}
+
+	for _, tc := range []struct {
+		routes func(*fiber.App)
+		name   string
+		target string
+		body   string
+		cfg    Config
+	}{
+		{
+			name:   "Next always returns true",
+			cfg:    Config{Next: func(fiber.Ctx) bool { return true }, Rules: oldToNew},
+			routes: success("/old"),
+			target: "/old", body: "Rewrite Successful",
+		},
+		{
+			name:   "Next always returns false",
+			cfg:    Config{Next: func(fiber.Ctx) bool { return false }, Rules: oldToNew},
+			routes: success("/new"),
+			target: "/old", body: "Rewrite Successful",
+		},
+		{
+			name:   "captured tokens in the rewrite rule",
+			cfg:    Config{Rules: tokens},
+			routes: orders,
+			target: "/users/123/orders/456", body: "User ID: 123, Order ID: 456",
+		},
+		{
+			name: "non-matching request handled by default route",
+			cfg:  Config{Rules: tokens},
+			routes: func(app *fiber.App) {
+				orders(app)
+				app.Use(func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusOK)
+				})
+			},
+			target: "/not-matching-any-rule", body: "OK",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(tc.cfg))
+			tc.routes(app)
+			apptest.ExpectBody(t, app, tc.target, fiber.StatusOK, tc.body)
+		})
+	}
+
+	// Only the status is pinned here: nothing answers, so the body is Fiber's.
+	t.Run("non-matching request with no default route", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{Rules: tokens}))
+		orders(app)
+		apptest.Expect(t, app, "/not-matching-any-rule", fiber.StatusNotFound)
 	})
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", http.NoBody)
-	require.NoError(t, err)
-	resp := apptest.Do(t, app, req)
-	body := apptest.BodyBytes(t, resp)
-	bodyString := string(body)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "Rewrite Successful", bodyString)
-
-	// Case 2: Next function always returns false
-	app = fiber.New()
-	app.Use(New(Config{
-		Next: func(fiber.Ctx) bool {
-			return false
-		},
-		Rules: map[string]string{
-			"/old": "/new",
-		},
-	}))
-
-	app.Get("/new", func(c fiber.Ctx) error {
-		return c.SendString("Rewrite Successful")
-	})
-
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", http.NoBody)
-	require.NoError(t, err)
-	resp = apptest.Do(t, app, req)
-	body = apptest.BodyBytes(t, resp)
-	bodyString = string(body)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "Rewrite Successful", bodyString)
-
-	// Case 3: check for captured tokens in rewrite rule
-	app = fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/users/*/orders/*": "/user/$1/order/$2",
-		},
-	}))
-
-	app.Get("/user/:userID/order/:orderID", func(c fiber.Ctx) error {
-		return c.SendString(fmt.Sprintf("User ID: %s, Order ID: %s", c.Params("userID"), c.Params("orderID")))
-	})
-
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/users/123/orders/456", http.NoBody)
-	require.NoError(t, err)
-	resp = apptest.Do(t, app, req)
-	body = apptest.BodyBytes(t, resp)
-	bodyString = string(body)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "User ID: 123, Order ID: 456", bodyString)
-
-	// Case 4: Send non-matching request, handled by default route
-	app = fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/users/*/orders/*": "/user/$1/order/$2",
-		},
-	}))
-
-	app.Get("/user/:userID/order/:orderID", func(c fiber.Ctx) error {
-		return c.SendString(fmt.Sprintf("User ID: %s, Order ID: %s", c.Params("userID"), c.Params("orderID")))
-	})
-
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", http.NoBody)
-	require.NoError(t, err)
-	resp = apptest.Do(t, app, req)
-	body = apptest.BodyBytes(t, resp)
-	bodyString = string(body)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "OK", bodyString)
-
-	// Case 4: Send non-matching request, with no default route
-	app = fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/users/*/orders/*": "/user/$1/order/$2",
-		},
-	}))
-
-	app.Get("/user/:userID/order/:orderID", func(c fiber.Ctx) error {
-		return c.SendString(fmt.Sprintf("User ID: %s, Order ID: %s", c.Params("userID"), c.Params("orderID")))
-	})
-
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", http.NoBody)
-	require.NoError(t, err)
-	apptest.Expect(t, app, req, fiber.StatusNotFound)
 }
 
 // Test_Rewrite_StartAnchor verifies that a rule only matches from the start of
@@ -184,20 +133,10 @@ func Test_Rewrite_StartAnchor(t *testing.T) {
 	})
 
 	// The rule matches from the start of the path and is rewritten.
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/users/1", http.NoBody)
-	require.NoError(t, err)
-	resp := apptest.Do(t, app, req)
-	body := apptest.BodyBytes(t, resp)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "rewritten:1", string(body))
+	apptest.ExpectBody(t, app, "/users/1", fiber.StatusOK, "rewritten:1")
 
 	// A path that only contains the rule path as a suffix must not be rewritten.
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/api/users/1", http.NoBody)
-	require.NoError(t, err)
-	resp = apptest.Do(t, app, req)
-	body = apptest.BodyBytes(t, resp)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "api:1", string(body))
+	apptest.ExpectBody(t, app, "/api/users/1", fiber.StatusOK, "api:1")
 }
 
 func Benchmark_Rewrite(b *testing.B) {
@@ -422,11 +361,7 @@ func rewritten(t *testing.T, cfg Config, path string) string {
 		return c.SendString(c.Path())
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, path, http.NoBody)
-	require.NoError(t, err)
-	resp := apptest.Do(t, app, req)
-	body := apptest.Body(t, resp)
-	return body
+	return apptest.Body(t, apptest.Do(t, app, path))
 }
 
 func Test_Rewrite_RuleListOrderWins(t *testing.T) {
@@ -588,9 +523,7 @@ func Test_Rewrite_TwoDigitCaptures(t *testing.T) {
 		return c.SendString(c.Params("a") + " " + c.Params("b") + " " + c.Params("c"))
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/t/a/b/c/d/e/f/g/h/i/j/k", http.NoBody)
-	require.NoError(t, err)
-	apptest.ExpectBody(t, app, req, fiber.StatusOK, "k j a")
+	apptest.ExpectBody(t, app, "/t/a/b/c/d/e/f/g/h/i/j/k", fiber.StatusOK, "k j a")
 }
 
 // rewrittenRaw hands app a request line exactly as written and reports the
@@ -617,44 +550,47 @@ func rewrittenRaw(t *testing.T, app *fiber.App, target string) string {
 func Test_Rewrite_UnescapePathDecodesOnce(t *testing.T) {
 	t.Parallel()
 
-	for _, unescape := range []bool{false, true} {
-		app := fiber.New(fiber.Config{UnescapePath: unescape})
-		app.Use(New(Config{
-			RuleList: []Rule{{From: "/files/*", To: "/public/$1"}},
-		}))
-		app.Use(func(c fiber.Ctx) error {
-			return c.SendString(c.Path())
-		})
+	// Without UnescapePath (raw) the path keeps its escapes, and a capture is
+	// carried as is; with it (unescaped) the router has decoded the path once.
+	cases := []struct {
+		name      string
+		target    string
+		unescaped string
+		raw       string
+	}{
+		{name: "plain path", target: "/files/a/b", unescaped: "/public/a/b", raw: "/public/a/b"},
+		{name: "double-encoded dot dot", target: "/files/%252e%252e/secret", unescaped: "/public/%2e%2e/secret", raw: "/public/%252e%252e/secret"},
+		{name: "double-encoded slash", target: "/files/..%252Fsecret", unescaped: "/public/..%2Fsecret", raw: "/public/..%252Fsecret"},
+		{name: "encoded space", target: "/files/%41%20b", unescaped: "/public/A b", raw: "/public/A%20b"},
+		{name: "encoded query and fragment markers", target: "/files/a%3Fb%23c", unescaped: "/public/a?b#c", raw: "/public/a%3Fb%23c"},
+		{name: "encoded multibyte rune", target: "/files/caf%C3%A9", unescaped: "/public/café", raw: "/public/caf%C3%A9"},
+		{name: "single-encoded dot dot", target: "/files/%2e%2e/secret", unescaped: "/secret", raw: "/secret"},
+		{name: "double-encoded dot dot, trailing slash", target: "/files/%252e%252e/secret/", unescaped: "/public/%2e%2e/secret/", raw: "/public/%252e%252e/secret/"},
+	}
 
-		for target, want := range map[string]string{
-			"/files/a/b":                "/public/a/b",
-			"/files/%252e%252e/secret":  "/public/%2e%2e/secret",
-			"/files/..%252Fsecret":      "/public/..%2Fsecret",
-			"/files/%41%20b":            "/public/A b",
-			"/files/a%3Fb%23c":          "/public/a?b#c",
-			"/files/caf%C3%A9":          "/public/café",
-			"/files/%2e%2e/secret":      "/secret",
-			"/files/%252e%252e/secret/": "/public/%2e%2e/secret/",
-		} {
-			if !unescape {
-				// Without UnescapePath the path keeps its escapes, and a capture
-				// is carried as is.
-				switch target {
-				case "/files/%41%20b":
-					want = "/public/A%20b"
-				case "/files/a%3Fb%23c":
-					want = "/public/a%3Fb%23c"
-				case "/files/caf%C3%A9":
-					want = "/public/caf%C3%A9"
-				case "/files/%252e%252e/secret":
-					want = "/public/%252e%252e/secret"
-				case "/files/..%252Fsecret":
-					want = "/public/..%252Fsecret"
-				case "/files/%252e%252e/secret/":
-					want = "/public/%252e%252e/secret/"
-				}
+	for _, unescape := range []bool{false, true} {
+		t.Run(fmt.Sprintf("UnescapePath=%v", unescape), func(t *testing.T) {
+			t.Parallel()
+
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
+
+					app := fiber.New(fiber.Config{UnescapePath: unescape})
+					app.Use(New(Config{
+						RuleList: []Rule{{From: "/files/*", To: "/public/$1"}},
+					}))
+					app.Use(func(c fiber.Ctx) error {
+						return c.SendString(c.Path())
+					})
+
+					want := tc.raw
+					if unescape {
+						want = tc.unescaped
+					}
+					require.Equal(t, want, rewrittenRaw(t, app, tc.target), "UnescapePath=%v %s", unescape, tc.target)
+				})
 			}
-			require.Equal(t, want, rewrittenRaw(t, app, target), "UnescapePath=%v %s", unescape, target)
-		}
+		})
 	}
 }

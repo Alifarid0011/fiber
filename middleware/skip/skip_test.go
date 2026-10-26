@@ -11,34 +11,26 @@ import (
 // go test -run Test_Skip
 func Test_Skip(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
 
-	app.Use(skip.New(errTeapotHandler, func(fiber.Ctx) bool { return true }))
-	app.Get("/", helloWorldHandler)
+	for _, tc := range []struct {
+		skip   func(fiber.Ctx) bool
+		name   string
+		status int
+	}{
+		{name: "skip", skip: func(fiber.Ctx) bool { return true }, status: fiber.StatusOK},
+		{name: "skip false", skip: func(fiber.Ctx) bool { return false }, status: fiber.StatusTeapot},
+		{name: "nil func", skip: nil, status: fiber.StatusTeapot},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	apptest.Expect(t, app, "/", fiber.StatusOK)
-}
+			app := fiber.New()
+			app.Use(skip.New(errTeapotHandler, tc.skip))
+			app.Get("/", helloWorldHandler)
 
-// go test -run Test_SkipFalse
-func Test_SkipFalse(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(skip.New(errTeapotHandler, func(fiber.Ctx) bool { return false }))
-	app.Get("/", helloWorldHandler)
-
-	apptest.Expect(t, app, "/", fiber.StatusTeapot)
-}
-
-// go test -run Test_SkipNilFunc
-func Test_SkipNilFunc(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(skip.New(errTeapotHandler, nil))
-	app.Get("/", helloWorldHandler)
-
-	apptest.Expect(t, app, "/", fiber.StatusTeapot)
+			apptest.Expect(t, app, "/", tc.status)
+		})
+	}
 }
 
 func helloWorldHandler(c fiber.Ctx) error {

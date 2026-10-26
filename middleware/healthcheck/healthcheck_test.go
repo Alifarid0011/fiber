@@ -28,45 +28,34 @@ func shouldGiveNotFound(t *testing.T, app *fiber.App, path string) {
 	shouldGiveStatus(t, app, path, fiber.StatusNotFound)
 }
 
-func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New(fiber.Config{
-		StrictRouting: true,
-	})
-
-	app.Get(LivenessEndpoint, New())
-	app.Get(ReadinessEndpoint, New())
-	app.Get(StartupEndpoint, New())
-
-	shouldGiveOK(t, app, "/readyz")
-	shouldGiveOK(t, app, "/livez")
-	shouldGiveOK(t, app, "/startupz")
-	shouldGiveNotFound(t, app, "/readyz/")
-	shouldGiveNotFound(t, app, "/livez/")
-	shouldGiveNotFound(t, app, "/startupz/")
-	shouldGiveNotFound(t, app, "/notDefined/readyz")
-	shouldGiveNotFound(t, app, "/notDefined/livez")
-	shouldGiveNotFound(t, app, "/notDefined/startupz")
-}
-
+// Test_HealthCheck_Default serves the default endpoints with and without
+// StrictRouting: only the answer for a trailing slash differs.
 func Test_HealthCheck_Default(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Get(LivenessEndpoint, New())
-	app.Get(ReadinessEndpoint, New())
-	app.Get(StartupEndpoint, New())
+	for _, tc := range []struct {
+		name          string
+		trailingSlash int
+		strict        bool
+	}{
+		{name: "strict routing", strict: true, trailingSlash: fiber.StatusNotFound},
+		{name: "default routing", strict: false, trailingSlash: fiber.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	shouldGiveOK(t, app, "/readyz")
-	shouldGiveOK(t, app, "/livez")
-	shouldGiveOK(t, app, "/startupz")
-	shouldGiveOK(t, app, "/readyz/")
-	shouldGiveOK(t, app, "/livez/")
-	shouldGiveOK(t, app, "/startupz/")
-	shouldGiveNotFound(t, app, "/notDefined/readyz")
-	shouldGiveNotFound(t, app, "/notDefined/livez")
-	shouldGiveNotFound(t, app, "/notDefined/startupz")
+			app := fiber.New(fiber.Config{StrictRouting: tc.strict})
+			app.Get(LivenessEndpoint, New())
+			app.Get(ReadinessEndpoint, New())
+			app.Get(StartupEndpoint, New())
+
+			for _, path := range []string{"/readyz", "/livez", "/startupz"} {
+				shouldGiveOK(t, app, path)
+				shouldGiveStatus(t, app, path+"/", tc.trailingSlash)
+				shouldGiveNotFound(t, app, "/notDefined"+path)
+			}
+		})
+	}
 }
 
 func Test_HealthCheck_Custom(t *testing.T) {
@@ -279,168 +268,97 @@ func Test_HealthCheck_Text_Format(t *testing.T) {
 	}))
 
 	// Test successful healthcheck with default text format
-	req := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
-	require.Equal(t, "text/plain; charset=utf-8", req.Header.Get("Content-Type"))
-
-	// Read body
-	body := apptest.BodyBytes(t, req)
-	require.Equal(t, "OK", string(body))
+	resp := apptest.ExpectBody(t, app, LivenessEndpoint, fiber.StatusOK, "OK")
+	require.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 
 	// Test failed healthcheck with text format
-	req = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
-	require.Equal(t, "text/plain; charset=utf-8", req.Header.Get("Content-Type"))
-
-	// Read body
-	body = apptest.BodyBytes(t, req)
-	require.Equal(t, "Service Unavailable", string(body))
+	resp = apptest.ExpectBody(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable, "Service Unavailable")
+	require.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 }
 
-func Test_HealthCheck_JSON_Format(t *testing.T) {
+// Test_HealthCheck_Structured_Formats checks the JSON, XML, MsgPack and CBOR
+// responses of a passing and of a failing probe.
+func Test_HealthCheck_Structured_Formats(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	// decoded checks a body that unmarshal decodes to exactly one "status" field.
+	decoded := func(unmarshal func([]byte, any) error) func(*testing.T, []byte, string) {
+		return func(t *testing.T, body []byte, status string) {
+			t.Helper()
 
-	app.Get(LivenessEndpoint, New(Config{
-		ResponseFormat: FormatJSON,
-	}))
-	app.Get(ReadinessEndpoint, New(Config{
-		ResponseFormat: FormatJSON,
-		Probe: func(_ fiber.Ctx) bool {
-			return false
+			var response map[string]string
+			require.NoError(t, unmarshal(body, &response))
+			require.Len(t, response, 1)
+			require.Contains(t, response, "status")
+			require.NotContains(t, response, "Status")
+			require.Equal(t, status, response["status"])
+		}
+	}
+
+	for _, tc := range []struct {
+		app         fiber.Config
+		check       func(t *testing.T, body []byte, status string)
+		name        string
+		contentType string
+		format      ResponseFormat
+	}{
+		{
+			name:        "JSON",
+			format:      FormatJSON,
+			contentType: "application/json; charset=utf-8",
+			check: func(t *testing.T, body []byte, status string) {
+				t.Helper()
+
+				require.JSONEq(t, `{"status":"`+status+`"}`, string(body))
+			},
 		},
-	}))
+		{
+			name:        "XML",
+			format:      FormatXML,
+			contentType: "application/xml; charset=utf-8",
+			check: func(t *testing.T, body []byte, status string) {
+				t.Helper()
 
-	// Test successful healthcheck with JSON format
-	req := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
-	require.Equal(t, "application/json; charset=utf-8", req.Header.Get("Content-Type"))
-
-	// Read and parse JSON body
-	body := apptest.BodyBytes(t, req)
-	require.JSONEq(t, `{"status":"OK"}`, string(body))
-
-	// Test failed healthcheck with JSON format
-	req = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
-	require.Equal(t, "application/json; charset=utf-8", req.Header.Get("Content-Type"))
-
-	// Read and parse JSON body
-	body = apptest.BodyBytes(t, req)
-	require.JSONEq(t, `{"status":"Service Unavailable"}`, string(body))
-}
-
-func Test_HealthCheck_XML_Format(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-
-	app.Get(LivenessEndpoint, New(Config{
-		ResponseFormat: FormatXML,
-	}))
-	app.Get(ReadinessEndpoint, New(Config{
-		ResponseFormat: FormatXML,
-		Probe: func(_ fiber.Ctx) bool {
-			return false
+				require.Contains(t, string(body), "<healthResponse>")
+				require.Contains(t, string(body), "<status>"+status+"</status>")
+			},
 		},
-	}))
-
-	// Test successful healthcheck with XML format
-	req := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
-	require.Equal(t, "application/xml; charset=utf-8", req.Header.Get("Content-Type"))
-
-	// Read and check XML body
-	body := apptest.BodyBytes(t, req)
-	require.Contains(t, string(body), "<healthResponse>")
-	require.Contains(t, string(body), "<status>OK</status>")
-
-	// Test failed healthcheck with XML format
-	req = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
-	require.Equal(t, "application/xml; charset=utf-8", req.Header.Get("Content-Type"))
-
-	// Read and check XML body
-	body = apptest.BodyBytes(t, req)
-	require.Contains(t, string(body), "<healthResponse>")
-	require.Contains(t, string(body), "<status>Service Unavailable</status>")
-}
-
-func Test_HealthCheck_MsgPack_Format(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New(fiber.Config{
-		MsgPackEncoder: msgpack.Marshal,
-	})
-
-	app.Get(LivenessEndpoint, New(Config{
-		ResponseFormat: FormatMsgPack,
-	}))
-	app.Get(ReadinessEndpoint, New(Config{
-		ResponseFormat: FormatMsgPack,
-		Probe: func(_ fiber.Ctx) bool {
-			return false
+		{
+			name:        "MsgPack",
+			app:         fiber.Config{MsgPackEncoder: msgpack.Marshal},
+			format:      FormatMsgPack,
+			contentType: "application/vnd.msgpack",
+			check:       decoded(msgpack.Unmarshal),
 		},
-	}))
-
-	// Test successful healthcheck with MsgPack format
-	req := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
-	require.Equal(t, "application/vnd.msgpack", req.Header.Get("Content-Type"))
-
-	body := apptest.BodyBytes(t, req)
-	var livezResponse map[string]string
-	require.NoError(t, msgpack.Unmarshal(body, &livezResponse))
-	require.Len(t, livezResponse, 1)
-	require.Contains(t, livezResponse, "status")
-	require.NotContains(t, livezResponse, "Status")
-	require.Equal(t, "OK", livezResponse["status"])
-
-	// Test failed healthcheck with MsgPack format
-	req = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
-	require.Equal(t, "application/vnd.msgpack", req.Header.Get("Content-Type"))
-
-	body = apptest.BodyBytes(t, req)
-	var readyzResponse map[string]string
-	require.NoError(t, msgpack.Unmarshal(body, &readyzResponse))
-	require.Len(t, readyzResponse, 1)
-	require.Contains(t, readyzResponse, "status")
-	require.NotContains(t, readyzResponse, "Status")
-	require.Equal(t, "Service Unavailable", readyzResponse["status"])
-}
-
-func Test_HealthCheck_CBOR_Format(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New(fiber.Config{
-		CBOREncoder: cbor.Marshal,
-	})
-
-	app.Get(LivenessEndpoint, New(Config{
-		ResponseFormat: FormatCBOR,
-	}))
-	app.Get(ReadinessEndpoint, New(Config{
-		ResponseFormat: FormatCBOR,
-		Probe: func(_ fiber.Ctx) bool {
-			return false
+		{
+			name:        "CBOR",
+			app:         fiber.Config{CBOREncoder: cbor.Marshal},
+			format:      FormatCBOR,
+			contentType: "application/cbor",
+			check:       decoded(cbor.Unmarshal),
 		},
-	}))
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Test successful healthcheck with CBOR format
-	req := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
-	require.Equal(t, "application/cbor", req.Header.Get("Content-Type"))
+			app := fiber.New(tc.app)
+			app.Get(LivenessEndpoint, New(Config{ResponseFormat: tc.format}))
+			app.Get(ReadinessEndpoint, New(Config{
+				ResponseFormat: tc.format,
+				Probe: func(_ fiber.Ctx) bool {
+					return false
+				},
+			}))
 
-	body := apptest.BodyBytes(t, req)
-	var livezResponse map[string]string
-	require.NoError(t, cbor.Unmarshal(body, &livezResponse))
-	require.Len(t, livezResponse, 1)
-	require.Contains(t, livezResponse, "status")
-	require.NotContains(t, livezResponse, "Status")
-	require.Equal(t, "OK", livezResponse["status"])
+			// Test successful healthcheck
+			resp := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
+			require.Equal(t, tc.contentType, resp.Header.Get("Content-Type"))
+			tc.check(t, apptest.BodyBytes(t, resp), "OK")
 
-	// Test failed healthcheck with CBOR format
-	req = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
-	require.Equal(t, "application/cbor", req.Header.Get("Content-Type"))
-
-	body = apptest.BodyBytes(t, req)
-	var readyzResponse map[string]string
-	require.NoError(t, cbor.Unmarshal(body, &readyzResponse))
-	require.Len(t, readyzResponse, 1)
-	require.Contains(t, readyzResponse, "status")
-	require.NotContains(t, readyzResponse, "Status")
-	require.Equal(t, "Service Unavailable", readyzResponse["status"])
+			// Test failed healthcheck
+			resp = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
+			require.Equal(t, tc.contentType, resp.Header.Get("Content-Type"))
+			tc.check(t, apptest.BodyBytes(t, resp), "Service Unavailable")
+		})
+	}
 }

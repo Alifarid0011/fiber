@@ -111,58 +111,56 @@ func executeExpectations(t *testing.T, app *fiber.App, remoteAddr string, expect
 func Test_EarlyData(t *testing.T) {
 	t.Parallel()
 
-	untrustedExpectations := []requestExpectation{
-		{method: fiber.MethodGet, status: fiber.StatusOK},
-		{method: fiber.MethodGet, header: headerValOff, status: fiber.StatusOK},
-		{method: fiber.MethodGet, header: headerValOn, status: fiber.StatusTooEarly},
-		{method: fiber.MethodPost, status: fiber.StatusOK},
-		{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusOK},
-		{method: fiber.MethodPost, header: headerValOn, status: fiber.StatusTooEarly},
-		// QUERY is safe (RFC 10008), so it behaves like GET.
-		{method: fiber.MethodQuery, header: headerValOn, status: fiber.StatusTooEarly},
+	// Early data on a safe method is only allowed from a trusted proxy, and on
+	// any other method it never is. QUERY is safe (RFC 10008), so it behaves
+	// like GET.
+	expectations := func(trusted bool) []requestExpectation {
+		safeEarly := fiber.StatusTooEarly
+		if trusted {
+			safeEarly = fiber.StatusOK
+		}
+
+		return []requestExpectation{
+			{method: fiber.MethodGet, status: fiber.StatusOK},
+			{method: fiber.MethodGet, header: headerValOff, status: fiber.StatusOK},
+			{method: fiber.MethodGet, header: headerValOn, status: safeEarly},
+			{method: fiber.MethodPost, status: fiber.StatusOK},
+			{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusOK},
+			{method: fiber.MethodPost, header: headerValOn, status: fiber.StatusTooEarly},
+			{method: fiber.MethodQuery, header: headerValOn, status: safeEarly},
+		}
 	}
 
-	trustedExpectations := []requestExpectation{
-		{method: fiber.MethodGet, status: fiber.StatusOK},
-		{method: fiber.MethodGet, header: headerValOff, status: fiber.StatusOK},
-		{method: fiber.MethodGet, header: headerValOn, status: fiber.StatusOK},
-		{method: fiber.MethodPost, status: fiber.StatusOK},
-		{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusOK},
-		{method: fiber.MethodPost, header: headerValOn, status: fiber.StatusTooEarly},
-		// QUERY is safe, so a trusted early-data QUERY is allowed like GET.
-		{method: fiber.MethodQuery, header: headerValOn, status: fiber.StatusOK},
-	}
-
-	t.Run("empty config", func(t *testing.T) {
-		t.Parallel()
-		app := appWithConfig(t, nil)
-		executeExpectations(t, app, untrustedRemoteAddr, untrustedExpectations)
-	})
-	t.Run("default config", func(t *testing.T) {
-		t.Parallel()
-		app := appWithConfig(t, &fiber.Config{})
-		executeExpectations(t, app, untrustedRemoteAddr, untrustedExpectations)
-	})
-
-	t.Run("config with TrustProxy and untrusted remote", func(t *testing.T) {
-		t.Parallel()
-		app := appWithConfig(t, &fiber.Config{
-			TrustProxy: true,
-		})
-		executeExpectations(t, app, untrustedRemoteAddr, untrustedExpectations)
-	})
-	t.Run("config with TrustProxy and trusted TrustProxyConfig.Proxies", func(t *testing.T) {
-		t.Parallel()
-		app := appWithConfig(t, &fiber.Config{
-			TrustProxy: true,
-			TrustProxyConfig: fiber.TrustProxyConfig{
-				Proxies: []string{
-					"0.0.0.0",
-				},
+	for _, tc := range []struct {
+		config     *fiber.Config
+		name       string
+		remoteAddr string
+		trusted    bool
+	}{
+		{name: "empty config", remoteAddr: untrustedRemoteAddr},
+		{name: "default config", config: &fiber.Config{}, remoteAddr: untrustedRemoteAddr},
+		{
+			name:       "config with TrustProxy and untrusted remote",
+			config:     &fiber.Config{TrustProxy: true},
+			remoteAddr: untrustedRemoteAddr,
+		},
+		{
+			name: "config with TrustProxy and trusted TrustProxyConfig.Proxies",
+			config: &fiber.Config{
+				TrustProxy:       true,
+				TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
 			},
+			remoteAddr: trustedRemoteAddr,
+			trusted:    true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := appWithConfig(t, tc.config)
+			executeExpectations(t, app, tc.remoteAddr, expectations(tc.trusted))
 		})
-		executeExpectations(t, app, trustedRemoteAddr, trustedExpectations)
-	})
+	}
 }
 
 // Test_EarlyDataNext verifies that the middleware skips its logic when Next returns true.

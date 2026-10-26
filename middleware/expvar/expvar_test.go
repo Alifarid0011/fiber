@@ -9,66 +9,54 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// expvarTestApp returns an app that serves "escaped" at / behind the middleware.
+func expvarTestApp() *fiber.App {
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("escaped")
+	})
+
+	return app
+}
+
 func Test_Non_Expvar_Path(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
 
-	app.Use(New())
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
-
-	apptest.ExpectBody(t, app, "/", 200, "escaped")
+	apptest.ExpectBody(t, expvarTestApp(), "/", 200, "escaped")
 }
 
-func Test_Expvar_Index(t *testing.T) {
+// Test_Expvar_Vars covers the full index and the index narrowed by the r query.
+func Test_Expvar_Vars(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
 
-	app.Use(New())
+	for _, tc := range []struct {
+		name    string
+		target  string
+		memstat bool // whether memstat is part of the output
+	}{
+		{name: "index", target: "/debug/vars", memstat: true},
+		{name: "filter", target: "/debug/vars?r=cmd", memstat: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
+			resp := apptest.Expect(t, expvarTestApp(), tc.target, 200)
+			require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	resp := apptest.Expect(t, app, "/debug/vars", 200)
-	require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	b := apptest.BodyBytes(t, resp)
-	require.True(t, bytes.Contains(b, []byte("cmdline")))
-	require.True(t, bytes.Contains(b, []byte("memstat")))
-}
-
-func Test_Expvar_Filter(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New())
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
-
-	resp := apptest.Expect(t, app, "/debug/vars?r=cmd", 200)
-	require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	b := apptest.BodyBytes(t, resp)
-	require.True(t, bytes.Contains(b, []byte("cmdline")))
-	require.False(t, bytes.Contains(b, []byte("memstat")))
+			b := apptest.BodyBytes(t, resp)
+			require.True(t, bytes.Contains(b, []byte("cmdline")))
+			require.Equal(t, tc.memstat, bytes.Contains(b, []byte("memstat")))
+		})
+	}
 }
 
 func Test_Expvar_Other_Path(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
 
-	app.Use(New())
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
-
-	apptest.Expect(t, app, "/debug/vars/303", fiber.StatusSeeOther)
+	apptest.Expect(t, expvarTestApp(), "/debug/vars/303", fiber.StatusSeeOther)
 }
 
 // go test -run Test_Expvar_Next

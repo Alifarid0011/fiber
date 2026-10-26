@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -270,17 +269,17 @@ func Test_configDefault_override(t *testing.T) {
 	require.NotNil(t, cfg.KeyHeaderValidate)
 }
 
-// helper to perform request
-func do(app *fiber.App, req *http.Request) (resp *http.Response, body string) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming returned response and body payload for clarity
-	resp, err := app.Test(req, fiber.TestConfig{Timeout: 5 * time.Second})
-	if err != nil {
-		panic(err)
+// idempotencyTestPost sends a POST request to route through app, carrying key
+// as the idempotency key unless it is empty, and returns the response with its
+// body. opts are applied to the request as well.
+func idempotencyTestPost(t *testing.T, app *fiber.App, route, key string, opts ...apptest.Option) (resp *http.Response, body string) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming returned response and body payload for clarity
+	t.Helper()
+
+	if key != "" {
+		opts = append(opts, apptest.WithHeader(ConfigDefault.KeyHeader, key))
 	}
-	payload, err := io.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-	return resp, string(payload)
+	resp = apptest.Do(t, app, apptest.Req(fiber.MethodPost, route, opts...), fiber.TestConfig{Timeout: 5 * time.Second})
+	return resp, apptest.Body(t, resp)
 }
 
 func Test_New_NextSkip(t *testing.T) {
@@ -295,60 +294,74 @@ func Test_New_NextSkip(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	_, body1 := do(app, req)
-
-	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
-	_, body2 := do(app, req2)
+	_, body1 := idempotencyTestPost(t, app, "/", validKey)
+	_, body2 := idempotencyTestPost(t, app, "/", validKey)
 
 	require.Equal(t, "1", body1)
 	require.Equal(t, "2", body2)
 }
 
-func Test_New_InvalidKey(t *testing.T) {
+// Test_New_Errors covers the failures of the key, the storage and the lock: each
+// ends the request with a 500 whose body names the step that failed.
+func Test_New_Errors(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New())
-	app.Post("/", func(_ fiber.Ctx) error { return nil })
 
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, "bad")
-	resp, body := do(app, req)
+	secondPassStorage := &stubStorage{}
 
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Contains(t, body, "invalid length")
-}
+	for _, tc := range []struct {
+		name     string
+		key      string
+		contains string
+		cfg      []Config // none: the default storage and lock
+	}{
+		{name: "invalid key", key: "bad", contains: "invalid length"},
+		{
+			name:     "storage get error",
+			key:      validKey,
+			cfg:      []Config{{Storage: &stubStorage{getErr: errors.New("boom")}, Lock: &stubLock{}}},
+			contains: "failed to write cached response at fastpath",
+		},
+		{
+			name:     "unmarshal error",
+			key:      validKey,
+			cfg:      []Config{{Storage: &stubStorage{data: map[string][]byte{validKey: []byte("bad")}}, Lock: &stubLock{}}},
+			contains: "failed to write cached response at fastpath",
+		},
+		{
+			name:     "lock error",
+			key:      validKey,
+			cfg:      []Config{{Lock: &stubLock{lockErr: errors.New("fail")}, Storage: &stubStorage{}}},
+			contains: "failed to lock",
+		},
+		{
+			name:     "storage set error",
+			key:      validKey,
+			cfg:      []Config{{Storage: &stubStorage{setErr: errors.New("nope")}, Lock: &stubLock{}}},
+			contains: "failed to save response",
+		},
+		{
+			// The entry is missing on the fast path and the read fails once the lock is held.
+			name: "second pass read error",
+			key:  validKey,
+			cfg: []Config{{
+				Lock:    &stubLock{afterLock: func() { secondPassStorage.getErr = errors.New("g") }},
+				Storage: secondPassStorage,
+			}},
+			contains: "failed to write cached response while locked",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-func Test_New_StorageGetError(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	s := &stubStorage{getErr: errors.New("boom")}
-	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
-	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+			app := fiber.New()
+			app.Use(New(tc.cfg...))
+			app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp, body := do(app, req)
-
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Contains(t, body, "failed to write cached response at fastpath")
-}
-
-func Test_New_UnmarshalError(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	s := &stubStorage{data: map[string][]byte{validKey: []byte("bad")}}
-	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
-	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
-
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp, body := do(app, req)
-
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Contains(t, body, "failed to write cached response at fastpath")
+			resp, body := idempotencyTestPost(t, app, "/", tc.key)
+			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+			require.Contains(t, body, tc.contains)
+		})
+	}
 }
 
 func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
@@ -369,16 +382,12 @@ func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
 		return c.SendString(fmt.Sprintf("resp%d", count))
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp, body := do(app, req)
+	resp, body := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, "resp1", body)
 	require.Equal(t, "foo", resp.Header.Get("Foo"))
 	require.Equal(t, "bar", resp.Header.Get("Bar"))
 
-	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp2, body2 := do(app, req2)
+	resp2, body2 := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, "resp1", body2)
 	require.Equal(t, "foo", resp2.Header.Get("Foo"))
 	require.Empty(t, resp2.Header.Get("Bar"))
@@ -412,14 +421,10 @@ func Test_New_StoreRetrieve_FilterHeadersCaseInsensitiveSnapshot(t *testing.T) {
 		return c.SendString(fmt.Sprintf("resp%d", count))
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	_, body := do(app, req)
+	_, body := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, "resp1", body)
 
-	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp2, body2 := do(app, req2)
+	resp2, body2 := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, "resp1", body2)
 	require.Equal(t, "foo", resp2.Header.Get("Foo"), "differently-cased configured name must still match")
 	require.Empty(t, resp2.Header.Get("Bar"), "mutating the config slice after New must not change filtering")
@@ -451,14 +456,10 @@ func Test_New_StoreRetrieve_HeadersWithCommas(t *testing.T) {
 		return c.SendString(fmt.Sprintf("resp%d", count))
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp, body := do(app, req)
+	resp, body := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, "resp1", body)
 
-	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp2, body2 := do(app, req2)
+	resp2, body2 := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, "resp1", body2)
 	require.Equal(t, 1, count)
 	require.NotEmpty(t, resp2.Header.Values(fiber.HeaderSetCookie))
@@ -489,14 +490,8 @@ func Test_New_DoesNotReplayCookies(t *testing.T) {
 		return c.SendString("other")
 	})
 
-	post := func(route string) (*http.Response, string) {
-		req := httptest.NewRequest(http.MethodPost, route, http.NoBody)
-		req.Header.Set(ConfigDefault.KeyHeader, validKey)
-		return do(app, req)
-	}
-
 	// the client that caused the miss gets its cookies
-	resp, body := post("/login")
+	resp, body := idempotencyTestPost(t, app, "/login", validKey)
 	require.Equal(t, "welcome alice", body)
 	require.Equal(t, []string{"sid=ALICE-SESSION; path=/; SameSite=Lax"}, resp.Header.Values(fiber.HeaderSetCookie))
 	require.Equal(t, []string{"sid=ALICE-SESSION; Version=1"}, resp.Header.Values(fiber.HeaderSetCookie2))
@@ -504,7 +499,7 @@ func Test_New_DoesNotReplayCookies(t *testing.T) {
 	// whoever sends the key next gets the rest of the response, and the
 	// handler is not run for them, on the route that stored it or another
 	for _, route := range []string{"/login", "/other"} {
-		resp, body = post(route)
+		resp, body = idempotencyTestPost(t, app, route, validKey)
 		require.Equal(t, "welcome alice", body, route)
 		require.Equal(t, "alice", resp.Header.Get("X-Request"), route)
 		require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie), route)
@@ -538,13 +533,8 @@ func Test_New_KeepResponseHeaders_NamedCookies(t *testing.T) {
 		return c.SendString("ok")
 	})
 
-	post := func() *http.Response {
-		req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-		req.Header.Set(ConfigDefault.KeyHeader, validKey)
-		resp, _ := do(app, req)
-		return resp
-	}
-	first, replayed := post(), post()
+	first, _ := idempotencyTestPost(t, app, "/", validKey)
+	replayed, _ := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, []string{"sid=abc; path=/; SameSite=Lax"}, first.Header.Values(fiber.HeaderSetCookie))
 	require.Equal(t, first.Header.Values(fiber.HeaderSetCookie), replayed.Header.Values(fiber.HeaderSetCookie))
 	require.Equal(t, "first", replayed.Header.Get("X-Request"))
@@ -578,9 +568,7 @@ func Test_New_ReplayDropsStoredCookies(t *testing.T) {
 		app.Use(New(Config{Storage: stored(), Lock: &stubLock{}, KeepResponseHeaders: keep}))
 		app.Post("/", func(_ fiber.Ctx) error { return errors.New("the handler must not run") })
 
-		req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-		req.Header.Set(ConfigDefault.KeyHeader, validKey)
-		resp, body := do(app, req)
+		resp, body := idempotencyTestPost(t, app, "/", validKey)
 		require.Equal(t, "welcome alice", body)
 		require.Equal(t, "alice", resp.Header.Get("X-Request"))
 		return resp
@@ -623,12 +611,11 @@ func Test_New_KeyScope(t *testing.T) {
 	})
 
 	post := func(user string) (*http.Response, string) {
-		req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-		req.Header.Set(ConfigDefault.KeyHeader, validKey)
+		var opts []apptest.Option
 		if user != "" {
-			req.Header.Set("X-User", user)
+			opts = append(opts, apptest.WithHeader("X-User", user))
 		}
-		return do(app, req)
+		return idempotencyTestPost(t, app, "/", validKey, opts...)
 	}
 	requireReply := func(user, wantBody string, wantCalls int) {
 		t.Helper()
@@ -680,18 +667,14 @@ func Test_New_KeyScope_NotConsulted(t *testing.T) {
 	}))
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	do(app, httptest.NewRequest(http.MethodPost, "/", http.NoBody))
+	idempotencyTestPost(t, app, "/", "")
 	require.Zero(t, asked, "no key")
 
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, "bad")
-	resp, _ := do(app, req)
+	resp, _ := idempotencyTestPost(t, app, "/", "bad")
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Zero(t, asked, "invalid key")
 
-	req = httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	do(app, req)
+	idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, 1, asked)
 }
 
@@ -754,15 +737,11 @@ func Test_New_Cache_WhenBodyTooLarge(t *testing.T) {
 		return c.SendString(oversized)
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp1, body1 := do(app, req)
+	resp1, body1 := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, fiber.StatusOK, resp1.StatusCode)
 	require.Equal(t, oversized, body1)
 
-	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp2, body2 := do(app, req2)
+	resp2, body2 := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
 	require.Equal(t, oversized, body2)
 
@@ -780,45 +759,15 @@ func Test_New_HandlerError(t *testing.T) {
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
 	app.Post("/", func(_ fiber.Ctx) error { return errors.New("boom") })
 
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp, body := do(app, req)
+	resp, body := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Equal(t, "boom", body)
 	require.Equal(t, 0, s.setCount)
 
-	resp2, body2 := do(app, req)
+	resp2, body2 := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, fiber.StatusInternalServerError, resp2.StatusCode)
 	require.Equal(t, "boom", body2)
 	require.Equal(t, 0, s.setCount)
-}
-
-func Test_New_LockError(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	l := &stubLock{lockErr: errors.New("fail")}
-	app.Use(New(Config{Lock: l, Storage: &stubStorage{}}))
-	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
-
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp, body := do(app, req)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Contains(t, body, "failed to lock")
-}
-
-func Test_New_StorageSetError(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	s := &stubStorage{setErr: errors.New("nope")}
-	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
-	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
-
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp, body := do(app, req)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Contains(t, body, "failed to save response")
 }
 
 func Test_New_UnlockError(t *testing.T) {
@@ -828,26 +777,9 @@ func Test_New_UnlockError(t *testing.T) {
 	app.Use(New(Config{Lock: l, Storage: &stubStorage{}}))
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp, body := do(app, req)
+	resp, body := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "ok", body)
-}
-
-func Test_New_SecondPassReadError(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	s := &stubStorage{}
-	l := &stubLock{afterLock: func() { s.getErr = errors.New("g") }}
-	app.Use(New(Config{Lock: l, Storage: s}))
-	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
-
-	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	req.Header.Set(ConfigDefault.KeyHeader, validKey)
-	resp, body := do(app, req)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Contains(t, body, "failed to write cached response while locked")
 }
 
 // The response is stored after the handler returns, so a handler's own deferred
@@ -867,15 +799,9 @@ func Test_Idempotency_Store_After_Handler_Cancel(t *testing.T) {
 		return c.SendString("response")
 	})
 
-	newReq := func() *http.Request {
-		req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
-		req.Header.Set(ConfigDefault.KeyHeader, validKey)
-		return req
-	}
-
-	_, body := do(app, newReq())
+	_, body := idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, "response", body)
-	_, body = do(app, newReq())
+	_, body = idempotencyTestPost(t, app, "/", validKey)
 	require.Equal(t, "response", body)
 	require.Equal(t, 1, calls, "second request was not served from the idempotency cache")
 }

@@ -19,10 +19,7 @@ func Test_MemoryLock(t *testing.T) {
 	l := idempotency.NewMemoryLock()
 
 	// Test that a lock can be acquired
-	{
-		err := l.Lock("a")
-		require.NoError(t, err)
-	}
+	require.NoError(t, l.Lock("a"))
 
 	// Test that the same lock cannot be acquired again while held
 	{
@@ -43,44 +40,20 @@ func Test_MemoryLock(t *testing.T) {
 	}
 
 	// Release lock "a" to prevent goroutine leak
-	{
-		err := l.Unlock("a")
-		require.NoError(t, err)
-	}
+	require.NoError(t, l.Unlock("a"))
 
 	// Test lock and unlock sequence
-	{
-		err := l.Lock("b")
-		require.NoError(t, err)
-	}
-	{
-		err := l.Unlock("b")
-		require.NoError(t, err)
-	}
-	{
-		err := l.Lock("b")
-		require.NoError(t, err)
-	}
-	{
-		err := l.Unlock("b")
-		require.NoError(t, err)
-	}
+	require.NoError(t, l.Lock("b"))
+	require.NoError(t, l.Unlock("b"))
+	require.NoError(t, l.Lock("b"))
+	require.NoError(t, l.Unlock("b"))
 
 	// Test unlocking non-existent lock (should succeed)
-	{
-		err := l.Unlock("c")
-		require.NoError(t, err)
-	}
+	require.NoError(t, l.Unlock("c"))
 
 	// Test another lock
-	{
-		err := l.Lock("d")
-		require.NoError(t, err)
-	}
-	{
-		err := l.Unlock("d")
-		require.NoError(t, err)
-	}
+	require.NoError(t, l.Lock("d"))
+	require.NoError(t, l.Unlock("d"))
 
 	t.Run("zero value", func(t *testing.T) {
 		t.Parallel()

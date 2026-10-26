@@ -13,130 +13,158 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_Default(t *testing.T) {
+// helmetTestApp returns an app that serves "Hello, World!" at / behind New(cfg...).
+func helmetTestApp(cfg ...Config) *fiber.App {
 	app := fiber.New()
 
-	app.Use(New())
+	app.Use(New(cfg...))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
-	resp := apptest.Do(t, app, "/")
-	require.Equal(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
-	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
-	require.Equal(t, "SAMEORIGIN", resp.Header.Get(fiber.HeaderXFrameOptions))
-	require.Empty(t, resp.Header.Get(fiber.HeaderContentSecurityPolicy))
-	require.Equal(t, "no-referrer", resp.Header.Get(fiber.HeaderReferrerPolicy))
-	require.Empty(t, resp.Header.Get(fiber.HeaderPermissionsPolicy))
-	require.Equal(t, "require-corp", resp.Header.Get("Cross-Origin-Embedder-Policy"))
-	require.Equal(t, "same-origin", resp.Header.Get("Cross-Origin-Opener-Policy"))
-	require.Equal(t, "same-origin", resp.Header.Get("Cross-Origin-Resource-Policy"))
-	require.Equal(t, "?1", resp.Header.Get("Origin-Agent-Cluster"))
-	require.Equal(t, "off", resp.Header.Get("X-DNS-Prefetch-Control"))
-	require.Equal(t, "noopen", resp.Header.Get("X-Download-Options"))
-	require.Equal(t, "none", resp.Header.Get("X-Permitted-Cross-Domain-Policies"))
+	return app
 }
 
-func Test_CustomValues_AllHeaders(t *testing.T) {
-	app := fiber.New()
+// Test_Headers covers the response headers of the default config and of configs
+// that set some or all of them.
+func Test_Headers(t *testing.T) {
+	t.Parallel()
 
-	app.Use(New(Config{
-		// Custom values for all headers
-		XSSProtection:             "0",
-		ContentTypeNosniff:        "custom-nosniff",
-		XFrameOptions:             "DENY",
-		HSTSExcludeSubdomains:     true,
-		ContentSecurityPolicy:     "default-src 'none'",
-		CSPReportOnly:             true,
-		ReferrerPolicy:            "origin",
-		PermissionPolicy:          "geolocation=(self)",
-		CrossOriginEmbedderPolicy: "custom-value",
-		CrossOriginOpenerPolicy:   "custom-value",
-		CrossOriginResourcePolicy: "custom-value",
-		OriginAgentCluster:        "custom-value",
-		XDNSPrefetchControl:       "custom-control",
-		XDownloadOptions:          "custom-options",
-		XPermittedCrossDomain:     "custom-policies",
-	}))
+	const realWorldCSP = "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests"
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	for _, tc := range []struct {
+		want map[string]string // the value of each header; "" means it must be empty
+		name string
+		cfg  []Config // none: the middleware is created without a config
+	}{
+		{
+			name: "default",
+			want: map[string]string{
+				fiber.HeaderXXSSProtection:          "0",
+				fiber.HeaderXContentTypeOptions:     "nosniff",
+				fiber.HeaderXFrameOptions:           "SAMEORIGIN",
+				fiber.HeaderContentSecurityPolicy:   "",
+				fiber.HeaderReferrerPolicy:          "no-referrer",
+				fiber.HeaderPermissionsPolicy:       "",
+				"Cross-Origin-Embedder-Policy":      "require-corp",
+				"Cross-Origin-Opener-Policy":        "same-origin",
+				"Cross-Origin-Resource-Policy":      "same-origin",
+				"Origin-Agent-Cluster":              "?1",
+				"X-DNS-Prefetch-Control":            "off",
+				"X-Download-Options":                "noopen",
+				"X-Permitted-Cross-Domain-Policies": "none",
+			},
+		},
+		{
+			name: "custom values for all headers",
+			cfg: []Config{{
+				XSSProtection:             "0",
+				ContentTypeNosniff:        "custom-nosniff",
+				XFrameOptions:             "DENY",
+				HSTSExcludeSubdomains:     true,
+				ContentSecurityPolicy:     "default-src 'none'",
+				CSPReportOnly:             true,
+				ReferrerPolicy:            "origin",
+				PermissionPolicy:          "geolocation=(self)",
+				CrossOriginEmbedderPolicy: "custom-value",
+				CrossOriginOpenerPolicy:   "custom-value",
+				CrossOriginResourcePolicy: "custom-value",
+				OriginAgentCluster:        "custom-value",
+				XDNSPrefetchControl:       "custom-control",
+				XDownloadOptions:          "custom-options",
+				XPermittedCrossDomain:     "custom-policies",
+			}},
+			want: map[string]string{
+				fiber.HeaderXXSSProtection:                  "0",
+				fiber.HeaderXContentTypeOptions:             "custom-nosniff",
+				fiber.HeaderXFrameOptions:                   "DENY",
+				fiber.HeaderContentSecurityPolicyReportOnly: "default-src 'none'",
+				fiber.HeaderReferrerPolicy:                  "origin",
+				fiber.HeaderPermissionsPolicy:               "geolocation=(self)",
+				"Cross-Origin-Embedder-Policy":              "custom-value",
+				"Cross-Origin-Opener-Policy":                "custom-value",
+				"Cross-Origin-Resource-Policy":              "custom-value",
+				"Origin-Agent-Cluster":                      "custom-value",
+				"X-DNS-Prefetch-Control":                    "custom-control",
+				"X-Download-Options":                        "custom-options",
+				"X-Permitted-Cross-Domain-Policies":         "custom-policies",
+			},
+		},
+		{
+			name: "real-world values for all headers",
+			cfg: []Config{{
+				XSSProtection:             "0",
+				ContentTypeNosniff:        "nosniff",
+				XFrameOptions:             "SAMEORIGIN",
+				HSTSExcludeSubdomains:     false,
+				ContentSecurityPolicy:     realWorldCSP,
+				CSPReportOnly:             false,
+				HSTSPreloadEnabled:        true,
+				ReferrerPolicy:            "no-referrer",
+				PermissionPolicy:          "geolocation=(self)",
+				CrossOriginEmbedderPolicy: "require-corp",
+				CrossOriginOpenerPolicy:   "same-origin",
+				CrossOriginResourcePolicy: "same-origin",
+				OriginAgentCluster:        "?1",
+				XDNSPrefetchControl:       "off",
+				XDownloadOptions:          "noopen",
+				XPermittedCrossDomain:     "none",
+			}},
+			want: map[string]string{
+				fiber.HeaderXXSSProtection:          "0",
+				fiber.HeaderXContentTypeOptions:     "nosniff",
+				fiber.HeaderXFrameOptions:           "SAMEORIGIN",
+				fiber.HeaderContentSecurityPolicy:   realWorldCSP,
+				fiber.HeaderReferrerPolicy:          "no-referrer",
+				fiber.HeaderPermissionsPolicy:       "geolocation=(self)",
+				"Cross-Origin-Embedder-Policy":      "require-corp",
+				"Cross-Origin-Opener-Policy":        "same-origin",
+				"Cross-Origin-Resource-Policy":      "same-origin",
+				"Origin-Agent-Cluster":              "?1",
+				"X-DNS-Prefetch-Control":            "off",
+				"X-Download-Options":                "noopen",
+				"X-Permitted-Cross-Domain-Policies": "none",
+			},
+		},
+		{
+			name: "content security policy",
+			cfg:  []Config{{ContentSecurityPolicy: "default-src 'none'"}},
+			want: map[string]string{fiber.HeaderContentSecurityPolicy: "default-src 'none'"},
+		},
+		{
+			name: "content security policy report only",
+			cfg:  []Config{{ContentSecurityPolicy: "default-src 'none'", CSPReportOnly: true}},
+			want: map[string]string{
+				fiber.HeaderContentSecurityPolicyReportOnly: "default-src 'none'",
+				fiber.HeaderContentSecurityPolicy:           "",
+			},
+		},
+		{
+			name: "permissions policy",
+			cfg:  []Config{{PermissionPolicy: "microphone=()"}},
+			want: map[string]string{fiber.HeaderPermissionsPolicy: "microphone=()"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	resp := apptest.Do(t, app, "/")
-	// Assertions for custom header values
-	require.Equal(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
-	require.Equal(t, "custom-nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
-	require.Equal(t, "DENY", resp.Header.Get(fiber.HeaderXFrameOptions))
-	require.Equal(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicyReportOnly))
-	require.Equal(t, "origin", resp.Header.Get(fiber.HeaderReferrerPolicy))
-	require.Equal(t, "geolocation=(self)", resp.Header.Get(fiber.HeaderPermissionsPolicy))
-	require.Equal(t, "custom-value", resp.Header.Get("Cross-Origin-Embedder-Policy"))
-	require.Equal(t, "custom-value", resp.Header.Get("Cross-Origin-Opener-Policy"))
-	require.Equal(t, "custom-value", resp.Header.Get("Cross-Origin-Resource-Policy"))
-	require.Equal(t, "custom-value", resp.Header.Get("Origin-Agent-Cluster"))
-	require.Equal(t, "custom-control", resp.Header.Get("X-DNS-Prefetch-Control"))
-	require.Equal(t, "custom-options", resp.Header.Get("X-Download-Options"))
-	require.Equal(t, "custom-policies", resp.Header.Get("X-Permitted-Cross-Domain-Policies"))
-}
-
-func Test_RealWorldValues_AllHeaders(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New(Config{
-		// Real-world values for all headers
-		XSSProtection:             "0",
-		ContentTypeNosniff:        "nosniff",
-		XFrameOptions:             "SAMEORIGIN",
-		HSTSExcludeSubdomains:     false,
-		ContentSecurityPolicy:     "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests",
-		CSPReportOnly:             false,
-		HSTSPreloadEnabled:        true,
-		ReferrerPolicy:            "no-referrer",
-		PermissionPolicy:          "geolocation=(self)",
-		CrossOriginEmbedderPolicy: "require-corp",
-		CrossOriginOpenerPolicy:   "same-origin",
-		CrossOriginResourcePolicy: "same-origin",
-		OriginAgentCluster:        "?1",
-		XDNSPrefetchControl:       "off",
-		XDownloadOptions:          "noopen",
-		XPermittedCrossDomain:     "none",
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
-
-	resp := apptest.Do(t, app, "/")
-	// Assertions for real-world header values
-	require.Equal(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
-	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
-	require.Equal(t, "SAMEORIGIN", resp.Header.Get(fiber.HeaderXFrameOptions))
-	require.Equal(t, "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
-	require.Equal(t, "no-referrer", resp.Header.Get(fiber.HeaderReferrerPolicy))
-	require.Equal(t, "geolocation=(self)", resp.Header.Get(fiber.HeaderPermissionsPolicy))
-	require.Equal(t, "require-corp", resp.Header.Get("Cross-Origin-Embedder-Policy"))
-	require.Equal(t, "same-origin", resp.Header.Get("Cross-Origin-Opener-Policy"))
-	require.Equal(t, "same-origin", resp.Header.Get("Cross-Origin-Resource-Policy"))
-	require.Equal(t, "?1", resp.Header.Get("Origin-Agent-Cluster"))
-	require.Equal(t, "off", resp.Header.Get("X-DNS-Prefetch-Control"))
-	require.Equal(t, "noopen", resp.Header.Get("X-Download-Options"))
-	require.Equal(t, "none", resp.Header.Get("X-Permitted-Cross-Domain-Policies"))
+			resp := apptest.Do(t, helmetTestApp(tc.cfg...), "/")
+			for name, want := range tc.want {
+				require.Equal(t, want, resp.Header.Get(name), name)
+			}
+		})
+	}
 }
 
 func Test_Next(t *testing.T) {
-	app := fiber.New()
+	t.Parallel()
 
-	app.Use(New(Config{
+	app := helmetTestApp(Config{
 		Next: func(ctx fiber.Ctx) bool {
 			return ctx.Path() == "/next"
 		},
 		ReferrerPolicy: "no-referrer",
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
 	})
 	app.Get("/next", func(c fiber.Ctx) error {
 		return c.SendString("Skipped!")
@@ -147,53 +175,6 @@ func Test_Next(t *testing.T) {
 
 	resp = apptest.Do(t, app, "/next")
 	require.Empty(t, resp.Header.Get(fiber.HeaderReferrerPolicy))
-}
-
-func Test_ContentSecurityPolicy(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New(Config{
-		ContentSecurityPolicy: "default-src 'none'",
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
-
-	resp := apptest.Do(t, app, "/")
-	require.Equal(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
-}
-
-func Test_ContentSecurityPolicyReportOnly(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New(Config{
-		ContentSecurityPolicy: "default-src 'none'",
-		CSPReportOnly:         true,
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
-
-	resp := apptest.Do(t, app, "/")
-	require.Equal(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicyReportOnly))
-	require.Empty(t, resp.Header.Get(fiber.HeaderContentSecurityPolicy))
-}
-
-func Test_PermissionsPolicy(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New(Config{
-		PermissionPolicy: "microphone=()",
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
-
-	resp := apptest.Do(t, app, "/")
-	require.Equal(t, "microphone=()", resp.Header.Get(fiber.HeaderPermissionsPolicy))
 }
 
 func Test_HSTSHeaders(t *testing.T) {
@@ -216,6 +197,12 @@ func Test_HSTSHeaders(t *testing.T) {
 			config:   Config{HSTSMaxAge: 60, HSTSExcludeSubdomains: true},
 			scheme:   "https",
 			expected: "max-age=60",
+		},
+		{
+			name:     "TLS request with preload includes subdomains",
+			config:   Config{HSTSMaxAge: 31536000, HSTSPreloadEnabled: true},
+			scheme:   "https",
+			expected: "max-age=31536000; includeSubDomains; preload",
 		},
 		{
 			name:   "TLS request with zero max age omits header",
@@ -258,23 +245,10 @@ func Test_HSTSExcludeSubdomainsAndPreload(t *testing.T) {
 	})
 }
 
-func Test_HSTSPreloadIncludesSubdomains(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, "max-age=31536000; includeSubDomains; preload", hstsHeaderForRequest(t, &Config{
-		HSTSMaxAge:         31536000,
-		HSTSPreloadEnabled: true,
-	}, "https"))
-}
-
 func hstsHeaderForRequest(t *testing.T, config *Config, scheme string) string {
 	t.Helper()
 
-	app := fiber.New()
-	app.Use(New(*config))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app := helmetTestApp(*config)
 
 	if scheme == "http" {
 		resp := apptest.Do(t, app, "/")

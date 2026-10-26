@@ -27,21 +27,83 @@ func (*panicStringer) String() string {
 	panic("String must not be called for SSE data")
 }
 
-func Test_SSE_EventWritesFrame(t *testing.T) {
-	t.Parallel()
+// sseTestFrame writes event with writeEvent and returns what reached the writer.
+func sseTestFrame(t *testing.T, event Event) string {
+	t.Helper()
 
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
-
-	require.NoError(t, writeEvent(w, Event{
-		ID:    " 42 ",
-		Name:  "update",
-		Data:  "one\r\ntwo",
-		Retry: 2500 * time.Millisecond,
-	}))
+	require.NoError(t, writeEvent(w, event))
 	require.NoError(t, w.Flush())
+	return buf.String()
+}
 
-	require.Equal(t, "id: 42\nevent: update\nretry: 2500\ndata: one\ndata: two\n\n", buf.String())
+// sseTestStream returns a stream that writes to the returned buffer and is
+// closed when the test ends.
+func sseTestStream(t *testing.T) (*Stream, *bytes.Buffer) {
+	t.Helper()
+
+	var buf bytes.Buffer
+	stream := newStream(context.Background(), bufio.NewWriter(&buf), "")
+	t.Cleanup(stream.closeStream)
+	return stream, &buf
+}
+
+// sseTestOnClose serves handler behind an OnClose hook and returns the error
+// the hook received. The test fails if the hook is not called.
+func sseTestOnClose(t *testing.T, handler func(fiber.Ctx, *Stream) error) error {
+	t.Helper()
+
+	closed := make(chan error, 1)
+
+	app := fiber.New()
+	app.Get("/events", New(Config{
+		DisableHeartbeat: true,
+		Handler:          handler,
+		OnClose: func(_ fiber.Ctx, err error) {
+			closed <- err
+		},
+	}))
+
+	apptest.Expect(t, app, "/events", fiber.StatusOK)
+	select {
+	case err := <-closed:
+		return err
+	case <-time.After(time.Second):
+		t.Fatal("OnClose was not called")
+		return nil
+	}
+}
+
+// Test_SSE_EventFrames covers the frame writeEvent writes for an event.
+func Test_SSE_EventFrames(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		want  string
+		event Event
+	}{
+		{
+			name:  "writes frame",
+			event: Event{ID: " 42 ", Name: "update", Data: "one\r\ntwo", Retry: 2500 * time.Millisecond},
+			want:  "id: 42\nevent: update\nretry: 2500\ndata: one\ndata: two\n\n",
+		},
+		{name: "omits whitespace-only fields", event: Event{ID: "   ", Name: "   ", Data: "ok"}, want: "data: ok\n\n"},
+		// panicStringer.String panics: a typed nil must be JSON encoded, never stringified.
+		{name: "JSON encodes typed nil stringer", event: Event{Data: (*panicStringer)(nil)}, want: "data: null\n\n"},
+		{name: "omits data for untyped nil", event: Event{ID: "42"}, want: "id: 42\n\n"},
+		{name: "writes raw JSON data", event: Event{Data: json.RawMessage(`{"hello":"world"}`)}, want: "data: {\"hello\":\"world\"}\n\n"},
+		{name: "writes byte slice data", event: Event{Data: []byte("hello\nworld")}, want: "data: hello\ndata: world\n\n"},
+		{name: "preserves trailing data newline", event: Event{Data: "hello\n"}, want: "data: hello\ndata: \n\n"},
+		{name: "preserves intentional blank data line", event: Event{Data: "hello\n\n"}, want: "data: hello\ndata: \ndata: \n\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tc.want, sseTestFrame(t, tc.event))
+		})
+	}
 }
 
 func Test_SSE_EventRejectsFieldInjection(t *testing.T) {
@@ -56,35 +118,15 @@ func Test_SSE_EventRejectsFieldInjection(t *testing.T) {
 	}), errInvalidField)
 }
 
-func Test_SSE_EventOmitsWhitespaceOnlyFields(t *testing.T) {
-	t.Parallel()
-
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-
-	require.NoError(t, writeEvent(w, Event{
-		ID:   "   ",
-		Name: "   ",
-		Data: "ok",
-	}))
-	require.NoError(t, w.Flush())
-
-	require.Equal(t, "data: ok\n\n", buf.String())
-}
-
 func Test_SSE_EventJSONEncodesData(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-
-	require.NoError(t, writeEvent(w, Event{
+	frame := sseTestFrame(t, Event{
 		Name: "message",
 		Data: map[string]string{"hello": "world"},
-	}))
-	require.NoError(t, w.Flush())
+	})
 
-	require.JSONEq(t, `{"hello":"world"}`, stringsTrimData(buf.String()))
+	require.JSONEq(t, `{"hello":"world"}`, stringsTrimData(frame))
 }
 
 func Test_SSE_NewUsesAppJSONEncoder(t *testing.T) {
@@ -105,31 +147,6 @@ func Test_SSE_NewUsesAppJSONEncoder(t *testing.T) {
 	apptest.ExpectBody(t, app, "/events", fiber.StatusOK, "data: {\"encoded\":\"custom\"}\n\n")
 }
 
-func Test_SSE_EventJSONEncodesTypedNilStringer(t *testing.T) {
-	t.Parallel()
-
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-	var value *panicStringer
-
-	require.NoError(t, writeEvent(w, Event{Data: value}))
-	require.NoError(t, w.Flush())
-
-	require.Equal(t, "data: null\n\n", buf.String())
-}
-
-func Test_SSE_EventOmitsDataForUntypedNil(t *testing.T) {
-	t.Parallel()
-
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-
-	require.NoError(t, writeEvent(w, Event{ID: "42"}))
-	require.NoError(t, w.Flush())
-
-	require.Equal(t, "id: 42\n\n", buf.String())
-}
-
 func Test_SSE_EventDoesNotWritePartialFrameWhenDataMarshalFails(t *testing.T) {
 	t.Parallel()
 
@@ -144,54 +161,6 @@ func Test_SSE_EventDoesNotWritePartialFrameWhenDataMarshalFails(t *testing.T) {
 	require.NoError(t, w.Flush())
 
 	require.Empty(t, buf.String())
-}
-
-func Test_SSE_EventWritesRawJSONData(t *testing.T) {
-	t.Parallel()
-
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-
-	require.NoError(t, writeEvent(w, Event{Data: json.RawMessage(`{"hello":"world"}`)}))
-	require.NoError(t, w.Flush())
-
-	require.Equal(t, "data: {\"hello\":\"world\"}\n\n", buf.String())
-}
-
-func Test_SSE_EventWritesByteSliceData(t *testing.T) {
-	t.Parallel()
-
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-
-	require.NoError(t, writeEvent(w, Event{Data: []byte("hello\nworld")}))
-	require.NoError(t, w.Flush())
-
-	require.Equal(t, "data: hello\ndata: world\n\n", buf.String())
-}
-
-func Test_SSE_EventPreservesTrailingDataNewline(t *testing.T) {
-	t.Parallel()
-
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-
-	require.NoError(t, writeEvent(w, Event{Data: "hello\n"}))
-	require.NoError(t, w.Flush())
-
-	require.Equal(t, "data: hello\ndata: \n\n", buf.String())
-}
-
-func Test_SSE_EventPreservesIntentionalBlankDataLine(t *testing.T) {
-	t.Parallel()
-
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-
-	require.NoError(t, writeEvent(w, Event{Data: "hello\n\n"}))
-	require.NoError(t, w.Flush())
-
-	require.Equal(t, "data: hello\ndata: \ndata: \n\n", buf.String())
 }
 
 func Test_SSE_EventReturnsWriterError(t *testing.T) {
@@ -275,34 +244,17 @@ func Test_SSE_NewWritesHeartbeat(t *testing.T) {
 func Test_SSE_OnCloseReceivesNilAfterNormalClose(t *testing.T) {
 	t.Parallel()
 
-	closed := make(chan error, 1)
+	err := sseTestOnClose(t, func(_ fiber.Ctx, stream *Stream) error {
+		return stream.Event(Event{Data: "ok"})
+	})
 
-	app := fiber.New()
-	app.Get("/events", New(Config{
-		DisableHeartbeat: true,
-		Handler: func(_ fiber.Ctx, stream *Stream) error {
-			return stream.Event(Event{Data: "ok"})
-		},
-		OnClose: func(_ fiber.Ctx, err error) {
-			closed <- err
-		},
-	}))
-
-	apptest.Expect(t, app, "/events", fiber.StatusOK)
-	select {
-	case err := <-closed:
-		require.NoError(t, err)
-	case <-time.After(time.Second):
-		t.Fatal("OnClose was not called")
-	}
+	require.NoError(t, err)
 }
 
 func Test_SSE_StreamComment(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	stream := newStream(context.Background(), bufio.NewWriter(&buf), "")
-	defer stream.closeStream()
+	stream, buf := sseTestStream(t)
 
 	require.NoError(t, stream.Comment("hello"))
 	require.Equal(t, ": hello\n\n", buf.String())
@@ -321,9 +273,7 @@ func Test_SSE_StreamCommentReturnsWriterError(t *testing.T) {
 func Test_SSE_StreamRetryIgnoresNonPositiveDuration(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	stream := newStream(context.Background(), bufio.NewWriter(&buf), "")
-	defer stream.closeStream()
+	stream, buf := sseTestStream(t)
 
 	require.NoError(t, stream.Retry(0))
 	require.NoError(t, stream.Retry(-time.Second))
@@ -343,9 +293,7 @@ func Test_SSE_StreamRetryReturnsWriterError(t *testing.T) {
 func Test_SSE_StreamConcurrentWrites(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	stream := newStream(context.Background(), bufio.NewWriter(&buf), "")
-	defer stream.closeStream()
+	stream, buf := sseTestStream(t)
 
 	const writers = 16
 	errs := make(chan error, writers)
@@ -369,8 +317,7 @@ func Test_SSE_StreamConcurrentWrites(t *testing.T) {
 func Test_SSE_StreamContextCanceledOnClose(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	stream := newStream(context.Background(), bufio.NewWriter(&buf), "")
+	stream, _ := sseTestStream(t)
 	stream.closeStream()
 
 	select {
@@ -394,8 +341,7 @@ func Test_SSE_NewStreamUsesBackgroundContextWhenNil(t *testing.T) {
 func Test_SSE_StreamErrAfterNormalClose(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	stream := newStream(context.Background(), bufio.NewWriter(&buf), "")
+	stream, _ := sseTestStream(t)
 	stream.closeStream()
 
 	require.NoError(t, stream.Err())
@@ -486,52 +432,21 @@ func Test_SSE_HandlerErrorCallsOnClose(t *testing.T) {
 	t.Parallel()
 
 	handlerErr := errors.New("boom")
-	closed := make(chan error, 1)
+	err := sseTestOnClose(t, func(fiber.Ctx, *Stream) error {
+		return handlerErr
+	})
 
-	app := fiber.New()
-	app.Get("/events", New(Config{
-		DisableHeartbeat: true,
-		Handler: func(fiber.Ctx, *Stream) error {
-			return handlerErr
-		},
-		OnClose: func(_ fiber.Ctx, err error) {
-			closed <- err
-		},
-	}))
-
-	apptest.Expect(t, app, "/events", fiber.StatusOK)
-	select {
-	case err := <-closed:
-		require.ErrorIs(t, err, handlerErr)
-	case <-time.After(time.Second):
-		t.Fatal("OnClose was not called")
-	}
+	require.ErrorIs(t, err, handlerErr)
 }
 
 func Test_SSE_HandlerPanicCallsOnClose(t *testing.T) {
 	t.Parallel()
 
-	closed := make(chan error, 1)
+	err := sseTestOnClose(t, func(fiber.Ctx, *Stream) error {
+		panic("boom")
+	})
 
-	app := fiber.New()
-	app.Get("/events", New(Config{
-		DisableHeartbeat: true,
-		Handler: func(fiber.Ctx, *Stream) error {
-			panic("boom")
-		},
-		OnClose: func(_ fiber.Ctx, err error) {
-			closed <- err
-		},
-	}))
-
-	apptest.Expect(t, app, "/events", fiber.StatusOK)
-
-	select {
-	case err := <-closed:
-		require.EqualError(t, err, "sse: handler panic: boom")
-	case <-time.After(time.Second):
-		t.Fatal("OnClose was not called")
-	}
+	require.EqualError(t, err, "sse: handler panic: boom")
 }
 
 func Test_SSE_NewPanicsWithoutHandler(t *testing.T) {
@@ -545,9 +460,7 @@ func Test_SSE_NewPanicsWithoutHandler(t *testing.T) {
 func Test_SSE_StopHeartbeatIsIdempotent(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	stream := newStream(context.Background(), bufio.NewWriter(&buf), "")
-	defer stream.closeStream()
+	stream, _ := sseTestStream(t)
 
 	stop := stream.startHeartbeat(time.Hour)
 	require.NotNil(t, stop)
@@ -558,9 +471,7 @@ func Test_SSE_StopHeartbeatIsIdempotent(t *testing.T) {
 func Test_SSE_StartHeartbeatReturnsNilForNonPositiveInterval(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	stream := newStream(context.Background(), bufio.NewWriter(&buf), "")
-	defer stream.closeStream()
+	stream, _ := sseTestStream(t)
 
 	require.Nil(t, stream.startHeartbeat(0))
 	require.Nil(t, stream.startHeartbeat(-time.Second))
@@ -601,11 +512,7 @@ func Benchmark_sanitizeField(b *testing.B) {
 func Test_SSE_Retry_SubMillisecondRoundsUp(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-	require.NoError(t, writeEvent(w, Event{Data: "x", Retry: 500 * time.Microsecond}))
-	require.NoError(t, w.Flush())
-	require.Contains(t, buf.String(), "retry: 1\n")
+	require.Contains(t, sseTestFrame(t, Event{Data: "x", Retry: 500 * time.Microsecond}), "retry: 1\n")
 }
 
 func Test_SSE_RetryMillisecondsStaysPositive(t *testing.T) {
