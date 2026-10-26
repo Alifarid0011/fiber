@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 // acquireReclaimTestCtx wires up a *DefaultCtx for reclaim tests without going
@@ -19,7 +19,7 @@ import (
 func acquireReclaimTestCtx(t *testing.T) (*App, *DefaultCtx) {
 	t.Helper()
 	app := New()
-	raw := app.AcquireCtx(&fasthttp.RequestCtx{})
+	raw := apptest.Ctx(t, app)
 	dc, ok := raw.(*DefaultCtx)
 	require.True(t, ok, "AcquireCtx must return *DefaultCtx in tests")
 	return app, dc

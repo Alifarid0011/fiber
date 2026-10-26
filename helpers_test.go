@@ -18,6 +18,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -1531,8 +1532,7 @@ func TestStoreInContext(t *testing.T) {
 
 	app := New(Config{PassLocalsToContext: true})
 	raw := &fasthttp.RequestCtx{}
-	c := app.AcquireCtx(raw)
-	defer app.ReleaseCtx(c)
+	c := apptest.CtxFor(t, app, raw)
 
 	StoreInContext(c, "key", "value")
 
@@ -1553,8 +1553,7 @@ func TestValueFromContext(t *testing.T) {
 
 		app := New()
 		raw := &fasthttp.RequestCtx{}
-		c := app.AcquireCtx(raw)
-		defer app.ReleaseCtx(c)
+		c := apptest.CtxFor(t, app, raw)
 
 		c.Locals("key", "value")
 
@@ -1592,8 +1591,7 @@ func TestValueFromContext(t *testing.T) {
 			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
 		})
 		raw := &fasthttp.RequestCtx{}
-		c := app.AcquireCtx(raw)
-		defer app.ReleaseCtx(c)
+		c := apptest.CtxFor(t, app, raw)
 
 		c.Locals("key", "value")
 
@@ -1707,11 +1705,9 @@ func (c *localsRecordingCtx) Locals(key any, value ...any) any {
 func Test_setLocal_UsesCustomCtxLocals(t *testing.T) {
 	t.Parallel()
 
-	app := NewWithCustomCtx(func(app *App) CustomCtx {
+	c := apptest.Ctx(t, NewWithCustomCtx(func(app *App) CustomCtx {
 		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
-	})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	}))
 
 	custom, ok := c.(*localsRecordingCtx)
 	require.True(t, ok, "the app must hand out the custom context")
@@ -1726,9 +1722,7 @@ func Test_setLocal_UsesCustomCtxLocals(t *testing.T) {
 func Test_setLocal_UsesDefaultCtxDirectly(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, New())
 
 	_, isDefault := c.(*DefaultCtx)
 	require.True(t, isDefault, "the default app must hand out *DefaultCtx")

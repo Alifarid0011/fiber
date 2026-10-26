@@ -36,8 +36,7 @@ func (e *typedNilBindError) Error() string {
 
 // go test -run Test_returnErr -v
 func Test_returnErr(t *testing.T) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	err := c.Bind().WithAutoHandling().returnErr(nil)
 	require.NoError(t, err)
@@ -46,9 +45,7 @@ func Test_returnErr(t *testing.T) {
 func Test_returnErr_TypedNilFiberError(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	var err *Error
 	require.NoError(t, c.Bind().WithAutoHandling().returnErr(err))
@@ -57,9 +54,7 @@ func Test_returnErr_TypedNilFiberError(t *testing.T) {
 func Test_returnErr_TypedNilCustomError(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	var err *typedNilBindError
 	require.NotPanics(t, func() {
@@ -70,9 +65,7 @@ func Test_returnErr_TypedNilCustomError(t *testing.T) {
 func Test_returnBindErr_TypedNilFiberError(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	var err *Error
 	require.NoError(t, c.Bind().WithoutAutoHandling().returnBindErr(err, BindSourceBody))
@@ -133,9 +126,7 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 		type Q struct {
 			ID int `query:"id"`
 		}
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, New())
 		c.Request().URI().SetQueryString("id=notanint")
 		err := c.Bind().Query(new(Q))
 		require.Error(t, err)
@@ -154,8 +145,7 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 		}
 		app := New()
 		app.RegisterCustomBinder(convErrBinder)
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, app)
 		c.Request().SetBody([]byte("{}"))
 		c.Request().Header.SetContentType("application/x-conversion-error-test")
 		type D struct{ Name string }
@@ -172,9 +162,7 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 		type J struct {
 			Count int `json:"count"`
 		}
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, New())
 		c.Request().SetBody([]byte(`{"count":"notanint"}`))
 		c.Request().Header.SetContentType(MIMEApplicationJSON)
 		err := c.Bind().Body(new(J))
@@ -195,8 +183,7 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 		}
 		app := New()
 		app.RegisterCustomBinder(unknownKeyBinder)
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, app)
 		c.Request().SetBody([]byte("{}"))
 		c.Request().Header.SetContentType("application/x-unknown-key-test")
 		type D struct{ Name string }
@@ -216,8 +203,7 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 		}
 		app := New()
 		app.RegisterCustomBinder(emptyFieldBinder)
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, app)
 		c.Request().SetBody([]byte("{}"))
 		c.Request().Header.SetContentType("application/x-empty-field-test")
 		type D struct{ Name string }
@@ -235,9 +221,7 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 			A string `query:"a,required"`
 			B string `query:"b,required"`
 		}
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, New())
 		c.Request().URI().SetQueryString("")
 		err := c.Bind().Query(new(Q))
 		require.Error(t, err)
@@ -256,8 +240,7 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 		}
 		app := New()
 		app.RegisterCustomBinder(genericErrBinder)
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, app)
 		c.Request().SetBody([]byte("{}"))
 		c.Request().Header.SetContentType("application/x-generic-error")
 		type D struct{ Name string }
@@ -296,9 +279,7 @@ func Test_BindError_Sources(t *testing.T) {
 		type Q struct {
 			ID int `query:"id,required"`
 		}
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, New())
 		c.Request().URI().SetQueryString("")
 		err := c.Bind().Query(new(Q))
 		require.Error(t, err)
@@ -313,9 +294,7 @@ func Test_BindError_Sources(t *testing.T) {
 		type H struct {
 			ID int `header:"x-id,required"`
 		}
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, New())
 		c.Request().Header.Del("X-Id")
 		err := c.Bind().Header(new(H))
 		require.Error(t, err)
@@ -330,9 +309,7 @@ func Test_BindError_Sources(t *testing.T) {
 		type C struct {
 			ID int `cookie:"id,required"`
 		}
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, New())
 		c.Request().Header.DelCookie("id")
 		err := c.Bind().Cookie(new(C))
 		require.Error(t, err)
@@ -347,9 +324,7 @@ func Test_BindError_Sources(t *testing.T) {
 		type J struct {
 			X int `json:"x"`
 		}
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, New())
 		c.Request().SetBody([]byte(`{"x":"bad"}`))
 		c.Request().Header.SetContentType(MIMEApplicationJSON)
 		err := c.Bind().Body(new(J))
@@ -391,10 +366,9 @@ func Test_BindError_All(t *testing.T) {
 // go test -run Test_Bind_Query -v
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
+	c := apptest.Ctx(t, New(Config{
 		EnableSplittingOnParsers: true,
-	})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	}))
 
 	type Query struct {
 		Name  string
@@ -475,10 +449,9 @@ func Test_Bind_Query(t *testing.T) {
 func Test_Bind_Query_Map(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{
+	c := apptest.Ctx(t, New(Config{
 		EnableSplittingOnParsers: true,
-	})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	}))
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -645,8 +618,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 		SetAliasTag:       "query",
 	})
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	type NonRFCTimeInput struct {
 		Date  NonRFCTime `query:"date"`
@@ -677,8 +649,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 // go test -run Test_Bind_Query_Schema -v
 func Test_Bind_Query_Schema(t *testing.T) {
 	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	type Query1 struct {
 		Name   string `query:"name,required"`
@@ -793,8 +764,7 @@ func Test_Bind_Query_Schema(t *testing.T) {
 // go test -run Test_Bind_Header -v
 func Test_Bind_Header(t *testing.T) {
 	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	type Header struct {
 		Name  string
@@ -869,8 +839,7 @@ func Test_Bind_Header(t *testing.T) {
 func Test_Bind_Header_Map(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -917,8 +886,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 		SetAliasTag:       "req",
 	})
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	type NonRFCTimeInput struct {
 		Date  NonRFCTime `req:"date"`
@@ -952,8 +920,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 // go test -run Test_Bind_Header_Schema -v
 func Test_Bind_Header_Schema(t *testing.T) {
 	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	type Header1 struct {
 		Name   string `header:"Name,required"`
@@ -1049,10 +1016,9 @@ func Test_Bind_Header_Schema(t *testing.T) {
 // go test -run Test_Bind_Resp_Header -v
 func Test_Bind_RespHeader(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
+	c := apptest.Ctx(t, New(Config{
 		EnableSplittingOnParsers: true,
-	})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	}))
 
 	type Header struct {
 		Name  string
@@ -1127,8 +1093,7 @@ func Test_Bind_RespHeader(t *testing.T) {
 func Test_Bind_RespHeader_Map(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -1156,8 +1121,7 @@ func Test_Bind_RespHeader_Map(t *testing.T) {
 func Benchmark_Bind_Query(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	type Query struct {
 		Name  string
@@ -1183,8 +1147,7 @@ func Benchmark_Bind_Query(b *testing.B) {
 func Benchmark_Bind_Query_Default(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	type Query struct {
 		Name  string   `query:"name,default:tom"`
@@ -1211,8 +1174,7 @@ func Benchmark_Bind_Query_Default(b *testing.B) {
 func Benchmark_Bind_Query_Map(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -1229,8 +1191,7 @@ func Benchmark_Bind_Query_Map(b *testing.B) {
 func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	type Person struct {
 		Name string `query:"name"`
@@ -1258,10 +1219,9 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 func Benchmark_Bind_Query_Comma(b *testing.B) {
 	var err error
 
-	app := New(Config{
+	c := apptest.Ctx(b, New(Config{
 		EnableSplittingOnParsers: true,
-	})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	}))
 
 	type Query struct {
 		Name  string
@@ -1283,8 +1243,7 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 func Benchmark_Bind_Header(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	type ReqHeader struct {
 		Name  string
@@ -1309,8 +1268,7 @@ func Benchmark_Bind_Header(b *testing.B) {
 // go test -v  -run=^$ -bench=Benchmark_Bind_Header_Map -benchmem -count=4
 func Benchmark_Bind_Header_Map(b *testing.B) {
 	var err error
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -1331,8 +1289,7 @@ func Benchmark_Bind_Header_Map(b *testing.B) {
 func Benchmark_Bind_RespHeader(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	type ReqHeader struct {
 		Name  string
@@ -1357,8 +1314,7 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 // go test -v  -run=^$ -bench=Benchmark_Bind_RespHeader_Map -benchmem -count=4
 func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 	var err error
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -1394,7 +1350,7 @@ func Test_Bind_Body(t *testing.T) {
 	// Helper function to test compressed bodies
 	testCompressedBody := func(t *testing.T, compressedBody []byte, encoding string) {
 		t.Helper()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c := apptest.Ctx(t, app)
 		c.Request().Header.SetContentType(MIMEApplicationJSON)
 		c.Request().Header.Set(fasthttp.HeaderContentEncoding, encoding)
 		c.Request().SetBody(compressedBody)
@@ -1435,7 +1391,7 @@ func Test_Bind_Body(t *testing.T) {
 
 	testDecodeParser := func(t *testing.T, contentType string, body []byte) {
 		t.Helper()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c := apptest.Ctx(t, app)
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody(body)
 		c.Request().Header.SetContentLength(len(body))
@@ -1446,7 +1402,7 @@ func Test_Bind_Body(t *testing.T) {
 
 	testErrorParser := func(t *testing.T, contentType string, body []byte) {
 		t.Helper()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c := apptest.Ctx(t, app)
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody(body)
 		c.Request().Header.SetContentLength(len(body))
@@ -1472,7 +1428,7 @@ func Test_Bind_Body(t *testing.T) {
 		// Test invalid CBOR data
 		t.Run("Invalid", func(t *testing.T) {
 			invalidData := []byte{0xFF, 0xFF} // Invalid CBOR data
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c := apptest.Ctx(t, app)
 			c.Request().Header.SetContentType(MIMEApplicationCBOR)
 			c.Request().SetBody(invalidData)
 			d := new(Demo)
@@ -1494,7 +1450,7 @@ func Test_Bind_Body(t *testing.T) {
 
 	testDecodeParserError := func(t *testing.T, contentType, body string) {
 		t.Helper()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c := apptest.Ctx(t, app)
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody([]byte(body))
 		c.Request().Header.SetContentLength(len(body))
@@ -1507,7 +1463,7 @@ func Test_Bind_Body(t *testing.T) {
 
 	t.Run("ErrorUnknownContentTypeReturnsUnprocessableEntity", func(t *testing.T) {
 		t.Parallel()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c := apptest.Ctx(t, app)
 		c.Request().Header.SetContentType("application/unknown-type")
 		c.Request().SetBody([]byte("some body"))
 		c.Request().Header.SetContentLength(9)
@@ -1526,7 +1482,7 @@ func Test_Bind_Body(t *testing.T) {
 	}
 
 	t.Run("MultipartCollectionQueryDotNotation", func(t *testing.T) {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c := apptest.Ctx(t, app)
 		c.Request().Reset()
 
 		buf := &bytes.Buffer{}
@@ -1547,7 +1503,7 @@ func Test_Bind_Body(t *testing.T) {
 	})
 
 	t.Run("MultipartCollectionQuerySquareBrackets", func(t *testing.T) {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c := apptest.Ctx(t, app)
 		c.Request().Reset()
 
 		buf := &bytes.Buffer{}
@@ -1568,7 +1524,7 @@ func Test_Bind_Body(t *testing.T) {
 	})
 
 	t.Run("CollectionQuerySquareBrackets", func(t *testing.T) {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c := apptest.Ctx(t, app)
 		c.Request().Reset()
 		c.Request().Header.SetContentType(MIMEApplicationForm)
 		c.Request().SetBody([]byte("data[0][name]=john&data[1][name]=doe"))
@@ -1581,7 +1537,7 @@ func Test_Bind_Body(t *testing.T) {
 	})
 
 	t.Run("CollectionQueryDotNotation", func(t *testing.T) {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c := apptest.Ctx(t, app)
 		c.Request().Reset()
 		c.Request().Header.SetContentType(MIMEApplicationForm)
 		c.Request().SetBody([]byte("data.0.name=john&data.1.name=doe"))
@@ -1617,8 +1573,7 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 		SetAliasTag:       "form",
 	})
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	type Demo struct {
 		Date  CustomTime `form:"date"`
@@ -1649,8 +1604,7 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 func Benchmark_Bind_Body_JSON(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	type Demo struct {
 		Name string `json:"name"`
@@ -1677,15 +1631,14 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 func Benchmark_Bind_Body_MsgPack(b *testing.B) {
 	var err error
 
-	app := New(
+	c := apptest.Ctx(b, New(
 		Config{
 			MsgPackEncoder: msgpack.Marshal,
 			MsgPackDecoder: msgpack.Unmarshal,
 			CBOREncoder:    cbor.Marshal,
 			CBORDecoder:    cbor.Unmarshal,
 		},
-	)
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	))
 
 	type Demo struct {
 		Name string `msgpack:"name"`
@@ -1709,8 +1662,7 @@ func Benchmark_Bind_Body_MsgPack(b *testing.B) {
 func Benchmark_Bind_Body_XML(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	type Demo struct {
 		Name string `xml:"name"`
@@ -1734,11 +1686,10 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 func Benchmark_Bind_Body_CBOR(b *testing.B) {
 	var err error
 
-	app := New(Config{
+	c := apptest.Ctx(b, New(Config{
 		CBOREncoder: cbor.Marshal,
 		CBORDecoder: cbor.Unmarshal,
-	})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	}))
 
 	type Demo struct {
 		Name string `json:"name"`
@@ -1765,8 +1716,7 @@ func Benchmark_Bind_Body_CBOR(b *testing.B) {
 func Benchmark_Bind_Body_Form(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	type Demo struct {
 		Name string `form:"name"`
@@ -1790,8 +1740,7 @@ func Benchmark_Bind_Body_Form(b *testing.B) {
 func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	type Demo struct {
 		Name string `form:"name"`
@@ -1822,8 +1771,7 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	type Person struct {
 		Name string `form:"name"`
@@ -1868,8 +1816,7 @@ func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	body := []byte("name=john")
 	c.Request().SetBody(body)
@@ -1931,8 +1878,7 @@ func Test_Bind_URI_Map(t *testing.T) {
 func Benchmark_Bind_URI(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	c := apptest.CtxAs[*DefaultCtx](b, New())
 
 	c.route = &Route{
 		Params: []string{
@@ -1967,8 +1913,7 @@ func Benchmark_Bind_URI(b *testing.B) {
 func Benchmark_Bind_URI_Map(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	c := apptest.CtxAs[*DefaultCtx](b, New())
 
 	c.route = &Route{
 		Params: []string{
@@ -1998,10 +1943,9 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 func Test_Bind_Cookie(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{
+	c := apptest.Ctx(t, New(Config{
 		EnableSplittingOnParsers: true,
-	})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	}))
 
 	type Cookie struct {
 		Name  string
@@ -2076,10 +2020,9 @@ func Test_Bind_Cookie(t *testing.T) {
 func Test_Bind_Cookie_Map(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{
+	c := apptest.Ctx(t, New(Config{
 		EnableSplittingOnParsers: true,
-	})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	}))
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -2126,8 +2069,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 		SetAliasTag:       "cerez",
 	})
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	type NonRFCTimeInput struct {
 		Date  NonRFCTime `cerez:"date"`
@@ -2162,8 +2104,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 func Test_Bind_Cookie_Schema(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	type Cookie1 struct {
 		Name   string `cookie:"Name,required"`
@@ -2260,8 +2201,7 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 func Benchmark_Bind_Cookie(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	type Cookie struct {
 		Name  string
@@ -2288,8 +2228,7 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 func Benchmark_Bind_Cookie_Map(b *testing.B) {
 	var err error
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -2346,7 +2285,7 @@ func (b *customBinderReturningError) Parse(_ Ctx, _ any) error {
 // go test -run Test_Bind_CustomBinder
 func Test_Bind_CustomBinder(t *testing.T) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, app)
 
 	// Register binder
 	customBinder := &customBinder{}
@@ -2372,8 +2311,7 @@ func Test_Bind_CustomBinder_Source(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, app)
 
 	app.RegisterCustomBinder(&customBinder{})
 
@@ -2400,8 +2338,7 @@ func Test_Bind_CustomBinder_Validation(t *testing.T) {
 	t.Run("Body_custom_binder_validation_pass", func(t *testing.T) {
 		t.Parallel()
 
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, app)
 
 		body := []byte(`{"name":"john"}`)
 		c.Request().SetBody(body)
@@ -2416,8 +2353,7 @@ func Test_Bind_CustomBinder_Validation(t *testing.T) {
 	t.Run("Body_custom_binder_validation_fail", func(t *testing.T) {
 		t.Parallel()
 
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, app)
 
 		body := []byte(`{"name":"invalid"}`)
 		c.Request().SetBody(body)
@@ -2431,8 +2367,7 @@ func Test_Bind_CustomBinder_Validation(t *testing.T) {
 	t.Run("Custom_binder_validation_pass", func(t *testing.T) {
 		t.Parallel()
 
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, app)
 
 		body := []byte(`{"name":"john"}`)
 		c.Request().SetBody(body)
@@ -2446,8 +2381,7 @@ func Test_Bind_CustomBinder_Validation(t *testing.T) {
 	t.Run("Custom_binder_validation_fail", func(t *testing.T) {
 		t.Parallel()
 
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.Ctx(t, app)
 
 		body := []byte(`{"name":"invalid"}`)
 		c.Request().SetBody(body)
@@ -2460,8 +2394,7 @@ func Test_Bind_CustomBinder_Validation(t *testing.T) {
 
 // go test -run Test_Bind_WithAutoHandling
 func Test_Bind_WithAutoHandling(t *testing.T) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 
 	type RequiredQuery struct {
 		Name string `query:"name,required"`
@@ -2518,11 +2451,7 @@ func Test_Bind_Form_Map_SkipsStructValidator(t *testing.T) {
 	t.Run("without validator", func(t *testing.T) {
 		t.Parallel()
 
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() {
-			app.ReleaseCtx(c)
-		})
+		c := apptest.Ctx(t, New())
 
 		makeRequest(c)
 		req := make(map[string]string)
@@ -2534,11 +2463,7 @@ func Test_Bind_Form_Map_SkipsStructValidator(t *testing.T) {
 		t.Parallel()
 
 		validator := &countingStructValidator{}
-		app := New(Config{StructValidator: validator})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() {
-			app.ReleaseCtx(c)
-		})
+		c := apptest.Ctx(t, New(Config{StructValidator: validator}))
 
 		makeRequest(c)
 		req := make(map[string]string)
@@ -2557,10 +2482,7 @@ func Test_Bind_SkipValidation(t *testing.T) {
 	t.Run("validation enabled", func(t *testing.T) {
 		t.Parallel()
 
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() {
-			app.ReleaseCtx(c)
-		})
+		c := apptest.Ctx(t, app)
 
 		rq := new(simpleQuery)
 		c.Request().URI().SetQueryString("name=efe")
@@ -2570,10 +2492,7 @@ func Test_Bind_SkipValidation(t *testing.T) {
 	t.Run("validation skipped", func(t *testing.T) {
 		t.Parallel()
 
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() {
-			app.ReleaseCtx(c)
-		})
+		c := apptest.Ctx(t, app)
 
 		rq := new(simpleQuery)
 		c.Request().URI().SetQueryString("name=efe")
@@ -2591,10 +2510,7 @@ func Test_Bind_SkipValidation_Usage(t *testing.T) {
 	t.Run("skip validation for json", func(t *testing.T) {
 		t.Parallel()
 
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() {
-			app.ReleaseCtx(c)
-		})
+		c := apptest.Ctx(t, app)
 
 		body := []byte(`{"name":"efe"}`)
 		c.Request().SetBody(body)
@@ -2609,10 +2525,7 @@ func Test_Bind_SkipValidation_Usage(t *testing.T) {
 	t.Run("re-enable validation explicitly", func(t *testing.T) {
 		t.Parallel()
 
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() {
-			app.ReleaseCtx(c)
-		})
+		c := apptest.Ctx(t, app)
 
 		body := []byte(`{"name":"efe"}`)
 		c.Request().SetBody(body)
@@ -2624,10 +2537,7 @@ func Test_Bind_SkipValidation_Usage(t *testing.T) {
 	})
 
 	t.Run("toggle on same bind instance", func(t *testing.T) {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() {
-			app.ReleaseCtx(c)
-		})
+		c := apptest.Ctx(t, app)
 
 		body := []byte(`{"name":"efe"}`)
 		c.Request().SetBody(body)
@@ -2650,11 +2560,7 @@ func Test_Bind_ValidateStruct_NilTarget(t *testing.T) {
 	t.Parallel()
 
 	validator := &countingStructValidator{}
-	app := New(Config{StructValidator: validator})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() {
-		app.ReleaseCtx(c)
-	})
+	c := apptest.Ctx(t, New(Config{StructValidator: validator}))
 
 	require.NoError(t, c.Bind().validateStruct(nil))
 	require.Equal(t, 0, validator.calls)
@@ -2662,8 +2568,7 @@ func Test_Bind_ValidateStruct_NilTarget(t *testing.T) {
 
 // go test -run Test_Bind_StructValidator
 func Test_Bind_StructValidator(t *testing.T) {
-	app := New(Config{StructValidator: &structValidator{}})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New(Config{StructValidator: &structValidator{}}))
 
 	rq := new(simpleQuery)
 	c.Request().URI().SetQueryString("name=efe")
@@ -2677,12 +2582,10 @@ func Test_Bind_StructValidator(t *testing.T) {
 // go test -run Test_Bind_RepeatParserWithSameStruct -v
 func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
+	c := apptest.Ctx(t, New(Config{
 		CBOREncoder: cbor.Marshal,
 		CBORDecoder: cbor.Unmarshal,
-	})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	}))
 
 	type Request struct {
 		QueryParam  string `query:"query_param"`
@@ -2944,8 +2847,7 @@ func Test_Bind_All_Query_Precedence(t *testing.T) {
 		ID int `query:"id" header:"id" cookie:"id"`
 	}
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, New())
 	c.Request().URI().SetQueryString("id=5")
 	c.Request().Header.Set("id", "3")
 	c.Request().Header.SetCookie("id", "2")
@@ -2961,7 +2863,7 @@ func Test_Bind_All_StructValidator(t *testing.T) {
 	app := New(Config{StructValidator: &structValidator{}})
 
 	// Success case: name comes from body only
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx := apptest.Ctx(t, app)
 	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
 	ctx.Request().SetBody([]byte(`{"name":"john"}`))
 	sq := new(simpleQuery)
@@ -2969,7 +2871,7 @@ func Test_Bind_All_StructValidator(t *testing.T) {
 	require.Equal(t, "john", sq.Name)
 
 	// Failure: missing name everywhere
-	ctxFail := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctxFail := apptest.Ctx(t, app)
 	ctxFail.Request().Header.SetContentType(MIMEApplicationJSON)
 	ctxFail.Request().SetBody([]byte(`{}`))
 	sqFail := new(simpleQuery)
@@ -2987,8 +2889,7 @@ func BenchmarkBind_All(b *testing.B) {
 		ID        int    `uri:"id" query:"id" json:"id" form:"id"`
 	}
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	config := &RequestConfig{
 		ContentType: MIMEApplicationJSON,
@@ -3024,8 +2925,7 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 		Name string `binding_source:"query,header,cookie,body,uri" query:"name" header:"x-name" cookie:"c-name" json:"name" uri:"name"`
 	}
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.CtxAs[*DefaultCtx](t, app)
 
 	// Set data in query, header, cookie, body, and uri.
 	// Since query is the first in our custom precedence, it should win.
@@ -3042,8 +2942,7 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	require.Equal(t, "from_query", req.Name)
 
 	// Now try without query. Header should win.
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-	defer app.ReleaseCtx(ctx2)
+	ctx2 := apptest.CtxAs[*DefaultCtx](t, app)
 	ctx2.Request().Header.Set("x-name", "from_header")
 	ctx2.Request().Header.SetCookie("c-name", "from_cookie")
 	ctx2.Request().Header.SetContentType(MIMEApplicationJSON)
@@ -3056,8 +2955,7 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	require.Equal(t, "from_header", req2.Name)
 
 	// Now try without header. Cookie should win.
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-	defer app.ReleaseCtx(ctx3)
+	ctx3 := apptest.CtxAs[*DefaultCtx](t, app)
 	ctx3.Request().Header.SetCookie("c-name", "from_cookie")
 	ctx3.Request().Header.SetContentType(MIMEApplicationJSON)
 	ctx3.Request().SetBody([]byte(`{"name":"from_body"}`))
@@ -3069,8 +2967,7 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	require.Equal(t, "from_cookie", req3.Name)
 
 	// Now try without cookie. Body should win.
-	ctx4 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-	defer app.ReleaseCtx(ctx4)
+	ctx4 := apptest.CtxAs[*DefaultCtx](t, app)
 	ctx4.Request().Header.SetContentType(MIMEApplicationJSON)
 	ctx4.Request().SetBody([]byte(`{"name":"from_body"}`))
 	ctx4.route = &Route{Params: []string{"name"}}
@@ -3081,8 +2978,7 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	require.Equal(t, "from_body", req4.Name)
 
 	// Now try without body. URI should win.
-	ctx5 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-	defer app.ReleaseCtx(ctx5)
+	ctx5 := apptest.CtxAs[*DefaultCtx](t, app)
 	ctx5.route = &Route{Params: []string{"name"}}
 	ctx5.values = [maxParams]string{"from_uri"}
 
@@ -3101,8 +2997,7 @@ func Test_Bind_All_CustomPrecedence_InvalidToken(t *testing.T) {
 		Name          string   `query:"name"`
 	}
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 
 	req := new(InvalidPrecedenceReq)
 	err := ctx.Bind().All(req)
@@ -3120,8 +3015,7 @@ func Test_Bind_All_CustomPrecedence_OmittedSources(t *testing.T) {
 		Name          string   `query:"name" header:"x-name" json:"name"`
 	}
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 
 	ctx.Request().Header.Set("x-name", "from_header")
 	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
@@ -3153,8 +3047,7 @@ func Test_Bind_All_CustomPrecedence_DoesNotReadOmittedBody(t *testing.T) {
 		Name          string   `query:"name"`
 	}
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 
 	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
 	ctx.Request().SetBodyStream(bytes.NewBufferString(`{"name":"from_body"}`), -1)
@@ -3176,8 +3069,7 @@ func Test_Bind_All_CustomPrecedence_Duplicates(t *testing.T) {
 		Name          string   `query:"name" header:"x-name"`
 	}
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 
 	ctx.Request().Header.Set("x-name", "from_header")
 
@@ -3196,8 +3088,7 @@ func Test_Bind_All_CustomPrecedence_MultipleTags(t *testing.T) {
 		Field2 struct{} `binding_source:"header"`
 	}
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 
 	req := new(MultipleTagsReq)
 	err := ctx.Bind().All(req)
@@ -3215,8 +3106,7 @@ func BenchmarkBind_All_CustomPrecedence(b *testing.B) {
 		ID            int      `uri:"id" query:"id" json:"id" form:"id"`
 	}
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(b, New())
 
 	config := &RequestConfig{
 		ContentType: MIMEApplicationJSON,

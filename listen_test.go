@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
@@ -883,8 +884,7 @@ func Test_Listen_ClientCertErrorDoesNotSetTLSHandler(t *testing.T) {
 	})
 	require.ErrorContains(t, err, filepath.Base(invalidClientCAPath))
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, app)
 
 	require.Nil(t, c.ClientHelloInfo())
 }

@@ -594,9 +594,7 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 func Test_DefaultErrorHandler_TypedNilFiberError(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.CtxAs[*DefaultCtx](t, New())
 
 	var err *Error
 	require.NotPanics(t, func() {
@@ -609,9 +607,7 @@ func Test_DefaultErrorHandler_TypedNilFiberError(t *testing.T) {
 func Test_DefaultErrorHandler_TypedNilCustomError(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.CtxAs[*DefaultCtx](t, New())
 
 	var err *typedNilHandlerError
 	require.NotPanics(t, func() {
@@ -624,9 +620,7 @@ func Test_DefaultErrorHandler_TypedNilCustomError(t *testing.T) {
 func Test_DefaultErrorHandler_WrappedFiberErrorUsesWrappedMessage(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.CtxAs[*DefaultCtx](t, New())
 
 	err := fmt.Errorf("auth failed: %w", ErrUnauthorized)
 	require.NoError(t, DefaultErrorHandler(c, err))
@@ -638,7 +632,7 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
 	msg := "test err"
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	c := apptest.CtxAs[*DefaultCtx](t, app)
 
 	app.serverErrorHandler(c.fasthttp, errors.New(msg))
 	require.Equal(t, string(c.fasthttp.Response.Body()), msg)
@@ -649,8 +643,7 @@ func Test_App_serverErrorHandler_TypedNilOpError(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.CtxAs[*DefaultCtx](t, app)
 
 	var err *net.OpError
 	require.NotPanics(t, func() {
@@ -663,7 +656,7 @@ func Test_App_serverErrorHandler_TypedNilOpError(t *testing.T) {
 func Test_App_serverErrorHandler_Network_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	c := apptest.CtxAs[*DefaultCtx](t, app)
 
 	app.serverErrorHandler(c.fasthttp, &net.DNSError{
 		Err:       "test error",
@@ -677,7 +670,7 @@ func Test_App_serverErrorHandler_Network_Error(t *testing.T) {
 func Test_App_serverErrorHandler_Unsupported_Method_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	c := apptest.CtxAs[*DefaultCtx](t, app)
 
 	app.serverErrorHandler(c.fasthttp, errors.New("unsupported http request method 'FOO'"))
 	require.Equal(t, utils.StatusMessage(StatusNotImplemented), string(c.fasthttp.Response.Body()))
@@ -3360,8 +3353,7 @@ func Test_App_SetTLSHandler(t *testing.T) {
 	app := New()
 	app.SetTLSHandler(tlsHandler)
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, app)
 
 	require.Equal(t, "example.golang", c.ClientHelloInfo().ServerName)
 }
@@ -3636,7 +3628,7 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 func acquireDefaultCtxForAppBenchmark(b *testing.B, app *App, fctx *fasthttp.RequestCtx) *DefaultCtx {
 	b.Helper()
 
-	ctx := app.AcquireCtx(fctx)
+	ctx := apptest.CtxFor(b, app, fctx)
 	defaultCtx, ok := ctx.(*DefaultCtx)
 	if !ok {
 		b.Fatal("AcquireCtx did not return *DefaultCtx")
@@ -3869,12 +3861,10 @@ func Test_App_IsProxyTrusted_CanonicalIPForms(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := New(Config{
+			c := apptest.Ctx(t, New(Config{
 				TrustProxy:       true,
 				TrustProxyConfig: TrustProxyConfig{Proxies: []string{tc.proxy}},
-			})
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(c)
+			}))
 			c.RequestCtx().SetRemoteAddr(&net.TCPAddr{IP: tc.remote, Port: 8080})
 
 			require.True(t, c.IsProxyTrusted())
@@ -3909,8 +3899,7 @@ func Test_App_IP_StripTrustedProxies_CanonicalIPForms(t *testing.T) {
 			})
 			fastCtx := &fasthttp.RequestCtx{}
 			fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP(tc.remote), Port: 8080})
-			c := app.AcquireCtx(fastCtx)
-			defer app.ReleaseCtx(c)
+			c := apptest.CtxFor(t, app, fastCtx)
 			c.Request().Header.Set(HeaderXForwardedFor, tc.header)
 
 			require.Equal(t, tc.expected, c.IP())
@@ -3931,8 +3920,7 @@ func Test_App_ErrorHandler_SkipsCommittedTimeoutResponse(t *testing.T) {
 
 	rctx := &fasthttp.RequestCtx{}
 	rctx.TimeoutErrorWithCode(ErrRequestTimeout.Message, StatusRequestTimeout)
-	c := app.AcquireCtx(rctx)
-	defer app.ReleaseCtx(c)
+	c := apptest.CtxFor(t, app, rctx)
 
 	require.NoError(t, app.ErrorHandler(c, ErrRequestTimeout))
 	require.Equal(t, int32(0), calls.Load())
@@ -3940,8 +3928,7 @@ func Test_App_ErrorHandler_SkipsCommittedTimeoutResponse(t *testing.T) {
 	require.Empty(t, c.Response().Body())
 
 	// Without a committed response the configured handler runs as usual.
-	plain := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(plain)
+	plain := apptest.Ctx(t, app)
 	require.NoError(t, app.ErrorHandler(plain, ErrRequestTimeout))
 	require.Equal(t, int32(1), calls.Load())
 	require.Equal(t, StatusTeapot, plain.Response().StatusCode())

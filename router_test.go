@@ -1694,7 +1694,7 @@ func registerDummyRoutes(app *App) {
 //
 //nolint:thelper // b.Helper() is the cost being avoided
 func acquireDefaultCtxForRouterBenchmark(b *testing.B, app *App, fctx *fasthttp.RequestCtx) *DefaultCtx {
-	ctx := app.AcquireCtx(fctx)
+	ctx := apptest.CtxFor(b, app, fctx)
 	defaultCtx, ok := ctx.(*DefaultCtx)
 	if !ok {
 		b.Fatal("AcquireCtx did not return *DefaultCtx")
@@ -2266,8 +2266,7 @@ func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 	fctx.Request.Header.SetMethod(MethodPost)
 	fctx.Request.SetRequestURI("/foo")
 
-	ctx := app.AcquireCtx(fctx)
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.CtxFor(t, app, fctx)
 
 	matched, err := app.nextCustom(ctx)
 	require.False(t, matched)
@@ -2287,9 +2286,8 @@ func Test_NextCustom_SkipNonUseRoutesSkipsFallback(t *testing.T) {
 	fctx.Request.Header.SetMethod(MethodPost)
 	fctx.Request.SetRequestURI("/foo")
 
-	ctx := app.AcquireCtx(fctx)
+	ctx := apptest.CtxFor(t, app, fctx)
 	ctx.setSkipNonUseRoutes(true)
-	defer app.ReleaseCtx(ctx)
 
 	matched, err := app.nextCustom(ctx)
 	require.False(t, matched)
@@ -2306,8 +2304,7 @@ func Test_NextCustom_NotFound(t *testing.T) {
 	fctx.Request.Header.SetMethod(MethodGet)
 	fctx.Request.SetRequestURI("/not-exist")
 
-	ctx := app.AcquireCtx(fctx)
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.CtxFor(t, app, fctx)
 
 	matched, err := app.nextCustom(ctx)
 	require.False(t, matched)
@@ -2338,9 +2335,8 @@ func Test_NextCustom_Matched404(t *testing.T) {
 	fctx.Request.Header.SetMethod(MethodGet)
 	fctx.Request.SetRequestURI("/none")
 
-	ctx := app.AcquireCtx(fctx)
+	ctx := apptest.CtxFor(t, app, fctx)
 	ctx.setMatched(true)
-	defer app.ReleaseCtx(ctx)
 
 	matched, err := app.nextCustom(ctx)
 	require.False(t, matched)
@@ -2363,8 +2359,7 @@ func Test_NextCustom_SkipMountAndNoHandlers(t *testing.T) {
 	fctx.Request.Header.SetMethod(MethodGet)
 	fctx.Request.SetRequestURI("/foo")
 
-	ctx := app.AcquireCtx(fctx)
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.CtxFor(t, app, fctx)
 
 	matched, err := app.nextCustom(ctx)
 	require.True(t, matched)

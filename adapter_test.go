@@ -68,13 +68,9 @@ func newTestCtx(t *testing.T) (*App, *DefaultCtx) {
 
 	app := New()
 	fasthttpCtx := &fasthttp.RequestCtx{}
-	customCtx := app.AcquireCtx(fasthttpCtx)
+	customCtx := apptest.CtxFor(t, app, fasthttpCtx)
 	ctx, ok := customCtx.(*DefaultCtx)
 	require.True(t, ok)
-
-	t.Cleanup(func() {
-		app.ReleaseCtx(customCtx)
-	})
 
 	return app, ctx
 }
@@ -657,11 +653,7 @@ func TestCollectHandlers_HTTPHandler(t *testing.T) {
 	converted := handlers[0]
 	require.NotNil(t, converted)
 
-	app := New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() {
-		app.ReleaseCtx(ctx)
-	})
+	ctx := apptest.Ctx(t, New())
 
 	err := converted(ctx)
 	require.NoError(t, err)
@@ -684,11 +676,7 @@ func TestToFiberHandler_HTTPHandler(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, converted)
 
-	app := New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() {
-		app.ReleaseCtx(ctx)
-	})
+	ctx := apptest.Ctx(t, New())
 
 	err := converted(ctx)
 	require.NoError(t, err)
@@ -732,11 +720,7 @@ func TestToFiberHandler_HTTPHandler_Flush(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, converted)
 
-	app := New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() {
-		app.ReleaseCtx(ctx)
-	})
+	ctx := apptest.Ctx(t, New())
 
 	err := converted(ctx)
 	require.NoError(t, err)
@@ -805,11 +789,7 @@ func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, converted)
 
-	app := New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() {
-		app.ReleaseCtx(ctx)
-	})
+	ctx := apptest.Ctx(t, New())
 
 	err := converted(ctx)
 	require.NoError(t, err)
@@ -951,11 +931,7 @@ func TestCollectHandlers_FasthttpHandler(t *testing.T) {
 	handlers := collectHandlers("fasthttp", before, fasthttpHandler)
 	require.Len(t, handlers, 2)
 
-	app := New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() {
-		app.ReleaseCtx(ctx)
-	})
+	ctx := apptest.Ctx(t, New())
 
 	for _, handler := range handlers {
 		require.NoError(t, handler(ctx))
@@ -976,11 +952,7 @@ func TestCollectHandlers_FiberHandlerNoErrorReturn(t *testing.T) {
 	handlers := collectHandlers("ctx", noError)
 	require.Len(t, handlers, 1)
 
-	app := New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() {
-		app.ReleaseCtx(ctx)
-	})
+	ctx := apptest.Ctx(t, New())
 
 	require.NoError(t, handlers[0](ctx))
 	require.Equal(t, "fiber", string(ctx.Response().Header.Peek("X-Handler")))
@@ -1003,11 +975,7 @@ func TestCollectHandlers_MixedHandlers(t *testing.T) {
 	require.Equal(t, reflect.ValueOf(before).Pointer(), reflect.ValueOf(handlers[0]).Pointer())
 	require.NotNil(t, handlers[1])
 
-	app := New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() {
-		app.ReleaseCtx(ctx)
-	})
+	ctx := apptest.Ctx(t, New())
 
 	err := handlers[0](ctx)
 	require.NoError(t, err)

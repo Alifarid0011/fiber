@@ -9,7 +9,6 @@ import (
 
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 // Test_Route_URL_ParameterRepresentability checks rejection through all URL
@@ -57,8 +56,7 @@ func Test_Route_URL_ParameterRepresentability(t *testing.T) {
 			t.Parallel()
 			app := New(Config{UnescapePath: tc.unescape})
 			app.Get(tc.pattern, func(c Ctx) error { return c.SendString(c.Params(tc.key)) }).Name("target")
-			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(ctx)
+			ctx := apptest.Ctx(t, app)
 			params := Map{tc.key: tc.value, "tail": "b"}
 			location, routeErr := app.GetRoute("target").URL(params)
 			ctxLocation, ctxErr := ctx.GetRouteURL("target", params)
