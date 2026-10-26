@@ -113,53 +113,51 @@ func (s *contextCheckingStorage) Close() error {
 	return s.base.Close()
 }
 
+// stateTestExpectSharedOpsFail calls every SharedState operation on state and expects each one to fail
+// with wantErr and return no data, except Close, which must fail with wantCloseErr.
+func stateTestExpectSharedOpsFail(t *testing.T, state *SharedState, wantErr, wantCloseErr error) {
+	t.Helper()
+
+	require.ErrorIs(t, state.Set("k", []byte("v"), time.Second), wantErr)
+
+	raw, found, err := state.Get("k")
+	require.Nil(t, raw)
+	require.False(t, found)
+	require.ErrorIs(t, err, wantErr)
+
+	require.ErrorIs(t, state.SetJSON("k", Map{"v": 1}, time.Second), wantErr)
+	require.ErrorIs(t, state.SetMsgPack("k", Map{"v": 1}, time.Second), wantErr)
+	require.ErrorIs(t, state.SetCBOR("k", Map{"v": 1}, time.Second), wantErr)
+	require.ErrorIs(t, state.SetXML("k", Map{"v": 1}, time.Second), wantErr)
+
+	_, found, err = state.GetJSON("k", &Map{})
+	require.False(t, found)
+	require.ErrorIs(t, err, wantErr)
+	_, found, err = state.GetMsgPack("k", &Map{})
+	require.False(t, found)
+	require.ErrorIs(t, err, wantErr)
+	_, found, err = state.GetCBOR("k", &Map{})
+	require.False(t, found)
+	require.ErrorIs(t, err, wantErr)
+	_, found, err = state.GetXML("k", &Map{})
+	require.False(t, found)
+	require.ErrorIs(t, err, wantErr)
+
+	has, err := state.Has("k")
+	require.False(t, has)
+	require.ErrorIs(t, err, wantErr)
+
+	require.ErrorIs(t, state.Delete("k"), wantErr)
+	require.ErrorIs(t, state.Reset(), wantErr)
+	require.ErrorIs(t, state.Close(), wantCloseErr)
+}
+
 func TestSharedState_NotConfigured(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 
-	err := app.SharedState().Set("raw-key", []byte("raw"), time.Second)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	raw, found, err := app.SharedState().Get("raw-key")
-	require.Nil(t, raw)
-	require.False(t, found)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	err = app.SharedState().SetJSON("key", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	err = app.SharedState().SetMsgPack("key", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	err = app.SharedState().SetCBOR("key", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	err = app.SharedState().SetXML("key", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	_, found, err = app.SharedState().GetJSON("key", &Map{})
-	require.False(t, found)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	_, found, err = app.SharedState().GetMsgPack("key", &Map{})
-	require.False(t, found)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	_, found, err = app.SharedState().GetCBOR("key", &Map{})
-	require.False(t, found)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	_, found, err = app.SharedState().GetXML("key", &Map{})
-	require.False(t, found)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	err = app.SharedState().Delete("key")
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	has, err := app.SharedState().Has("key")
-	require.False(t, has)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	err = app.SharedState().Reset()
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	err = app.SharedState().Close()
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
+	stateTestExpectSharedOpsFail(t, app.SharedState(), ErrSharedStorageNotConfigured, ErrSharedStorageNotConfigured)
 }
 
 func TestSharedState_PreforkSafeWithSharedStorage(t *testing.T) {
@@ -328,41 +326,7 @@ func TestSharedState_StorageErrorsArePropagated(t *testing.T) {
 		},
 	})
 
-	err := app.SharedState().SetJSON("k", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, expectedErr)
-	err = app.SharedState().SetMsgPack("k", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, expectedErr)
-	err = app.SharedState().SetCBOR("k", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, expectedErr)
-	err = app.SharedState().SetXML("k", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, expectedErr)
-
-	err = app.SharedState().Set("k", []byte("v"), time.Second)
-	require.ErrorIs(t, err, expectedErr)
-
-	_, _, err = app.SharedState().Get("k")
-	require.ErrorIs(t, err, expectedErr)
-
-	_, _, err = app.SharedState().GetJSON("k", &Map{})
-	require.ErrorIs(t, err, expectedErr)
-	_, _, err = app.SharedState().GetMsgPack("k", &Map{})
-	require.ErrorIs(t, err, expectedErr)
-	_, _, err = app.SharedState().GetCBOR("k", &Map{})
-	require.ErrorIs(t, err, expectedErr)
-	_, _, err = app.SharedState().GetXML("k", &Map{})
-	require.ErrorIs(t, err, expectedErr)
-
-	_, err = app.SharedState().Has("k")
-	require.ErrorIs(t, err, expectedErr)
-
-	err = app.SharedState().Delete("k")
-	require.ErrorIs(t, err, expectedErr)
-
-	err = app.SharedState().Reset()
-	require.ErrorIs(t, err, expectedErr)
-
-	err = app.SharedState().Close()
-	require.ErrorIs(t, err, closeErr)
+	stateTestExpectSharedOpsFail(t, app.SharedState(), expectedErr, closeErr)
 }
 
 func TestSharedState_NilReceiver(t *testing.T) {
@@ -370,41 +334,7 @@ func TestSharedState_NilReceiver(t *testing.T) {
 
 	var state *SharedState
 
-	err := state.SetJSON("k", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	err = state.SetMsgPack("k", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	err = state.SetCBOR("k", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	err = state.SetXML("k", Map{"v": 1}, time.Second)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	err = state.Set("k", []byte("v"), time.Second)
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	_, _, err = state.Get("k")
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	_, _, err = state.GetJSON("k", &Map{})
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	_, _, err = state.GetMsgPack("k", &Map{})
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	_, _, err = state.GetCBOR("k", &Map{})
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-	_, _, err = state.GetXML("k", &Map{})
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	err = state.Delete("k")
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	_, err = state.Has("k")
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	err = state.Reset()
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
-
-	err = state.Close()
-	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
+	stateTestExpectSharedOpsFail(t, state, ErrSharedStorageNotConfigured, ErrSharedStorageNotConfigured)
 }
 
 func TestSharedState_DefaultPrefixFallback(t *testing.T) {
@@ -589,38 +519,82 @@ func TestSharedState_UsesAppJSONCodec(t *testing.T) {
 	require.True(t, decoderCalled)
 }
 
-func TestSharedState_UsesAppMsgPackCodec(t *testing.T) {
+// TestSharedState_UsesAppCodec checks that SharedState encodes and decodes with the MsgPack, CBOR and
+// XML codecs configured on the app. Each subtest configures only the codec under test, so a method
+// wired to another codec would never see the app's encoder and decoder. JSON has its own test above
+// because it round-trips a real document.
+func TestSharedState_UsesAppCodec(t *testing.T) {
 	t.Parallel()
 
-	encoderCalled := false
-	decoderCalled := false
+	type (
+		encoder = func(any) ([]byte, error)
+		decoder = func([]byte, any) error
+	)
 
-	app := New(Config{
-		SharedStorage: newSharedStateMemoryStorage(t),
-		MsgPackEncoder: func(_ any) ([]byte, error) {
-			encoderCalled = true
-			return []byte("msgpack-payload"), nil
+	for _, tc := range []struct {
+		configure func(cfg *Config, enc encoder, dec decoder)
+		set       func(*SharedState, string, any, time.Duration) error
+		get       func(*SharedState, string, any) ([]byte, bool, error)
+		name      string
+		payload   string
+	}{
+		{
+			name:      "MsgPack",
+			payload:   "msgpack-payload",
+			configure: func(cfg *Config, enc encoder, dec decoder) { cfg.MsgPackEncoder, cfg.MsgPackDecoder = enc, dec },
+			set:       (*SharedState).SetMsgPack,
+			get:       (*SharedState).GetMsgPack,
 		},
-		MsgPackDecoder: func(data []byte, out any) error {
-			decoderCalled = true
-			ptr, ok := out.(*string)
-			if ok {
-				*ptr = string(data)
-			}
-			return nil
+		{
+			name:      "CBOR",
+			payload:   "cbor-payload",
+			configure: func(cfg *Config, enc encoder, dec decoder) { cfg.CBOREncoder, cfg.CBORDecoder = enc, dec },
+			set:       (*SharedState).SetCBOR,
+			get:       (*SharedState).GetCBOR,
 		},
-	})
+		{
+			name:      "XML",
+			payload:   "<value>xml-payload</value>",
+			configure: func(cfg *Config, enc encoder, dec decoder) { cfg.XMLEncoder, cfg.XMLDecoder = enc, dec },
+			set:       (*SharedState).SetXML,
+			get:       (*SharedState).GetXML,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	require.NoError(t, app.SharedState().SetMsgPack("codec", Map{"ignored": true}, time.Minute))
+			encoderCalled := false
+			decoderCalled := false
 
-	var out string
-	raw, found, err := app.SharedState().GetMsgPack("codec", &out)
-	require.NoError(t, err)
-	require.True(t, found)
-	require.Equal(t, []byte("msgpack-payload"), raw)
-	require.Equal(t, "msgpack-payload", out)
-	require.True(t, encoderCalled)
-	require.True(t, decoderCalled)
+			cfg := Config{SharedStorage: newSharedStateMemoryStorage(t)}
+			tc.configure(&cfg,
+				func(_ any) ([]byte, error) {
+					encoderCalled = true
+					return []byte(tc.payload), nil
+				},
+				func(data []byte, out any) error {
+					decoderCalled = true
+					ptr, ok := out.(*string)
+					if ok {
+						*ptr = string(data)
+					}
+					return nil
+				},
+			)
+			app := New(cfg)
+
+			require.NoError(t, tc.set(app.SharedState(), "codec", Map{"ignored": true}, time.Minute))
+
+			var out string
+			raw, found, err := tc.get(app.SharedState(), "codec", &out)
+			require.NoError(t, err)
+			require.True(t, found)
+			require.Equal(t, []byte(tc.payload), raw)
+			require.Equal(t, tc.payload, out)
+			require.True(t, encoderCalled)
+			require.True(t, decoderCalled)
+		})
+	}
 }
 
 func TestSharedState_UnconfiguredCodecsReturnErrorInsteadOfPanic(t *testing.T) {
@@ -646,74 +620,6 @@ func TestSharedState_UnconfiguredCodecsReturnErrorInsteadOfPanic(t *testing.T) {
 	_, found, err = app.SharedState().GetCBOR("cbor-payload", &out)
 	require.False(t, found)
 	require.ErrorContains(t, err, "shared state cbor")
-}
-
-func TestSharedState_UsesAppCBORCodec(t *testing.T) {
-	t.Parallel()
-
-	encoderCalled := false
-	decoderCalled := false
-
-	app := New(Config{
-		SharedStorage: newSharedStateMemoryStorage(t),
-		CBOREncoder: func(_ any) ([]byte, error) {
-			encoderCalled = true
-			return []byte("cbor-payload"), nil
-		},
-		CBORDecoder: func(data []byte, out any) error {
-			decoderCalled = true
-			ptr, ok := out.(*string)
-			if ok {
-				*ptr = string(data)
-			}
-			return nil
-		},
-	})
-
-	require.NoError(t, app.SharedState().SetCBOR("codec", Map{"ignored": true}, time.Minute))
-
-	var out string
-	raw, found, err := app.SharedState().GetCBOR("codec", &out)
-	require.NoError(t, err)
-	require.True(t, found)
-	require.Equal(t, []byte("cbor-payload"), raw)
-	require.Equal(t, "cbor-payload", out)
-	require.True(t, encoderCalled)
-	require.True(t, decoderCalled)
-}
-
-func TestSharedState_UsesAppXMLCodec(t *testing.T) {
-	t.Parallel()
-
-	encoderCalled := false
-	decoderCalled := false
-
-	app := New(Config{
-		SharedStorage: newSharedStateMemoryStorage(t),
-		XMLEncoder: func(_ any) ([]byte, error) {
-			encoderCalled = true
-			return []byte("<value>xml-payload</value>"), nil
-		},
-		XMLDecoder: func(data []byte, out any) error {
-			decoderCalled = true
-			ptr, ok := out.(*string)
-			if ok {
-				*ptr = string(data)
-			}
-			return nil
-		},
-	})
-
-	require.NoError(t, app.SharedState().SetXML("codec", Map{"ignored": true}, time.Minute))
-
-	var out string
-	raw, found, err := app.SharedState().GetXML("codec", &out)
-	require.NoError(t, err)
-	require.True(t, found)
-	require.Equal(t, []byte("<value>xml-payload</value>"), raw)
-	require.Equal(t, "<value>xml-payload</value>", out)
-	require.True(t, encoderCalled)
-	require.True(t, decoderCalled)
 }
 
 func TestSharedState_EmptyKeyBehavior(t *testing.T) {

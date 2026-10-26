@@ -38,338 +38,122 @@ func TestState_SetAndGet(t *testing.T) {
 	require.False(t, ok)
 }
 
+// stateTestGetter runs the three scenarios every typed State getter must satisfy, each as its own
+// subtest: a stored value of the getter's type is returned together with true, while a value of
+// another type (wrongType) and a missing key both return the zero value together with false.
+//
+// State hands values back untouched, so they are compared with Equal even for floats.
+func stateTestGetter[T any](t *testing.T, get func(*State, string) (T, bool), value T, wrongType any) {
+	t.Helper()
+
+	var zero T
+	for _, tc := range []struct {
+		want T
+		name string
+		key  string
+		ok   bool
+	}{
+		{name: "stored value", key: "value", want: value, ok: true},
+		{name: "wrong type", key: "wrong", want: zero},
+		{name: "missing key", key: "missing", want: zero},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.Set("value", value)
+			st.Set("wrong", wrongType)
+
+			got, ok := get(st, tc.key)
+			require.Equal(t, tc.ok, ok)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestState_GetString(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("str", "hello")
-	s, ok := st.GetString("str")
-	require.True(t, ok)
-	require.Equal(t, "hello", s)
-
-	// wrong type should return false
-	st.Set("num", 123)
-	s, ok = st.GetString("num")
-	require.False(t, ok)
-	require.Empty(t, s)
-
-	// missing key should return false
-	s, ok = st.GetString("missing")
-	require.False(t, ok)
-	require.Empty(t, s)
+	stateTestGetter(t, (*State).GetString, "hello", 123)
 }
 
 func TestState_GetInt(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("num", 456)
-	i, ok := st.GetInt("num")
-	require.True(t, ok)
-	require.Equal(t, 456, i)
-
-	// wrong type should return zero value
-	st.Set("str", "abc")
-	i, ok = st.GetInt("str")
-	require.False(t, ok)
-	require.Equal(t, 0, i)
-
-	// missing key should return zero value
-	i, ok = st.GetInt("missing")
-	require.False(t, ok)
-	require.Equal(t, 0, i)
+	stateTestGetter(t, (*State).GetInt, 456, "abc")
 }
 
 func TestState_GetBool(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("flag", true)
-	b, ok := st.GetBool("flag")
-	require.True(t, ok)
-	require.True(t, b)
-
-	// wrong type
-	st.Set("num", 1)
-	b, ok = st.GetBool("num")
-	require.False(t, ok)
-	require.False(t, b)
-
-	// missing key should return false
-	b, ok = st.GetBool("missing")
-	require.False(t, ok)
-	require.False(t, b)
+	stateTestGetter(t, (*State).GetBool, true, 1)
 }
 
 func TestState_GetFloat64(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("pi", 3.14)
-	f, ok := st.GetFloat64("pi")
-	require.True(t, ok)
-	require.InDelta(t, 3.14, f, 0.0001)
-
-	// wrong type should return zero value
-	st.Set("int", 10)
-	f, ok = st.GetFloat64("int")
-	require.False(t, ok)
-	require.InDelta(t, 0.0, f, 0.0001)
-
-	// missing key should return zero value
-	f, ok = st.GetFloat64("missing")
-	require.False(t, ok)
-	require.InDelta(t, 0.0, f, 0.0001)
+	stateTestGetter(t, (*State).GetFloat64, 3.14, 10)
 }
 
 func TestState_GetUint(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("uint", uint(100))
-	u, ok := st.GetUint("uint")
-	require.True(t, ok)
-	require.Equal(t, uint(100), u)
-
-	st.Set("wrong", "not uint")
-	u, ok = st.GetUint("wrong")
-	require.False(t, ok)
-	require.Equal(t, uint(0), u)
-
-	u, ok = st.GetUint("missing")
-	require.False(t, ok)
-	require.Equal(t, uint(0), u)
+	stateTestGetter(t, (*State).GetUint, 100, "not uint")
 }
 
 func TestState_GetInt8(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("int8", int8(10))
-	i, ok := st.GetInt8("int8")
-	require.True(t, ok)
-	require.Equal(t, int8(10), i)
-
-	st.Set("wrong", "not int8")
-	i, ok = st.GetInt8("wrong")
-	require.False(t, ok)
-	require.Equal(t, int8(0), i)
-
-	i, ok = st.GetInt8("missing")
-	require.False(t, ok)
-	require.Equal(t, int8(0), i)
+	stateTestGetter(t, (*State).GetInt8, 10, "not int8")
 }
 
 func TestState_GetInt16(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("int16", int16(200))
-	i, ok := st.GetInt16("int16")
-	require.True(t, ok)
-	require.Equal(t, int16(200), i)
-
-	st.Set("wrong", "not int16")
-	i, ok = st.GetInt16("wrong")
-	require.False(t, ok)
-	require.Equal(t, int16(0), i)
-
-	i, ok = st.GetInt16("missing")
-	require.False(t, ok)
-	require.Equal(t, int16(0), i)
+	stateTestGetter(t, (*State).GetInt16, 200, "not int16")
 }
 
 func TestState_GetInt32(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("int32", int32(3000))
-	i, ok := st.GetInt32("int32")
-	require.True(t, ok)
-	require.Equal(t, int32(3000), i)
-
-	st.Set("wrong", "not int32")
-	i, ok = st.GetInt32("wrong")
-	require.False(t, ok)
-	require.Equal(t, int32(0), i)
-
-	i, ok = st.GetInt32("missing")
-	require.False(t, ok)
-	require.Equal(t, int32(0), i)
+	stateTestGetter(t, (*State).GetInt32, 3000, "not int32")
 }
 
 func TestState_GetInt64(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("int64", int64(4000))
-	i, ok := st.GetInt64("int64")
-	require.True(t, ok)
-	require.Equal(t, int64(4000), i)
-
-	st.Set("wrong", "not int64")
-	i, ok = st.GetInt64("wrong")
-	require.False(t, ok)
-	require.Equal(t, int64(0), i)
-
-	i, ok = st.GetInt64("missing")
-	require.False(t, ok)
-	require.Equal(t, int64(0), i)
+	stateTestGetter(t, (*State).GetInt64, 4000, "not int64")
 }
 
 func TestState_GetUint8(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("uint8", uint8(20))
-	u, ok := st.GetUint8("uint8")
-	require.True(t, ok)
-	require.Equal(t, uint8(20), u)
-
-	st.Set("wrong", "not uint8")
-	u, ok = st.GetUint8("wrong")
-	require.False(t, ok)
-	require.Equal(t, uint8(0), u)
-
-	u, ok = st.GetUint8("missing")
-	require.False(t, ok)
-	require.Equal(t, uint8(0), u)
+	stateTestGetter(t, (*State).GetUint8, 20, "not uint8")
 }
 
 func TestState_GetUint16(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("uint16", uint16(300))
-	u, ok := st.GetUint16("uint16")
-	require.True(t, ok)
-	require.Equal(t, uint16(300), u)
-
-	st.Set("wrong", "not uint16")
-	u, ok = st.GetUint16("wrong")
-	require.False(t, ok)
-	require.Equal(t, uint16(0), u)
-
-	u, ok = st.GetUint16("missing")
-	require.False(t, ok)
-	require.Equal(t, uint16(0), u)
+	stateTestGetter(t, (*State).GetUint16, 300, "not uint16")
 }
 
 func TestState_GetUint32(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("uint32", uint32(400000))
-	u, ok := st.GetUint32("uint32")
-	require.True(t, ok)
-	require.Equal(t, uint32(400000), u)
-
-	st.Set("wrong", "not uint32")
-	u, ok = st.GetUint32("wrong")
-	require.False(t, ok)
-	require.Equal(t, uint32(0), u)
-
-	u, ok = st.GetUint32("missing")
-	require.False(t, ok)
-	require.Equal(t, uint32(0), u)
+	stateTestGetter(t, (*State).GetUint32, 400000, "not uint32")
 }
 
 func TestState_GetUint64(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("uint64", uint64(5000000))
-	u, ok := st.GetUint64("uint64")
-	require.True(t, ok)
-	require.Equal(t, uint64(5000000), u)
-
-	st.Set("wrong", "not uint64")
-	u, ok = st.GetUint64("wrong")
-	require.False(t, ok)
-	require.Equal(t, uint64(0), u)
-
-	u, ok = st.GetUint64("missing")
-	require.False(t, ok)
-	require.Equal(t, uint64(0), u)
+	stateTestGetter(t, (*State).GetUint64, 5000000, "not uint64")
 }
 
 func TestState_GetUintptr(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	var ptr uintptr = 12345
-	st.Set("uintptr", ptr)
-	u, ok := st.GetUintptr("uintptr")
-	require.True(t, ok)
-	require.Equal(t, ptr, u)
-
-	st.Set("wrong", "not uintptr")
-	u, ok = st.GetUintptr("wrong")
-	require.False(t, ok)
-	require.Equal(t, uintptr(0), u)
-
-	u, ok = st.GetUintptr("missing")
-	require.False(t, ok)
-	require.Equal(t, uintptr(0), u)
+	stateTestGetter(t, (*State).GetUintptr, 12345, "not uintptr")
 }
 
 func TestState_GetFloat32(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	st.Set("float32", float32(3.14))
-	f, ok := st.GetFloat32("float32")
-	require.True(t, ok)
-	require.InDelta(t, float32(3.14), f, 0.0001)
-
-	st.Set("wrong", "not float32")
-	f, ok = st.GetFloat32("wrong")
-	require.False(t, ok)
-	require.InDelta(t, float32(0), f, 0.0001)
-
-	f, ok = st.GetFloat32("missing")
-	require.False(t, ok)
-	require.InDelta(t, float32(0), f, 0.0001)
+	stateTestGetter(t, (*State).GetFloat32, 3.14, "not float32")
 }
 
 func TestState_GetComplex64(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	var c complex64 = complex(2, 3)
-	st.Set("complex64", c)
-	cRes, ok := st.GetComplex64("complex64")
-	require.True(t, ok)
-	require.Equal(t, c, cRes)
-
-	st.Set("wrong", "not complex64")
-	cRes, ok = st.GetComplex64("wrong")
-	require.False(t, ok)
-	require.Equal(t, complex64(0), cRes)
-
-	cRes, ok = st.GetComplex64("missing")
-	require.False(t, ok)
-	require.Equal(t, complex64(0), cRes)
+	stateTestGetter(t, (*State).GetComplex64, complex(2, 3), "not complex64")
 }
 
 func TestState_GetComplex128(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	c := complex(4, 5)
-	st.Set("complex128", c)
-	cRes, ok := st.GetComplex128("complex128")
-	require.True(t, ok)
-	require.Equal(t, c, cRes)
-
-	st.Set("wrong", "not complex128")
-	cRes, ok = st.GetComplex128("wrong")
-	require.False(t, ok)
-	require.Equal(t, complex128(0), cRes)
-
-	cRes, ok = st.GetComplex128("missing")
-	require.False(t, ok)
-	require.Equal(t, complex128(0), cRes)
+	stateTestGetter(t, (*State).GetComplex128, complex(4, 5), "not complex128")
 }
 
 func TestState_MustGet(t *testing.T) {
