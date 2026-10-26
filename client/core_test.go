@@ -18,8 +18,24 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-func Test_Exec_Func(t *testing.T) {
-	t.Parallel()
+// clientTestCCore returns a core that sends a fresh request through client. It
+// has no context yet; the tests that run the request set one. The caller
+// releases the request.
+func clientTestCCore(client *Client) *core {
+	c := newCore()
+	c.client = client
+	c.req = AcquireRequest()
+
+	return c
+}
+
+// clientTestCExecServer starts an app on an in-memory listener and returns the
+// listener. The app serves the routes the execution tests send requests to: one
+// that answers with the host it was asked for, one that fails, and one that
+// answers only after a second. extra adds the routes a test needs besides.
+func clientTestCExecServer(t *testing.T, extra func(app *fiber.App)) *fasthttputil.InmemoryListener {
+	t.Helper()
+
 	ln := fasthttputil.NewInmemoryListener()
 	app := fiber.New()
 
@@ -31,104 +47,95 @@ func Test_Exec_Func(t *testing.T) {
 		return errors.New("the request is error")
 	})
 
-	app.Get("/redirect", func(c fiber.Ctx) error {
-		return c.Redirect().Status(fiber.StatusFound).To("/normal")
-	})
-
 	app.Get("/hang-up", func(c fiber.Ctx) error {
 		time.Sleep(time.Second)
 		return c.SendString(c.Hostname() + " hang up")
 	})
 
+	if extra != nil {
+		extra(app)
+	}
+
 	go func() {
 		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 	}()
 
+	return ln
+}
+
+func Test_Exec_Func(t *testing.T) {
+	t.Parallel()
+	ln := clientTestCExecServer(t, func(app *fiber.App) {
+		app.Get("/redirect", func(c fiber.Ctx) error {
+			return c.Redirect().Status(fiber.StatusFound).To("/normal")
+		})
+	})
+
 	time.Sleep(300 * time.Millisecond)
 
-	t.Run("normal request", func(t *testing.T) {
-		t.Parallel()
-		core, client, req := newCore(), New(), AcquireRequest()
-		core.ctx = context.Background()
-		core.client = client
-		core.req = req
+	// coreFor returns a core under ctx whose client dials the server above and
+	// whose request asks for path on it.
+	coreFor := func(ctx context.Context, path string) *core {
+		c := clientTestCCore(New())
+		c.ctx = ctx
+		c.client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
+		c.req.RawRequest.SetRequestURI("http://example.com" + path)
 
-		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
-		req.RawRequest.SetRequestURI("http://example.com/normal")
+		return c
+	}
 
-		resp, err := core.execFunc()
-		require.NoError(t, err)
-		require.Equal(t, 200, resp.RawResponse.StatusCode())
-		require.Equal(t, "example.com", string(resp.RawResponse.Body()))
-	})
+	for _, tc := range []struct {
+		tune   func(c *core) // adjusts the client or the request; nil for none
+		name   string
+		path   string
+		body   string
+		status int
+	}{
+		{name: "normal request", path: "/normal", status: 200, body: "example.com"},
+		{
+			name: "follow redirect with retry config", path: "/redirect", status: 200, body: "example.com",
+			tune: func(c *core) {
+				c.client.SetRetryConfig(&RetryConfig{MaxRetryCount: 1})
+				c.req.SetMaxRedirects(1)
+				c.req.RawRequest.Header.SetMethod(fiber.MethodGet)
+			},
+		},
+		{name: "the request return an error", path: "/return-error", status: 500, body: "the request is error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			core := coreFor(context.Background(), tc.path)
+			if tc.tune != nil {
+				tc.tune(core)
+			}
 
-	t.Run("follow redirect with retry config", func(t *testing.T) {
-		t.Parallel()
-		core, client, req := newCore(), New(), AcquireRequest()
-		core.ctx = context.Background()
-		core.client = client
-		core.req = req
-
-		client.SetRetryConfig(&RetryConfig{MaxRetryCount: 1})
-		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
-		req.SetMaxRedirects(1)
-		req.RawRequest.Header.SetMethod(fiber.MethodGet)
-		req.RawRequest.SetRequestURI("http://example.com/redirect")
-
-		resp, err := core.execFunc()
-		require.NoError(t, err)
-		require.Equal(t, 200, resp.RawResponse.StatusCode())
-		require.Equal(t, "example.com", string(resp.RawResponse.Body()))
-	})
-
-	t.Run("the request return an error", func(t *testing.T) {
-		t.Parallel()
-		core, client, req := newCore(), New(), AcquireRequest()
-		core.ctx = context.Background()
-		core.client = client
-		core.req = req
-
-		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
-		req.RawRequest.SetRequestURI("http://example.com/return-error")
-
-		resp, err := core.execFunc()
-
-		require.NoError(t, err)
-		require.Equal(t, 500, resp.RawResponse.StatusCode())
-		require.Equal(t, "the request is error", string(resp.RawResponse.Body()))
-	})
+			resp, err := core.execFunc()
+			require.NoError(t, err)
+			require.Equal(t, tc.status, resp.RawResponse.StatusCode())
+			require.Equal(t, tc.body, string(resp.RawResponse.Body()))
+		})
+	}
 
 	t.Run("the request timeout", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), New(), AcquireRequest()
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 
-		core.ctx = ctx
-		core.client = client
-		core.req = req
-
-		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
-		req.RawRequest.SetRequestURI("http://example.com/hang-up")
-
-		_, err := core.execFunc()
+		_, err := coreFor(ctx, "/hang-up").execFunc()
 
 		require.Equal(t, ErrTimeoutOrCancel, err)
 	})
 
 	t.Run("cancel drains errChan", func(t *testing.T) {
-		core, client, req := newCore(), New(), AcquireRequest()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
+		core := clientTestCCore(New())
 		core.ctx = ctx
-		core.client = client
-		core.req = req
-
-		req.RawRequest.SetRequestURI("http://example.com/drain-err")
+		core.req.RawRequest.SetRequestURI("http://example.com/drain-err")
 
 		blockingTransport := newBlockingErrTransport(errors.New("upstream failure"))
-		client.transport = blockingTransport
+		core.client.transport = blockingTransport
 		defer blockingTransport.release()
 
 		type execResult struct {
@@ -203,13 +210,11 @@ func Test_Exec_Func(t *testing.T) {
 
 	t.Run("panic in transport returns error", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), New(), AcquireRequest()
+		core := clientTestCCore(New())
 		core.ctx = context.Background()
-		core.client = client
-		core.req = req
 
-		req.RawRequest.SetRequestURI("http://example.com/panic")
-		client.transport = &panicTransport{value: "boom"}
+		core.req.RawRequest.SetRequestURI("http://example.com/panic")
+		core.client.transport = &panicTransport{value: "boom"}
 
 		resp, err := core.execFunc()
 
@@ -220,35 +225,21 @@ func Test_Exec_Func(t *testing.T) {
 
 func Test_Execute(t *testing.T) {
 	t.Parallel()
-	ln := fasthttputil.NewInmemoryListener()
-	app := fiber.New()
+	ln := clientTestCExecServer(t, nil)
 
-	app.Get("/normal", func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname())
-	})
-
-	app.Get("/return-error", func(_ fiber.Ctx) error {
-		return errors.New("the request is error")
-	})
-
-	app.Get("/hang-up", func(c fiber.Ctx) error {
-		time.Sleep(time.Second)
-		return c.SendString(c.Hostname() + " hang up")
-	})
-
-	go func() {
-		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
-	}()
+	// newClient returns a client that dials the server above.
+	newClient := func() *Client {
+		return New().SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial()
+		})
+	}
 
 	t.Run("add user request hooks", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), New(), AcquireRequest()
+		core, client, req := newCore(), newClient(), AcquireRequest()
 		client.AddRequestHook(func(_ *Client, _ *Request) error {
 			require.Equal(t, "http://example.com", req.URL())
 			return nil
-		})
-		client.SetDial(func(_ string) (net.Conn, error) {
-			return ln.Dial()
 		})
 		req.SetURL("http://example.com")
 
@@ -259,13 +250,10 @@ func Test_Execute(t *testing.T) {
 
 	t.Run("add user response hooks", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), New(), AcquireRequest()
+		core, client, req := newCore(), newClient(), AcquireRequest()
 		client.AddResponseHook(func(_ *Client, _ *Response, req *Request) error {
 			require.Equal(t, "http://example.com", req.URL())
 			return nil
-		})
-		client.SetDial(func(_ string) (net.Conn, error) {
-			return ln.Dial()
 		})
 		req.SetURL("http://example.com")
 
@@ -274,185 +262,153 @@ func Test_Execute(t *testing.T) {
 		require.Equal(t, "Not Found", string(resp.RawResponse.Body()))
 	})
 
-	t.Run("no timeout", func(t *testing.T) {
-		t.Parallel()
-		core, client, req := newCore(), New(), AcquireRequest()
+	// The slow route answers after a second, so the timeouts set below decide
+	// whether the request gets its answer.
+	for _, tc := range []struct {
+		wantErr        error
+		name           string
+		body           string
+		clientTimeout  time.Duration
+		requestTimeout time.Duration
+	}{
+		{name: "no timeout", body: "example.com hang up"},
+		{name: "client timeout", clientTimeout: 500 * time.Millisecond, wantErr: ErrTimeoutOrCancel},
+		{name: "request timeout", requestTimeout: 300 * time.Millisecond, wantErr: ErrTimeoutOrCancel},
+		{
+			name:          "request timeout has higher level",
+			clientTimeout: 30 * time.Millisecond, requestTimeout: 3000 * time.Millisecond,
+			body: "example.com hang up",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			core, client, req := newCore(), newClient(), AcquireRequest()
+			client.SetTimeout(tc.clientTimeout)
+			req.SetURL("http://example.com/hang-up").
+				SetTimeout(tc.requestTimeout)
 
-		client.SetDial(func(_ string) (net.Conn, error) {
-			return ln.Dial()
+			resp, err := core.execute(context.Background(), client, req)
+			if tc.wantErr != nil {
+				require.Equal(t, tc.wantErr, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.body, string(resp.RawResponse.Body()))
 		})
-		req.SetURL("http://example.com/hang-up")
+	}
+}
 
-		resp, err := core.execute(context.Background(), client, req)
-		require.NoError(t, err)
-		require.Equal(t, "example.com hang up", string(resp.RawResponse.Body()))
+// clientTestCConcurrentHooks runs the hook phase of two requests that share a
+// client and requires both hooks to be inside it at the same time: a hook run
+// under the client lock would hold the second request back. kind names the hook
+// in the failure messages. addHook registers hook, which blocks until released,
+// as a hook of that kind; invoke runs the phase for one core.
+func clientTestCConcurrentHooks(t *testing.T, kind string, addHook func(client *Client, hook func()), invoke func(core *core) error) {
+	t.Helper()
+
+	client := New()
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+
+	addHook(client, func() {
+		entered <- struct{}{}
+		<-release
 	})
 
-	t.Run("client timeout", func(t *testing.T) {
-		t.Parallel()
-		core, client, req := newCore(), New(), AcquireRequest()
-		client.SetTimeout(500 * time.Millisecond)
-		client.SetDial(func(_ string) (net.Conn, error) {
-			return ln.Dial()
-		})
-		req.SetURL("http://example.com/hang-up")
+	run := func() <-chan error {
+		done := make(chan error, 1)
 
-		_, err := core.execute(context.Background(), client, req)
-		require.Equal(t, ErrTimeoutOrCancel, err)
-	})
+		go func() {
+			core := clientTestCCore(client)
+			defer ReleaseRequest(core.req)
+			core.req.SetURL("http://example.com")
 
-	t.Run("request timeout", func(t *testing.T) {
-		t.Parallel()
-		core, client, req := newCore(), New(), AcquireRequest()
+			done <- invoke(core)
+		}()
 
-		client.SetDial(func(_ string) (net.Conn, error) {
-			return ln.Dial()
-		})
-		req.SetURL("http://example.com/hang-up").
-			SetTimeout(300 * time.Millisecond)
+		return done
+	}
 
-		_, err := core.execute(context.Background(), client, req)
-		require.Equal(t, ErrTimeoutOrCancel, err)
-	})
+	firstDone := run()
 
-	t.Run("request timeout has higher level", func(t *testing.T) {
-		t.Parallel()
-		core, client, req := newCore(), New(), AcquireRequest()
-		client.SetTimeout(30 * time.Millisecond)
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("first " + kind + " hook was not invoked")
+	}
 
-		client.SetDial(func(_ string) (net.Conn, error) {
-			return ln.Dial()
-		})
-		req.SetURL("http://example.com/hang-up").
-			SetTimeout(3000 * time.Millisecond)
+	secondDone := run()
 
-		resp, err := core.execute(context.Background(), client, req)
-		require.NoError(t, err)
-		require.Equal(t, "example.com hang up", string(resp.RawResponse.Body()))
-	})
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("second " + kind + " hook execution was serialized by the client lock")
+	}
+
+	close(release)
+
+	require.NoError(t, <-firstDone)
+	require.NoError(t, <-secondDone)
 }
 
 func Test_PreHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
 	t.Parallel()
 
-	client := New()
-	entered := make(chan struct{}, 2)
-	release := make(chan struct{})
-
-	client.AddRequestHook(func(_ *Client, _ *Request) error {
-		entered <- struct{}{}
-		<-release
-		return nil
-	})
-
-	run := func() <-chan error {
-		done := make(chan error, 1)
-
-		go func() {
-			core := newCore()
-			core.client = client
-			core.req = AcquireRequest()
-			defer ReleaseRequest(core.req)
-			core.req.SetURL("http://example.com")
-
-			done <- core.preHooks()
-		}()
-
-		return done
-	}
-
-	firstDone := run()
-
-	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("first request hook was not invoked")
-	}
-
-	secondDone := run()
-
-	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("second request hook execution was serialized by the client lock")
-	}
-
-	close(release)
-
-	require.NoError(t, <-firstDone)
-	require.NoError(t, <-secondDone)
+	clientTestCConcurrentHooks(t, "request",
+		func(client *Client, hook func()) {
+			client.AddRequestHook(func(_ *Client, _ *Request) error {
+				hook()
+				return nil
+			})
+		},
+		func(core *core) error { return core.preHooks() })
 }
 
 func Test_AfterHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
 	t.Parallel()
 
-	client := New()
-	entered := make(chan struct{}, 2)
-	release := make(chan struct{})
-
-	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
-		entered <- struct{}{}
-		<-release
-		return nil
-	})
-
-	run := func() <-chan error {
-		done := make(chan error, 1)
-
-		go func() {
-			core := newCore()
-			core.client = client
-			core.req = AcquireRequest()
-			defer ReleaseRequest(core.req)
-			core.req.SetURL("http://example.com")
-
+	clientTestCConcurrentHooks(t, "response",
+		func(client *Client, hook func()) {
+			client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
+				hook()
+				return nil
+			})
+		},
+		func(core *core) error {
 			resp := AcquireResponse()
 			defer ReleaseResponse(resp)
 
-			done <- core.afterHooks(resp)
-		}()
-
-		return done
-	}
-
-	firstDone := run()
-
-	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("first response hook was not invoked")
-	}
-
-	secondDone := run()
-
-	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("second response hook execution was serialized by the client lock")
-	}
-
-	close(release)
-
-	require.NoError(t, <-firstDone)
-	require.NoError(t, <-secondDone)
+			return core.afterHooks(resp)
+		})
 }
 
-// Test_PreHooks_ReturnsUserHookError verifies a failing user request hook
-// aborts preHooks and its error is propagated (and the client lock is released).
-func Test_PreHooks_ReturnsUserHookError(t *testing.T) {
+// Test_PreHooks_ReturnsHookError verifies a failing request hook aborts
+// preHooks and its error is propagated (and the client lock is released).
+func Test_PreHooks_ReturnsHookError(t *testing.T) {
 	t.Parallel()
 
-	client := New()
-	wantErr := errors.New("request hook failed")
-	client.AddRequestHook(func(_ *Client, _ *Request) error { return wantErr })
+	for _, tc := range []struct {
+		add  func(client *Client, hooks ...RequestHook) *Client
+		name string
+		msg  string
+	}{
+		{name: "user request hook", add: (*Client).AddRequestHook, msg: "request hook failed"},
+		{name: "final request hook", add: (*Client).AddFinalRequestHook, msg: "final request hook failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	core := newCore()
-	core.client = client
-	core.req = AcquireRequest()
-	defer ReleaseRequest(core.req)
-	core.req.SetURL("http://example.com")
+			client := New()
+			wantErr := errors.New(tc.msg)
+			tc.add(client, func(_ *Client, _ *Request) error { return wantErr })
 
-	require.ErrorIs(t, core.preHooks(), wantErr)
+			core := clientTestCCore(client)
+			defer ReleaseRequest(core.req)
+			core.req.SetURL("http://example.com")
+
+			require.ErrorIs(t, core.preHooks(), wantErr)
+		})
+	}
 }
 
 func Test_PreHooks_AllowsUserHookClientConfigMutation(t *testing.T) {
@@ -468,9 +424,7 @@ func Test_PreHooks_AllowsUserHookClientConfigMutation(t *testing.T) {
 		return nil
 	})
 
-	core := newCore()
-	core.client = client
-	core.req = AcquireRequest()
+	core := clientTestCCore(client)
 	defer ReleaseRequest(core.req)
 	core.req.SetURL("/:resource")
 
@@ -492,30 +446,12 @@ func Test_PreHooks_FinalRequestHookSeesSerializedRequest(t *testing.T) {
 		return nil
 	})
 
-	core := newCore()
-	core.client = client
-	core.req = AcquireRequest()
+	core := clientTestCCore(client)
 	defer ReleaseRequest(core.req)
 	core.req.SetMethod("POST").SetURL("http://example.com").SetJSON(map[string]string{"name": "fiber"})
 
 	require.NoError(t, core.preHooks())
 	require.Equal(t, "signed", string(core.req.RawRequest.Header.Peek("X-Signature")))
-}
-
-func Test_PreHooks_ReturnsFinalRequestHookError(t *testing.T) {
-	t.Parallel()
-
-	client := New()
-	wantErr := errors.New("final request hook failed")
-	client.AddFinalRequestHook(func(_ *Client, _ *Request) error { return wantErr })
-
-	core := newCore()
-	core.client = client
-	core.req = AcquireRequest()
-	defer ReleaseRequest(core.req)
-	core.req.SetURL("http://example.com")
-
-	require.ErrorIs(t, core.preHooks(), wantErr)
 }
 
 func Test_PreHooks_ReleasesClientLockWhenBuiltinHookPanics(t *testing.T) {
@@ -531,18 +467,14 @@ func Test_PreHooks_ReleasesClientLockWhenBuiltinHookPanics(t *testing.T) {
 		return nil
 	}}
 
-	firstCore := newCore()
-	firstCore.client = client
-	firstCore.req = AcquireRequest()
+	firstCore := clientTestCCore(client)
 	defer ReleaseRequest(firstCore.req)
 
 	require.PanicsWithValue(t, "built-in request hook panic", func() {
 		require.NoError(t, firstCore.preHooks())
 	})
 
-	secondCore := newCore()
-	secondCore.client = client
-	secondCore.req = AcquireRequest()
+	secondCore := clientTestCCore(client)
 	defer ReleaseRequest(secondCore.req)
 
 	require.NoError(t, secondCore.preHooks())
@@ -559,9 +491,7 @@ func Test_PreHooks_RunsFinalRequestHooksOutsideClientLock(t *testing.T) {
 		return nil
 	})
 
-	core := newCore()
-	core.client = client
-	core.req = AcquireRequest()
+	core := clientTestCCore(client)
 	defer ReleaseRequest(core.req)
 	core.req.SetURL("http://example.com")
 
@@ -578,9 +508,7 @@ func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
 	wantErr := errors.New("response hook failed")
 	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error { return wantErr })
 
-	core := newCore()
-	core.client = client
-	core.req = AcquireRequest()
+	core := clientTestCCore(client)
 	defer ReleaseRequest(core.req)
 
 	resp := AcquireResponse()
@@ -589,10 +517,40 @@ func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
 	require.ErrorIs(t, core.afterHooks(resp), wantErr)
 }
 
+// clientTestCNoopTransport has the httpClientTransport methods the stub
+// transports below do nothing with. A stub embeds it and adds its own Do and the
+// variants that call it.
+type clientTestCNoopTransport struct{}
+
+func (clientTestCNoopTransport) CloseIdleConnections() {
+}
+
+func (clientTestCNoopTransport) TLSConfig() *tls.Config {
+	return nil
+}
+
+func (clientTestCNoopTransport) SetTLSConfig(_ *tls.Config) {
+}
+
+func (clientTestCNoopTransport) SetDial(_ fasthttp.DialFunc) {
+}
+
+func (clientTestCNoopTransport) Client() any {
+	return nil
+}
+
+func (clientTestCNoopTransport) StreamResponseBody() bool {
+	return false
+}
+
+func (clientTestCNoopTransport) SetStreamResponseBody(_ bool) {
+}
+
 // delayedTransport completes successfully after a fixed delay, without any
 // synchronization with the caller, mirroring a slow upstream that answers after
 // the client has already given up.
 type delayedTransport struct {
+	clientTestCNoopTransport
 	finished chan struct{}
 	delay    time.Duration
 }
@@ -620,31 +578,8 @@ func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Res
 	return d.Do(req, resp)
 }
 
-func (*delayedTransport) CloseIdleConnections() {
-}
-
-func (*delayedTransport) TLSConfig() *tls.Config {
-	return nil
-}
-
-func (*delayedTransport) SetTLSConfig(_ *tls.Config) {
-}
-
-func (*delayedTransport) SetDial(_ fasthttp.DialFunc) {
-}
-
-func (*delayedTransport) Client() any {
-	return nil
-}
-
-func (*delayedTransport) StreamResponseBody() bool {
-	return false
-}
-
-func (*delayedTransport) SetStreamResponseBody(_ bool) {
-}
-
 type blockingErrTransport struct {
+	clientTestCNoopTransport
 	err error
 
 	called   chan struct{}
@@ -684,35 +619,12 @@ func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp
 	return b.Do(req, resp)
 }
 
-func (*blockingErrTransport) CloseIdleConnections() {
-}
-
-func (*blockingErrTransport) TLSConfig() *tls.Config {
-	return nil
-}
-
-func (*blockingErrTransport) SetTLSConfig(_ *tls.Config) {
-}
-
-func (*blockingErrTransport) SetDial(_ fasthttp.DialFunc) {
-}
-
-func (*blockingErrTransport) Client() any {
-	return nil
-}
-
-func (*blockingErrTransport) StreamResponseBody() bool {
-	return false
-}
-
-func (*blockingErrTransport) SetStreamResponseBody(_ bool) {
-}
-
 func (b *blockingErrTransport) release() {
 	b.releaseOnce.Do(func() { close(b.unblock) })
 }
 
 type panicTransport struct {
+	clientTestCNoopTransport
 	value any
 }
 
@@ -732,55 +644,23 @@ func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Respo
 	return p.Do(req, resp)
 }
 
-func (*panicTransport) CloseIdleConnections() {
-}
-
-func (*panicTransport) TLSConfig() *tls.Config {
-	return nil
-}
-
-func (*panicTransport) SetTLSConfig(_ *tls.Config) {
-}
-
-func (*panicTransport) SetDial(_ fasthttp.DialFunc) {
-}
-
-func (*panicTransport) Client() any {
-	return nil
-}
-
-func (*panicTransport) StreamResponseBody() bool {
-	return false
-}
-
-func (*panicTransport) SetStreamResponseBody(_ bool) {
-}
-
 func Test_Core_RequestBodyStream(t *testing.T) {
 	t.Parallel()
+
+	// received is what the server saw of a request body.
+	type received struct {
+		body   string
+		length int
+	}
 
 	t.Run("request with body stream is properly copied", func(t *testing.T) {
 		t.Parallel()
 
-		app := fiber.New()
-		app.Post("/echo", func(c fiber.Ctx) error {
-			body := c.Body()
-			return c.Send(body)
-		})
-
-		ln := fasthttputil.NewInmemoryListener()
-		go func() {
-			err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-			if err != nil {
-				panic(err)
-			}
-		}()
-		t.Cleanup(func() {
-			require.NoError(t, app.Shutdown())
-		})
-
-		client := New().SetDial(func(_ string) (net.Conn, error) {
-			return ln.Dial()
+		client := clientTestAClient(t, func(app *fiber.App) {
+			app.Post("/echo", func(c fiber.Ctx) error {
+				body := c.Body()
+				return c.Send(body)
+			})
 		})
 
 		// Create a request with a body stream using SetRawBody which properly sets the body
@@ -800,35 +680,15 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 	t.Run("request body stream with content length", func(t *testing.T) {
 		t.Parallel()
 
-		resultCh := make(chan struct {
-			body   string
-			length int
-		}, 1)
-		app := fiber.New()
-		app.Post("/check-length", func(c fiber.Ctx) error {
-			resultCh <- struct {
-				body   string
-				length int
-			}{
-				body:   string(c.Body()),
-				length: c.Request().Header.ContentLength(),
-			}
-			return c.SendString("ok")
-		})
-
-		ln := fasthttputil.NewInmemoryListener()
-		go func() {
-			err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-			if err != nil {
-				panic(err)
-			}
-		}()
-		t.Cleanup(func() {
-			require.NoError(t, app.Shutdown())
-		})
-
-		client := New().SetDial(func(_ string) (net.Conn, error) {
-			return ln.Dial()
+		resultCh := make(chan received, 1)
+		client := clientTestAClient(t, func(app *fiber.App) {
+			app.Post("/check-length", func(c fiber.Ctx) error {
+				resultCh <- received{
+					body:   string(c.Body()),
+					length: c.Request().Header.ContentLength(),
+				}
+				return c.SendString("ok")
+			})
 		})
 
 		streamContent := "body with known length"
@@ -851,47 +711,24 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 
 		const streamContent = "streaming raw request body"
 
-		resultCh := make(chan struct {
-			body   string
-			length int
-		}, 1)
-
-		app := fiber.New()
-		app.Post("/copy-to-body-stream", func(c fiber.Ctx) error {
-			body := string(c.Body())
-			resultCh <- struct {
-				body   string
-				length int
-			}{
-				body:   body,
-				length: c.Request().Header.ContentLength(),
-			}
-			return c.SendString(body)
+		resultCh := make(chan received, 1)
+		client := clientTestAClient(t, func(app *fiber.App) {
+			app.Post("/copy-to-body-stream", func(c fiber.Ctx) error {
+				body := string(c.Body())
+				resultCh <- received{
+					body:   body,
+					length: c.Request().Header.ContentLength(),
+				}
+				return c.SendString(body)
+			})
 		})
 
-		ln := fasthttputil.NewInmemoryListener()
-		go func() {
-			err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-			if err != nil {
-				panic(err)
-			}
-		}()
-		t.Cleanup(func() {
-			require.NoError(t, app.Shutdown())
-		})
-
-		core, client, req := newCore(), New(), AcquireRequest()
+		core := clientTestCCore(client)
 		core.ctx = context.Background()
-		core.client = client
-		core.req = req
 
-		client.SetDial(func(_ string) (net.Conn, error) {
-			return ln.Dial()
-		})
-
-		req.RawRequest.SetRequestURI("http://example.com/copy-to-body-stream")
-		req.RawRequest.Header.SetMethod(fiber.MethodPost)
-		req.RawRequest.SetBodyStream(bytes.NewBufferString(streamContent), len(streamContent))
+		core.req.RawRequest.SetRequestURI("http://example.com/copy-to-body-stream")
+		core.req.RawRequest.Header.SetMethod(fiber.MethodPost)
+		core.req.RawRequest.SetBodyStream(bytes.NewBufferString(streamContent), len(streamContent))
 
 		resp, err := core.execFunc()
 		require.NoError(t, err)

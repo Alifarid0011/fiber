@@ -38,45 +38,92 @@ func cookieKeys(cookies []*fasthttp.Cookie) []string {
 	return keys
 }
 
+// clientTestCJar returns a pooled cookie jar that is released when the test ends.
+func clientTestCJar(t *testing.T) *CookieJar {
+	t.Helper()
+
+	jar := AcquireCookieJar()
+	t.Cleanup(func() { ReleaseCookieJar(jar) })
+
+	return jar
+}
+
+// clientTestCURI returns the URI parsed from rawURL, released when the test ends.
+func clientTestCURI(t *testing.T, rawURL string) *fasthttp.URI {
+	t.Helper()
+
+	uri := fasthttp.AcquireURI()
+	t.Cleanup(func() { fasthttp.ReleaseURI(uri) })
+	require.NoError(t, uri.Parse(nil, []byte(rawURL)))
+
+	return uri
+}
+
+// clientTestCCookie returns a pooled cookie with the given name and value,
+// released when the test ends. The caller adds the attributes it needs.
+func clientTestCCookie(t *testing.T, key, value string) *fasthttp.Cookie {
+	t.Helper()
+
+	c := fasthttp.AcquireCookie()
+	t.Cleanup(func() { fasthttp.ReleaseCookie(c) })
+	c.SetKey(key)
+	c.SetValue(value)
+
+	return c
+}
+
+// clientTestCPairs renders cookies as "name=value" and returns them to the pool.
+func clientTestCPairs(cookies []*fasthttp.Cookie) []string {
+	pairs := make([]string, 0, len(cookies))
+	for _, c := range cookies {
+		pairs = append(pairs, string(c.Key())+"="+string(c.Value()))
+		fasthttp.ReleaseCookie(c)
+	}
+
+	return pairs
+}
+
+// clientTestCReceive hands jar the Set-Cookie header of a response to a request
+// for host and path.
+func clientTestCReceive(jar *CookieJar, host, path, setCookie string) {
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	resp.Header.Add("Set-Cookie", setCookie)
+	jar.parseCookiesFromResp([]byte(host), []byte(path), resp)
+}
+
+// clientTestCSetByHost parses setCookie, the value of a Set-Cookie header, and
+// stores the cookie in jar for example.com with SetByHost.
+func clientTestCSetByHost(t *testing.T, jar *CookieJar, setCookie string) {
+	t.Helper()
+
+	c := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(c)
+
+	require.NoError(t, c.ParseBytes([]byte(setCookie)))
+	jar.SetByHost([]byte("example.com"), c)
+}
+
 func Test_CookieJarGet(t *testing.T) {
 	t.Parallel()
 
-	url := []byte("http://fasthttp.com/")
-	url1 := []byte("http://fasthttp.com/make/")
-	url11 := []byte("http://fasthttp.com/hola")
-	url2 := []byte("http://fasthttp.com/make/fasthttp")
-	url3 := []byte("http://fasthttp.com/make/fasthttp/great")
 	cj := &CookieJar{}
 
-	c1 := &fasthttp.Cookie{}
-	c1.SetKey("k")
-	c1.SetValue("v")
+	c1 := clientTestCCookie(t, "k", "v")
 	c1.SetPath("/make/")
 
-	c2 := &fasthttp.Cookie{}
-	c2.SetKey("kk")
-	c2.SetValue("vv")
+	c2 := clientTestCCookie(t, "kk", "vv")
 	c2.SetPath("/make/fasthttp")
 
-	c3 := &fasthttp.Cookie{}
-	c3.SetKey("kkk")
-	c3.SetValue("vvv")
+	c3 := clientTestCCookie(t, "kkk", "vvv")
 	c3.SetPath("/make/fasthttp/great")
 
-	uri := fasthttp.AcquireURI()
-	require.NoError(t, uri.Parse(nil, url))
-
-	uri1 := fasthttp.AcquireURI()
-	require.NoError(t, uri1.Parse(nil, url1))
-
-	uri11 := fasthttp.AcquireURI()
-	require.NoError(t, uri11.Parse(nil, url11))
-
-	uri2 := fasthttp.AcquireURI()
-	require.NoError(t, uri2.Parse(nil, url2))
-
-	uri3 := fasthttp.AcquireURI()
-	require.NoError(t, uri3.Parse(nil, url3))
+	uri := clientTestCURI(t, "http://fasthttp.com/")
+	uri1 := clientTestCURI(t, "http://fasthttp.com/make/")
+	uri11 := clientTestCURI(t, "http://fasthttp.com/hola")
+	uri2 := clientTestCURI(t, "http://fasthttp.com/make/fasthttp")
+	uri3 := clientTestCURI(t, "http://fasthttp.com/make/fasthttp/great")
 
 	cj.Set(uri1, c1, c2, c3)
 
@@ -108,13 +155,9 @@ func Test_CookieJarGet(t *testing.T) {
 func Test_CookieJarGetExpired(t *testing.T) {
 	t.Parallel()
 
-	url1 := []byte("http://fasthttp.com/make/")
-	uri1 := fasthttp.AcquireURI()
-	require.NoError(t, uri1.Parse(nil, url1))
+	uri1 := clientTestCURI(t, "http://fasthttp.com/make/")
 
-	c1 := &fasthttp.Cookie{}
-	c1.SetKey("k")
-	c1.SetValue("v")
+	c1 := clientTestCCookie(t, "k", "v")
 	c1.SetExpire(time.Now().Add(-time.Hour))
 
 	cj := &CookieJar{}
@@ -127,15 +170,9 @@ func Test_CookieJarGetExpired(t *testing.T) {
 func Test_CookieJarSet(t *testing.T) {
 	t.Parallel()
 
-	url := []byte("http://fasthttp.com/hello/world")
 	cj := &CookieJar{}
-
-	cookie := &fasthttp.Cookie{}
-	cookie.SetKey("k")
-	cookie.SetValue("v")
-
-	uri := fasthttp.AcquireURI()
-	require.NoError(t, uri.Parse(nil, url))
+	cookie := clientTestCCookie(t, "k", "v")
+	uri := clientTestCURI(t, "http://fasthttp.com/hello/world")
 
 	cj.Set(uri, cookie)
 	checkKeyValue(t, cj, cookie, uri, 1)
@@ -149,17 +186,9 @@ func Test_CookieJarSetRepeatedCookieKeys(t *testing.T) {
 	uri := fasthttp.AcquireURI()
 	uri.SetHost(host)
 
-	cookie := &fasthttp.Cookie{}
-	cookie.SetKey("k")
-	cookie.SetValue("v")
-
-	cookie2 := &fasthttp.Cookie{}
-	cookie2.SetKey("k")
-	cookie2.SetValue("v2")
-
-	cookie3 := &fasthttp.Cookie{}
-	cookie3.SetKey("key")
-	cookie3.SetValue("value")
+	cookie := clientTestCCookie(t, "k", "v")
+	cookie2 := clientTestCCookie(t, "k", "v2")
+	cookie3 := clientTestCCookie(t, "key", "value")
 
 	cj.Set(uri, cookie, cookie2, cookie3)
 
@@ -272,22 +301,10 @@ func Test_CookieJarGetFromResponse(t *testing.T) {
 	uri := fasthttp.AcquireURI()
 	uri.SetHostBytes(host)
 
-	c := &fasthttp.Cookie{}
-	c.SetKey("key")
-	c.SetValue("val")
-
-	c2 := &fasthttp.Cookie{}
-	c2.SetKey("k")
-	c2.SetValue("v")
-
-	c3 := &fasthttp.Cookie{}
-	c3.SetKey("kk")
-	c3.SetValue("vv")
-
 	res.Header.SetStatusCode(200)
-	res.Header.SetCookie(c)
-	res.Header.SetCookie(c2)
-	res.Header.SetCookie(c3)
+	res.Header.SetCookie(clientTestCCookie(t, "key", "val"))
+	res.Header.SetCookie(clientTestCCookie(t, "k", "v"))
+	res.Header.SetCookie(clientTestCCookie(t, "kk", "vv"))
 
 	cj := &CookieJar{}
 	cj.parseCookiesFromResp(host, nil, res)
@@ -309,17 +326,12 @@ func Test_CookieJar_HostPort(t *testing.T) {
 	t.Parallel()
 
 	jar := &CookieJar{}
-	uriSet := fasthttp.AcquireURI()
-	require.NoError(t, uriSet.Parse(nil, []byte("http://fasthttp.com:80/path")))
+	uriSet := clientTestCURI(t, "http://fasthttp.com:80/path")
 
-	c := &fasthttp.Cookie{}
-	c.SetKey("k")
-	c.SetValue("v")
-	jar.Set(uriSet, c)
+	jar.Set(uriSet, clientTestCCookie(t, "k", "v"))
 
 	// retrieve using a different port to ensure port is ignored
-	uriGet := fasthttp.AcquireURI()
-	require.NoError(t, uriGet.Parse(nil, []byte("http://fasthttp.com:8080/path")))
+	uriGet := clientTestCURI(t, "http://fasthttp.com:8080/path")
 
 	cookies := jar.Get(uriGet)
 	require.Len(t, cookies, 1)
@@ -351,370 +363,193 @@ func Test_CookieJar_isIPLiteral(t *testing.T) {
 	}
 }
 
-func Test_CookieJar_Domain(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-
-	uri := fasthttp.AcquireURI()
-	require.NoError(t, uri.Parse(nil, []byte("http://sub.example.com/")))
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("k")
-	c.SetValue("v")
-	c.SetDomain("example.com")
-
-	jar.Set(uri, c)
-
-	uri2 := fasthttp.AcquireURI()
-	require.NoError(t, uri2.Parse(nil, []byte("http://other.example.com/")))
-
-	cookies := jar.Get(uri2)
-	require.Len(t, cookies, 1)
-	require.Equal(t, "k", string(cookies[0].Key()))
-	require.Equal(t, "v", string(cookies[0].Value()))
+// clientTestCScope is one scenario of the jar's domain scoping: a cookie with
+// the given Domain attribute is stored on behalf of origin, and the jar then
+// has to send it to, or withhold it from, the request URLs in sent.
+type clientTestCScope struct {
+	// sent maps a request URL to whether the jar sends the cookie there.
+	sent map[string]bool
+	// name describes the scenario in the failure output.
+	name string
+	// origin is the URL of the request the cookie is stored for.
+	origin string
+	key    string
+	value  string
+	// domain is the Domain attribute; empty for a host-only cookie.
+	domain string
+	// hostOnly is the storage key that has to hold exactly one host-only cookie.
+	hostOnly string
+	// rejected means the jar has to store nothing at all.
+	rejected bool
 }
 
-func Test_CookieJar_HostOnlyCookieNotSentToSubdomain(t *testing.T) {
+// cookie returns the cookie the scenario stores.
+func (s *clientTestCScope) cookie(t *testing.T) *fasthttp.Cookie {
+	t.Helper()
+
+	c := clientTestCCookie(t, s.key, s.value)
+	if s.domain != "" {
+		c.SetDomain(s.domain)
+	}
+
+	return c
+}
+
+// check requires jar to hold and to send the cookie as the scenario says.
+func (s *clientTestCScope) check(t *testing.T, jar *CookieJar) {
+	t.Helper()
+
+	if s.rejected {
+		require.Empty(t, jar.hostCookies)
+	}
+	if s.hostOnly != "" {
+		require.Len(t, jar.hostCookies[s.hostOnly], 1)
+		require.True(t, jar.hostCookies[s.hostOnly][0].isHostOnly)
+	}
+	for target, want := range s.sent {
+		got := clientTestCPairs(jar.Get(clientTestCURI(t, target)))
+		if want {
+			require.Equal(t, []string{s.key + "=" + s.value}, got, "cookies sent to %s", target)
+		} else {
+			require.Empty(t, got, "cookies sent to %s", target)
+		}
+	}
+}
+
+// Test_CookieJar_ResponseDomainScoping covers the cookies a response sets: which
+// Domain attributes the jar honors for the host that answered, and which
+// requests it sends the cookie to afterwards.
+func Test_CookieJar_ResponseDomainScoping(t *testing.T) {
 	t.Parallel()
 
-	jar := &CookieJar{}
-	origin := fasthttp.AcquireURI()
-	require.NoError(t, origin.Parse(nil, []byte("http://example.com/")))
+	for _, tc := range []clientTestCScope{
+		{
+			name:   "a host-only cookie is not sent to a subdomain",
+			origin: "http://example.com/", key: "sid", value: "123",
+			sent: map[string]bool{"http://example.com/": true, "http://attacker.example.com/": false},
+		},
+		{
+			name:   "a Domain unrelated to the responding host is rejected",
+			origin: "http://attacker.invalid/", key: "sess", value: "evil", domain: "victim.example",
+			sent: map[string]bool{"http://victim.example/": false},
+		},
+		{
+			name:   "a public suffix Domain is rejected",
+			origin: "http://attacker.com/", key: "sess", value: "evil", domain: "com",
+			rejected: true,
+		},
+		{
+			name:   "an exact public suffix Domain is downgraded to host-only",
+			origin: "http://com/", key: "sess", value: "ok", domain: "com",
+			hostOnly: "com",
+			sent:     map[string]bool{"http://com/": true, "http://example.com/": false},
+		},
+		{
+			name:   "a Domain that is a suffix of the responding IP address is rejected",
+			origin: "http://1.2.3.4/", key: "sess", value: "evil", domain: "2.3.4",
+			rejected: true,
+		},
+		{
+			name:   "an exact IP address Domain is downgraded to host-only",
+			origin: "http://127.0.0.1/", key: "sess", value: "ok", domain: "127.0.0.1",
+			hostOnly: "127.0.0.1",
+			sent:     map[string]bool{"http://127.0.0.1/": true, "http://evil.127.0.0.1/": false},
+		},
+		{
+			name:   "an IP address Domain from a hostname is rejected",
+			origin: "http://evil.127.0.0.1/", key: "sess", value: "evil", domain: "127.0.0.1",
+			rejected: true,
+			sent:     map[string]bool{"http://127.0.0.1/": false},
+		},
+		{
+			name:   "a Domain cookie is sent to a matching sibling subdomain",
+			origin: "http://sub.example.com/", key: "sess", value: "shared", domain: "example.com",
+			sent: map[string]bool{"http://other.example.com/": true},
+		},
+		{
+			name:   "a trailing-dot Domain is downgraded to host-only",
+			origin: "http://sub.example.com./", key: "sess", value: "123", domain: "example.com.",
+			hostOnly: "sub.example.com.",
+			sent:     map[string]bool{"http://sub.example.com./": true, "http://other.example.com./": false},
+		},
+		{
+			name:   "a trailing-dot Domain is downgraded to host-only on a plain host",
+			origin: "http://sub.example.com/", key: "sess", value: "123", domain: "example.com.",
+			hostOnly: "sub.example.com",
+			sent:     map[string]bool{"http://sub.example.com/": true, "http://other.example.com/": false},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	c := &fasthttp.Cookie{}
-	c.SetKey("sid")
-	c.SetValue("123")
-	jar.Set(origin, c)
+			jar := &CookieJar{}
+			resp := fasthttp.AcquireResponse()
+			t.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
+			resp.Header.SetCookie(tc.cookie(t))
 
-	subdomain := fasthttp.AcquireURI()
-	require.NoError(t, subdomain.Parse(nil, []byte("http://attacker.example.com/")))
-	require.Empty(t, jar.Get(subdomain))
+			jar.parseCookiesFromResp(clientTestCURI(t, tc.origin).Host(), nil, resp)
+			tc.check(t, jar)
+		})
+	}
+}
+
+// Test_CookieJar_SetDomainScoping is the same scoping for cookies handed to Set
+// by the caller instead of arriving in a response.
+func Test_CookieJar_SetDomainScoping(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []clientTestCScope{
+		{
+			name:   "a host-only cookie is not sent to a subdomain",
+			origin: "http://example.com/", key: "sid", value: "123",
+			sent: map[string]bool{"http://attacker.example.com/": false},
+		},
+		{
+			name:   "a host-only cookie matches a mixed-case host",
+			origin: "http://example.com/", key: "sid", value: "123",
+			sent: map[string]bool{"http://Example.com/": true},
+		},
+		{
+			name:   "a Domain unrelated to the origin is rejected",
+			origin: "http://attacker.example/", key: "sess", value: "evil", domain: "victim.example",
+			sent: map[string]bool{"http://victim.example/": false},
+		},
+		{
+			name:   "an IP address Domain from a hostname is rejected",
+			origin: "http://evil.127.0.0.1/", key: "sess", value: "evil", domain: "127.0.0.1",
+			rejected: true,
+			sent:     map[string]bool{"http://127.0.0.1/": false},
+		},
+		{
+			name:   "a Domain cookie is sent to a sibling subdomain",
+			origin: "http://sub.example.com/", key: "k", value: "v", domain: "example.com",
+			sent: map[string]bool{"http://other.example.com/": true},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jar := &CookieJar{}
+
+			jar.Set(clientTestCURI(t, tc.origin), tc.cookie(t))
+			tc.check(t, jar)
+		})
+	}
 }
 
 func Test_CookieJar_SetByHostDoesNotMutateHostOnlyCookieToDomainCookie(t *testing.T) {
 	t.Parallel()
 
 	jar := &CookieJar{}
-	c := &fasthttp.Cookie{}
-	c.SetKey("sid")
-	c.SetValue("123")
+	c := clientTestCCookie(t, "sid", "123")
 
 	jar.SetByHost([]byte("example.com"), c)
 	require.Empty(t, c.Domain())
 
-	subOrigin := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(subOrigin)
-	require.NoError(t, subOrigin.Parse(nil, []byte("http://sub.example.com/")))
-	jar.Set(subOrigin, c)
+	jar.Set(clientTestCURI(t, "http://sub.example.com/"), c)
 	require.Empty(t, c.Domain())
 
-	sibling := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(sibling)
-	require.NoError(t, sibling.Parse(nil, []byte("http://other.example.com/")))
-	require.Empty(t, jar.Get(sibling))
-}
-
-func Test_CookieJar_ResponseHostOnlyCookieNotSentToSubdomain(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sid")
-	c.SetValue("123")
-	resp.Header.SetCookie(c)
-
-	jar.parseCookiesFromResp([]byte("example.com"), nil, resp)
-
-	origin := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(origin)
-	require.NoError(t, origin.Parse(nil, []byte("http://example.com/")))
-	require.Equal(t, []string{"sid"}, cookieKeys(jar.Get(origin)))
-
-	subdomain := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(subdomain)
-	require.NoError(t, subdomain.Parse(nil, []byte("http://attacker.example.com/")))
-	require.Empty(t, jar.Get(subdomain))
-}
-
-func Test_CookieJar_HostOnlyCookieMatchesMixedCaseHost(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-
-	origin := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(origin)
-	require.NoError(t, origin.Parse(nil, []byte("http://example.com/")))
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sid")
-	c.SetValue("123")
-	jar.Set(origin, c)
-
-	mixedCaseHost := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(mixedCaseHost)
-	require.NoError(t, mixedCaseHost.Parse(nil, []byte("http://Example.com/")))
-
-	require.Equal(t, []string{"sid"}, cookieKeys(jar.Get(mixedCaseHost)))
-}
-
-func Test_CookieJar_RejectUnrelatedResponseDomain(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	resp := fasthttp.AcquireResponse()
-	host := []byte("attacker.invalid")
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("evil")
-	c.SetDomain("victim.example")
-	resp.Header.SetCookie(c)
-
-	jar.parseCookiesFromResp(host, nil, resp)
-
-	uri := fasthttp.AcquireURI()
-	require.NoError(t, uri.Parse(nil, []byte("http://victim.example/")))
-	require.Empty(t, jar.Get(uri))
-}
-
-func Test_CookieJar_SetRejectUnrelatedDomain(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	origin := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(origin)
-	require.NoError(t, origin.Parse(nil, []byte("http://attacker.example/")))
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("evil")
-	c.SetDomain("victim.example")
-
-	jar.Set(origin, c)
-
-	target := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(target)
-	require.NoError(t, target.Parse(nil, []byte("http://victim.example/")))
-	require.Empty(t, jar.Get(target))
-}
-
-func Test_CookieJar_RejectPublicSuffixResponseDomain(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("evil")
-	c.SetDomain("com")
-	resp.Header.SetCookie(c)
-
-	jar.parseCookiesFromResp([]byte("attacker.com"), nil, resp)
-
-	require.Empty(t, jar.hostCookies)
-}
-
-func Test_CookieJar_ExactPublicSuffixDomainDowngradedToHostOnly(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("ok")
-	c.SetDomain("com")
-	resp.Header.SetCookie(c)
-
-	jar.parseCookiesFromResp([]byte("com"), nil, resp)
-	require.Len(t, jar.hostCookies["com"], 1)
-	require.True(t, jar.hostCookies["com"][0].isHostOnly)
-
-	origin := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(origin)
-	require.NoError(t, origin.Parse(nil, []byte("http://com/")))
-	require.Equal(t, []string{"sess"}, cookieKeys(jar.Get(origin)))
-
-	other := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(other)
-	require.NoError(t, other.Parse(nil, []byte("http://example.com/")))
-	require.Empty(t, jar.Get(other))
-}
-
-func Test_CookieJar_RejectIPAddressSuffixResponseDomain(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("evil")
-	c.SetDomain("2.3.4")
-	resp.Header.SetCookie(c)
-
-	jar.parseCookiesFromResp([]byte("1.2.3.4"), nil, resp)
-
-	require.Empty(t, jar.hostCookies)
-}
-
-func Test_CookieJar_ExactIPAddressDomainDowngradedToHostOnly(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("ok")
-	c.SetDomain("127.0.0.1")
-	resp.Header.SetCookie(c)
-
-	jar.parseCookiesFromResp([]byte("127.0.0.1"), nil, resp)
-	require.Len(t, jar.hostCookies["127.0.0.1"], 1)
-	require.True(t, jar.hostCookies["127.0.0.1"][0].isHostOnly)
-
-	origin := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(origin)
-	require.NoError(t, origin.Parse(nil, []byte("http://127.0.0.1/")))
-	require.Equal(t, []string{"sess"}, cookieKeys(jar.Get(origin)))
-
-	other := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(other)
-	require.NoError(t, other.Parse(nil, []byte("http://evil.127.0.0.1/")))
-	require.Empty(t, jar.Get(other))
-}
-
-func Test_CookieJar_RejectIPAddressResponseDomainFromHostname(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("evil")
-	c.SetDomain("127.0.0.1")
-	resp.Header.SetCookie(c)
-
-	jar.parseCookiesFromResp([]byte("evil.127.0.0.1"), nil, resp)
-
-	require.Empty(t, jar.hostCookies)
-
-	uri := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(uri)
-	require.NoError(t, uri.Parse(nil, []byte("http://127.0.0.1/")))
-	require.Empty(t, jar.Get(uri))
-}
-
-func Test_CookieJar_SetRejectIPAddressDomainFromHostname(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	origin := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(origin)
-	require.NoError(t, origin.Parse(nil, []byte("http://evil.127.0.0.1/")))
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("evil")
-	c.SetDomain("127.0.0.1")
-
-	jar.Set(origin, c)
-
-	require.Empty(t, jar.hostCookies)
-
-	target := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(target)
-	require.NoError(t, target.Parse(nil, []byte("http://127.0.0.1/")))
-	require.Empty(t, jar.Get(target))
-}
-
-func Test_CookieJar_ResponseDomainCookieSentToMatchingSiblingSubdomain(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("shared")
-	c.SetDomain("example.com")
-	resp.Header.SetCookie(c)
-
-	jar.parseCookiesFromResp([]byte("sub.example.com"), nil, resp)
-
-	other := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(other)
-	require.NoError(t, other.Parse(nil, []byte("http://other.example.com/")))
-	require.Equal(t, []string{"sess"}, cookieKeys(jar.Get(other)))
-}
-
-func Test_CookieJar_TrailingDotDomainDowngradedToHostOnly(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("123")
-	c.SetDomain("example.com.")
-	resp.Header.SetCookie(c)
-
-	jar.parseCookiesFromResp([]byte("sub.example.com."), nil, resp)
-	require.Len(t, jar.hostCookies["sub.example.com."], 1)
-	require.True(t, jar.hostCookies["sub.example.com."][0].isHostOnly)
-
-	origin := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(origin)
-	require.NoError(t, origin.Parse(nil, []byte("http://sub.example.com./")))
-	require.Equal(t, []string{"sess"}, cookieKeys(jar.Get(origin)))
-
-	other := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(other)
-	require.NoError(t, other.Parse(nil, []byte("http://other.example.com./")))
-	require.Empty(t, jar.Get(other))
-}
-
-func Test_CookieJar_TrailingDotDomainDowngradedToHostOnlyOnPlainHost(t *testing.T) {
-	t.Parallel()
-
-	jar := &CookieJar{}
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("123")
-	c.SetDomain("example.com.")
-	resp.Header.SetCookie(c)
-
-	jar.parseCookiesFromResp([]byte("sub.example.com"), nil, resp)
-	require.Len(t, jar.hostCookies["sub.example.com"], 1)
-	require.True(t, jar.hostCookies["sub.example.com"][0].isHostOnly)
-
-	origin := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(origin)
-	require.NoError(t, origin.Parse(nil, []byte("http://sub.example.com/")))
-	require.Equal(t, []string{"sess"}, cookieKeys(jar.Get(origin)))
-
-	other := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(other)
-	require.NoError(t, other.Parse(nil, []byte("http://other.example.com/")))
-	require.Empty(t, jar.Get(other))
+	require.Empty(t, jar.Get(clientTestCURI(t, "http://other.example.com/")))
 }
 
 func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
@@ -740,21 +575,12 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 
 			jar := &CookieJar{}
 
-			hostOnlyOrigin := fasthttp.AcquireURI()
-			defer fasthttp.ReleaseURI(hostOnlyOrigin)
-			require.NoError(t, hostOnlyOrigin.Parse(nil, []byte("http://example.com/")))
+			hostOnlyOrigin := clientTestCURI(t, "http://example.com/")
+			domainOrigin := clientTestCURI(t, "http://sub.example.com/")
 
-			domainOrigin := fasthttp.AcquireURI()
-			defer fasthttp.ReleaseURI(domainOrigin)
-			require.NoError(t, domainOrigin.Parse(nil, []byte("http://sub.example.com/")))
+			hostOnlyCookie := clientTestCCookie(t, "host-only", "123")
 
-			hostOnlyCookie := &fasthttp.Cookie{}
-			hostOnlyCookie.SetKey("host-only")
-			hostOnlyCookie.SetValue("123")
-
-			domainCookie := &fasthttp.Cookie{}
-			domainCookie.SetKey("domain")
-			domainCookie.SetValue("456")
+			domainCookie := clientTestCCookie(t, "domain", "456")
 			domainCookie.SetDomain("example.com")
 
 			for _, cookieType := range testCase.order {
@@ -768,9 +594,7 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 				}
 			}
 
-			anotherSubdomain := fasthttp.AcquireURI()
-			defer fasthttp.ReleaseURI(anotherSubdomain)
-			require.NoError(t, anotherSubdomain.Parse(nil, []byte("http://child.example.com/")))
+			anotherSubdomain := clientTestCURI(t, "http://child.example.com/")
 			require.Equal(t, []string{"domain"}, cookieKeys(jar.Get(anotherSubdomain)))
 
 			require.ElementsMatch(t, []string{"domain", "host-only"}, cookieKeys(jar.Get(hostOnlyOrigin)))
@@ -783,12 +607,9 @@ func Test_CookieJar_Secure(t *testing.T) {
 
 	jar := &CookieJar{}
 
-	uriHTTP := fasthttp.AcquireURI()
-	require.NoError(t, uriHTTP.Parse(nil, []byte("http://example.com/")))
+	uriHTTP := clientTestCURI(t, "http://example.com/")
 
-	c := &fasthttp.Cookie{}
-	c.SetKey("k")
-	c.SetValue("v")
+	c := clientTestCCookie(t, "k", "v")
 	c.SetSecure(true)
 
 	jar.Set(uriHTTP, c)
@@ -796,8 +617,7 @@ func Test_CookieJar_Secure(t *testing.T) {
 	cookies := jar.Get(uriHTTP)
 	require.Empty(t, cookies)
 
-	uriHTTPS := fasthttp.AcquireURI()
-	require.NoError(t, uriHTTPS.Parse(nil, []byte("https://example.com/")))
+	uriHTTPS := clientTestCURI(t, "https://example.com/")
 
 	cookies = jar.Get(uriHTTPS)
 	require.Len(t, cookies, 1)
@@ -810,26 +630,20 @@ func Test_CookieJar_PathMatch(t *testing.T) {
 
 	jar := &CookieJar{}
 
-	setURI := fasthttp.AcquireURI()
-	require.NoError(t, setURI.Parse(nil, []byte("http://example.com/api")))
+	setURI := clientTestCURI(t, "http://example.com/api")
 
-	c := &fasthttp.Cookie{}
-	c.SetKey("k")
-	c.SetValue("v")
+	c := clientTestCCookie(t, "k", "v")
 	c.SetPath("/api")
 
 	jar.Set(setURI, c)
 
-	uriExact := fasthttp.AcquireURI()
-	require.NoError(t, uriExact.Parse(nil, []byte("http://example.com/api")))
+	uriExact := clientTestCURI(t, "http://example.com/api")
 	require.Len(t, jar.Get(uriExact), 1)
 
-	uriChild := fasthttp.AcquireURI()
-	require.NoError(t, uriChild.Parse(nil, []byte("http://example.com/api/v1")))
+	uriChild := clientTestCURI(t, "http://example.com/api/v1")
 	require.Len(t, jar.Get(uriChild), 1)
 
-	uriNoMatch := fasthttp.AcquireURI()
-	require.NoError(t, uriNoMatch.Parse(nil, []byte("http://example.com/apiv1")))
+	uriNoMatch := clientTestCURI(t, "http://example.com/apiv1")
 	require.Empty(t, jar.Get(uriNoMatch))
 }
 
@@ -889,15 +703,11 @@ func Test_CookieJar_SamePathAndPathMatchEdges(t *testing.T) {
 func Test_CookieJar_NilURI(t *testing.T) {
 	t.Parallel()
 
-	jar := AcquireCookieJar()
-	defer ReleaseCookieJar(jar)
+	jar := clientTestCJar(t)
 
 	require.Nil(t, jar.Get(nil))
 
-	c := fasthttp.AcquireCookie()
-	defer fasthttp.ReleaseCookie(c)
-	c.SetKey("k")
-	c.SetValue("v")
+	c := clientTestCCookie(t, "k", "v")
 	require.NotPanics(t, func() { jar.Set(nil, c) })
 	require.Empty(t, jar.hostCookies, "a nil URI must store nothing")
 }
@@ -938,19 +748,12 @@ func Test_CookieJar_DomainMatchBoundary(t *testing.T) {
 func Test_CookieJar_DistinctPathsCoexist(t *testing.T) {
 	t.Parallel()
 
-	jar := AcquireCookieJar()
-	defer ReleaseCookieJar(jar)
+	jar := clientTestCJar(t)
 
-	root := fasthttp.AcquireCookie()
-	defer fasthttp.ReleaseCookie(root)
-	root.SetKey("a")
-	root.SetValue("root")
+	root := clientTestCCookie(t, "a", "root")
 	root.SetPath("/")
 
-	admin := fasthttp.AcquireCookie()
-	defer fasthttp.ReleaseCookie(admin)
-	admin.SetKey("a")
-	admin.SetValue("admin")
+	admin := clientTestCCookie(t, "a", "admin")
 	admin.SetPath("/admin")
 
 	jar.SetByHost([]byte("example.com"), root)
@@ -971,10 +774,7 @@ func Test_CookieJar_DistinctPathsCoexist(t *testing.T) {
 	require.Equal(t, map[string]string{"/": "root"}, collect("/other"))
 
 	// Re-setting the same (name, path) replaces in place rather than appending.
-	updated := fasthttp.AcquireCookie()
-	defer fasthttp.ReleaseCookie(updated)
-	updated.SetKey("a")
-	updated.SetValue("root2")
+	updated := clientTestCCookie(t, "a", "root2")
 	updated.SetPath("/")
 	jar.SetByHost([]byte("example.com"), updated)
 
@@ -988,13 +788,9 @@ func Test_CookieJar_DistinctPathsCoexist(t *testing.T) {
 func Test_CookieJar_SetByHost_DoesNotMutateArgument(t *testing.T) {
 	t.Parallel()
 
-	jar := AcquireCookieJar()
-	defer ReleaseCookieJar(jar)
+	jar := clientTestCJar(t)
 
-	c := fasthttp.AcquireCookie()
-	defer fasthttp.ReleaseCookie(c)
-	c.SetKey("a")
-	c.SetValue("1")
+	c := clientTestCCookie(t, "a", "1")
 	c.SetDomain("Example.COM")
 
 	jar.SetByHost([]byte("sub.example.com"), c)
@@ -1024,16 +820,11 @@ func Test_CookieJar_SetByHost_ReplacesOnNormalizedPath(t *testing.T) {
 		t.Run(raw, func(t *testing.T) {
 			t.Parallel()
 
-			jar := AcquireCookieJar()
-			defer ReleaseCookieJar(jar)
+			jar := clientTestCJar(t)
 
 			const host = "example.com"
 			for i := range 3 {
-				c := fasthttp.AcquireCookie()
-				require.NoError(t, c.ParseBytes(
-					fmt.Appendf(nil, "a=v%d; path=%s", i, raw)))
-				jar.SetByHost([]byte(host), c)
-				fasthttp.ReleaseCookie(c)
+				clientTestCSetByHost(t, jar, fmt.Sprintf("a=v%d; path=%s", i, raw))
 			}
 
 			// Three writes of the same name and path must leave one entry.
@@ -1059,17 +850,11 @@ func Test_CookieJar_SetUsesURIDefaultPath(t *testing.T) {
 	t.Run("Set scopes to the URI default-path", func(t *testing.T) {
 		t.Parallel()
 
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
+		jar := clientTestCJar(t)
 
-		setURI := fasthttp.AcquireURI()
-		defer fasthttp.ReleaseURI(setURI)
-		require.NoError(t, setURI.Parse(nil, []byte("http://example.com/a/b")))
+		setURI := clientTestCURI(t, "http://example.com/a/b")
 
-		c := fasthttp.AcquireCookie()
-		defer fasthttp.ReleaseCookie(c)
-		c.SetKey("k")
-		c.SetValue("v")
+		c := clientTestCCookie(t, "k", "v")
 
 		jar.Set(setURI, c)
 
@@ -1078,9 +863,7 @@ func Test_CookieJar_SetUsesURIDefaultPath(t *testing.T) {
 			"a path-less cookie must take the URI's default-path")
 
 		// Sent to a sibling under the same directory...
-		sibling := fasthttp.AcquireURI()
-		defer fasthttp.ReleaseURI(sibling)
-		require.NoError(t, sibling.Parse(nil, []byte("http://example.com/a/other")))
+		sibling := clientTestCURI(t, "http://example.com/a/other")
 		got := jar.Get(sibling)
 		require.Len(t, got, 1)
 		for _, gc := range got {
@@ -1088,26 +871,18 @@ func Test_CookieJar_SetUsesURIDefaultPath(t *testing.T) {
 		}
 
 		// ...but not host-wide.
-		root := fasthttp.AcquireURI()
-		defer fasthttp.ReleaseURI(root)
-		require.NoError(t, root.Parse(nil, []byte("http://example.com/")))
+		root := clientTestCURI(t, "http://example.com/")
 		require.Empty(t, jar.Get(root), "the cookie must not escape its default-path")
 	})
 
 	t.Run("an explicit Path still wins", func(t *testing.T) {
 		t.Parallel()
 
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
+		jar := clientTestCJar(t)
 
-		setURI := fasthttp.AcquireURI()
-		defer fasthttp.ReleaseURI(setURI)
-		require.NoError(t, setURI.Parse(nil, []byte("http://example.com/a/b")))
+		setURI := clientTestCURI(t, "http://example.com/a/b")
 
-		c := fasthttp.AcquireCookie()
-		defer fasthttp.ReleaseCookie(c)
-		c.SetKey("k")
-		c.SetValue("v")
+		c := clientTestCCookie(t, "k", "v")
 		c.SetPath("/")
 
 		jar.Set(setURI, c)
@@ -1118,13 +893,9 @@ func Test_CookieJar_SetUsesURIDefaultPath(t *testing.T) {
 	t.Run("SetByHost still scopes to root", func(t *testing.T) {
 		t.Parallel()
 
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
+		jar := clientTestCJar(t)
 
-		c := fasthttp.AcquireCookie()
-		defer fasthttp.ReleaseCookie(c)
-		c.SetKey("k")
-		c.SetValue("v")
+		c := clientTestCCookie(t, "k", "v")
 
 		jar.SetByHost([]byte("example.com"), c)
 
@@ -1222,8 +993,7 @@ func Test_CookieJar_MatchesStdlibJar(t *testing.T) {
 
 			std, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
 			require.NoError(t, err)
-			jar := AcquireCookieJar()
-			defer ReleaseCookieJar(jar)
+			jar := clientTestCJar(t)
 
 			for _, s := range tt.sets {
 				u, err := neturl.Parse(s.url)
@@ -1233,10 +1003,7 @@ func Test_CookieJar_MatchesStdlibJar(t *testing.T) {
 				header.Add("Set-Cookie", s.cookie)
 				std.SetCookies(u, (&http.Response{Header: header}).Cookies())
 
-				resp := fasthttp.AcquireResponse()
-				resp.Header.Add("Set-Cookie", s.cookie)
-				jar.parseCookiesFromResp([]byte(u.Host), []byte(u.Path), resp)
-				fasthttp.ReleaseResponse(resp)
+				clientTestCReceive(jar, u.Host, u.Path, s.cookie)
 			}
 
 			for _, g := range tt.gets {
@@ -1249,14 +1016,7 @@ func Test_CookieJar_MatchesStdlibJar(t *testing.T) {
 				}
 				sort.Strings(want)
 
-				fURI := fasthttp.AcquireURI()
-				require.NoError(t, fURI.Parse(nil, []byte(g)))
-				got := make([]string, 0, 2)
-				for _, c := range jar.Get(fURI) {
-					got = append(got, string(c.Key())+"="+string(c.Value()))
-					fasthttp.ReleaseCookie(c)
-				}
-				fasthttp.ReleaseURI(fURI)
+				got := clientTestCPairs(jar.Get(clientTestCURI(t, g)))
 				sort.Strings(got)
 
 				require.Equal(t, want, got, "request %s", g)
@@ -1273,18 +1033,10 @@ func Test_CookieJar_SendsMostSpecificCookie(t *testing.T) {
 	t.Run("longer path wins", func(t *testing.T) {
 		t.Parallel()
 
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
+		jar := clientTestCJar(t)
 
-		adminResp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(adminResp)
-		adminResp.Header.Add("Set-Cookie", "sess=ADMINVAL")
-		jar.parseCookiesFromResp([]byte("example.com"), []byte("/admin/login"), adminResp)
-
-		rootResp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(rootResp)
-		rootResp.Header.Add("Set-Cookie", "sess=ROOTVAL; Path=/")
-		jar.parseCookiesFromResp([]byte("example.com"), []byte("/"), rootResp)
+		clientTestCReceive(jar, "example.com", "/admin/login", "sess=ADMINVAL")
+		clientTestCReceive(jar, "example.com", "/", "sess=ROOTVAL; Path=/")
 
 		require.Equal(t, "sess=ADMINVAL", cookieHeaderFor(jar, "http://example.com/admin/dashboard"))
 		require.Equal(t, "sess=ROOTVAL", cookieHeaderFor(jar, "http://example.com/other"))
@@ -1299,15 +1051,8 @@ func Test_CookieJar_SendsMostSpecificCookie(t *testing.T) {
 		for range 50 {
 			jar := AcquireCookieJar()
 
-			hostOnly := fasthttp.AcquireResponse()
-			hostOnly.Header.Add("Set-Cookie", "sess=HOSTONLY; Path=/ab")
-			jar.parseCookiesFromResp([]byte("sub.example.com"), []byte("/ab"), hostOnly)
-			fasthttp.ReleaseResponse(hostOnly)
-
-			domainWide := fasthttp.AcquireResponse()
-			domainWide.Header.Add("Set-Cookie", "sess=DOMAINWIDE; Path=/ab; Domain=example.com")
-			jar.parseCookiesFromResp([]byte("sub.example.com"), []byte("/ab"), domainWide)
-			fasthttp.ReleaseResponse(domainWide)
+			clientTestCReceive(jar, "sub.example.com", "/ab", "sess=HOSTONLY; Path=/ab")
+			clientTestCReceive(jar, "sub.example.com", "/ab", "sess=DOMAINWIDE; Path=/ab; Domain=example.com")
 
 			// Same path length, so the write-order tiebreak decides: the
 			// host-only cookie was stored first and wins every run.
@@ -1347,17 +1092,10 @@ func Test_CookieJar_DefaultPathStaysReachable(t *testing.T) {
 		t.Run(rawURL, func(t *testing.T) {
 			t.Parallel()
 
-			jar := AcquireCookieJar()
-			defer ReleaseCookieJar(jar)
+			jar := clientTestCJar(t)
 
-			uri := fasthttp.AcquireURI()
-			defer fasthttp.ReleaseURI(uri)
-			require.NoError(t, uri.Parse(nil, []byte(rawURL)))
-
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseResponse(resp)
-			resp.Header.Add("Set-Cookie", "k=v")
-			jar.parseCookiesFromResp(uri.Host(), uri.Path(), resp)
+			uri := clientTestCURI(t, rawURL)
+			clientTestCReceive(jar, string(uri.Host()), string(uri.Path()), "k=v")
 
 			got := jar.Get(uri)
 			require.Len(t, got, 1, "cookie must still be sent to the URL that set it")
@@ -1373,14 +1111,10 @@ func Test_CookieJar_DefaultPathStaysReachable(t *testing.T) {
 func Test_CookieJar_BoundsCookiesPerHost(t *testing.T) {
 	t.Parallel()
 
-	jar := AcquireCookieJar()
-	defer ReleaseCookieJar(jar)
+	jar := clientTestCJar(t)
 
 	for i := range 500 {
-		resp := fasthttp.AcquireResponse()
-		resp.Header.Add("Set-Cookie", "a=1")
-		jar.parseCookiesFromResp([]byte("example.com"), fmt.Appendf(nil, "/u/%d/x", i), resp)
-		fasthttp.ReleaseResponse(resp)
+		clientTestCReceive(jar, "example.com", fmt.Sprintf("/u/%d/x", i), "a=1")
 	}
 
 	require.LessOrEqual(t, len(jar.hostCookies["example.com"]), maxCookiesPerHost)
@@ -1396,8 +1130,7 @@ func Test_CookieJar_PerHostEvictionPrefersExpired(t *testing.T) {
 	t.Parallel()
 
 	const host = "example.com"
-	jar := AcquireCookieJar()
-	defer ReleaseCookieJar(jar)
+	jar := clientTestCJar(t)
 	jar.hostCookies = make(map[string][]storedCookie)
 
 	now := time.Now()
@@ -1438,8 +1171,7 @@ func Test_CookieJar_PerHostEvictionDropsEmptyKey(t *testing.T) {
 	t.Parallel()
 
 	const host = "example.com"
-	jar := AcquireCookieJar()
-	defer ReleaseCookieJar(jar)
+	jar := clientTestCJar(t)
 	jar.hostCookies = make(map[string][]storedCookie)
 
 	past := time.Now().Add(-time.Hour)
@@ -1465,31 +1197,21 @@ func Test_CookieJar_PerHostEvictionDropsLeastRecentlyWritten(t *testing.T) {
 	t.Parallel()
 
 	const host = "example.com"
-	jar := AcquireCookieJar()
-	defer ReleaseCookieJar(jar)
+	jar := clientTestCJar(t)
 
 	// Fill the host to exactly its ceiling, each cookie on its own path so they
 	// are distinct entries rather than replacements.
 	for i := range maxCookiesPerHost {
-		c := fasthttp.AcquireCookie()
-		require.NoError(t, c.ParseBytes(fmt.Appendf(nil, "k%d=v; path=/p%d", i, i)))
-		jar.SetByHost([]byte(host), c)
-		fasthttp.ReleaseCookie(c)
+		clientTestCSetByHost(t, jar, fmt.Sprintf("k%d=v; path=/p%d", i, i))
 	}
 	require.Len(t, jar.hostCookies[host], maxCookiesPerHost)
 
 	// Re-write the very first cookie so it becomes the most recently written.
-	refreshed := fasthttp.AcquireCookie()
-	require.NoError(t, refreshed.ParseBytes([]byte("k0=v2; path=/p0")))
-	jar.SetByHost([]byte(host), refreshed)
-	fasthttp.ReleaseCookie(refreshed)
+	clientTestCSetByHost(t, jar, "k0=v2; path=/p0")
 	require.Len(t, jar.hostCookies[host], maxCookiesPerHost, "a re-write must replace, not grow")
 
 	// Now push one more distinct cookie in, forcing a single eviction.
-	extra := fasthttp.AcquireCookie()
-	require.NoError(t, extra.ParseBytes([]byte("extra=v; path=/extra")))
-	jar.SetByHost([]byte(host), extra)
-	fasthttp.ReleaseCookie(extra)
+	clientTestCSetByHost(t, jar, "extra=v; path=/extra")
 
 	require.Len(t, jar.hostCookies[host], maxCookiesPerHost)
 
@@ -1515,13 +1237,9 @@ func Test_CookieJar_RelativePathUsesDefaultPath(t *testing.T) {
 		t.Run(attr, func(t *testing.T) {
 			t.Parallel()
 
-			jar := AcquireCookieJar()
-			defer ReleaseCookieJar(jar)
+			jar := clientTestCJar(t)
 
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseResponse(resp)
-			resp.Header.Add("Set-Cookie", "a=1; Path="+attr)
-			jar.parseCookiesFromResp([]byte("example.com"), []byte("/dir/page"), resp)
+			clientTestCReceive(jar, "example.com", "/dir/page", "a=1; Path="+attr)
 
 			require.Equal(t, "a=1", cookieHeaderFor(jar, "http://example.com/dir/x"))
 			require.Empty(t, cookieHeaderFor(jar, "http://example.com/other"))
@@ -1535,22 +1253,14 @@ func Test_CookieJar_RelativePathUsesDefaultPath(t *testing.T) {
 func Test_CookieJar_EvictsLeastRecentlyWritten(t *testing.T) {
 	t.Parallel()
 
-	jar := AcquireCookieJar()
-	defer ReleaseCookieJar(jar)
+	jar := clientTestCJar(t)
 
-	setCookie := func(path, header string) {
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(resp)
-		resp.Header.Add("Set-Cookie", header)
-		jar.parseCookiesFromResp([]byte("example.com"), []byte(path), resp)
-	}
-
-	setCookie("/login", "session=SECRET; Path=/")
+	clientTestCReceive(jar, "example.com", "/login", "session=SECRET; Path=/")
 	for i := range maxCookiesPerHost * 2 {
 		// Each directory mints its own entry for the same cookie name.
-		setCookie(fmt.Sprintf("/page/%d/x", i), "pref=1")
+		clientTestCReceive(jar, "example.com", fmt.Sprintf("/page/%d/x", i), "pref=1")
 		// The server re-sends the session cookie on every response.
-		setCookie("/login", "session=SECRET; Path=/")
+		clientTestCReceive(jar, "example.com", "/login", "session=SECRET; Path=/")
 	}
 
 	require.LessOrEqual(t, len(jar.hostCookies["example.com"]), maxCookiesPerHost)
@@ -1565,20 +1275,16 @@ func Test_CookieJar_EvictsLeastRecentlyWritten(t *testing.T) {
 func Test_CookieJar_BoundsCookiesPerRequest(t *testing.T) {
 	t.Parallel()
 
-	jar := AcquireCookieJar()
-	defer ReleaseCookieJar(jar)
+	jar := clientTestCJar(t)
 
 	const host = "a.b.c.d.example.com"
 	for _, domain := range []string{"", "b.c.d.example.com", "c.d.example.com", "d.example.com", "example.com"} {
 		for i := range maxCookiesPerHost * 2 {
-			resp := fasthttp.AcquireResponse()
 			attr := fmt.Sprintf("c%d_%d=v; Path=/", len(domain), i)
 			if domain != "" {
 				attr += "; Domain=" + domain
 			}
-			resp.Header.Add("Set-Cookie", attr)
-			jar.parseCookiesFromResp([]byte(host), []byte("/"), resp)
-			fasthttp.ReleaseResponse(resp)
+			clientTestCReceive(jar, host, "/", attr)
 		}
 	}
 
@@ -1598,9 +1304,7 @@ func Test_CookieJar_BoundsCookiesPerRequest(t *testing.T) {
 	// Get is a storage query, not a wire operation: it must report every stored
 	// cookie matching the URI, well past maxCookiesPerRequest. Capping it there
 	// silently hid cookies that remain in the jar.
-	uri := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(uri)
-	require.NoError(t, uri.Parse(nil, []byte("http://"+host+"/")))
+	uri := clientTestCURI(t, "http://"+host+"/")
 
 	got := jar.Get(uri)
 	require.Greater(t, len(got), maxCookiesPerRequest,
@@ -1618,7 +1322,7 @@ func Test_CookieJar_BoundsCookiesPerRequest(t *testing.T) {
 func Test_CookieJar_AttributesCookiesToRespondingHost(t *testing.T) {
 	t.Parallel()
 
-	server := startTestServer(t, func(app *fiber.App) {
+	routes := func(app *fiber.App) {
 		app.Get("/start", func(c fiber.Ctx) error {
 			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/plant")
 		})
@@ -1630,10 +1334,7 @@ func Test_CookieJar_AttributesCookiesToRespondingHost(t *testing.T) {
 			c.Cookie(&fiber.Cookie{Name: "session", Value: "legitimate"})
 			return c.SendString("ok")
 		})
-	})
-	// Cleanup, not defer: the parallel subtests below resume only after this
-	// function returns, so a deferred stop would race them.
-	t.Cleanup(server.stop)
+	}
 
 	jarCookies := func(t *testing.T, jar *CookieJar, host string) map[string]string {
 		t.Helper()
@@ -1655,9 +1356,8 @@ func Test_CookieJar_AttributesCookiesToRespondingHost(t *testing.T) {
 	t.Run("redirect target cannot plant cookies for the origin", func(t *testing.T) {
 		t.Parallel()
 
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
-		client := New().SetDial(server.dial()).SetCookieJar(jar)
+		jar := clientTestCJar(t)
+		client := clientTestAClient(t, routes).SetCookieJar(jar)
 
 		resp, err := client.Get("http://good.example/start", Config{MaxRedirects: 5})
 		require.NoError(t, err)
@@ -1670,9 +1370,8 @@ func Test_CookieJar_AttributesCookiesToRespondingHost(t *testing.T) {
 	t.Run("a response with no redirect is still stored", func(t *testing.T) {
 		t.Parallel()
 
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
-		client := New().SetDial(server.dial()).SetCookieJar(jar)
+		jar := clientTestCJar(t)
+		client := clientTestAClient(t, routes).SetCookieJar(jar)
 
 		resp, err := client.Get("http://good.example/direct")
 		require.NoError(t, err)

@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"net"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -15,7 +14,6 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/paramdelim"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -70,48 +68,164 @@ func Test_PathParamEndChars_MatchesSharedSet(t *testing.T) {
 	require.Equal(t, want, pathParamEndChars)
 }
 
+// clientTestCJSONBody and clientTestCXMLBody are the payloads the parser tests
+// send as JSON and as XML.
+type clientTestCJSONBody struct {
+	Name string `json:"name"`
+}
+
+type clientTestCXMLBody struct {
+	XMLName xml.Name `xml:"body"`
+	Name    string   `xml:"name"`
+}
+
 func Test_Parser_Request_URL(t *testing.T) {
 	t.Parallel()
 
-	t.Run("client baseurl should be set", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetBaseURL("http://example.com/api")
-		req := AcquireRequest().SetURL("")
+	// Every case builds its own client and request, so the cases run in parallel.
+	for _, tc := range []struct {
+		client *Client
+		req    *Request
+		name   string
+		want   string
+	}{
+		{
+			name:   "client baseurl should be set",
+			client: New().SetBaseURL("http://example.com/api"),
+			req:    AcquireRequest().SetURL(""),
+			want:   "http://example.com/api",
+		},
+		{
+			name:   "request url should be set",
+			client: New(),
+			req:    AcquireRequest().SetURL("http://example.com/api"),
+			want:   "http://example.com/api",
+		},
+		{
+			name:   "the request url will override baseurl with protocol",
+			client: New().SetBaseURL("http://example.com/api"),
+			req:    AcquireRequest().SetURL("http://example.com/api/v1"),
+			want:   "http://example.com/api/v1",
+		},
+		{
+			name:   "the request url should be append after baseurl without protocol",
+			client: New().SetBaseURL("http://example.com/api"),
+			req:    AcquireRequest().SetURL("/v1"),
+			want:   "http://example.com/api/v1",
+		},
+		{
+			name: "the path param from client",
+			client: New().
+				SetBaseURL("http://example.com/api/:id").
+				SetPathParam("id", "5"),
+			req:  AcquireRequest(),
+			want: "http://example.com/api/5",
+		},
+		{
+			name: "the path param from request",
+			client: New().
+				SetBaseURL("http://example.com/api/:id/:name").
+				SetPathParam("id", "5"),
+			req: AcquireRequest().
+				SetURL("/{key}").
+				SetPathParams(map[string]string{
+					"name": "fiber",
+					"key":  "val",
+				}).
+				DelPathParams("key"),
+			want: "http://example.com/api/5/fiber/%7Bkey%7D",
+		},
+		{
+			name: "the path param from request and client",
+			client: New().
+				SetBaseURL("http://example.com/api/:id/:name").
+				SetPathParam("id", "5"),
+			req: AcquireRequest().
+				SetURL("/:key").
+				SetPathParams(map[string]string{
+					"name": "fiber",
+					"key":  "val",
+					"id":   "12",
+				}),
+			want: "http://example.com/api/12/fiber/val",
+		},
+		{
+			name: "path param does not match a longer placeholder",
+			client: New().
+				SetBaseURL("http://example.com/api/:idx").
+				SetPathParam("id", "5"),
+			req:  AcquireRequest(),
+			want: "http://example.com/api/:idx",
+		},
+		{
+			name:   "path params sharing a prefix are resolved independently",
+			client: New().SetBaseURL("http://example.com/api/:idx/:id"),
+			req: AcquireRequest().
+				SetPathParams(map[string]string{
+					"id":  "5",
+					"idx": "9",
+				}),
+			want: "http://example.com/api/9/5",
+		},
+		{
+			name:   "path param value cannot open a query",
+			client: New(),
+			req: AcquireRequest().
+				SetURL("http://example.com/api/:id").
+				SetPathParam("id", "a?b"),
+			want: "http://example.com/api/a%3Fb",
+		},
+		{
+			name:   "path param value keeps its escaped separator when the client does not normalize",
+			client: New().SetDisablePathNormalizing(true),
+			req: AcquireRequest().
+				SetURL("http://example.com/api/:id").
+				SetPathParam("id", "a/b"),
+			want: "http://example.com/api/a%2Fb",
+		},
+		{
+			name:   "a request can ask for its escaped separator from a client that does not normalize",
+			client: NewWithClient(&fasthttp.Client{DisablePathNormalizing: true}),
+			req: AcquireRequest().
+				SetURL("http://example.com/api/:id").
+				SetPathParam("id", "a/b").
+				SetDisablePathNormalizing(true),
+			want: "http://example.com/api/a%2Fb",
+		},
+		{
+			name:   "a substituted value is not substituted again",
+			client: New(),
+			req: AcquireRequest().
+				SetURL("http://example.com/api/:id").
+				SetPathParams(map[string]string{
+					"id":   ":name",
+					"name": "fiber",
+				}),
+			want: "http://example.com/api/:name",
+		},
+		{
+			name:   "request disable path normalizing should be respected",
+			client: New(),
+			req: AcquireRequest().
+				SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123").
+				SetDisablePathNormalizing(true),
+			want: "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123",
+		},
+		{
+			name:   "client disable path normalizing should be respected",
+			client: New().SetDisablePathNormalizing(true),
+			req:    AcquireRequest().SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123"),
+			want:   "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			t.Cleanup(func() { ReleaseRequest(tc.req) })
 
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api", req.RawRequest.URI().String())
-	})
-
-	t.Run("request url should be set", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().SetURL("http://example.com/api")
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api", req.RawRequest.URI().String())
-	})
-
-	t.Run("the request url will override baseurl with protocol", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetBaseURL("http://example.com/api")
-		req := AcquireRequest().SetURL("http://example.com/api/v1")
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api/v1", req.RawRequest.URI().String())
-	})
-
-	t.Run("the request url should be append after baseurl without protocol", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetBaseURL("http://example.com/api")
-		req := AcquireRequest().SetURL("/v1")
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api/v1", req.RawRequest.URI().String())
-	})
+			require.NoError(t, parserRequestURL(tc.client, tc.req))
+			require.Equal(t, tc.want, tc.req.RawRequest.URI().String())
+		})
+	}
 
 	t.Run("the url is error", func(t *testing.T) {
 		t.Parallel()
@@ -122,169 +236,61 @@ func Test_Parser_Request_URL(t *testing.T) {
 		require.Equal(t, ErrURLFormat, err)
 	})
 
-	t.Run("the path param from client", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetBaseURL("http://example.com/api/:id").
-			SetPathParam("id", "5")
-		req := AcquireRequest()
+	for _, tc := range []struct {
+		client  *Client
+		req     *Request
+		wantErr error
+		name    string
+	}{
+		{
+			// The wrapped client rewrites the path whatever the request says, so the
+			// request alone cannot make a separator in a value safe.
+			name:   "a separator in a value is rejected when only the request disables normalizing",
+			client: New(),
+			req: AcquireRequest().
+				SetURL("http://example.com/api/:id").
+				SetPathParam("id", "a/b").
+				SetDisablePathNormalizing(true),
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			name:   "a separator in a value is rejected when only the fasthttp client does not normalize",
+			client: NewWithClient(&fasthttp.Client{DisablePathNormalizing: true}),
+			req: AcquireRequest().
+				SetURL("http://example.com/api/:id").
+				SetPathParam("id", "a/b"),
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			// The value would be escaped to "a%2Fb", but fasthttp percent-decodes
+			// the path while normalizing it, so an encoded "/" is indistinguishable
+			// from a real separator on the wire. Escaping still contains "?" and
+			// "#", which normalizing does not decode.
+			name:   "a separator in a value is rejected when normalizing will decode it",
+			client: New(),
+			req: AcquireRequest().
+				SetURL("http://example.com/api/:id").
+				SetPathParam("id", "a/b"),
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			// "@" ends a userinfo section, so this used to resolve to the host
+			// "evil.com" and the request left for another server.
+			name:   "path param value cannot rewrite the host",
+			client: New(),
+			req: AcquireRequest().
+				SetURL("http://:host/api").
+				SetPathParam("host", "x@evil.com"),
+			wantErr: ErrPathParamInHost,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			t.Cleanup(func() { ReleaseRequest(tc.req) })
 
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api/5", req.RawRequest.URI().String())
-	})
-
-	t.Run("the path param from request", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetBaseURL("http://example.com/api/:id/:name").
-			SetPathParam("id", "5")
-		req := AcquireRequest().
-			SetURL("/{key}").
-			SetPathParams(map[string]string{
-				"name": "fiber",
-				"key":  "val",
-			}).
-			DelPathParams("key")
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api/5/fiber/%7Bkey%7D", req.RawRequest.URI().String())
-	})
-
-	t.Run("the path param from request and client", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetBaseURL("http://example.com/api/:id/:name").
-			SetPathParam("id", "5")
-		req := AcquireRequest().
-			SetURL("/:key").
-			SetPathParams(map[string]string{
-				"name": "fiber",
-				"key":  "val",
-				"id":   "12",
-			})
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api/12/fiber/val", req.RawRequest.URI().String())
-	})
-
-	t.Run("path param does not match a longer placeholder", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetBaseURL("http://example.com/api/:idx").
-			SetPathParam("id", "5")
-		req := AcquireRequest()
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api/:idx", req.RawRequest.URI().String())
-	})
-
-	t.Run("path params sharing a prefix are resolved independently", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetBaseURL("http://example.com/api/:idx/:id")
-		req := AcquireRequest().
-			SetPathParams(map[string]string{
-				"id":  "5",
-				"idx": "9",
-			})
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api/9/5", req.RawRequest.URI().String())
-	})
-
-	t.Run("path param value cannot open a query", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			SetURL("http://example.com/api/:id").
-			SetPathParam("id", "a?b")
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api/a%3Fb", req.RawRequest.URI().String())
-	})
-
-	t.Run("path param value keeps its escaped separator when the client does not normalize", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetDisablePathNormalizing(true)
-		req := AcquireRequest().
-			SetURL("http://example.com/api/:id").
-			SetPathParam("id", "a/b")
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api/a%2Fb", req.RawRequest.URI().String())
-	})
-
-	t.Run("a request can ask for its escaped separator from a client that does not normalize", func(t *testing.T) {
-		t.Parallel()
-		client := NewWithClient(&fasthttp.Client{DisablePathNormalizing: true})
-		req := AcquireRequest().
-			SetURL("http://example.com/api/:id").
-			SetPathParam("id", "a/b").
-			SetDisablePathNormalizing(true)
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api/a%2Fb", req.RawRequest.URI().String())
-	})
-
-	// The wrapped client rewrites the path whatever the request says, so the
-	// request alone cannot make a separator in a value safe.
-	t.Run("a separator in a value is rejected when only the request disables normalizing", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			SetURL("http://example.com/api/:id").
-			SetPathParam("id", "a/b").
-			SetDisablePathNormalizing(true)
-
-		err := parserRequestURL(client, req)
-		require.ErrorIs(t, err, ErrPathParamInPath)
-	})
-
-	t.Run("a separator in a value is rejected when only the fasthttp client does not normalize", func(t *testing.T) {
-		t.Parallel()
-		client := NewWithClient(&fasthttp.Client{DisablePathNormalizing: true})
-		req := AcquireRequest().
-			SetURL("http://example.com/api/:id").
-			SetPathParam("id", "a/b")
-
-		err := parserRequestURL(client, req)
-		require.ErrorIs(t, err, ErrPathParamInPath)
-	})
-
-	t.Run("a separator in a value is rejected when normalizing will decode it", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			SetURL("http://example.com/api/:id").
-			SetPathParam("id", "a/b")
-
-		// The value would be escaped to "a%2Fb", but fasthttp percent-decodes
-		// the path while normalizing it, so an encoded "/" is indistinguishable
-		// from a real separator on the wire. Escaping still contains "?" and
-		// "#", which normalizing does not decode.
-		err := parserRequestURL(client, req)
-		require.ErrorIs(t, err, ErrPathParamInPath)
-	})
-
-	t.Run("path param value cannot rewrite the host", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			SetURL("http://:host/api").
-			SetPathParam("host", "x@evil.com")
-
-		// "@" ends a userinfo section, so this used to resolve to the host
-		// "evil.com" and the request left for another server.
-		err := parserRequestURL(client, req)
-		require.ErrorIs(t, err, ErrPathParamInHost)
-	})
+			require.ErrorIs(t, parserRequestURL(tc.client, tc.req), tc.wantErr)
+		})
+	}
 
 	t.Run("a host path param keeps the rest of the URL intact", func(t *testing.T) {
 		t.Parallel()
@@ -302,43 +308,35 @@ func Test_Parser_Request_URL(t *testing.T) {
 		require.Equal(t, "a=b", string(req.RawRequest.URI().QueryString()))
 	})
 
-	t.Run("a substituted value is not substituted again", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			SetURL("http://example.com/api/:id").
-			SetPathParams(map[string]string{
-				"id":   ":name",
-				"name": "fiber",
-			})
+	for _, tc := range []struct {
+		client *Client
+		req    *Request
+		name   string
+		want   string
+	}{
+		{
+			name:   "query params from client should be set",
+			client: New().SetParam("foo", "bar"),
+			req:    AcquireRequest().SetURL("http://example.com/api/v1"),
+			want:   "foo=bar",
+		},
+		{
+			name:   "query params from request should be set",
+			client: New(),
+			req: AcquireRequest().
+				SetURL("http://example.com/api/v1").
+				SetParam("bar", "foo"),
+			want: "bar=foo",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			t.Cleanup(func() { ReleaseRequest(tc.req) })
 
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "http://example.com/api/:name", req.RawRequest.URI().String())
-	})
-
-	t.Run("query params from client should be set", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetParam("foo", "bar")
-		req := AcquireRequest().SetURL("http://example.com/api/v1")
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("foo=bar"), req.RawRequest.URI().QueryString())
-	})
-
-	t.Run("query params from request should be set", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			SetURL("http://example.com/api/v1").
-			SetParam("bar", "foo")
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("bar=foo"), req.RawRequest.URI().QueryString())
-	})
+			require.NoError(t, parserRequestURL(tc.client, tc.req))
+			require.Equal(t, tc.want, string(tc.req.RawRequest.URI().QueryString()))
+		})
+	}
 
 	t.Run("query params should be merged", func(t *testing.T) {
 		t.Parallel()
@@ -371,129 +369,117 @@ func Test_Parser_Request_URL(t *testing.T) {
 		require.True(t, flag2)
 		require.True(t, flag3)
 	})
-
-	t.Run("request disable path normalizing should be respected", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123").
-			SetDisablePathNormalizing(true)
-
-		t.Cleanup(func() {
-			ReleaseRequest(req)
-		})
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123", req.RawRequest.URI().String())
-	})
-
-	t.Run("client disable path normalizing should be respected", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetDisablePathNormalizing(true)
-		req := AcquireRequest().
-			SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123")
-
-		t.Cleanup(func() {
-			ReleaseRequest(req)
-		})
-
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123", req.RawRequest.URI().String())
-	})
 }
 
 func Test_Parser_Request_Header(t *testing.T) {
 	t.Parallel()
 
-	t.Run("client header should be set", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetHeaders(map[string]string{
-				fiber.HeaderContentType: "application/json",
-			})
+	// Every case builds its own client and request, so the cases run in parallel.
+	for _, tc := range []struct {
+		client *Client
+		req    *Request
+		get    func(h *fasthttp.RequestHeader) []byte // reads the header under test
+		name   string
+		want   string
+	}{
+		{
+			name: "client header should be set",
+			client: New().
+				SetHeaders(map[string]string{
+					fiber.HeaderContentType: "application/json",
+				}),
+			req:  AcquireRequest(),
+			get:  (*fasthttp.RequestHeader).ContentType,
+			want: "application/json",
+		},
+		{
+			name:   "request header should be set",
+			client: New(),
+			req: AcquireRequest().
+				SetHeaders(map[string]string{
+					fiber.HeaderContentType: "application/json, utf-8",
+				}),
+			get:  (*fasthttp.RequestHeader).ContentType,
+			want: "application/json, utf-8",
+		},
+		{
+			name: "request header should override client header",
+			client: New().
+				SetHeader(fiber.HeaderContentType, "application/xml"),
+			req: AcquireRequest().
+				SetHeader(fiber.HeaderContentType, "application/json, utf-8"),
+			get:  (*fasthttp.RequestHeader).ContentType,
+			want: "application/json, utf-8",
+		},
+		{
+			name:   "auto set json header",
+			client: New(),
+			req:    AcquireRequest().SetJSON(clientTestCJSONBody{Name: "foo"}),
+			get:    (*fasthttp.RequestHeader).ContentType,
+			want:   applicationJSON,
+		},
+		{
+			name:   "auto set xml header",
+			client: New(),
+			req:    AcquireRequest().SetXML(clientTestCXMLBody{Name: "foo"}),
+			get:    (*fasthttp.RequestHeader).ContentType,
+			want:   applicationXML,
+		},
+		{
+			name:   "auto set form data header",
+			client: New(),
+			req: AcquireRequest().
+				SetFormDataWithMap(map[string]string{
+					"foo":  "bar",
+					"ball": "circle and square",
+				}),
+			get:  (*fasthttp.RequestHeader).ContentType,
+			want: applicationForm,
+		},
+		{
+			name:   "ua should have default value",
+			client: New(),
+			req:    AcquireRequest(),
+			get:    (*fasthttp.RequestHeader).UserAgent,
+			want:   "fiber",
+		},
+		{
+			name:   "ua in client should be set",
+			client: New().SetUserAgent("foo"),
+			req:    AcquireRequest(),
+			get:    (*fasthttp.RequestHeader).UserAgent,
+			want:   "foo",
+		},
+		{
+			name:   "ua in request should have higher level",
+			client: New().SetUserAgent("foo"),
+			req:    AcquireRequest().SetUserAgent("bar"),
+			get:    (*fasthttp.RequestHeader).UserAgent,
+			want:   "bar",
+		},
+		{
+			name:   "referer in client should be set",
+			client: New().SetReferer("https://example.com"),
+			req:    AcquireRequest(),
+			get:    (*fasthttp.RequestHeader).Referer,
+			want:   "https://example.com",
+		},
+		{
+			name:   "referer in request should have higher level",
+			client: New().SetReferer("http://example.com"),
+			req:    AcquireRequest().SetReferer("https://example.com"),
+			get:    (*fasthttp.RequestHeader).Referer,
+			want:   "https://example.com",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			t.Cleanup(func() { ReleaseRequest(tc.req) })
 
-		req := AcquireRequest()
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("application/json"), req.RawRequest.Header.ContentType())
-	})
-
-	t.Run("request header should be set", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-
-		req := AcquireRequest().
-			SetHeaders(map[string]string{
-				fiber.HeaderContentType: "application/json, utf-8",
-			})
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("application/json, utf-8"), req.RawRequest.Header.ContentType())
-	})
-
-	t.Run("request header should override client header", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetHeader(fiber.HeaderContentType, "application/xml")
-
-		req := AcquireRequest().
-			SetHeader(fiber.HeaderContentType, "application/json, utf-8")
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("application/json, utf-8"), req.RawRequest.Header.ContentType())
-	})
-
-	t.Run("auto set json header", func(t *testing.T) {
-		t.Parallel()
-		type jsonData struct {
-			Name string `json:"name"`
-		}
-		client := New()
-		req := AcquireRequest().
-			SetJSON(jsonData{
-				Name: "foo",
-			})
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte(applicationJSON), req.RawRequest.Header.ContentType()) //nolint:testifylint // test
-	})
-
-	t.Run("auto set xml header", func(t *testing.T) {
-		t.Parallel()
-		type xmlData struct {
-			XMLName xml.Name `xml:"body"`
-			Name    string   `xml:"name"`
-		}
-		client := New()
-		req := AcquireRequest().
-			SetXML(xmlData{
-				Name: "foo",
-			})
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte(applicationXML), req.RawRequest.Header.ContentType())
-	})
-
-	t.Run("auto set form data header", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			SetFormDataWithMap(map[string]string{
-				"foo":  "bar",
-				"ball": "circle and square",
-			})
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, applicationForm, string(req.RawRequest.Header.ContentType()))
-	})
+			require.NoError(t, parserRequestHeader(tc.client, tc.req))
+			require.Equal(t, tc.want, string(tc.get(&tc.req.RawRequest.Header)))
+		})
+	}
 
 	t.Run("auto set file header", func(t *testing.T) {
 		t.Parallel()
@@ -508,77 +494,26 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.Contains(t, string(req.RawRequest.Header.ContentType()), multipartFormData)
 	})
 
-	t.Run("ua should have default value", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest()
+	for _, tc := range []struct {
+		req  *Request
+		name string
+	}{
+		// An empty "Referer:" says nothing that a missing header does not, and it
+		// went out on every request that never asked for one.
+		{name: "no referer sends no Referer header", req: AcquireRequest()},
+		{
+			name: "a Referer set through the headers is replaced, not kept empty",
+			req:  AcquireRequest().SetHeader(fiber.HeaderReferer, "https://header.example"),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			t.Cleanup(func() { ReleaseRequest(tc.req) })
 
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("fiber"), req.RawRequest.Header.UserAgent())
-	})
-
-	t.Run("ua in client should be set", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetUserAgent("foo")
-		req := AcquireRequest()
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("foo"), req.RawRequest.Header.UserAgent())
-	})
-
-	t.Run("ua in request should have higher level", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetUserAgent("foo")
-		req := AcquireRequest().SetUserAgent("bar")
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("bar"), req.RawRequest.Header.UserAgent())
-	})
-
-	t.Run("referer in client should be set", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetReferer("https://example.com")
-		req := AcquireRequest()
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("https://example.com"), req.RawRequest.Header.Referer())
-	})
-
-	t.Run("referer in request should have higher level", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetReferer("http://example.com")
-		req := AcquireRequest().SetReferer("https://example.com")
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("https://example.com"), req.RawRequest.Header.Referer())
-	})
-
-	// An empty "Referer:" says nothing that a missing header does not, and it
-	// went out on every request that never asked for one.
-	t.Run("no referer sends no Referer header", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest()
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.False(t, hasRefererHeader(&req.RawRequest.Header))
-	})
-
-	t.Run("a Referer set through the headers is replaced, not kept empty", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().SetHeader(fiber.HeaderReferer, "https://header.example")
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.False(t, hasRefererHeader(&req.RawRequest.Header))
-	})
+			require.NoError(t, parserRequestHeader(New(), tc.req))
+			require.False(t, hasRefererHeader(&tc.req.RawRequest.Header))
+		})
+	}
 
 	t.Run("a referer that is no longer set does not linger on a resend", func(t *testing.T) {
 		t.Parallel()
@@ -594,147 +529,126 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.False(t, hasRefererHeader(&req.RawRequest.Header))
 	})
 
-	t.Run("client cookie should be set", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetCookie("foo", "bar").
-			SetCookies(map[string]string{
-				"bar":  "foo",
-				"bar1": "foo1",
-			}).
-			DelCookies("bar1")
+	type cookies struct {
+		Foo string `cookie:"foo"`
+		Bar int    `cookie:"bar"`
+	}
 
-		req := AcquireRequest()
+	for _, tc := range []struct {
+		client *Client
+		req    *Request
+		want   map[string]string // cookie name -> the value the request header has, "" for none
+		name   string
+	}{
+		{
+			name: "client cookie should be set",
+			client: New().
+				SetCookie("foo", "bar").
+				SetCookies(map[string]string{
+					"bar":  "foo",
+					"bar1": "foo1",
+				}).
+				DelCookies("bar1"),
+			req:  AcquireRequest(),
+			want: map[string]string{"foo": "bar", "bar": "foo", "bar1": ""},
+		},
+		{
+			name:   "request cookie should be set",
+			client: New(),
+			req: AcquireRequest().
+				SetCookiesWithStruct(&cookies{
+					Foo: "bar",
+					Bar: 67,
+				}),
+			want: map[string]string{"foo": "bar", "bar": "67", "bar1": ""},
+		},
+		{
+			name: "request cookie will override client cookie",
+			client: New().
+				SetCookie("foo", "bar").
+				SetCookies(map[string]string{
+					"bar":  "foo",
+					"bar1": "foo1",
+				}),
+			req: AcquireRequest().
+				SetCookiesWithStruct(&cookies{
+					Foo: "bar",
+					Bar: 67,
+				}),
+			want: map[string]string{"foo": "bar", "bar": "67", "bar1": "foo1"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			t.Cleanup(func() { ReleaseRequest(tc.req) })
 
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "bar", string(req.RawRequest.Header.Cookie("foo")))
-		require.Equal(t, "foo", string(req.RawRequest.Header.Cookie("bar")))
-		require.Empty(t, string(req.RawRequest.Header.Cookie("bar1")))
-	})
-
-	t.Run("request cookie should be set", func(t *testing.T) {
-		t.Parallel()
-		type cookies struct {
-			Foo string `cookie:"foo"`
-			Bar int    `cookie:"bar"`
-		}
-
-		client := New()
-
-		req := AcquireRequest().
-			SetCookiesWithStruct(&cookies{
-				Foo: "bar",
-				Bar: 67,
-			})
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "bar", string(req.RawRequest.Header.Cookie("foo")))
-		require.Equal(t, "67", string(req.RawRequest.Header.Cookie("bar")))
-		require.Empty(t, string(req.RawRequest.Header.Cookie("bar1")))
-	})
-
-	t.Run("request cookie will override client cookie", func(t *testing.T) {
-		t.Parallel()
-		type cookies struct {
-			Foo string `cookie:"foo"`
-			Bar int    `cookie:"bar"`
-		}
-
-		client := New().
-			SetCookie("foo", "bar").
-			SetCookies(map[string]string{
-				"bar":  "foo",
-				"bar1": "foo1",
-			})
-
-		req := AcquireRequest().
-			SetCookiesWithStruct(&cookies{
-				Foo: "bar",
-				Bar: 67,
-			})
-
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "bar", string(req.RawRequest.Header.Cookie("foo")))
-		require.Equal(t, "67", string(req.RawRequest.Header.Cookie("bar")))
-		require.Equal(t, "foo1", string(req.RawRequest.Header.Cookie("bar1")))
-	})
+			require.NoError(t, parserRequestHeader(tc.client, tc.req))
+			for name, want := range tc.want {
+				require.Equal(t, want, string(tc.req.RawRequest.Header.Cookie(name)), "cookie %q", name)
+			}
+		})
+	}
 }
 
 func Test_Parser_Request_Body(t *testing.T) {
 	t.Parallel()
 
-	t.Run("json body", func(t *testing.T) {
-		t.Parallel()
-		type jsonData struct {
-			Name string `json:"name"`
-		}
-		client := New()
-		req := AcquireRequest().
-			SetJSON(jsonData{
-				Name: "foo",
-			})
+	type cborData struct {
+		Name string `cbor:"name"`
+		Age  int    `cbor:"age"`
+	}
 
-		err := parserRequestBody(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("{\"name\":\"foo\"}"), req.RawRequest.Body()) //nolint:testifylint // test
-	})
+	data := cborData{
+		Name: "foo",
+		Age:  12,
+	}
+	encoded, err := cbor.Marshal(data)
+	require.NoError(t, err)
 
-	t.Run("xml body", func(t *testing.T) {
-		t.Parallel()
-		type xmlData struct {
-			XMLName xml.Name `xml:"body"`
-			Name    string   `xml:"name"`
-		}
-		client := New()
-		req := AcquireRequest().
-			SetXML(xmlData{
-				Name: "foo",
-			})
+	// Every case builds its own request, so the cases run in parallel.
+	for _, tc := range []struct {
+		req  *Request
+		name string
+		want string
+	}{
+		{
+			name: "json body",
+			req:  AcquireRequest().SetJSON(clientTestCJSONBody{Name: "foo"}),
+			want: "{\"name\":\"foo\"}",
+		},
+		{
+			name: "xml body",
+			req:  AcquireRequest().SetXML(clientTestCXMLBody{Name: "foo"}),
+			want: "<body><name>foo</name></body>",
+		},
+		{
+			name: "CBOR body",
+			req:  AcquireRequest().SetCBOR(data),
+			want: string(encoded),
+		},
+		{
+			name: "form data body",
+			req: AcquireRequest().
+				SetFormDataWithMap(map[string]string{
+					"ball": "circle and square",
+				}),
+			want: "ball=circle+and+square",
+		},
+		{
+			name: "raw body",
+			req: AcquireRequest().
+				SetRawBody([]byte("hello world")),
+			want: "hello world",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			t.Cleanup(func() { ReleaseRequest(tc.req) })
 
-		err := parserRequestBody(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("<body><name>foo</name></body>"), req.RawRequest.Body())
-	})
-
-	t.Run("CBOR body", func(t *testing.T) {
-		t.Parallel()
-		type cborData struct {
-			Name string `cbor:"name"`
-			Age  int    `cbor:"age"`
-		}
-
-		data := cborData{
-			Name: "foo",
-			Age:  12,
-		}
-
-		client := New()
-		req := AcquireRequest().
-			SetCBOR(data)
-
-		err := parserRequestBody(client, req)
-		require.NoError(t, err)
-
-		encoded, err := cbor.Marshal(data)
-		require.NoError(t, err)
-		require.Equal(t, encoded, req.RawRequest.Body())
-	})
-
-	t.Run("form data body", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			SetFormDataWithMap(map[string]string{
-				"ball": "circle and square",
-			})
-
-		err := parserRequestBody(client, req)
-		require.NoError(t, err)
-		require.Equal(t, "ball=circle+and+square", string(req.RawRequest.Body()))
-	})
+			require.NoError(t, parserRequestBody(New(), tc.req))
+			require.Equal(t, tc.want, string(tc.req.RawRequest.Body()))
+		})
+	}
 
 	t.Run("form data body error", func(t *testing.T) {
 		t.Parallel()
@@ -748,17 +662,35 @@ func Test_Parser_Request_Body(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("file body", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world")))
+	for _, tc := range []struct {
+		req      *Request
+		name     string
+		contains []string
+	}{
+		{
+			name: "file body",
+			req: AcquireRequest().
+				AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))),
+			contains: []string{"--FiberFormBoundary", "world"},
+		},
+		{
+			name: "file and form data",
+			req: AcquireRequest().
+				AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
+				SetFormData("foo", "bar"),
+			contains: []string{"--FiberFormBoundary", "world", "bar"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			t.Cleanup(func() { ReleaseRequest(tc.req) })
 
-		err := parserRequestBody(client, req)
-		require.NoError(t, err)
-		require.Contains(t, string(req.RawRequest.Body()), "--FiberFormBoundary")
-		require.Contains(t, string(req.RawRequest.Body()), "world")
-	})
+			require.NoError(t, parserRequestBody(New(), tc.req))
+			for _, part := range tc.contains {
+				require.Contains(t, string(tc.req.RawRequest.Body()), part)
+			}
+		})
+	}
 
 	t.Run("file body open error", func(t *testing.T) {
 		t.Parallel()
@@ -780,31 +712,6 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		require.ErrorIs(t, err, ErrFileNoName)
-	})
-
-	t.Run("file and form data", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
-			SetFormData("foo", "bar")
-
-		err := parserRequestBody(client, req)
-		require.NoError(t, err)
-		require.Contains(t, string(req.RawRequest.Body()), "--FiberFormBoundary")
-		require.Contains(t, string(req.RawRequest.Body()), "world")
-		require.Contains(t, string(req.RawRequest.Body()), "bar")
-	})
-
-	t.Run("raw body", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().
-			SetRawBody([]byte("hello world"))
-
-		err := parserRequestBody(client, req)
-		require.NoError(t, err)
-		require.Equal(t, []byte("hello world"), req.RawRequest.Body())
 	})
 
 	t.Run("raw body error", func(t *testing.T) {
@@ -880,76 +787,44 @@ func (*dummyLogger) Fatalw(_ string, _ ...any) {}
 
 func (*dummyLogger) Panicw(_ string, _ ...any) {}
 
-func Test_Client_Logger_Debug(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("response")
+// clientTestCLoggedGet sends one GET to a loopback server through a client that
+// logs into the returned buffer once debug switched debug logging on or off. It
+// also returns the address of the server.
+func clientTestCLoggedGet(t *testing.T, debug func(*Client) *Client) (logs *bytes.Buffer, addr string) { //nolint:nonamedreturns // gocritic unnamedResult requires explicit result names for clarity when returning the log and the address
+	t.Helper()
+
+	app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("response")
+		})
 	})
+	t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
 
-	addrChan := make(chan string)
-	go func() {
-		assert.NoError(t, app.Listen(":0", fiber.ListenConfig{
-			DisableStartupMessage: true,
-			ListenerAddrFunc: func(addr net.Addr) {
-				addrChan <- addr.String()
-			},
-		}))
-	}()
-
-	defer func(app *fiber.App) {
-		require.NoError(t, app.Shutdown())
-	}(app)
-
-	var buf bytes.Buffer
-	logger := &dummyLogger{buf: &buf}
-
+	logs = &bytes.Buffer{}
 	client := New()
-	client.Debug().SetLogger(logger)
+	debug(client).SetLogger(&dummyLogger{buf: logs})
 
-	addr := <-addrChan
 	resp, err := client.Get("http://" + addr)
 	require.NoError(t, err)
-	defer resp.Close()
+	resp.Close()
 
-	require.NoError(t, err)
+	return logs, addr
+}
+
+func Test_Client_Logger_Debug(t *testing.T) {
+	t.Parallel()
+
+	buf, addr := clientTestCLoggedGet(t, (*Client).Debug)
+
 	require.Contains(t, buf.String(), "Host: "+addr)
 	require.Contains(t, buf.String(), "Content-Length: 8")
 }
 
 func Test_Client_Logger_DisableDebug(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("response")
-	})
 
-	addrChan := make(chan string)
-	go func() {
-		assert.NoError(t, app.Listen(":0", fiber.ListenConfig{
-			DisableStartupMessage: true,
-			ListenerAddrFunc: func(addr net.Addr) {
-				addrChan <- addr.String()
-			},
-		}))
-	}()
+	buf, _ := clientTestCLoggedGet(t, (*Client).DisableDebug)
 
-	defer func(app *fiber.App) {
-		require.NoError(t, app.Shutdown())
-	}(app)
-
-	var buf bytes.Buffer
-	logger := &dummyLogger{buf: &buf}
-
-	client := New()
-	client.DisableDebug().SetLogger(logger)
-
-	addr := <-addrChan
-	resp, err := client.Get("http://" + addr)
-	require.NoError(t, err)
-	defer resp.Close()
-
-	require.NoError(t, err)
 	require.Empty(t, buf.String())
 }
 
@@ -1191,14 +1066,11 @@ func hasRefererHeader(h *fasthttp.RequestHeader) bool {
 func Test_Client_NoRefererByDefault(t *testing.T) {
 	t.Parallel()
 
-	server := startTestServer(t, func(app *fiber.App) {
+	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString(strconv.FormatBool(hasRefererHeader(&c.Request().Header)))
 		})
 	})
-	defer server.stop()
-
-	client := New().SetDial(server.dial())
 
 	resp, err := client.Get("http://example.com/")
 	require.NoError(t, err)

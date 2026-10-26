@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/url"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -522,45 +521,13 @@ type pathRecorder struct {
 func startPathRecorder(t *testing.T) *pathRecorder {
 	t.Helper()
 
-	mem := fasthttputil.NewInmemoryListener()
-	ln := &acceptSignalListener{Listener: mem, accepting: make(chan struct{})}
-	rec := &pathRecorder{
-		target: make(chan string, 16),
-		dial:   func(string) (net.Conn, error) { return mem.Dial() },
-	}
-	server := &fasthttp.Server{Handler: func(ctx *fasthttp.RequestCtx) {
+	rec := &pathRecorder{target: make(chan string, 16)}
+	rec.dial = clientTestCServe(t, func(ctx *fasthttp.RequestCtx) {
 		rec.target <- string(ctx.RequestURI())
 		ctx.SetStatusCode(fasthttp.StatusOK)
-	}}
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		assert.NoError(t, server.Serve(ln))
-	}()
-	// A test that expects the request to fail never reaches the server, so
-	// without this Shutdown can run before Serve has registered its listener,
-	// find nothing to close, and leave Serve blocked in Accept for good.
-	<-ln.accepting
-	t.Cleanup(func() {
-		require.NoError(t, server.Shutdown())
-		<-done
 	})
 
 	return rec
-}
-
-// acceptSignalListener closes accepting the first time it is asked to accept,
-// which is when the server has registered the listener.
-type acceptSignalListener struct {
-	net.Listener
-	accepting chan struct{}
-	once      sync.Once
-}
-
-func (l *acceptSignalListener) Accept() (net.Conn, error) {
-	l.once.Do(func() { close(l.accepting) })
-	return l.Listener.Accept() //nolint:wrapcheck // a transparent wrapper
 }
 
 // next returns the next request target the server saw.
@@ -574,6 +541,34 @@ func (r *pathRecorder) next(t *testing.T) string {
 		t.Fatal("the server saw no request")
 		return ""
 	}
+}
+
+// get sends a GET for rawURL through c and returns the request target the
+// server saw. The request has to succeed.
+func (r *pathRecorder) get(t *testing.T, c *Client, rawURL string, cfg ...Config) string {
+	t.Helper()
+
+	resp, err := c.Get(rawURL, cfg...)
+	require.NoError(t, err)
+	resp.Close()
+
+	return r.next(t)
+}
+
+// requireTarget sends a GET for rawURL with cfg through c and requires the
+// server to see the request target want. An empty want requires the request to
+// fail with ErrPathParamInPath before anything is sent.
+func (r *pathRecorder) requireTarget(t *testing.T, c *Client, rawURL, want string, cfg ...Config) {
+	t.Helper()
+
+	if want != "" {
+		require.Equal(t, want, r.get(t, c, rawURL, cfg...))
+		return
+	}
+
+	_, err := c.Get(rawURL, cfg...)
+	require.ErrorIs(t, err, ErrPathParamInPath)
+	require.Empty(t, r.target, "the request was sent")
 }
 
 // pathClientKinds lists every way of wrapping a fasthttp client. wrapped is the
@@ -660,10 +655,7 @@ func Test_Client_DisablePathNormalizing_Wire(t *testing.T) {
 						c = tc.setup(c)
 					}
 
-					resp, err := c.Get(target, tc.cfg)
-					require.NoError(t, err)
-					resp.Close()
-					require.Equal(t, tc.want, rec.next(t))
+					require.Equal(t, tc.want, rec.get(t, c, target, tc.cfg))
 				})
 			}
 		})
@@ -742,16 +734,7 @@ func Test_Client_DisablePathNormalizing_PathParamGuard(t *testing.T) {
 
 					cfg := tc.cfg
 					cfg.PathParam = map[string]string{"id": traversal}
-					resp, err := c.Get(target, cfg)
-					if want == "" {
-						require.ErrorIs(t, err, ErrPathParamInPath)
-						require.Empty(t, rec.target, "the request was sent")
-						return
-					}
-
-					require.NoError(t, err)
-					resp.Close()
-					require.Equal(t, want, rec.next(t))
+					rec.requireTarget(t, c, target, want, cfg)
 				})
 			}
 		})
@@ -800,16 +783,7 @@ func Test_Client_DisablePathNormalizing_ValuesNoSettingLetsThrough(t *testing.T)
 					c := kind.build(rec.dial, true).SetDisablePathNormalizing(true)
 					require.True(t, c.writesPathAsBuilt())
 
-					resp, err := c.Get(target, Config{PathParam: map[string]string{"name": tc.val}})
-					if tc.want == "" {
-						require.ErrorIs(t, err, ErrPathParamInPath)
-						require.Empty(t, rec.target, "the request was sent")
-						return
-					}
-
-					require.NoError(t, err)
-					resp.Close()
-					require.Equal(t, tc.want, rec.next(t))
+					rec.requireTarget(t, c, target, tc.want, Config{PathParam: map[string]string{"name": tc.val}})
 				})
 			}
 		})
@@ -828,8 +802,9 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 
 	const target = "http://example.com/files/pub/:name"
 
-	get := func(c *Client, name string) (*Response, error) {
-		return c.Get(target, Config{PathParam: map[string]string{"name": name}})
+	// forName is the config that fills :name in the target with name.
+	forName := func(name string) Config {
+		return Config{PathParam: map[string]string{"name": name}}
 	}
 
 	t.Run("a client that served the host already keeps the check on", func(t *testing.T) {
@@ -838,18 +813,13 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 		rec := startPathRecorder(t)
 		fh := &fasthttp.Client{Dial: rec.dial}
 
-		warm, err := NewWithClient(fh).Get("http://example.com/warm")
-		require.NoError(t, err)
-		warm.Close()
-		require.Equal(t, "/warm", rec.next(t))
+		require.Equal(t, "/warm", rec.get(t, NewWithClient(fh), "http://example.com/warm"))
 
 		c := NewWithClient(fh).SetDisablePathNormalizing(true)
 		require.True(t, fh.DisablePathNormalizing, "the field is set for hosts not served yet")
 		require.False(t, c.writesPathAsBuilt(), "nothing says the host client keeps up")
 
-		_, err = get(c, "x/../../admin")
-		require.ErrorIs(t, err, ErrPathParamInPath)
-		require.Empty(t, rec.target, "the request was sent")
+		rec.requireTarget(t, c, target, "", forName("x/../../admin"))
 	})
 
 	t.Run("a client not used yet cannot be told from one that was", func(t *testing.T) {
@@ -860,13 +830,9 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 		require.False(t, c.writesPathAsBuilt())
 
 		// The path itself goes out as written, because the host is new.
-		resp, err := c.Get("http://example.com/a//b/./c%2Fd")
-		require.NoError(t, err)
-		resp.Close()
-		require.Equal(t, "/a//b/./c%2Fd", rec.next(t))
+		require.Equal(t, "/a//b/./c%2Fd", rec.get(t, c, "http://example.com/a//b/./c%2Fd"))
 
-		_, err = get(c, "a/b")
-		require.ErrorIs(t, err, ErrPathParamInPath)
+		rec.requireTarget(t, c, target, "", forName("a/b"))
 	})
 
 	t.Run("a client created with the setting on lifts the check, used or not", func(t *testing.T) {
@@ -875,18 +841,12 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 		rec := startPathRecorder(t)
 		fh := &fasthttp.Client{Dial: rec.dial, DisablePathNormalizing: true}
 
-		warm, err := NewWithClient(fh).Get("http://example.com/warm")
-		require.NoError(t, err)
-		warm.Close()
-		require.Equal(t, "/warm", rec.next(t))
+		require.Equal(t, "/warm", rec.get(t, NewWithClient(fh), "http://example.com/warm"))
 
 		c := NewWithClient(fh).SetDisablePathNormalizing(true)
 		require.True(t, c.writesPathAsBuilt())
 
-		resp, err := get(c, "a/b")
-		require.NoError(t, err)
-		resp.Close()
-		require.Equal(t, "/files/pub/a%2Fb", rec.next(t))
+		rec.requireTarget(t, c, target, "/files/pub/a%2Fb", forName("a/b"))
 	})
 
 	t.Run("turning the setting off and on again keeps the check on", func(t *testing.T) {
@@ -897,10 +857,7 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 		require.True(t, c.writesPathAsBuilt())
 
 		c.SetDisablePathNormalizing(false)
-		resp, err := c.Get("http://example.com/first")
-		require.NoError(t, err)
-		resp.Close()
-		require.Equal(t, "/first", rec.next(t))
+		require.Equal(t, "/first", rec.get(t, c, "http://example.com/first"))
 
 		c.SetDisablePathNormalizing(true)
 		require.False(t, c.writesPathAsBuilt(), "the host client made for /first normalizes")
@@ -913,10 +870,7 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 		c := New().SetDial(rec.dial).SetDisablePathNormalizing(true)
 		require.True(t, c.writesPathAsBuilt())
 
-		resp, err := get(c, "a/b")
-		require.NoError(t, err)
-		resp.Close()
-		require.Equal(t, "/files/pub/a%2Fb", rec.next(t))
+		rec.requireTarget(t, c, target, "/files/pub/a%2Fb", forName("a/b"))
 	})
 }
 
@@ -932,22 +886,14 @@ func Test_Client_DisablePathNormalizing_AfterFirstRequest(t *testing.T) {
 	rec := startPathRecorder(t)
 	c := New().SetDial(rec.dial)
 
-	resp, err := c.Get("http://example.com/first")
-	require.NoError(t, err)
-	resp.Close()
-	require.Equal(t, "/first", rec.next(t))
+	require.Equal(t, "/first", rec.get(t, c, "http://example.com/first"))
 
 	c.SetDisablePathNormalizing(true)
 	require.False(t, c.writesPathAsBuilt(), "the host client already created still normalizes")
 
-	resp, err = c.Get("http://example.com/a//b")
-	require.NoError(t, err)
-	resp.Close()
-	require.Equal(t, "/a/b", rec.next(t), "the host kept the setting it was created with")
+	require.Equal(t, "/a/b", rec.get(t, c, "http://example.com/a//b"), "the host kept the setting it was created with")
 
-	_, err = c.Get("http://example.com/api/:id", Config{PathParam: map[string]string{"id": "x/../../admin"}})
-	require.ErrorIs(t, err, ErrPathParamInPath)
-	require.Empty(t, rec.target, "the request was sent")
+	rec.requireTarget(t, c, "http://example.com/api/:id", "", Config{PathParam: map[string]string{"id": "x/../../admin"}})
 }
 
 // FuzzPathParamTarget asserts the property that matters at the other end of
