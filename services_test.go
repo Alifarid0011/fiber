@@ -182,6 +182,26 @@ func (m *mockService) Terminate(ctx context.Context) error {
 	return nil
 }
 
+// rootMiscAServicesApp returns an App configured with services and an empty
+// state, built from the struct so that nothing is started and no hooks are set.
+func rootMiscAServicesApp(services ...Service) *App {
+	return &App{
+		configured: Config{Services: services},
+		state:      newState(),
+	}
+}
+
+// rootMiscAStartedServicesApp is rootMiscAServicesApp for an app whose services
+// have all been started already, in the given order, as shutdownServices and
+// logServices expect to find them.
+func rootMiscAStartedServicesApp(services ...Service) *App {
+	app := rootMiscAServicesApp(services...)
+	for _, srv := range services {
+		app.state.setService(srv)
+	}
+	return app
+}
+
 func Test_HasConfiguredServices(t *testing.T) {
 	testHasConfiguredServicesFn := func(t *testing.T, app *App, expected bool) {
 		t.Helper()
@@ -210,15 +230,10 @@ func Test_InitServices(t *testing.T) {
 	t.Run("start/success", func(t *testing.T) {
 		// Initialize the app using the struct and defining the state and hooks manually,
 		// because we are not checking the shutdown hooks in this test.
-		app := &App{
-			configured: Config{
-				Services: []Service{
-					&mockService{name: "dep1"},
-					&mockService{name: "dep2"},
-				},
-			},
-			state: newState(),
-		}
+		app := rootMiscAServicesApp(
+			&mockService{name: "dep1"},
+			&mockService{name: "dep2"},
+		)
 
 		app.hooks = newHooks(app)
 
@@ -228,16 +243,11 @@ func Test_InitServices(t *testing.T) {
 	t.Run("start/error", func(t *testing.T) {
 		// Initialize the app using the struct and defining the state and hooks manually,
 		// because we are not checking the shutdown hooks in this test.
-		app := &App{
-			configured: Config{
-				Services: []Service{
-					&mockService{name: "dep1", startError: errors.New(startErrorMessage + " 1")},
-					&mockService{name: "dep2", startError: errors.New(startErrorMessage + " 2")},
-					&mockService{name: "dep3"},
-				},
-			},
-			state: newState(),
-		}
+		app := rootMiscAServicesApp(
+			&mockService{name: "dep1", startError: errors.New(startErrorMessage + " 1")},
+			&mockService{name: "dep2", startError: errors.New(startErrorMessage + " 2")},
+			&mockService{name: "dep3"},
+		)
 
 		app.hooks = newHooks(app)
 
@@ -328,12 +338,7 @@ func Test_InitServices(t *testing.T) {
 
 func Test_StartServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
-		app := &App{
-			configured: Config{
-				Services: []Service{},
-			},
-			state: newState(),
-		}
+		app := rootMiscAServicesApp()
 
 		err := app.startServices(context.Background())
 		require.NoError(t, err)
@@ -341,15 +346,10 @@ func Test_StartServices(t *testing.T) {
 	})
 
 	t.Run("successful-start", func(t *testing.T) {
-		app := &App{
-			configured: Config{
-				Services: []Service{
-					&mockService{name: "dep1"},
-					&mockService{name: "dep2"},
-				},
-			},
-			state: newState(),
-		}
+		app := rootMiscAServicesApp(
+			&mockService{name: "dep1"},
+			&mockService{name: "dep2"},
+		)
 
 		err := app.startServices(context.Background())
 		require.NoError(t, err)
@@ -357,16 +357,11 @@ func Test_StartServices(t *testing.T) {
 	})
 
 	t.Run("failed-start", func(t *testing.T) {
-		app := &App{
-			configured: Config{
-				Services: []Service{
-					&mockService{name: "dep1", startError: errors.New(startErrorMessage + " 1")},
-					&mockService{name: "dep2", startError: errors.New(startErrorMessage + " 2")},
-					&mockService{name: "dep3"},
-				},
-			},
-			state: newState(),
-		}
+		app := rootMiscAServicesApp(
+			&mockService{name: "dep1", startError: errors.New(startErrorMessage + " 1")},
+			&mockService{name: "dep2", startError: errors.New(startErrorMessage + " 2")},
+			&mockService{name: "dep3"},
+		)
 
 		err := app.startServices(context.Background())
 		require.Error(t, err)
@@ -377,14 +372,7 @@ func Test_StartServices(t *testing.T) {
 
 	t.Run("context", func(t *testing.T) {
 		t.Run("already-canceled", func(t *testing.T) {
-			app := &App{
-				configured: Config{
-					Services: []Service{
-						&mockService{name: "dep1"},
-					},
-				},
-				state: newState(),
-			}
+			app := rootMiscAServicesApp(&mockService{name: "dep1"})
 
 			// Create a context that is already canceled
 			ctx, cancel := context.WithCancel(context.Background())
@@ -399,12 +387,7 @@ func Test_StartServices(t *testing.T) {
 			// Create a service that takes some time to start
 			slowDep := &mockService{name: "slow-dep", startDelay: 200 * time.Millisecond}
 
-			app := &App{
-				configured: Config{
-					Services: []Service{slowDep},
-				},
-				state: newState(),
-			}
+			app := rootMiscAServicesApp(slowDep)
 
 			// Create a context that will be canceled immediately
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -420,12 +403,7 @@ func Test_StartServices(t *testing.T) {
 
 func Test_ShutdownServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
-		app := &App{
-			configured: Config{
-				Services: []Service{},
-			},
-			state: newState(),
-		}
+		app := rootMiscAServicesApp()
 
 		err := app.shutdownServices(context.Background())
 		require.NoError(t, err)
@@ -433,20 +411,11 @@ func Test_ShutdownServices(t *testing.T) {
 	})
 
 	t.Run("successful-shutdown", func(t *testing.T) {
-		srv1 := &mockService{name: "dep1"}
-		srv2 := &mockService{name: "dep2"}
-
-		// Expected state, including the two started services
-		expectedState := newState()
-		expectedState.setService(srv1)
-		expectedState.setService(srv2)
-
-		app := &App{
-			configured: Config{
-				Services: []Service{srv1, srv2},
-			},
-			state: expectedState,
-		}
+		// Both services have been started
+		app := rootMiscAStartedServicesApp(
+			&mockService{name: "dep1"},
+			&mockService{name: "dep2"},
+		)
 
 		err := app.shutdownServices(context.Background())
 		require.NoError(t, err)
@@ -458,18 +427,8 @@ func Test_ShutdownServices(t *testing.T) {
 		srv2 := &mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")}
 		srv3 := &mockService{name: "dep3"}
 
-		// Expected state, including the two started services
-		expectedState := newState()
-		expectedState.setService(srv1)
-		expectedState.setService(srv2)
-		expectedState.setService(srv3)
-
-		app := &App{
-			configured: Config{
-				Services: []Service{srv1, srv2, srv3},
-			},
-			state: expectedState,
-		}
+		// All three services have been started
+		app := rootMiscAStartedServicesApp(srv1, srv2, srv3)
 
 		err := app.shutdownServices(context.Background())
 		require.Error(t, err)
@@ -480,18 +439,8 @@ func Test_ShutdownServices(t *testing.T) {
 
 	t.Run("context", func(t *testing.T) {
 		t.Run("already-canceled", func(t *testing.T) {
-			srv1 := &mockService{name: "dep1"}
-
-			// Expected state, including the two started services
-			expectedState := newState()
-			expectedState.setService(srv1)
-
-			app := &App{
-				configured: Config{
-					Services: []Service{srv1},
-				},
-				state: expectedState,
-			}
+			// The service has been started
+			app := rootMiscAStartedServicesApp(&mockService{name: "dep1"})
 
 			// Create a context that is already canceled
 			ctx, cancel := context.WithCancel(context.Background())
@@ -508,16 +457,8 @@ func Test_ShutdownServices(t *testing.T) {
 			// Create a service that takes some time to terminate
 			slowDep := &mockService{name: "slow-dep", terminateDelay: 200 * time.Millisecond}
 
-			// Expected state, including the two started services
-			expectedState := newState()
-			expectedState.setService(slowDep)
-
-			app := &App{
-				configured: Config{
-					Services: []Service{slowDep},
-				},
-				state: expectedState,
-			}
+			// The service has been started
+			app := rootMiscAStartedServicesApp(slowDep)
 
 			// Create a new context for shutdown
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -538,16 +479,7 @@ func Test_LogServices(t *testing.T) {
 	// Service with State error
 	errorService := &mockService{name: "error", stateError: errors.New("state error")}
 
-	expectedState := newState()
-	expectedState.setService(runningService)
-	expectedState.setService(errorService)
-
-	app := &App{
-		configured: Config{
-			Services: []Service{runningService, errorService},
-		},
-		state: expectedState,
-	}
+	app := rootMiscAStartedServicesApp(runningService, errorService)
 
 	var buf bytes.Buffer
 
@@ -886,10 +818,7 @@ func Test_ShutdownServices_ReverseStartOrder(t *testing.T) {
 		expected = append([]string{name}, expected...)
 	}
 
-	app := &App{
-		configured: Config{Services: services},
-		state:      newState(),
-	}
+	app := rootMiscAServicesApp(services...)
 
 	require.NoError(t, app.startServices(context.Background()))
 	require.Equal(t, count, app.state.ServicesLen())
@@ -921,10 +850,7 @@ func Test_ShutdownServices_UncomparableService(t *testing.T) {
 		uncomparableService{name: "first", tags: []string{"a"}},
 		uncomparableService{name: "second", tags: []string{"b"}},
 	}
-	app := &App{
-		configured: Config{Services: services},
-		state:      newState(),
-	}
+	app := rootMiscAServicesApp(services...)
 
 	require.NoError(t, app.startServices(context.Background()))
 	require.Equal(t, 2, app.state.ServicesLen())
@@ -945,10 +871,7 @@ func Test_ShutdownServices_StartedTwiceTerminatesOnce(t *testing.T) {
 		&orderedService{mockService: mockService{name: "dep1"}, terminated: &terminated},
 		&orderedService{mockService: mockService{name: "dep2"}, terminated: &terminated},
 	}
-	app := &App{
-		configured: Config{Services: services},
-		state:      newState(),
-	}
+	app := rootMiscAServicesApp(services...)
 
 	require.NoError(t, app.startServices(context.Background()))
 	require.NoError(t, app.startServices(context.Background()))
@@ -967,10 +890,7 @@ func Test_StartServices_DuplicateNames(t *testing.T) {
 
 		first := &mockService{name: "dup"}
 		second := &mockService{name: "dup"}
-		app := &App{
-			configured: Config{Services: []Service{first, &mockService{name: "other"}, second}},
-			state:      newState(),
-		}
+		app := rootMiscAServicesApp(first, &mockService{name: "other"}, second)
 
 		err := app.startServices(context.Background())
 		require.Error(t, err)
@@ -1017,7 +937,7 @@ func Test_ShutdownServices_ConcurrentCallersTerminateOnce(t *testing.T) {
 		})
 	}
 
-	app := &App{configured: Config{Services: services}, state: newState()}
+	app := rootMiscAServicesApp(services...)
 	require.NoError(t, app.startServices(context.Background()))
 
 	var wg sync.WaitGroup
