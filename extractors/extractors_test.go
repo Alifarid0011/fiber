@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -30,8 +31,7 @@ func Test_Extractors_Missing(t *testing.T) {
 		require.ErrorIs(t, err, ErrNotFound)
 		return nil
 	})
-	_, err := app.Test(newRequest("/test"))
-	require.NoError(t, err)
+	apptest.Do(t, app, newRequest("/test"))
 
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	t.Cleanup(func() { app.ReleaseCtx(ctx) })
@@ -85,8 +85,7 @@ func Test_Extractors(t *testing.T) {
 			require.Equal(t, "token_from_param", token)
 			return nil
 		})
-		_, err := app.Test(newRequest("/test/token_from_param"))
-		require.NoError(t, err)
+		apptest.Do(t, app, newRequest("/test/token_from_param"))
 	})
 
 	t.Run("FromForm", func(t *testing.T) {
@@ -1072,9 +1071,7 @@ func Test_Extractor_Chain_ReusedAcrossMiddleware(t *testing.T) {
 	req := newRequest("/test")
 	req.Header.Set("X-Token", "token_from_header")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusNoContent)
 }
 
 // go test -run Test_Extractor_SourceTypes
@@ -1158,8 +1155,7 @@ func Test_Extractor_URL_Encoded(t *testing.T) {
 			require.Equal(t, "token/with/slashes", token)
 			return nil
 		})
-		_, err := app.Test(newRequest("/test/token%2Fwith%2Fslashes"))
-		require.NoError(t, err)
+		apptest.Do(t, app, newRequest("/test/token%2Fwith%2Fslashes"))
 	})
 }
 
@@ -1873,9 +1869,7 @@ func Test_FromParam_DecodesOnce(t *testing.T) {
 				return nil
 			})
 
-			resp, err := app.Test(newRequest("/test/%2520"))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, newRequest("/test/%2520"), fiber.StatusOK)
 		})
 	}
 }
