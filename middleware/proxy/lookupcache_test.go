@@ -2,13 +2,12 @@ package proxy
 
 import (
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -163,13 +162,10 @@ func Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup(t *testing.T) {
 	app := fiber.New()
 	app.Get("/", func(c fiber.Ctx) error { return Do(c, "http://fresh.test/", client) })
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusNoContent)
 	require.NoError(t, resp.Body.Close())
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/")
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode, "the rebound answer is judged")
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, int32(1), served.Load(), "and the second request never reaches the transport")

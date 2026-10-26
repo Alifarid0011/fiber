@@ -27,6 +27,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 )
 
@@ -87,9 +88,7 @@ func Test_Logger(t *testing.T) {
 		return errors.New("some random error")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 	require.Equal(t, "some random error", buf.String())
 }
 
@@ -120,23 +119,17 @@ func Test_Logger_locals(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, "johndoe", buf.String())
 
 	buf.Reset()
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/int", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/int", fiber.StatusOK)
 	require.Equal(t, "55", buf.String())
 
 	buf.Reset()
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/empty", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/empty", fiber.StatusOK)
 	require.Empty(t, buf.String())
 }
 
@@ -151,9 +144,7 @@ func Test_Logger_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
 // go test -run Test_Logger_Done
@@ -173,10 +164,7 @@ func Test_Logger_Done(t *testing.T) {
 		return ctx.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/logging", http.NoBody))
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/logging", fiber.StatusOK)
 	require.Positive(t, buf.Len(), 0)
 }
 
@@ -257,9 +245,7 @@ func Test_Logger_Filter(t *testing.T) {
 			Stream: &logOutput,
 		}))
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/nonexistent", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+		apptest.Expect(t, app, "/nonexistent", fiber.StatusNotFound)
 
 		// Expect logs for the 404 request
 		require.Contains(t, logOutput.String(), "404")
@@ -283,9 +269,7 @@ func Test_Logger_Filter(t *testing.T) {
 			return c.SendStatus(fiber.StatusOK)
 		})
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/", fiber.StatusOK)
 
 		// We skip logging for status == 200, so "200" should not appear
 		require.NotContains(t, logOutput.String(), "200")
@@ -309,8 +293,7 @@ func Test_Logger_Filter(t *testing.T) {
 			return c.Status(fiber.StatusTeapot).SendString("I'm a teapot")
 		})
 
-		_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/something", http.NoBody))
-		require.NoError(t, err)
+		apptest.Do(t, app, "/something")
 
 		// Expect NO logs
 		require.Empty(t, logOutput.String())
@@ -334,8 +317,7 @@ func Test_Logger_Filter(t *testing.T) {
 			return c.Status(fiber.StatusTeapot).SendString("Teapot again")
 		})
 
-		_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/always", http.NoBody))
-		require.NoError(t, err)
+		apptest.Do(t, app, "/always")
 
 		// Expect some logging - check any substring
 		require.Contains(t, logOutput.String(), strconv.Itoa(fiber.StatusTeapot))
@@ -365,16 +347,14 @@ func Test_Logger_Filter(t *testing.T) {
 		})
 
 		// Request to "/" -> should be logged
-		_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		apptest.Do(t, app, "/")
 		require.Contains(t, logOutput.String(), "200")
 
 		// Reset output buffer
 		logOutput.Reset()
 
 		// Request to "/healthz" -> should be skipped
-		_, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/healthz", http.NoBody))
-		require.NoError(t, err)
+		apptest.Do(t, app, "/healthz")
 		require.Empty(t, logOutput.String())
 	})
 }
@@ -388,9 +368,7 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 		TimeZone: "invalid",
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
 // go test -run Test_Logger_Fiber_Logger
@@ -448,9 +426,7 @@ func Test_Logger_LoggerToWriter(t *testing.T) {
 				return errors.New("some random error")
 			})
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/"+level, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+			apptest.Expect(t, app, "/"+level, fiber.StatusInternalServerError)
 			require.Equal(t, "["+tc.levelStr+"] some random error\n", buf.String())
 		})
 
@@ -486,9 +462,7 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 		DisableColors: true,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 	require.EqualValues(t, 2, *o)
 }
 
@@ -535,9 +509,7 @@ func Test_Logger_DefaultFormat_WithoutColor(t *testing.T) {
 		return c.SendStatus(fiber.StatusNotFound)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 	require.Contains(t, buf.String(), " | 404 | ", "status field must be width-3 with separators")
 	require.Contains(t, buf.String(), " | GET     | ", "method field must be width-7, left aligned")
 }
@@ -552,9 +524,7 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 		Stream: o,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 	require.EqualValues(t, 2, *o)
 }
 
@@ -576,9 +546,7 @@ func Test_Logger_ErrorOutput_TemplateFailure(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 	require.Equal(t, templateErr.Error(), buf.String())
 }
 
@@ -635,9 +603,7 @@ func Test_Logger_All(t *testing.T) {
 	// Alias colors
 	colors := app.Config().ColorScheme
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, pathFooBar, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, pathFooBar, fiber.StatusNotFound)
 
 	expected := fmt.Sprintf("%dHost=example.comhttpHTTP/1.10.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sNot Found", os.Getpid(), colors.Black, colors.Red, colors.Green, colors.Yellow, colors.Blue, colors.Magenta, colors.Cyan, colors.White, colors.Reset)
 	require.Equal(t, expected, buf.String())
@@ -658,9 +624,7 @@ func Test_Logger_CLF_Format(t *testing.T) {
 	status := fiber.StatusNotFound
 	bytesSent := 0
 
-	resp, err := app.Test(httptest.NewRequest(method, pathFooBar, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, status, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(method, pathFooBar), status)
 
 	pattern := fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d`, method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent)
 	require.Regexp(t, pattern, buf.String())
@@ -687,9 +651,7 @@ func Test_Logger_Combined_CLF_Format(t *testing.T) {
 	req.Header.Set("Referer", referer)
 	req.Header.Set("User-Agent", ua)
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, status, resp.StatusCode)
+	apptest.Expect(t, app, req, status)
 
 	pattern := fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d "%s" "%s"`, method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent, regexp.QuoteMeta(referer), regexp.QuoteMeta(ua)) //nolint:gocritic // double quoting for regex and string is not needed
 	require.Regexp(t, pattern, buf.String())
@@ -711,10 +673,7 @@ func Test_Logger_Json_Format(t *testing.T) {
 	ip := "0.0.0.0"
 	bytesSent := 0
 
-	req := httptest.NewRequest(method, pathFooBar, http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, status, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(method, pathFooBar), status)
 
 	pattern := fmt.Sprintf(`\{"time":"\d{2}:\d{2}:\d{2}","ip":"%s","method":%q,"url":"%s","status":%d,"bytesSent":%d\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(pathFooBar), status, bytesSent) //nolint:gocritic // double quoting for regex and string is not needed
 	require.Regexp(t, pattern, buf.String())
@@ -737,10 +696,7 @@ func Test_Logger_ECS_Format(t *testing.T) {
 	bytesSent := 0
 	msg := fmt.Sprintf("%s %s responded with %d", method, pathFooBar, status)
 
-	req := httptest.NewRequest(method, pathFooBar, http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, status, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(method, pathFooBar), status)
 
 	pattern := fmt.Sprintf(`\{"@timestamp":"\d{2}:\d{2}:\d{2}","ecs":\{"version":"1.6.0"\},"client":\{"ip":"%s"\},"http":\{"request":\{"method":%q,"url":"%s","protocol":%q\},"response":\{"status_code":%d,"body":\{"bytes":%d\}\}\},"log":\{"level":"INFO","logger":"fiber"\},"message":"%s"\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent, regexp.QuoteMeta(msg)) //nolint:gocritic // double quoting for regex and string is not needed
 	require.Regexp(t, pattern, buf.String())
@@ -804,11 +760,10 @@ func Test_Logger_WithLatency(t *testing.T) {
 		latencyDuration = tu.div
 
 		// Create a new HTTP request to the test route
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
+		resp := apptest.Do(t, app, "/test", fiber.TestConfig{
 			Timeout:       3 * time.Second,
 			FailOnTimeout: true,
 		})
-		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		// Assert that the log output contains the expected latency value in the current time unit
@@ -851,11 +806,10 @@ func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
 		latencyDuration = tu.div
 
 		// Create a new HTTP request to the test route
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
+		resp := apptest.Do(t, app, "/test", fiber.TestConfig{
 			Timeout:       2 * time.Second,
 			FailOnTimeout: true,
 		})
-		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		// Assert that the log output contains the expected latency value in the current time unit
@@ -882,9 +836,7 @@ func Test_Query_Params(t *testing.T) {
 		Stream: buf,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?foo=bar&baz=moz", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/?foo=bar&baz=moz", fiber.StatusNotFound)
 
 	expected := "foo=bar&baz=moz"
 	require.Equal(t, expected, buf.String())
@@ -947,8 +899,7 @@ func Test_Request_Body(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodPost, "/", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	_, err := app.Test(req)
-	require.NoError(t, err)
+	apptest.Do(t, app, req)
 	require.Equal(t, "5 5 200", buf.String())
 }
 
@@ -974,15 +925,11 @@ func Test_Logger_AppendUint(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, "-2 0 200", buf.String())
 
 	buf.Reset()
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/content", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/content", fiber.StatusOK)
 	require.Equal(t, "-2 5 200", buf.String())
 }
 
@@ -1036,9 +983,7 @@ func Test_Logger_TimeUpdatesAfterInterval(t *testing.T) {
 		return c.SendStatus(fiber.StatusNoContent)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNoContent)
 	first := buf.String()
 	require.NotEmpty(t, first)
 
@@ -1046,9 +991,7 @@ func Test_Logger_TimeUpdatesAfterInterval(t *testing.T) {
 	require.Eventually(t, func() bool {
 		buf.Reset()
 
-		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+		apptest.Expect(t, app, "/", fiber.StatusNoContent)
 
 		second = buf.String()
 		return second != "" && second != first
@@ -1090,10 +1033,7 @@ func Test_Response_Header(t *testing.T) {
 		return c.SendString("Hello fiber!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, "Hello fiber!", buf.String())
 }
 
@@ -1118,9 +1058,7 @@ func Test_Logger_RegisteredTag(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, "registered", buf.String())
 }
 
@@ -1150,9 +1088,7 @@ func Test_Logger_CustomTagOverridesRegisteredTag(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, "override", buf.String())
 }
 
@@ -1193,9 +1129,7 @@ func Test_Req_Header(t *testing.T) {
 	headerReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	headerReq.Header.Add("test", "Hello fiber!")
 
-	resp, err := app.Test(headerReq)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, headerReq, fiber.StatusOK)
 	require.Equal(t, "Hello fiber!", buf.String())
 }
 
@@ -1217,9 +1151,7 @@ func Test_ReqHeader_Header(t *testing.T) {
 	reqHeaderReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	reqHeaderReq.Header.Add("test", "Hello fiber!")
 
-	resp, err := app.Test(reqHeaderReq)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, reqHeaderReq, fiber.StatusOK)
 	require.Equal(t, "Hello fiber!", buf.String())
 }
 
@@ -1248,9 +1180,7 @@ func Test_CustomTags(t *testing.T) {
 	reqHeaderReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	reqHeaderReq.Header.Add("test", "Hello fiber!")
 
-	resp, err := app.Test(reqHeaderReq)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, reqHeaderReq, fiber.StatusOK)
 	require.Equal(t, customTag, buf.String())
 }
 
@@ -1291,9 +1221,7 @@ func Test_Logger_DataLegacyTemplateChains(t *testing.T) {
 		return c.SendString("Hello fiber!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, "GET /", buf.String())
 }
 
@@ -1331,9 +1259,7 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 
 	// -2 means identity, -1 means chunked, 200 status
 	require.Equal(t, "-2 -1 200", buf.String())
@@ -1356,9 +1282,7 @@ func Test_Logger_EnableColors(t *testing.T) {
 		Stream: o,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 	require.EqualValues(t, 1, *o)
 }
 
@@ -1380,9 +1304,7 @@ func Test_Logger_ForceColors(t *testing.T) {
 	// Alias colors
 	colors := app.Config().ColorScheme
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 
 	expected := fmt.Sprintf("0.0.0.0%s404%s%sGET%s/%sNot Found%s\n", colors.Yellow, colors.Reset, colors.Cyan, colors.Reset, colors.Red, colors.Reset)
 	require.Equal(t, expected, buf.String())
@@ -2144,9 +2066,7 @@ func Test_Logger_SanitizesLocalsByType(t *testing.T) {
 				return c.SendStatus(fiber.StatusOK)
 			})
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, "/", fiber.StatusOK)
 			require.Equal(t, tc.expected, buf.String())
 		})
 	}
@@ -2205,8 +2125,7 @@ func Test_Logger_SanitizesControlBytes(t *testing.T) {
 				return c.SendString("ok")
 			})
 
-			_, err := app.Test(tt.build())
-			require.NoError(t, err)
+			apptest.Do(t, app, tt.build())
 			require.Equal(t, tt.expected, buf.String())
 		})
 	}
@@ -2224,8 +2143,7 @@ func Test_Logger_SanitizesPath(t *testing.T) {
 	app := fiber.New(fiber.Config{UnescapePath: true})
 	app.Use(New(Config{Format: "${path}", Stream: buf}))
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/admin%0d%0a200", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/admin%0d%0a200")
 	require.Equal(t, "/admin  200", buf.String())
 }
 
@@ -2255,8 +2173,7 @@ func Test_Logger_DefaultFormat_SanitizesControlBytes(t *testing.T) {
 				return errors.New("boom\r\nFORGED-ERROR-LINE")
 			})
 
-			_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/admin%0d%0aFORGED-PATH-LINE", http.NoBody))
-			require.NoError(t, err)
+			apptest.Do(t, app, "/admin%0d%0aFORGED-PATH-LINE")
 
 			out := buf.String()
 			require.NotContains(t, out, "\r")
@@ -2417,8 +2334,7 @@ func Test_Logger_RegisterContextTag_Sanitizes(t *testing.T) {
 	}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 
 	line := buf.String()
 	require.NotContains(t, line, "\r", "a CR must not reach the log")
@@ -2659,8 +2575,7 @@ func Test_Logger_DefaultFormat_WithColor_MatchesFmt(t *testing.T) {
 				return c.SendStatus(tc.status)
 			})
 
-			_, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.target, http.NoBody))
-			require.NoError(t, err)
+			apptest.Do(t, app, tc.target)
 			require.NotEmpty(t, want, "the logger must have run")
 			require.Equal(t, want, buf.String())
 		})

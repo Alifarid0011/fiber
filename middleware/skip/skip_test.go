@@ -1,13 +1,11 @@
 package skip_test
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/middleware/skip"
-	"github.com/stretchr/testify/require"
 )
 
 // go test -run Test_Skip
@@ -18,9 +16,7 @@ func Test_Skip(t *testing.T) {
 	app.Use(skip.New(errTeapotHandler, func(fiber.Ctx) bool { return true }))
 	app.Get("/", helloWorldHandler)
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 }
 
 // go test -run Test_SkipFalse
@@ -31,9 +27,7 @@ func Test_SkipFalse(t *testing.T) {
 	app.Use(skip.New(errTeapotHandler, func(fiber.Ctx) bool { return false }))
 	app.Get("/", helloWorldHandler)
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusTeapot)
 }
 
 // go test -run Test_SkipNilFunc
@@ -44,9 +38,7 @@ func Test_SkipNilFunc(t *testing.T) {
 	app.Use(skip.New(errTeapotHandler, nil))
 	app.Get("/", helloWorldHandler)
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusTeapot)
 }
 
 func helloWorldHandler(c fiber.Ctx) error {

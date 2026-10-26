@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	"github.com/gofiber/fiber/v3/internal/redact"
 	fiberlog "github.com/gofiber/fiber/v3/log"
@@ -173,9 +174,7 @@ func Test_AuthSources(t *testing.T) {
 				res, err := app.Test(req, testConfig)
 				require.NoError(t, err, test.description)
 
-				body, err := io.ReadAll(res.Body)
-
-				require.NoError(t, err)
+				body := apptest.Body(t, res)
 				errClose := res.Body.Close()
 				require.NoError(t, errClose)
 
@@ -190,7 +189,7 @@ func Test_AuthSources(t *testing.T) {
 					expectedBody = "Not Found"
 				}
 				require.Equal(t, expectedCode, res.StatusCode, test.description)
-				require.Equal(t, expectedBody, string(body), test.description)
+				require.Equal(t, expectedBody, body, test.description)
 			}
 		})
 	}
@@ -238,9 +237,7 @@ func TestMultipleKeyLookup(t *testing.T) {
 	q.Add("key", CorrectKey)
 	req.URL.RawQuery = q.Encode()
 
-	res, err := app.Test(req, testConfig)
-
-	require.NoError(t, err)
+	res := apptest.Do(t, app, req, testConfig)
 
 	// test the body of the request
 	body, err := io.ReadAll(res.Body)
@@ -255,11 +252,8 @@ func TestMultipleKeyLookup(t *testing.T) {
 	// construct a second request without proper key
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", http.NoBody)
 	require.NoError(t, err)
-	res, err = app.Test(req, testConfig)
-	require.NoError(t, err)
-	errBody, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
-	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(errBody))
+	res = apptest.Do(t, app, req, testConfig)
+	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), apptest.Body(t, res))
 }
 
 func Test_MultipleKeyAuth(t *testing.T) {
@@ -418,12 +412,10 @@ func Test_CustomSuccessAndFailureHandlers(t *testing.T) {
 	})
 
 	// Create a request without an API key and send it to the app
-	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	res := apptest.Do(t, app, "/")
 
 	// Read the response body into a string
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, res)
 
 	// Check that the response has the expected status code and body
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
@@ -434,12 +426,10 @@ func Test_CustomSuccessAndFailureHandlers(t *testing.T) {
 	req.Header.Add("Authorization", "Bearer "+CorrectKey)
 
 	// Send the request to the app
-	res, err = app.Test(req)
-	require.NoError(t, err)
+	res = apptest.Do(t, app, req)
 
 	// Read the response body into a string
-	body, err = io.ReadAll(res.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, res)
 
 	// Check that the response has the expected status code and body
 	require.Equal(t, http.StatusOK, res.StatusCode)
@@ -471,12 +461,10 @@ func Test_CustomNextFunc(t *testing.T) {
 
 	// Create a request with the "/allowed" path and send it to the app
 	req := httptest.NewRequest(fiber.MethodGet, "/allowed", http.NoBody)
-	res, err := app.Test(req)
-	require.NoError(t, err)
+	res := apptest.Do(t, app, req)
 
 	// Read the response body into a string
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, res)
 
 	// Check that the response has the expected status code and body
 	require.Equal(t, http.StatusOK, res.StatusCode)
@@ -484,12 +472,10 @@ func Test_CustomNextFunc(t *testing.T) {
 
 	// Create a request with a different path and send it to the app without correct key
 	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", http.NoBody)
-	res, err = app.Test(req)
-	require.NoError(t, err)
+	res = apptest.Do(t, app, req)
 
 	// Read the response body into a string
-	body, err = io.ReadAll(res.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, res)
 
 	// Check that the response has the expected status code and body
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
@@ -499,12 +485,10 @@ func Test_CustomNextFunc(t *testing.T) {
 	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", http.NoBody)
 	req.Header.Add("Authorization", "Bearer "+CorrectKey)
 
-	res, err = app.Test(req)
-	require.NoError(t, err)
+	res = apptest.Do(t, app, req)
 
 	// Read the response body into a string
-	body, err = io.ReadAll(res.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, res)
 
 	// Check that the response has the expected status code and body
 	require.Equal(t, http.StatusOK, res.StatusCode)
@@ -525,8 +509,7 @@ func Test_TokenFromContext_None(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read the response body into a string
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, res)
 	require.Empty(t, body)
 }
 
@@ -550,13 +533,10 @@ func Test_TokenFromContext(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "Basic "+CorrectKey)
 	// Send
-	res, err := app.Test(req)
-	require.NoError(t, err)
+	res := apptest.Do(t, app, req)
 
 	// Read the response body into a string
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
-	require.Equal(t, CorrectKey, string(body))
+	require.Equal(t, CorrectKey, apptest.Body(t, res))
 }
 
 func Test_LogTagsRedactToken(t *testing.T) {
@@ -581,9 +561,7 @@ func Test_LogTagsRedactToken(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Bearer "+CorrectKey)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, redact.Prefix(CorrectKey), buf.String())
 }
 
@@ -606,9 +584,7 @@ func Test_LogContextTagRedactsToken(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Bearer "+CorrectKey)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Contains(t, buf.String(), "[Info] api-key="+redact.Prefix(CorrectKey)+" start")
 }
 
@@ -638,9 +614,7 @@ func Test_TokenFromContext_Types(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "Basic "+CorrectKey)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_AuthSchemeToken(t *testing.T) {
@@ -666,16 +640,14 @@ func Test_AuthSchemeToken(t *testing.T) {
 	req.Header.Add("Authorization", "Token "+CorrectKey)
 
 	// Send the request to the app
-	res, err := app.Test(req)
-	require.NoError(t, err)
+	res := apptest.Do(t, app, req)
 
 	// Read the response body into a string
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	body := apptest.Body(t, res)
 
 	// Check that the response has the expected status code and body
 	require.Equal(t, http.StatusOK, res.StatusCode)
-	require.Equal(t, "API key is valid", string(body))
+	require.Equal(t, "API key is valid", body)
 }
 
 func Test_AuthSchemeBasic(t *testing.T) {
@@ -697,12 +669,10 @@ func Test_AuthSchemeBasic(t *testing.T) {
 	})
 
 	// Create a request without an API key and  Send the request to the app
-	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	res := apptest.Do(t, app, "/")
 
 	// Read the response body into a string
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, res)
 
 	// Check that the response has the expected status code and body
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
@@ -713,12 +683,10 @@ func Test_AuthSchemeBasic(t *testing.T) {
 	req.Header.Add("Authorization", "Basic "+CorrectKey)
 
 	// Send the request to the app
-	res, err = app.Test(req)
-	require.NoError(t, err)
+	res = apptest.Do(t, app, req)
 
 	// Read the response body into a string
-	body, err = io.ReadAll(res.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, res)
 
 	// Check that the response has the expected status code and body
 	require.Equal(t, http.StatusOK, res.StatusCode)
@@ -739,12 +707,10 @@ func Test_HeaderSchemeCaseInsensitive(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "bearer "+CorrectKey)
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	res := apptest.Do(t, app, req)
+	body := apptest.Body(t, res)
 	require.Equal(t, http.StatusOK, res.StatusCode)
-	require.Equal(t, "OK", string(body))
+	require.Equal(t, "OK", body)
 }
 
 func Test_DefaultErrorHandlerChallenge(t *testing.T) {
@@ -756,9 +722,7 @@ func Test_DefaultErrorHandlerChallenge(t *testing.T) {
 	}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
-	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	res := apptest.Expect(t, app, "/", http.StatusUnauthorized)
 	require.Equal(t, "Bearer realm=\"Restricted\"", res.Header.Get("WWW-Authenticate"))
 }
 
@@ -791,9 +755,7 @@ func Test_ErrorHandlerReturnsErrorChallenge(t *testing.T) {
 			}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
-			res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedStatus, res.StatusCode)
+			res := apptest.Expect(t, app, "/", tc.expectedStatus)
 			require.Equal(t, `Bearer realm="Restricted"`, res.Header.Get(tc.expectedHeader))
 		})
 	}
@@ -810,12 +772,10 @@ func Test_DefaultErrorHandlerInvalid(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "Bearer "+CorrectKey)
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	res := apptest.Do(t, app, req)
+	body := apptest.Body(t, res)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(body))
+	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), body)
 	require.Equal(t, "Bearer realm=\"Restricted\"", res.Header.Get("WWW-Authenticate"))
 }
 
@@ -833,12 +793,10 @@ func Test_HeaderSchemeMultipleSpaces(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "Bearer    "+CorrectKey)
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	res := apptest.Do(t, app, req)
+	body := apptest.Body(t, res)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(body))
+	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), body)
 }
 
 func Test_HeaderSchemeMissingSpace(t *testing.T) {
@@ -850,12 +808,10 @@ func Test_HeaderSchemeMissingSpace(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "Bearer"+CorrectKey)
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	res := apptest.Do(t, app, req)
+	body := apptest.Body(t, res)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(body))
+	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), body)
 }
 
 func Test_HeaderSchemeNoToken(t *testing.T) {
@@ -867,12 +823,10 @@ func Test_HeaderSchemeNoToken(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "Bearer ")
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	res := apptest.Do(t, app, req)
+	body := apptest.Body(t, res)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(body))
+	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), body)
 }
 
 func Test_HeaderSchemeNoSeparator(t *testing.T) {
@@ -885,13 +839,11 @@ func Test_HeaderSchemeNoSeparator(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	// No space between "Bearer" and token
 	req.Header.Add("Authorization", "BearerTokenWithoutSpace")
-	res, err := app.Test(req)
-	require.NoError(t, err)
+	res := apptest.Do(t, app, req)
 
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	body := apptest.Body(t, res)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(body))
+	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), body)
 }
 
 func Test_HeaderSchemeEmptyTokenAfterTrim(t *testing.T) {
@@ -906,12 +858,10 @@ func Test_HeaderSchemeEmptyTokenAfterTrim(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	// Authorization header with scheme followed by only spaces/tabs (no actual token)
 	req.Header.Add("Authorization", "Bearer \t  \t ")
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
+	res := apptest.Do(t, app, req)
+	body := apptest.Body(t, res)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(body))
+	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), body)
 }
 
 func Test_WWWAuthenticateHeader(t *testing.T) {
@@ -1004,8 +954,7 @@ func Test_WWWAuthenticateHeader(t *testing.T) {
 				req.Header.Set(fiber.HeaderAuthorization, "Bearer somekey")
 			}
 
-			resp, err := app.Test(req)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
 
 			assert.Equal(t, tt.expectedStatusCode, resp.StatusCode)
 			assert.Equal(t, tt.expectedHeader, resp.Header.Get(fiber.HeaderWWWAuthenticate))
@@ -1024,10 +973,7 @@ func Test_CustomChallenge(t *testing.T) {
 	}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	res := apptest.Expect(t, app, "/", http.StatusUnauthorized)
 	require.Equal(t, `ApiKey realm="Restricted"`, res.Header.Get("WWW-Authenticate"))
 }
 
@@ -1045,9 +991,7 @@ func Test_BearerErrorFields(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "Bearer something")
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	res := apptest.Expect(t, app, req, http.StatusUnauthorized)
 	require.Equal(t, `Bearer realm="Restricted", error="invalid_token", error_description="token expired", error_uri="https://example.com"`, res.Header.Get("WWW-Authenticate"))
 }
 
@@ -1066,8 +1010,7 @@ func Test_ChallengeQuotedStringEscaping(t *testing.T) {
 			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return false, errors.New("invalid") },
 		}))
 
-		res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		res := apptest.Do(t, app, "/")
 		require.Equal(t, `ApiKey realm="area \"A\"\\%01\n"`, res.Header.Get(fiber.HeaderWWWAuthenticate))
 	})
 
@@ -1085,8 +1028,7 @@ func Test_ChallengeQuotedStringEscaping(t *testing.T) {
 
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set(fiber.HeaderAuthorization, "Bearer bad")
-		res, err := app.Test(req)
-		require.NoError(t, err)
+		res := apptest.Do(t, app, req)
 		require.Equal(
 			t,
 			`Bearer realm="area \"A\"\\%01", error="invalid_token", error_description="bad \"token\"\\%02\n", error_uri="https://example.com/docs?q=\"x\""`,
@@ -1108,9 +1050,7 @@ func Test_BearerErrorURIOnly(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "Bearer something")
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	res := apptest.Expect(t, app, req, http.StatusUnauthorized)
 	require.Equal(t, `Bearer realm="Restricted", error="invalid_token", error_uri="https://example.com/docs"`, res.Header.Get("WWW-Authenticate"))
 }
 
@@ -1127,9 +1067,7 @@ func Test_BearerInsufficientScope(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "Bearer something")
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	res := apptest.Expect(t, app, req, http.StatusUnauthorized)
 	require.Equal(t, `Bearer realm="Restricted", error="insufficient_scope", scope="read"`, res.Header.Get("WWW-Authenticate"))
 }
 
@@ -1179,9 +1117,7 @@ func Test_WWWAuthenticateOnlyOn401(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "Bearer bad")
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusForbidden, res.StatusCode)
+	res := apptest.Expect(t, app, req, http.StatusForbidden)
 	require.Empty(t, res.Header.Get("WWW-Authenticate"))
 }
 
@@ -1193,9 +1129,7 @@ func Test_DefaultChallengeForNonAuthExtractor(t *testing.T) {
 	}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
-	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	res := apptest.Expect(t, app, "/", http.StatusUnauthorized)
 	require.Equal(t, `ApiKey realm="Restricted"`, res.Header.Get(fiber.HeaderWWWAuthenticate))
 }
 
@@ -1210,9 +1144,7 @@ func Test_MultipleWWWAuthenticateChallenges(t *testing.T) {
 	}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
-	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	res := apptest.Expect(t, app, "/", http.StatusUnauthorized)
 	require.Equal(t, `Bearer realm="Restricted", ApiKey realm="Restricted"`, res.Header.Get(fiber.HeaderWWWAuthenticate))
 }
 
@@ -1228,9 +1160,7 @@ func Test_ProxyAuthenticateHeader(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", "Bearer bad")
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusProxyAuthRequired, res.StatusCode)
+	res := apptest.Expect(t, app, req, http.StatusProxyAuthRequired)
 	require.Equal(t, `Bearer realm="Restricted"`, res.Header.Get(fiber.HeaderProxyAuthenticate))
 	require.Empty(t, res.Header.Get(fiber.HeaderWWWAuthenticate))
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/dns/dnsmessage"
@@ -300,21 +300,16 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 			app := fiber.New()
 			app.Get("/", func(c fiber.Ctx) error { return do(c, target) })
 
-			resp, err := app.Test(
-				httptest.NewRequest(fiber.MethodGet, "/", http.NoBody),
-				fiber.TestConfig{Timeout: 10 * time.Second, FailOnTimeout: false},
-			)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 10 * time.Second, FailOnTimeout: false})
 
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
+			body := apptest.Body(t, resp)
 			require.NoError(t, resp.Body.Close())
 
 			// The dial-time guard must reject the rebound loopback address,
 			// so the internal secret is never proxied back.
 			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-			require.NotContains(t, string(body), "SECRET_INTERNAL_DATA")
-			require.Contains(t, string(body), "blocked")
+			require.NotContains(t, body, "SECRET_INTERNAL_DATA")
+			require.Contains(t, body, "blocked")
 			// >= 2 A lookups proves the up-front validation lookup (public,
 			// allowed) happened AND a second dial-time lookup (rebound,
 			// blocked) happened — i.e. the block is genuinely at dial time,

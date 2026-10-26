@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -240,9 +241,7 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 			if tc.auth != "" {
 				req.Header.Set(fiber.HeaderAuthorization, tc.auth)
 			}
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, req, fiber.StatusOK)
 
 			// The body is stored under its own key, which is the entry key plus
 			// the suffix the manager appends.

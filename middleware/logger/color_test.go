@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/mattn/go-colorable"
 	"github.com/stretchr/testify/require"
 )
@@ -46,9 +45,7 @@ func Test_Logger_DefaultFormat_StatusColors(t *testing.T) {
 				return c.SendStatus(tc.status)
 			})
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, tc.status, resp.StatusCode)
+			apptest.Expect(t, app, "/", tc.status)
 			require.Contains(t, buf.String(), "|"+tc.want+fmt.Sprintf(" %3d ", tc.status)+colors.Reset+"|")
 		})
 	}
@@ -83,9 +80,7 @@ func Test_Logger_DefaultFormat_MethodColors(t *testing.T) {
 				return c.SendString("ok")
 			})
 
-			resp, err := app.Test(httptest.NewRequest(tc.method, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, apptest.Req(tc.method, "/"), fiber.StatusOK)
 			require.Contains(t, buf.String(), "|"+tc.want+fmt.Sprintf(" %-7s ", tc.method)+colors.Reset+"|")
 		})
 	}
@@ -106,9 +101,7 @@ func Test_Logger_DefaultFormat_ColoredError(t *testing.T) {
 		return errors.New("boom\r\n200 | forged")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 
 	out := buf.String()
 	require.Contains(t, out, colors.Red+" | boom  200 | forged"+colors.Reset)

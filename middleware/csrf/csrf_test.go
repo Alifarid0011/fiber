@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	"github.com/gofiber/fiber/v3/internal/redact"
@@ -133,9 +134,7 @@ func TestCSRFStorageGetError(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 	require.Error(t, captured)
 	require.ErrorContains(t, captured, "csrf: failed to fetch token from storage")
 }
@@ -164,9 +163,7 @@ func TestCSRFStorageSetError(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusTeapot)
 	require.Error(t, captured)
 	require.ErrorContains(t, captured, "csrf: failed to store token in storage")
 }
@@ -198,9 +195,7 @@ func TestCSRFStorageDeleteError(t *testing.T) {
 	req.Header.Set(HeaderName, "token")
 	req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 	require.Error(t, captured)
 	require.ErrorContains(t, captured, "csrf: failed to delete token from storage")
 }
@@ -638,9 +633,7 @@ func Test_CSRF_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
 func Test_CSRFLoggerTagRedactsToken(t *testing.T) {
@@ -658,9 +651,7 @@ func Test_CSRFLoggerTagRedactsToken(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	// CSRF tokens are randomly generated per request, so assert on the
 	// redaction shape (4-byte prefix + Mask) rather than a fixed value.
 	got := buf.String()
@@ -680,9 +671,7 @@ func Test_CSRFLogContextTagRedactsToken(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Regexp(t, `\[Info\] csrf-token=.{`+strconv.Itoa(redact.PrefixLength)+`}`+regexp.QuoteMeta(redact.Mask)+` start`, buf.String())
 }
 
@@ -1968,9 +1957,7 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 
 	var token string
 	for _, c := range resp.Cookies() {
@@ -1985,9 +1972,7 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 
 	getReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	getReq.Header.Set(HeaderName, token)
-	resp, err = app.Test(getReq)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, getReq, fiber.StatusOK)
 
 	getReq = httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
 	getReq.Header.Set("X-Requested-With", "XMLHttpRequest")
@@ -1998,15 +1983,11 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 		Value: token,
 	})
 
-	resp, err = app.Test(getReq)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, getReq, fiber.StatusOK)
 
 	getReq.Header.Set(fiber.HeaderAccept, "*/*")
 	getReq.Header.Del(HeaderName)
-	resp, err = app.Test(getReq)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, getReq, fiber.StatusOK)
 
 	postReq := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
 	postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
@@ -2015,9 +1996,7 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 		Name:  ConfigDefault.CookieName,
 		Value: token,
 	})
-	resp, err = app.Test(postReq)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, postReq, fiber.StatusOK)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_CSRF_Check -benchmem -count=4
@@ -2156,9 +2135,7 @@ func Test_CSRF_TokenFromContext(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 }
 
 func Test_CSRF_FromContextMethods(t *testing.T) {
@@ -2186,9 +2163,7 @@ func Test_CSRF_FromContextMethods(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 }
 
 func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
@@ -2205,9 +2180,7 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 }
 
 func Test_deleteTokenFromStorage(t *testing.T) {
@@ -2778,9 +2751,7 @@ func Test_CSRF_Extractor_NonNotFoundError(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "/"), fiber.StatusTeapot)
 	require.ErrorIs(t, captured, sentinel)
 }
 
@@ -2809,9 +2780,7 @@ func Test_CSRF_StorageGetError_OnValidation(t *testing.T) {
 	req.Header.Set(HeaderName, "token")
 	req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 	require.ErrorContains(t, captured, "csrf: failed to fetch token from storage")
 }
 
@@ -2837,9 +2806,7 @@ func Test_CSRF_DeleteToken_NoCookie(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.ErrorIs(t, deleteErr, ErrTokenNotFound)
 	require.ErrorIs(t, captured, ErrTokenNotFound)
 }
@@ -2875,9 +2842,7 @@ func Test_CSRF_DeleteToken_StorageError(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 	require.ErrorContains(t, deleteErr, "csrf: failed to delete token from storage")
 	require.ErrorContains(t, captured, "csrf: failed to delete token from storage")
 }
@@ -3227,8 +3192,7 @@ func Test_CSRF_Security_CookieAttributes(t *testing.T) {
 	}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 
 	var cookie *http.Cookie
 	for _, ck := range resp.Cookies() {

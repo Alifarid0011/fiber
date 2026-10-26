@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -66,10 +66,8 @@ func Test_Rewrite(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", http.NoBody)
 	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
+	body := apptest.BodyBytes(t, resp)
 	bodyString := string(body)
 
 	require.NoError(t, err)
@@ -93,10 +91,8 @@ func Test_Rewrite(t *testing.T) {
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", http.NoBody)
 	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, req)
+	body = apptest.BodyBytes(t, resp)
 	bodyString = string(body)
 
 	require.NoError(t, err)
@@ -117,10 +113,8 @@ func Test_Rewrite(t *testing.T) {
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/users/123/orders/456", http.NoBody)
 	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, req)
+	body = apptest.BodyBytes(t, resp)
 	bodyString = string(body)
 
 	require.NoError(t, err)
@@ -145,10 +139,8 @@ func Test_Rewrite(t *testing.T) {
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", http.NoBody)
 	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, req)
+	body = apptest.BodyBytes(t, resp)
 	bodyString = string(body)
 
 	require.NoError(t, err)
@@ -169,9 +161,7 @@ func Test_Rewrite(t *testing.T) {
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", http.NoBody)
 	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusNotFound)
 }
 
 // Test_Rewrite_StartAnchor verifies that a rule only matches from the start of
@@ -196,20 +186,16 @@ func Test_Rewrite_StartAnchor(t *testing.T) {
 	// The rule matches from the start of the path and is rewritten.
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/users/1", http.NoBody)
 	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "rewritten:1", string(body))
 
 	// A path that only contains the rule path as a suffix must not be rewritten.
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/api/users/1", http.NoBody)
 	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, req)
+	body = apptest.BodyBytes(t, resp)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "api:1", string(body))
 }
@@ -438,11 +424,9 @@ func rewritten(t *testing.T, cfg Config, path string) string {
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, path, http.NoBody)
 	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	return string(body)
+	resp := apptest.Do(t, app, req)
+	body := apptest.Body(t, resp)
+	return body
 }
 
 func Test_Rewrite_RuleListOrderWins(t *testing.T) {
@@ -606,12 +590,7 @@ func Test_Rewrite_TwoDigitCaptures(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/t/a/b/c/d/e/f/g/h/i/j/k", http.NoBody)
 	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "k j a", string(body))
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, "k j a")
 }
 
 // rewrittenRaw hands app a request line exactly as written and reports the

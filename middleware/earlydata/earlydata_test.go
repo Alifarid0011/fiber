@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -103,9 +104,7 @@ func executeExpectations(t *testing.T, app *fiber.App, remoteAddr string, expect
 			req.Header.Set(headerName, expectation.header)
 		}
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, expectation.status, resp.StatusCode)
+		apptest.Expect(t, app, req, expectation.status)
 	}
 }
 
@@ -187,9 +186,7 @@ func Test_EarlyDataNext(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(headerName, headerValOn)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 	require.True(t, called)
 }
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -24,9 +25,7 @@ func Test_RequestID(t *testing.T) {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 
 	reqid := resp.Header.Get(fiber.HeaderXRequestID)
 	require.Len(t, reqid, 43)
@@ -34,9 +33,7 @@ func Test_RequestID(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add(fiber.HeaderXRequestID, reqid)
 
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, reqid, resp.Header.Get(fiber.HeaderXRequestID))
 }
 
@@ -64,9 +61,7 @@ func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 
 	rid := resp.Header.Get(fiber.HeaderXRequestID)
 	require.NotEmpty(t, rid)
@@ -89,9 +84,7 @@ func Test_RequestID_GeneratorAlwaysInvalid(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 
 	rid := resp.Header.Get(fiber.HeaderXRequestID)
 	require.NotEmpty(t, rid)
@@ -112,9 +105,7 @@ func Test_RequestID_CustomGenerator(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 
 	rid := resp.Header.Get(fiber.HeaderXRequestID)
 	require.Equal(t, "custom-valid-id", rid)
@@ -179,8 +170,7 @@ func Test_RequestID_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	require.Empty(t, resp.Header.Get(fiber.HeaderXRequestID))
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -204,8 +194,7 @@ func Test_RequestID_FromContext(t *testing.T) {
 		return c.Next()
 	})
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 	require.Equal(t, reqID, ctxVal)
 }
 
@@ -227,9 +216,7 @@ func Test_RequestID_LoggerMiddlewareTag(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, "req-42"+" req-42", buf.String())
 }
 
@@ -249,9 +236,7 @@ func Test_RequestID_LogWithContextFormat(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Contains(t, buf.String(), "[Info] [req-42] start")
 }
 
@@ -267,8 +252,7 @@ func Test_RequestID_FromContext_Empty(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 }
 
 func Test_RequestID_FromContext_Types(t *testing.T) {
@@ -293,9 +277,7 @@ func Test_RequestID_FromContext_Types(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 }
 
 // go test -v -run=^$ -bench=Benchmark_isValidRequestID -benchmem -count=4

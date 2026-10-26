@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
@@ -45,9 +45,7 @@ func Test_BasicAuth_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
 func Test_Middleware_BasicAuth(t *testing.T) {
@@ -102,16 +100,13 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 
 		req := httptest.NewRequest(fiber.MethodGet, "/testauth", http.NoBody)
 		req.Header.Add("Authorization", "Basic "+creds)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 
-		body, err := io.ReadAll(resp.Body)
-
-		require.NoError(t, err)
+		body := apptest.Body(t, resp)
 		require.Equal(t, tt.statusCode, resp.StatusCode)
 
 		if tt.statusCode == 200 {
-			require.Equal(t, tt.username, string(body))
+			require.Equal(t, tt.username, body)
 		}
 	}
 }
@@ -137,9 +132,7 @@ func Test_BasicAuthLoggerTagWritesUsername(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.SetBasicAuth("john", "doe")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, "john", buf.String())
 }
 
@@ -161,9 +154,7 @@ func Test_BasicAuthLogContextTagWritesUsername(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.SetBasicAuth("john", "doe")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Contains(t, buf.String(), "[Info] username=john start")
 }
 
@@ -190,9 +181,7 @@ func Test_BasicAuth_UsernameFromContext_Types(t *testing.T) {
 	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add(fiber.HeaderAuthorization, "Basic "+creds)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_BasicAuth_AuthorizerCtx(t *testing.T) {
@@ -215,9 +204,7 @@ func Test_BasicAuth_AuthorizerCtx(t *testing.T) {
 	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
 	req := httptest.NewRequest(fiber.MethodGet, "/ctx", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 	require.True(t, called)
 }
 
@@ -261,9 +248,7 @@ func Test_BasicAuth_NoConfig(t *testing.T) {
 						req.Header.Set(fiber.HeaderAuthorization, tc.authorization)
 					}
 
-					resp, err := app.Test(req)
-					require.NoError(t, err)
-					require.Equal(t, tc.want, resp.StatusCode)
+					resp := apptest.Expect(t, app, req, tc.want)
 					if tc.want == fiber.StatusUnauthorized {
 						require.Equal(t, `Basic realm="Restricted", charset="UTF-8"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
 					}
@@ -328,9 +313,7 @@ func Test_BasicAuth_Unauthorized_KeepsVary(t *testing.T) {
 				req.Header.Set("X-Earlier-Vary", tc.earlier)
 			}
 
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+			resp := apptest.Expect(t, app, req, fiber.StatusUnauthorized)
 			require.Equal(t, []string{tc.want}, resp.Header.Values(fiber.HeaderVary))
 		})
 	}
@@ -343,9 +326,7 @@ func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 	hashedJohn := sha256Hash("doe")
 	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusUnauthorized)
 	require.Equal(t, `Basic realm="Restricted", charset="UTF-8"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
 }
 
@@ -356,9 +337,7 @@ func Test_BasicAuth_WWWAuthenticateHeader_UTF8(t *testing.T) {
 	hashedJohn := sha256Hash("doe")
 	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}, Charset: "utf-8"}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusUnauthorized)
 	require.Equal(t, `Basic realm="Restricted", charset="UTF-8"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
 }
 
@@ -373,9 +352,7 @@ func Test_BasicAuth_WWWAuthenticateHeader_QuotedString(t *testing.T) {
 		Realm: "area \"A\"\\\x01\t\n\r\x7f café",
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusUnauthorized)
 	require.Equal(
 		t,
 		`Basic realm="area \"A\"\\%01%09\n\r%7F café", charset="UTF-8"`,
@@ -392,10 +369,7 @@ func Test_BasicAuth_InvalidHeader(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Basic notbase64")
-	resp, err := app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusBadRequest)
 }
 
 func Test_BasicAuth_MissingScheme(t *testing.T) {
@@ -407,10 +381,7 @@ func Test_BasicAuth_MissingScheme(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Bearer token")
-	resp, err := app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, fiber.StatusUnauthorized)
 	require.Equal(t, `Basic realm="Restricted", charset="UTF-8"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
 }
 
@@ -424,10 +395,7 @@ func Test_BasicAuth_MissingColon(t *testing.T) {
 	creds := base64.StdEncoding.EncodeToString([]byte("john"))
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-	resp, err := app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusBadRequest)
 }
 
 func Test_BasicAuth_EmptyAuthorization(t *testing.T) {
@@ -441,9 +409,7 @@ func Test_BasicAuth_EmptyAuthorization(t *testing.T) {
 	for _, h := range cases {
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set(fiber.HeaderAuthorization, h)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+		apptest.Expect(t, app, req, fiber.StatusUnauthorized)
 	}
 }
 
@@ -479,8 +445,7 @@ func Test_BasicAuth_RepeatedAuthorizationIsRefused(t *testing.T) {
 		} {
 			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 			req.Header[fiber.HeaderAuthorization] = lines
-			resp, err := app.Test(req)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
 			require.Equal(t, fiber.StatusBadRequest, resp.StatusCode, "lines %q", lines)
 			require.Empty(t, resp.Header.Get(fiber.HeaderWWWAuthenticate), "a malformed message is not challenged")
 		}
@@ -489,9 +454,7 @@ func Test_BasicAuth_RepeatedAuthorizationIsRefused(t *testing.T) {
 		// everything.
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set(fiber.HeaderAuthorization, creds)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+		apptest.Expect(t, app, req, fiber.StatusTeapot)
 	})
 
 	t.Run("lines under two spellings", func(t *testing.T) {
@@ -504,15 +467,11 @@ func Test_BasicAuth_RepeatedAuthorizationIsRefused(t *testing.T) {
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header[fiber.HeaderAuthorization] = []string{""}
 		req.Header["authorization"] = []string{creds}
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+		apptest.Expect(t, app, req, fiber.StatusBadRequest)
 
 		req = httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header["authorization"] = []string{creds}
-		resp, err = app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+		apptest.Expect(t, app, req, fiber.StatusTeapot)
 	})
 
 	t.Run("behind adaptor.FiberApp", func(t *testing.T) {
@@ -561,9 +520,7 @@ func Test_BasicAuth_HeaderWhitespace(t *testing.T) {
 	for _, tt := range cases {
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set(fiber.HeaderAuthorization, tt.header)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, tt.status, resp.StatusCode)
+		apptest.Expect(t, app, req, tt.status)
 	}
 }
 
@@ -589,9 +546,7 @@ func Test_BasicAuth_ControlChars(t *testing.T) {
 		called = false
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set(fiber.HeaderAuthorization, "Basic "+c)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, fiber.StatusBadRequest)
 		require.Empty(t, resp.Header.Get(fiber.HeaderWWWAuthenticate))
 		require.False(t, called)
 	}
@@ -623,9 +578,7 @@ func Test_BasicAuth_UnicodeControlPolicies(t *testing.T) {
 			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 			req.Header.Set(fiber.HeaderAuthorization, "Basic "+base64.StdEncoding.EncodeToString([]byte(test.credentials)))
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, test.status, resp.StatusCode)
+			apptest.Expect(t, app, req, test.status)
 			require.Equal(t, test.authorized, called)
 		})
 	}
@@ -643,9 +596,7 @@ func Test_BasicAuth_UnpaddedBase64(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 }
 
 func Test_BasicAuth_NonASCIIHeader(t *testing.T) {
@@ -679,9 +630,7 @@ func Test_BasicAuth_InvalidUTF8(t *testing.T) {
 	creds := base64.StdEncoding.EncodeToString([]byte{'j', 'o', 'h', 'n', ':', 0xff, 'd', 'o', 'e'})
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusBadRequest)
 	require.False(t, called)
 }
 
@@ -704,9 +653,7 @@ func Test_BasicAuth_UTF8Normalization(t *testing.T) {
 	creds := base64.StdEncoding.EncodeToString([]byte(decomposed + ":doe"))
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 	require.True(t, called)
 }
 
@@ -757,9 +704,7 @@ func Test_BasicAuth_HeaderLimit(t *testing.T) {
 		app.Use(New(Config{Users: map[string]string{"john": hashedJohn}, HeaderLimit: 10}))
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusRequestHeaderFieldsTooLarge, resp.StatusCode)
+		apptest.Expect(t, app, req, fiber.StatusRequestHeaderFieldsTooLarge)
 	})
 
 	t.Run("allowed", func(t *testing.T) {
@@ -769,9 +714,7 @@ func Test_BasicAuth_HeaderLimit(t *testing.T) {
 		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+		apptest.Expect(t, app, req, fiber.StatusTeapot)
 	})
 }
 
@@ -851,9 +794,7 @@ func Test_BasicAuth_Immutable(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 }
 
 func Test_parseHashedPassword(t *testing.T) {
@@ -995,9 +936,7 @@ func Test_BasicAuth_HashVariants(t *testing.T) {
 		creds := base64.StdEncoding.EncodeToString([]byte("john:" + pass))
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+		apptest.Expect(t, app, req, fiber.StatusTeapot)
 	}
 }
 
@@ -1025,9 +964,7 @@ func Test_BasicAuth_HashVariants_Invalid(t *testing.T) {
 		creds := base64.StdEncoding.EncodeToString([]byte("john:" + wrong))
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+		apptest.Expect(t, app, req, fiber.StatusUnauthorized)
 	}
 }
 

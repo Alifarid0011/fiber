@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/urlnorm"
 	"github.com/stretchr/testify/require"
 )
@@ -27,8 +28,7 @@ func testApp(rules []Rule, unescape bool) *fiber.App {
 // get sends one GET to app and returns the response status and Location.
 func get(t *testing.T, app *fiber.App, path string) (status int, location string) { //nolint:nonamedreturns // names document the pair
 	t.Helper()
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, path)
 	return resp.StatusCode, resp.Header.Get("Location")
 }
 
@@ -319,15 +319,13 @@ func Test_Redirect_OverlappingRulesAreDeterministic(t *testing.T) {
 		return app
 	}
 
-	resp, err := build().Test(httptest.NewRequest(fiber.MethodGet, "/cdn/ax", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, build(), "/cdn/ax")
 	first := resp.Header.Get("Location")
 	require.NotEmpty(t, first)
 
 	// Rebuilding the middleware re-walks the rules map, which is where the randomization came from.
 	for range 20 {
-		resp, err := build().Test(httptest.NewRequest(fiber.MethodGet, "/cdn/ax", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, build(), "/cdn/ax")
 		require.Equal(t, first, resp.Header.Get("Location"))
 	}
 }

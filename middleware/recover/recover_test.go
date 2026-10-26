@@ -4,13 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,9 +69,7 @@ func Test_Recover(t *testing.T) {
 				panic(tc.panicVal)
 			})
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+			apptest.Expect(t, app, "/panic", fiber.StatusTeapot)
 		})
 	}
 }
@@ -87,9 +84,7 @@ func Test_Recover_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
 func Test_Recover_EnableStackTrace(t *testing.T) {
@@ -103,9 +98,7 @@ func Test_Recover_EnableStackTrace(t *testing.T) {
 		panic("Hi, I'm an error!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/panic", fiber.StatusInternalServerError)
 }
 
 // Not parallel: swaps os.Stderr to capture what the default handler writes.

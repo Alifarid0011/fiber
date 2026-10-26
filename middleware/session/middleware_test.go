@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
@@ -356,9 +356,7 @@ func Test_SessionLoggerTagRedactsSessionID(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Contains(t, buf.String(), "****")
 }
 
@@ -380,9 +378,7 @@ func Test_SessionLoggerTagWithOuterLoggerDoesNotPanic(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Empty(t, buf.String())
 }
 
@@ -398,9 +394,7 @@ func Test_SessionLogContextTagRedactsSessionID(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Contains(t, buf.String(), "[Info] session-id=")
 	require.Contains(t, buf.String(), "**** start")
 }
@@ -476,9 +470,7 @@ func Test_Session_FromContext_Types(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 }
 
 func Test_Session_WithConfig(t *testing.T) {
@@ -934,19 +926,13 @@ func Test_Session_Save_After_Handler_Cancel(t *testing.T) {
 		return c.SendString(v)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/set", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/set")
 	cookie := resp.Header.Get("Set-Cookie")
 	require.NotEmpty(t, cookie)
 
 	req := httptest.NewRequest(fiber.MethodGet, "/get", http.NoBody)
 	req.Header.Set("Cookie", cookie)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "world", string(body))
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, "world")
 }
 
 // Test_Session_FromContext_RetainedContext covers a context kept past the end of
@@ -1000,16 +986,12 @@ func Test_Session_FromContext_RetainedContext(t *testing.T) {
 			for range 40 {
 				stale, current, staleID = nil, nil, ""
 
-				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody))
-				require.NoError(t, err)
-				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+				apptest.Expect(t, app, "/a", fiber.StatusOK)
 
 				// The request is over: its context no longer leads to a session.
 				require.Nil(t, FromContext(retained), "the released middleware is still reachable")
 
-				resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/b", http.NoBody))
-				require.NoError(t, err)
-				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+				apptest.Expect(t, app, "/b", fiber.StatusOK)
 
 				require.Nil(t, stale, "a retained context reached request /b's session")
 				require.Empty(t, staleID)
@@ -1046,9 +1028,7 @@ func Test_Session_FromContext_RetainedContext_AfterHandler(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.NotNil(t, inside, "the context must resolve while the request runs")
 
 	close(release)

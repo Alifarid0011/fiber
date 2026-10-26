@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -45,8 +46,7 @@ func crossOriginAllowed(t *testing.T, cfg CrossOriginConfig, r *crossOriginReque
 		req.Header.Add(fiber.HeaderOrigin, value)
 	}
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
 	if resp.StatusCode == fiber.StatusNoContent {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -65,8 +66,7 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	})
 
 	for _, path := range []string{"/old", "/hot"} {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, path)
 		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 		require.NoError(t, resp.Body.Close())
 	}
@@ -175,8 +175,7 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 		}
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/old", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/old")
 	require.NoError(t, resp.Body.Close())
 
 	storage.armed.Store(true)
@@ -203,8 +202,7 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 		t.Fatal("eviction did not reach blocked deletion")
 	}
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/slot", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/slot")
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	require.NoError(t, resp.Body.Close())
 	release()
@@ -220,9 +218,7 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 	uncacheable.Store(true)
 	request := httptest.NewRequest(fiber.MethodGet, "/old", http.NoBody)
 	request.Header.Set(fiber.HeaderCacheControl, "max-age=0")
-	resp, err = app.Test(request)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, request, fiber.StatusOK)
 	require.NoError(t, resp.Body.Close())
 	require.Zero(t, probe.counted())
 	require.Equal(t, 1, probe.nodes())

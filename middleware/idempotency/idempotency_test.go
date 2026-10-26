@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/valyala/fasthttp"
 
 	"github.com/stretchr/testify/assert"
@@ -95,15 +96,13 @@ func Test_Idempotency(t *testing.T) {
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
-		resp, err := app.Test(req, fiber.TestConfig{
+		resp := apptest.Do(t, app, req, fiber.TestConfig{
 			Timeout:       15 * time.Second,
 			FailOnTimeout: true,
 		})
-		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode, string(body))
-		return string(body)
+		body := apptest.Body(t, resp)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, body)
+		return body
 	}
 
 	require.Equal(t, "1", doReq(fiber.MethodGet, "/", ""))

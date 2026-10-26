@@ -2,14 +2,13 @@ package logger
 
 import (
 	"bytes"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/require"
 )
@@ -108,9 +107,7 @@ func Test_RegisterContextTag(t *testing.T) {
 		return c.SendString("ok")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Contains(t, buf.String(), "rendered-value")
 
 	require.Panics(t, func() {
@@ -141,9 +138,7 @@ func Test_RegisterContextTag_EmptyValue(t *testing.T) {
 		return c.SendString("ok")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Contains(t, buf.String(), "[]")
 }
 
@@ -163,9 +158,7 @@ func Test_Logger_PreRegisteredMiddlewareTag(t *testing.T) {
 		return c.SendString("ok")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Contains(t, buf.String(), "[]")
 }
 
@@ -190,9 +183,7 @@ func Test_Logger_New_TimeDoneUpdater(t *testing.T) {
 		return c.SendString("ok")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 
 	// The format always emits a trailing newline, so a non-empty buffer alone
 	// would pass even if ${time} rendered empty. Trim it and assert the rendered

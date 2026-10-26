@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -374,8 +374,7 @@ func Test_PaginateWithQueries(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?page=2&limit=20", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?page=2&limit=20")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -410,8 +409,7 @@ func Test_PaginateWithOffset(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?offset=20&limit=20", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?offset=20&limit=20")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -443,8 +441,7 @@ func Test_PaginateCheckDefaultsWhenNoQueries(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -475,8 +472,7 @@ func Test_PaginateCheckDefaultsWhenNoPage(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?limit=20", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?limit=20")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var body paginateResponse
@@ -504,8 +500,7 @@ func Test_PaginateCheckDefaultsWhenNoLimit(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?page=2", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?page=2")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var body paginateResponse
@@ -538,8 +533,7 @@ func Test_PaginateConfigDefaultPageDefaultLimit(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var body paginateResponse
@@ -573,8 +567,7 @@ func Test_PaginateConfigPageKeyLimitKey(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?site=2&size=5", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?site=2&size=5")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var body paginateResponse
@@ -606,8 +599,7 @@ func Test_PaginateNegativeDefaultPageDefaultLimitValues(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var body paginateResponse
@@ -630,8 +622,7 @@ func Test_PaginateFromContextWithoutNew(t *testing.T) {
 		return c.JSON(nil)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }
@@ -653,8 +644,7 @@ func Test_PaginateNextSkip(t *testing.T) {
 		return c.JSON(nil)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }
@@ -692,8 +682,7 @@ func Test_PaginateEdgeCases(t *testing.T) {
 				return c.JSON(pageInfo)
 			})
 
-			resp, err := app.Test(httptest.NewRequest(http.MethodGet, tc.url, http.NoBody))
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, tc.url)
 			defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 			require.Equal(t, 200, resp.StatusCode)
 
@@ -739,8 +728,7 @@ func Test_PaginateWithMultipleSorting(t *testing.T) {
 				})
 			})
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.url, http.NoBody))
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, tc.url)
 			defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 			var result paginateResponse
@@ -862,8 +850,7 @@ func Test_PaginateWithCursor(t *testing.T) {
 	cursorJSON := `{"id":42}`
 	cursor := base64.RawURLEncoding.EncodeToString([]byte(cursorJSON))
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor="+cursor+"&limit=20", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?cursor="+cursor+"&limit=20")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -889,8 +876,7 @@ func Test_PaginateCursorPriorityOverPage(t *testing.T) {
 	cursorJSON := `{"id":42}`
 	cursor := base64.RawURLEncoding.EncodeToString([]byte(cursorJSON))
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor="+cursor+"&page=5&limit=10", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?cursor="+cursor+"&page=5&limit=10")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var result PageInfo
@@ -912,8 +898,7 @@ func Test_PaginateEmptyCursorIsFirstPage(t *testing.T) {
 		return c.JSON(pageInfo)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor=&limit=10", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?cursor=&limit=10")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -944,8 +929,7 @@ func Test_PaginateInvalidCursorReturns400(t *testing.T) {
 				return c.JSON(pageInfo)
 			})
 
-			resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor="+tc.cursor, http.NoBody))
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, "/?cursor="+tc.cursor)
 			defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 			require.Equal(t, 400, resp.StatusCode)
 		})
@@ -975,8 +959,7 @@ func Test_PaginateCursorWithSort(t *testing.T) {
 	cursorJSON := `{"id":42}`
 	cursor := base64.RawURLEncoding.EncodeToString([]byte(cursorJSON))
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor="+cursor+"&sort=name,-id", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?cursor="+cursor+"&sort=name,-id")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var result cursorResponse
@@ -1005,8 +988,7 @@ func Test_PaginateCursorWithCustomKey(t *testing.T) {
 	cursorJSON := `{"id":1}`
 	cursor := base64.RawURLEncoding.EncodeToString([]byte(cursorJSON))
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?after="+cursor, http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?after="+cursor)
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -1035,8 +1017,7 @@ func Test_PaginateCursorWithParamAlias(t *testing.T) {
 	cursorJSON := `{"id":1}`
 	cursor := base64.RawURLEncoding.EncodeToString([]byte(cursorJSON))
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?starting_after="+cursor, http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?starting_after="+cursor)
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -1064,8 +1045,7 @@ func Test_PaginateNoCursorFallsBackToPageMode(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?page=3&limit=15", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/?page=3&limit=15")
 	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var result paginateResponse
@@ -1152,8 +1132,7 @@ func Test_PaginateCustomMaxLimit(t *testing.T) {
 				return c.JSON(pageInfo)
 			})
 
-			resp, err := app.Test(httptest.NewRequest(http.MethodGet, tc.url, http.NoBody))
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, tc.url)
 			defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 			require.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -1268,11 +1247,9 @@ func Test_Paginate_EmptySortKey_IgnoresQuery(t *testing.T) {
 	})
 
 	for _, target := range []string{"/", "/?=-name"} {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
-		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "1 id asc", string(body), "GET %s must use the default sort", target)
+		resp := apptest.Do(t, app, target)
+		body := apptest.Body(t, resp)
+		require.Equal(t, "1 id asc", body, "GET %s must use the default sort", target)
 	}
 }
 

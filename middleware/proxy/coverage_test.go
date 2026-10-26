@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -288,8 +289,7 @@ func Test_Coverage_DomainForward_HostMismatch_DoesNotProxy(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/ping", http.NoBody)
 	req.Host = "other-host.example"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	// Fiber returns 200 when the middleware returns nil and there is no
 	// downstream handler; the important assertion is that we did NOT get
 	// a 5xx from dialing 127.0.0.1:1.

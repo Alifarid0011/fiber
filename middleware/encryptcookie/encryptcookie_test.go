@@ -4,8 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,6 +12,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 )
 
 func Test_Middleware_Panics(t *testing.T) {
@@ -145,9 +144,7 @@ func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusTeapot)
 	require.ErrorIs(t, captured, expected)
 	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
 }
@@ -185,9 +182,7 @@ func Test_Middleware_EncryptionErrorDoesNotMaskNextError(t *testing.T) {
 		return downstreamErr
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusTeapot)
 	require.ErrorIs(t, captured, downstreamErr)
 	require.ErrorIs(t, captured, encryptErr)
 }
@@ -290,8 +285,7 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	require.Equal(t, "SomeThing", resp.Cookies()[0].Value)
 }
 

@@ -1,14 +1,12 @@
 package healthcheck
 
 import (
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/shamaton/msgpack/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -16,8 +14,7 @@ import (
 
 func shouldGiveStatus(t *testing.T, app *fiber.App, path string, expectedStatus int) {
 	t.Helper()
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
-	require.NoError(t, err)
+	req := apptest.Do(t, app, path)
 	require.Equal(t, expectedStatus, req.StatusCode, "path: "+path+" should match "+strconv.Itoa(expectedStatus))
 }
 
@@ -102,14 +99,10 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	// Live should return 200 with GET request
 	shouldGiveOK(t, app, "/live")
 	// Live should return 404 with POST request
-	req, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/live", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusMethodNotAllowed, req.StatusCode)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "/live"), fiber.StatusMethodNotAllowed)
 
 	// Ready should return 404 with POST request
-	req, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/ready", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusMethodNotAllowed, req.StatusCode)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "/ready"), fiber.StatusMethodNotAllowed)
 
 	// Ready should return 503 with GET request before the channel is closed
 	shouldGiveStatus(t, app, "/ready", fiber.StatusServiceUnavailable)
@@ -183,28 +176,24 @@ func Test_HealthCheck_Head(t *testing.T) {
 		{path: LivenessEndpoint, status: fiber.StatusOK},
 		{path: ReadinessEndpoint, status: fiber.StatusServiceUnavailable},
 	} {
-		getResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.path, http.NoBody))
-		require.NoError(t, err)
+		getResp := apptest.Do(t, app, tc.path)
 		require.NoError(t, getResp.Body.Close())
 		require.Equal(t, tc.status, getResp.StatusCode, "path: "+tc.path)
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodHead, tc.path, http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, apptest.Req(fiber.MethodHead, tc.path))
 		require.Equal(t, getResp.StatusCode, resp.StatusCode, "path: "+tc.path)
 		// Date is left out, fasthttp refreshes its cached value once per second
 		for _, name := range []string{fiber.HeaderContentType, fiber.HeaderContentLength} {
 			require.Equal(t, getResp.Header.Get(name), resp.Header.Get(name), "path: "+tc.path+" header: "+name)
 		}
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		body := apptest.BodyBytes(t, resp)
 		require.NoError(t, resp.Body.Close())
 		require.Empty(t, body)
 	}
 
 	// Everything but GET and HEAD keeps falling through to the next handler
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/healthz", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, apptest.Req(fiber.MethodPost, "/healthz"))
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -290,25 +279,19 @@ func Test_HealthCheck_Text_Format(t *testing.T) {
 	}))
 
 	// Test successful healthcheck with default text format
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, LivenessEndpoint, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, req.StatusCode)
+	req := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
 	require.Equal(t, "text/plain; charset=utf-8", req.Header.Get("Content-Type"))
 
 	// Read body
-	body, err := io.ReadAll(req.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, req)
 	require.Equal(t, "OK", string(body))
 
 	// Test failed healthcheck with text format
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, ReadinessEndpoint, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
+	req = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
 	require.Equal(t, "text/plain; charset=utf-8", req.Header.Get("Content-Type"))
 
 	// Read body
-	body, err = io.ReadAll(req.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, req)
 	require.Equal(t, "Service Unavailable", string(body))
 }
 
@@ -328,25 +311,19 @@ func Test_HealthCheck_JSON_Format(t *testing.T) {
 	}))
 
 	// Test successful healthcheck with JSON format
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, LivenessEndpoint, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, req.StatusCode)
+	req := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
 	require.Equal(t, "application/json; charset=utf-8", req.Header.Get("Content-Type"))
 
 	// Read and parse JSON body
-	body, err := io.ReadAll(req.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, req)
 	require.JSONEq(t, `{"status":"OK"}`, string(body))
 
 	// Test failed healthcheck with JSON format
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, ReadinessEndpoint, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
+	req = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
 	require.Equal(t, "application/json; charset=utf-8", req.Header.Get("Content-Type"))
 
 	// Read and parse JSON body
-	body, err = io.ReadAll(req.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, req)
 	require.JSONEq(t, `{"status":"Service Unavailable"}`, string(body))
 }
 
@@ -366,26 +343,20 @@ func Test_HealthCheck_XML_Format(t *testing.T) {
 	}))
 
 	// Test successful healthcheck with XML format
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, LivenessEndpoint, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, req.StatusCode)
+	req := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
 	require.Equal(t, "application/xml; charset=utf-8", req.Header.Get("Content-Type"))
 
 	// Read and check XML body
-	body, err := io.ReadAll(req.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, req)
 	require.Contains(t, string(body), "<healthResponse>")
 	require.Contains(t, string(body), "<status>OK</status>")
 
 	// Test failed healthcheck with XML format
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, ReadinessEndpoint, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
+	req = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
 	require.Equal(t, "application/xml; charset=utf-8", req.Header.Get("Content-Type"))
 
 	// Read and check XML body
-	body, err = io.ReadAll(req.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, req)
 	require.Contains(t, string(body), "<healthResponse>")
 	require.Contains(t, string(body), "<status>Service Unavailable</status>")
 }
@@ -408,13 +379,10 @@ func Test_HealthCheck_MsgPack_Format(t *testing.T) {
 	}))
 
 	// Test successful healthcheck with MsgPack format
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, LivenessEndpoint, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, req.StatusCode)
+	req := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
 	require.Equal(t, "application/vnd.msgpack", req.Header.Get("Content-Type"))
 
-	body, err := io.ReadAll(req.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, req)
 	var livezResponse map[string]string
 	require.NoError(t, msgpack.Unmarshal(body, &livezResponse))
 	require.Len(t, livezResponse, 1)
@@ -423,13 +391,10 @@ func Test_HealthCheck_MsgPack_Format(t *testing.T) {
 	require.Equal(t, "OK", livezResponse["status"])
 
 	// Test failed healthcheck with MsgPack format
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, ReadinessEndpoint, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
+	req = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
 	require.Equal(t, "application/vnd.msgpack", req.Header.Get("Content-Type"))
 
-	body, err = io.ReadAll(req.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, req)
 	var readyzResponse map[string]string
 	require.NoError(t, msgpack.Unmarshal(body, &readyzResponse))
 	require.Len(t, readyzResponse, 1)
@@ -456,13 +421,10 @@ func Test_HealthCheck_CBOR_Format(t *testing.T) {
 	}))
 
 	// Test successful healthcheck with CBOR format
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, LivenessEndpoint, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, req.StatusCode)
+	req := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
 	require.Equal(t, "application/cbor", req.Header.Get("Content-Type"))
 
-	body, err := io.ReadAll(req.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, req)
 	var livezResponse map[string]string
 	require.NoError(t, cbor.Unmarshal(body, &livezResponse))
 	require.Len(t, livezResponse, 1)
@@ -471,13 +433,10 @@ func Test_HealthCheck_CBOR_Format(t *testing.T) {
 	require.Equal(t, "OK", livezResponse["status"])
 
 	// Test failed healthcheck with CBOR format
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, ReadinessEndpoint, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
+	req = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
 	require.Equal(t, "application/cbor", req.Header.Get("Content-Type"))
 
-	body, err = io.ReadAll(req.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, req)
 	var readyzResponse map[string]string
 	require.NoError(t, cbor.Unmarshal(body, &readyzResponse))
 	require.Len(t, readyzResponse, 1)

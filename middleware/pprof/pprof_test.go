@@ -2,13 +2,11 @@ package pprof
 
 import (
 	"bytes"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,13 +24,7 @@ func Test_Non_Pprof_Path(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "escaped", string(b))
+	apptest.ExpectBody(t, app, "/", 200, "escaped")
 }
 
 func Test_Non_Pprof_Path_WithPrefix(t *testing.T) {
@@ -44,13 +36,7 @@ func Test_Non_Pprof_Path_WithPrefix(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "escaped", string(b))
+	apptest.ExpectBody(t, app, "/", 200, "escaped")
 }
 
 func Test_Pprof_Index(t *testing.T) {
@@ -62,13 +48,10 @@ func Test_Pprof_Index(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/debug/pprof/", 200)
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	b := apptest.BodyBytes(t, resp)
 	require.True(t, bytes.Contains(b, []byte("<title>/debug/pprof/</title>")))
 }
 
@@ -81,14 +64,11 @@ func Test_Pprof_Index_WithPrefix(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/federated-fiber/debug/pprof/", 200)
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(b), "<title>/debug/pprof/</title>")
+	b := apptest.Body(t, resp)
+	require.Contains(t, b, "<title>/debug/pprof/</title>")
 }
 
 func Test_Pprof_Subs(t *testing.T) {
@@ -111,8 +91,7 @@ func Test_Pprof_Subs(t *testing.T) {
 			if sub == "profile" {
 				target += "?seconds=1"
 			}
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody), testConfig)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, target, testConfig)
 			require.Equal(t, 200, resp.StatusCode)
 		})
 	}
@@ -138,8 +117,7 @@ func Test_Pprof_Subs_WithPrefix(t *testing.T) {
 			if sub == "profile" {
 				target += "?seconds=1"
 			}
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody), testConfig)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, target, testConfig)
 			require.Equal(t, 200, resp.StatusCode)
 		})
 	}
@@ -154,9 +132,7 @@ func Test_Pprof_Other(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/303", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
+	apptest.Expect(t, app, "/debug/pprof/303", fiber.StatusSeeOther)
 }
 
 func Test_Pprof_Other_WithPrefix(t *testing.T) {
@@ -168,9 +144,7 @@ func Test_Pprof_Other_WithPrefix(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/303", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
+	apptest.Expect(t, app, "/federated-fiber/debug/pprof/303", fiber.StatusSeeOther)
 }
 
 func Test_Pprof_TrailingSlash_RedirectsWithinPrefix(t *testing.T) {
@@ -178,9 +152,7 @@ func Test_Pprof_TrailingSlash_RedirectsWithinPrefix(t *testing.T) {
 
 	app.Use(New())
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/heap/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/debug/pprof/heap/", fiber.StatusSeeOther)
 	require.Equal(t, "/debug/pprof/heap", resp.Header.Get(fiber.HeaderLocation))
 }
 
@@ -189,9 +161,7 @@ func Test_Pprof_TrailingSlash_RedirectsWithinPrefix_WithPrefix(t *testing.T) {
 
 	app.Use(New(Config{Prefix: "/federated-fiber"}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/heap/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/federated-fiber/debug/pprof/heap/", fiber.StatusSeeOther)
 	require.Equal(t, "/federated-fiber/debug/pprof/heap", resp.Header.Get(fiber.HeaderLocation))
 }
 
@@ -205,9 +175,7 @@ func Test_Pprof_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 404, resp.StatusCode)
+	apptest.Expect(t, app, "/debug/pprof/", 404)
 }
 
 // go test -run Test_Pprof_Next_WithPrefix
@@ -221,9 +189,7 @@ func Test_Pprof_Next_WithPrefix(t *testing.T) {
 		Prefix: "/federated-fiber",
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 404, resp.StatusCode)
+	apptest.Expect(t, app, "/federated-fiber/debug/pprof/", 404)
 }
 
 // Test_Pprof_Sibling_Prefix_Path ensures a route that merely starts with the
@@ -238,11 +204,5 @@ func Test_Pprof_Sibling_Prefix_Path(t *testing.T) {
 		return c.SendString("app route")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprofiler", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "app route", string(body))
+	apptest.ExpectBody(t, app, "/debug/pprofiler", fiber.StatusOK, "app route")
 }

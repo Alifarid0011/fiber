@@ -2,12 +2,11 @@ package responsetime
 
 import (
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -78,10 +77,7 @@ func TestResponseTimeMiddleware(t *testing.T) {
 				return c.SendStatus(fiber.StatusOK)
 			})
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-
-			require.NoError(t, err)
-			require.Equal(t, tt.expectedStatus, resp.StatusCode)
+			resp := apptest.Expect(t, app, "/", tt.expectedStatus)
 
 			header := resp.Header.Get(fiber.HeaderXResponseTime)
 			if tt.expectHeader {

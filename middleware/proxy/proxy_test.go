@@ -3,7 +3,6 @@ package proxy
 import (
 	"bufio"
 	"crypto/tls"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +19,7 @@ import (
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/valyala/fasthttp"
 )
@@ -209,9 +209,7 @@ func Test_Proxy_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
 // go test -run Test_Proxy
@@ -222,11 +220,10 @@ func Test_Proxy(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, target, "/", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
 	app := fiber.New()
@@ -235,9 +232,7 @@ func Test_Proxy(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = addr
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 }
 
 // go test -run Test_Proxy_Balancer_WithTlsConfig
@@ -267,16 +262,14 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 		TLSConfig: &tls.Config{InsecureSkipVerify: true},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/tlsbalancer", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/tlsbalancer", fiber.TestConfig{
 		Timeout:       5 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.Body(t, resp)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, fiber.StatusOK, resp.StatusCode, string(body))
-	require.Equal(t, "tls balancer", string(body))
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, body)
+	require.Equal(t, "tls balancer", body)
 }
 
 // go test -run Test_Proxy_Balancer_PlainUpstreamBehindTLS
@@ -337,16 +330,14 @@ func Test_Proxy_Balancer_MixedSchemes(t *testing.T) {
 
 	seen := map[string]int{}
 	for range 6 {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+		resp := apptest.Do(t, app, "/", fiber.TestConfig{
 			Timeout:       5 * time.Second,
 			FailOnTimeout: true,
 		})
-		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		body := apptest.Body(t, resp)
 		require.NoError(t, resp.Body.Close())
-		require.Equal(t, fiber.StatusOK, resp.StatusCode, string(body))
-		seen[string(body)]++
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, body)
+		seen[body]++
 	}
 	require.Equal(t, map[string]int{"plain": 3, "secure": 3}, seen)
 }
@@ -369,11 +360,10 @@ func Test_Proxy_Balancer_IPv6_Upstream(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, target, "/", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
 	app := fiber.New()
@@ -382,9 +372,7 @@ func Test_Proxy_Balancer_IPv6_Upstream(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = addr
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusInternalServerError)
 }
 
 // go test -run Test_Proxy_Balancer_IPv6_Upstream
@@ -395,11 +383,10 @@ func Test_Proxy_Balancer_IPv6_Upstream_With_DialDualStack(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, target, "/", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
 	app := fiber.New()
@@ -411,9 +398,7 @@ func Test_Proxy_Balancer_IPv6_Upstream_With_DialDualStack(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = addr
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 }
 
 // go test -run Test_Proxy_Balancer_IPv6_Upstream
@@ -424,11 +409,10 @@ func Test_Proxy_Balancer_IPv4_Upstream_With_DialDualStack(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, target, "/", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
 	app := fiber.New()
@@ -440,9 +424,7 @@ func Test_Proxy_Balancer_IPv4_Upstream_With_DialDualStack(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = addr
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 }
 
 // go test -run Test_Proxy_Forward_WithTlsConfig_To_Http
@@ -554,14 +536,12 @@ func Test_Proxy_DoRedirects_StreamedRequestBody(t *testing.T) {
 
 			req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader(tc.body))
 			req.Header.Set(fiber.HeaderContentLength, strconv.Itoa(len(tc.body)))
-			resp, err := app.Test(req, fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req, fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
 			defer func() { require.NoError(t, resp.Body.Close()) }()
 
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
+			body := apptest.Body(t, resp)
 			require.Equal(t, tc.wantStatus, resp.StatusCode)
-			require.Equal(t, tc.wantBody, string(body))
+			require.Equal(t, tc.wantBody, body)
 			require.Equal(t, tc.wantFinals, finals.Load(), "requests that reached the target of the redirect")
 		})
 	}
@@ -579,13 +559,7 @@ func Test_Proxy_Forward(t *testing.T) {
 
 	app.Use(Forward("http://" + addr))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "forwarded", string(b))
+	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "forwarded")
 }
 
 // go test -run Test_Proxy_Forward_ReplacesClientSuppliedRealIP
@@ -640,14 +614,11 @@ func Test_Proxy_Forward_ReplacesClientSuppliedRealIP(t *testing.T) {
 			req.Header.Add("X-Real-IP", "7.7.7.7")
 			req.Header.Add("X-Real-IP", "8.8.8.8")
 
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			resp := apptest.Expect(t, app, req, fiber.StatusOK)
 
-			b, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
+			b := apptest.Body(t, resp)
 
-			got := string(b)
+			got := b
 			require.NotContains(t, got, "7.7.7.7", "client-supplied X-Real-IP reached the upstream")
 			require.NotContains(t, got, "8.8.8.8", "client-supplied X-Real-IP reached the upstream")
 			require.NotContains(t, got, "|", "more than one X-Real-IP field line reached the upstream")
@@ -684,13 +655,7 @@ func Test_Proxy_Forward_RealIPFromProxyHeader(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("X-Real-IP", "203.0.113.9")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "203.0.113.9", string(b))
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, "203.0.113.9")
 }
 
 // realIPHandler names one of the helpers that write X-Real-IP, with a
@@ -735,9 +700,7 @@ func Test_Proxy_ConnectionCannotRemoveRealIP(t *testing.T) {
 			req.Header.Set(fiber.HeaderConnection, "X-Real-IP")
 			req.Header.Set(realIPHeader, "7.7.7.7")
 
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, req, fiber.StatusOK)
 			// app.Test injects 0.0.0.0 as the remote address.
 			require.Equal(t, []string{"X-Real-Ip=0.0.0.0"}, <-seen)
 		})
@@ -815,9 +778,7 @@ func Test_Proxy_ConnectionCannotRemoveForwardingHeaders(t *testing.T) {
 			req.Header.Set(fiber.HeaderConnection,
 				"X-Forwarded-For, X-Forwarded-Host, X-Forwarded-Proto, Forwarded, X-Gateway-Policy")
 
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, req, fiber.StatusOK)
 			require.ElementsMatch(t, []string{
 				"X-Forwarded-For=" + clientIP,
 				"X-Forwarded-Host=app.example",
@@ -893,9 +854,7 @@ func Test_Proxy_Do_ConnectionCannotRemoveRealIP(t *testing.T) {
 	req.Header.Set(fiber.HeaderConnection, "X-Real-IP")
 	req.Header.Set(realIPHeader, "7.7.7.7")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, []string{"X-Real-Ip=0.0.0.0"}, <-seen)
 }
 
@@ -956,13 +915,7 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "modified response", string(b))
+	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "modified response")
 }
 
 // go test -run Test_Proxy_Modify_Request
@@ -983,13 +936,7 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "modified request", string(b))
+	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "modified request")
 }
 
 // go test -run Test_Proxy_Timeout_Slow_Server
@@ -1007,16 +954,13 @@ func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
 		Timeout: 600 * time.Millisecond,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "fiber is awesome", string(b))
+	require.Equal(t, "fiber is awesome", apptest.Body(t, resp))
 }
 
 // go test -run Test_Proxy_With_Timeout
@@ -1034,16 +978,13 @@ func Test_Proxy_With_Timeout(t *testing.T) {
 		Timeout: 100 * time.Millisecond,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, fasthttp.ErrTimeout.Error(), string(b))
+	require.Equal(t, fasthttp.ErrTimeout.Error(), apptest.Body(t, resp))
 }
 
 // go test -run Test_Proxy_Buffer_Size_Response
@@ -1059,9 +1000,7 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	app := fiber.New()
 	app.Use(Balancer(Config{Servers: []string{addr}, KeepConnectionHeader: true}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 
 	app = fiber.New()
 	app.Use(Balancer(Config{
@@ -1069,9 +1008,7 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 		ReadBufferSize: 1024 * 8,
 	}))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 }
 
 // go test -race -run Test_Proxy_Do_RestoreOriginalURL
@@ -1085,13 +1022,10 @@ func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 	app.Get("/test", func(c fiber.Ctx) error {
 		return Do(c, "http://"+addr)
 	})
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
-	require.NoError(t, err1)
+	resp := apptest.Do(t, app, "/test")
 	require.Equal(t, "/test", resp.Request.URL.String())
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "proxied", string(body))
+	require.Equal(t, "proxied", apptest.Body(t, resp))
 }
 
 // go test -race -run Test_Proxy_Do_WithRealURL
@@ -1107,16 +1041,13 @@ func Test_Proxy_Do_WithRealURL(t *testing.T) {
 		return Do(c, "http://"+addr)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/test", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err1)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "/test", resp.Request.URL.String())
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "real url", string(body))
+	require.Equal(t, "real url", apptest.Body(t, resp))
 }
 
 // go test -race -run Test_Proxy_Do_WithRedirect
@@ -1129,14 +1060,11 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 		return Do(c, "http://"+addr)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/test", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err1)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "redirect", string(body))
+	require.Equal(t, "redirect", apptest.Body(t, resp))
 	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
 }
 
@@ -1155,14 +1083,11 @@ func Test_Proxy_DoRedirects_AliasedAddr(t *testing.T) {
 		return DoRedirects(c, aliased, 1)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/http://"+addr, http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/http://"+addr, fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "final", string(body))
+	require.Equal(t, "final", apptest.Body(t, resp))
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
@@ -1175,14 +1100,11 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 		return DoRedirects(c, "http://"+addr, 1)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/test", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err1)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "final", string(body))
+	require.Equal(t, "final", apptest.Body(t, resp))
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "/test", resp.Request.URL.String())
 }
@@ -1197,14 +1119,11 @@ func Test_Proxy_DoRedirects_TooManyRedirects(t *testing.T) {
 		return DoRedirects(c, "http://"+addr, 0)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/test", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err1)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, fasthttp.ErrTooManyRedirects.Error(), string(body))
+	require.Equal(t, fasthttp.ErrTooManyRedirects.Error(), apptest.Body(t, resp))
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Equal(t, "/test", resp.Request.URL.String())
 }
@@ -1222,14 +1141,11 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/test", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err1)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "proxied", string(body))
+	require.Equal(t, "proxied", apptest.Body(t, resp))
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "/test", resp.Request.URL.String())
 }
@@ -1247,15 +1163,11 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/test", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	require.Equal(t, fasthttp.ErrTimeout.Error(), string(body))
+	require.Equal(t, fasthttp.ErrTimeout.Error(), apptest.Body(t, resp))
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Equal(t, "/test", resp.Request.URL.String())
 }
@@ -1273,11 +1185,8 @@ func Test_Proxy_DoDeadline_RestoreOriginalURL(t *testing.T) {
 		return DoDeadline(c, "http://"+addr, time.Now().Add(time.Second))
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
-	require.NoError(t, err1)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "proxied", string(body))
+	resp := apptest.Do(t, app, "/test")
+	require.Equal(t, "proxied", apptest.Body(t, resp))
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "/test", resp.Request.URL.String())
 }
@@ -1323,11 +1232,8 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/http://"+addr, http.NoBody))
-	require.NoError(t, err)
-	s, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "hello world", string(s))
+	resp := apptest.Do(t, app, "/http://"+addr)
+	require.Equal(t, "hello world", apptest.Body(t, resp))
 }
 
 // go test -race -run Test_Proxy_Forward_Global_Client
@@ -1411,13 +1317,7 @@ func Test_Proxy_Do_NilClientOverride(t *testing.T) {
 		return Do(c, "http://"+addr, nil)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, errNilProxyClientOverride.Error(), string(body))
+	apptest.ExpectBody(t, app, "/test", fiber.StatusInternalServerError, errNilProxyClientOverride.Error())
 }
 
 // go test -run Test_Proxy_Do_NonNilClientOverride
@@ -1436,16 +1336,13 @@ func Test_Proxy_Do_NonNilClientOverride(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/test", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "proxied", string(body))
+	require.Equal(t, "proxied", apptest.Body(t, resp))
 }
 
 // go test -run Test_Proxy_SelectClient_NilGlobal
@@ -1484,13 +1381,7 @@ func Test_Proxy_NilClientOverride_AcrossHelpers(t *testing.T) {
 			app := fiber.New()
 			app.Get("/test", run)
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, errNilProxyClientOverride.Error(), string(body))
+			apptest.ExpectBody(t, app, "/test", fiber.StatusInternalServerError, errNilProxyClientOverride.Error())
 		})
 	}
 }
@@ -1503,11 +1394,10 @@ func Test_ProxyBalancer_Custom_Client(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, target, "/", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
 	app := fiber.New()
@@ -1525,9 +1415,7 @@ func Test_ProxyBalancer_Custom_Client(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = addr
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 }
 
 // go test -run Test_Proxy_Domain_Forward_Local
@@ -1578,14 +1466,7 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 
 	app.Use(BalancerForward([]string{addr}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	require.Equal(t, "forwarded", string(b))
+	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "forwarded")
 }
 
 // go test -run Test_Proxy_Balancer_Forward_Empty_Servers
@@ -1618,9 +1499,7 @@ func Test_Proxy_Balancer_Forward_OverwritesXRealIP(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("X-Real-IP", spoofedIP)
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_Proxy_Balancer_OverwritesXRealIP(t *testing.T) {
@@ -1640,9 +1519,7 @@ func Test_Proxy_Balancer_OverwritesXRealIP(t *testing.T) {
 	req.Header.Add("X-Real-IP", "6.6.6.6")
 	req.Header.Add("X-Real-IP", "7.7.7.7")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 	// app.Test injects 0.0.0.0 as the remote address.
 	require.Equal(t, []string{"X-Real-Ip=0.0.0.0"}, <-seen)
 }
@@ -1667,11 +1544,8 @@ func Test_Proxy_Balancer_ModifyRequestCanSetXRealIP(t *testing.T) {
 	req.Host = addr
 	req.Header.Set("X-Real-IP", "6.6.6.6")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "203.0.113.7", string(body))
+	resp := apptest.Do(t, app, req)
+	require.Equal(t, "203.0.113.7", apptest.Body(t, resp))
 }
 
 func Test_Proxy_Immutable(t *testing.T) {
@@ -1681,11 +1555,10 @@ func Test_Proxy_Immutable(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, target, "/", fiber.TestConfig{
 		Timeout:       2 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
 	app := fiber.New(fiber.Config{Immutable: true})
@@ -1694,9 +1567,7 @@ func Test_Proxy_Immutable(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = addr
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 }
 
 func Test_Proxy_KeepConnectionHeader(t *testing.T) {
@@ -1714,8 +1585,7 @@ func Test_Proxy_KeepConnectionHeader(t *testing.T) {
 	req.Host = addr
 	req.Header.Set(fiber.HeaderConnection, "keep-alive")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	require.Equal(t, "backend", resp.Header.Get(fiber.HeaderConnection))
 }
 
@@ -1734,8 +1604,7 @@ func Test_Proxy_DropConnectionHeader(t *testing.T) {
 	req.Host = addr
 	req.Header.Set(fiber.HeaderConnection, "keep-alive")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	require.Empty(t, resp.Header.Get(fiber.HeaderConnection))
 }
 
@@ -1757,9 +1626,7 @@ func Test_Proxy_Forward_OverwritesXRealIP(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("X-Real-IP", spoofedIP)
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_Proxy_DomainForward_OverwritesXRealIP(t *testing.T) {
@@ -1784,9 +1651,7 @@ func Test_Proxy_DomainForward_OverwritesXRealIP(t *testing.T) {
 	req.Host = testHostname
 	req.Header.Set("X-Real-IP", spoofedIP)
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 // Test_Proxy_DomainForward_HostMatchIsCaseInsensitive verifies that the
@@ -1808,13 +1673,10 @@ func Test_Proxy_DomainForward_HostMatchIsCaseInsensitive(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "API.Example.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "proxied", string(body), "mixed-case Host must still be proxied")
+	body := apptest.Body(t, resp)
+	require.Equal(t, "proxied", body, "mixed-case Host must still be proxied")
 }
 
 // Test_Proxy_DomainForward_HostMatchFoldsIDN verifies that a Unicode hostname
@@ -1837,13 +1699,10 @@ func Test_Proxy_DomainForward_HostMatchFoldsIDN(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "xn--mnchen-3ya.example.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "proxied", string(body), "a Unicode-literal hostname config must match the Punycode form on the wire")
+	body := apptest.Body(t, resp)
+	require.Equal(t, "proxied", body, "a Unicode-literal hostname config must match the Punycode form on the wire")
 }
 
 // Test_Proxy_DomainForward_HostMatchFoldsIDN_WithPort verifies that folding
@@ -1862,17 +1721,11 @@ func Test_Proxy_DomainForward_HostMatchFoldsIDN_WithPort(t *testing.T) {
 
 	matching := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	matching.Host = "xn--mnchen-3ya.example.com:8080"
-	resp, err := app.Test(matching)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "proxied", string(body))
+	apptest.ExpectBody(t, app, matching, fiber.StatusOK, "proxied")
 
 	wrongPort := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	wrongPort.Host = "xn--mnchen-3ya.example.com:9090"
-	resp, err = app.Test(wrongPort)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, wrongPort)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "a different port must still fall through unproxied")
 }
 
@@ -1894,12 +1747,7 @@ func Test_Proxy_DomainForward_HostMatchPreservesIPv6Brackets(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "[::1]:8080"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "proxied", string(body))
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, "proxied")
 }
 
 // sendRaw parses raw as the request a client put on the wire and runs app's
@@ -2093,9 +1941,7 @@ func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
 	req.Header.Set(fiber.HeaderCookie, "session=caller")
 	req.Header.Set("Cookie2", `$Version="1"`)
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 
 	require.Empty(t, <-seen, "no credential header may follow a redirect off the addressed host")
 }
@@ -2131,9 +1977,7 @@ func Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting(t *testing.T) {
 	app := fiber.New()
 	app.Use(Forward("http://"+addr, cli))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 
 	for _, name := range []string{fiber.HeaderKeepAlive, fiber.HeaderUpgrade, fiber.HeaderTE} {
 		require.Empty(t, resp.Header.Values(name),
@@ -2166,12 +2010,10 @@ func Test_Proxy_DomainForward_NonMatchingHostContinues(t *testing.T) {
 	for _, tc := range testCases {
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Host = tc.host
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Host %s", tc.host)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, tc.body, string(body), "Host %s", tc.host)
+		body := apptest.Body(t, resp)
+		require.Equal(t, tc.body, body, "Host %s", tc.host)
 	}
 }
 
@@ -2193,9 +2035,7 @@ func Test_Proxy_Forward_RestoresHost(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "public.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, "public.example.com", <-seen)
 }
 
@@ -2342,8 +2182,7 @@ func Test_Proxy_Balancer_MaxResponseBodySize(t *testing.T) {
 			}})
 			app.Use(Balancer(Config{Servers: []string{addr}, MaxResponseBodySize: tc.limit}))
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, "/")
 			if tc.wantErr {
 				require.ErrorIs(t, handled, fasthttp.ErrBodyTooLarge)
 				require.Equal(t, fiber.StatusBadGateway, resp.StatusCode)
@@ -2372,9 +2211,6 @@ func Test_Proxy_Balancer_WriteBufferSize(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderCookie, cookie)
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, strconv.Itoa(len(cookie)), string(body))
+	resp := apptest.Do(t, app, req)
+	require.Equal(t, strconv.Itoa(len(cookie)), apptest.Body(t, resp))
 }

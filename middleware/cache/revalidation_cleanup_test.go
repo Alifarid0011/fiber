@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -111,12 +111,10 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 							req.Header.Set("X-Action", action)
 							req.Header.Set(fiber.HeaderCacheControl, "max-age=0")
 						}
-						response, err := app.Test(req)
-						require.NoError(t, err)
-						body, err := io.ReadAll(response.Body)
-						require.NoError(t, err)
+						response := apptest.Do(t, app, req)
+						body := apptest.Body(t, response)
 						require.NoError(t, response.Body.Close())
-						return response, string(body)
+						return response, body
 					}
 					for _, variant := range []string{"a", "b"} {
 						response, _ := request(variant, "")
@@ -223,8 +221,7 @@ func Test_Cache_UncacheableStatusKeepsEntryAndManifest(t *testing.T) {
 						if cacheControl != "" {
 							req.Header.Set(fiber.HeaderCacheControl, cacheControl)
 						}
-						response, err := app.Test(req)
-						require.NoError(t, err)
+						response := apptest.Do(t, app, req)
 						require.NoError(t, response.Body.Close())
 						return response.StatusCode, response.Header.Get("X-Cache")
 					}
@@ -278,9 +275,7 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			})
 			request := func(path string, status int) {
 				t.Helper()
-				response, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
-				require.NoError(t, err)
-				require.Equal(t, status, response.StatusCode)
+				response := apptest.Expect(t, app, path, status)
 				require.NoError(t, response.Body.Close())
 			}
 			request("/a", fiber.StatusOK)

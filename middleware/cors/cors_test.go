@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -592,9 +593,7 @@ func Test_CORS_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
 // go test -run Test_CORS_Headers_BasedOnRequestType
@@ -1838,16 +1837,14 @@ func Test_CORS_Security_CredentialsSimpleRequest(t *testing.T) {
 	// Allowed origin is reflected with credentials on a simple GET.
 	allowed := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	allowed.Header.Set(fiber.HeaderOrigin, "https://trusted.example.com")
-	resp, err := app.Test(allowed)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, allowed)
 	require.Equal(t, "https://trusted.example.com", resp.Header.Get(fiber.HeaderAccessControlAllowOrigin))
 	require.Equal(t, "true", resp.Header.Get(fiber.HeaderAccessControlAllowCredentials))
 
 	// Disallowed origin is reflected nowhere.
 	denied := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	denied.Header.Set(fiber.HeaderOrigin, "https://evil.example.org")
-	resp, err = app.Test(denied)
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, denied)
 	require.Empty(t, resp.Header.Get(fiber.HeaderAccessControlAllowOrigin))
 	require.Empty(t, resp.Header.Get(fiber.HeaderAccessControlAllowCredentials))
 }
@@ -1866,8 +1863,7 @@ func Test_CORS_Security_NoOriginReflectionForDisallowed(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderOrigin, "https://attacker.example.net")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 
 	got := resp.Header.Get(fiber.HeaderAccessControlAllowOrigin)
 	require.Empty(t, got)

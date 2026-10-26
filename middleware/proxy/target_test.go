@@ -2,10 +2,8 @@ package proxy
 
 import (
 	"bufio"
-	"io"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -75,10 +74,9 @@ func forwardingHandlers() []realIPHandler {
 
 func readBody(t *testing.T, resp *http.Response) string {
 	t.Helper()
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	b := apptest.Body(t, resp)
 	require.NoError(t, resp.Body.Close())
-	return string(b)
+	return b
 }
 
 func forbid(c fiber.Ctx) error {
@@ -163,12 +161,10 @@ func Test_Proxy_Balancer_ModifyRequestCanRetarget(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/set-path?x=1", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/set-path?x=1")
 	require.Equal(t, "/other?x=1", readBody(t, resp))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/set-uri?x=1", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/set-uri?x=1")
 	require.Equal(t, "/other?y=2", readBody(t, resp))
 }
 
@@ -481,9 +477,7 @@ func Test_Proxy_Do_UserClientForwardsTargetAsGiven(t *testing.T) {
 		return Do(c, target, &fasthttp.Client{})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, "/a%2Fb//c/..%2Fd?q=%2F", readBody(t, resp))
 }
 

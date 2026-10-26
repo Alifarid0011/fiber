@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -317,9 +318,7 @@ func Test_HostAuthorization_AllowedHost(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_RejectedHost(t *testing.T) {
@@ -337,9 +336,7 @@ func Test_HostAuthorization_RejectedHost(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "evil.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusForbidden)
 }
 
 func Test_HostAuthorization_EmptyHost(t *testing.T) {
@@ -358,9 +355,7 @@ func Test_HostAuthorization_EmptyHost(t *testing.T) {
 	req.Host = ""
 
 	// app.Test() substitutes "localhost" when req.Host is empty, which isn't in the allowlist.
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusForbidden)
 }
 
 func Test_HostAuthorization_HostWithPort(t *testing.T) {
@@ -378,9 +373,7 @@ func Test_HostAuthorization_HostWithPort(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com:8080"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_AllowedHostWithPort(t *testing.T) {
@@ -398,16 +391,12 @@ func Test_HostAuthorization_AllowedHostWithPort(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com:8080"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 
 	req2 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req2.Host = "example.com"
 
-	resp2, err := app.Test(req2)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
+	apptest.Expect(t, app, req2, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_Next(t *testing.T) {
@@ -428,9 +417,7 @@ func Test_HostAuthorization_Next(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/healthz", http.NoBody)
 	req.Host = "evil.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_SubdomainWildcard_Allowed(t *testing.T) {
@@ -448,9 +435,7 @@ func Test_HostAuthorization_SubdomainWildcard_Allowed(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "api.myapp.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_SubdomainWildcard_BareDomainRejected(t *testing.T) {
@@ -468,9 +453,7 @@ func Test_HostAuthorization_SubdomainWildcard_BareDomainRejected(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "myapp.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusForbidden)
 }
 
 func Test_HostAuthorization_AllowedHostsFunc_EmptyHostRejectedBeforeCallback(t *testing.T) {
@@ -492,9 +475,7 @@ func Test_HostAuthorization_AllowedHostsFunc_EmptyHostRejectedBeforeCallback(t *
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = ":443"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusForbidden)
 	require.False(t, called)
 }
 
@@ -515,9 +496,7 @@ func Test_HostAuthorization_AllowedHostsFunc_Allowed(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "dynamic.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_AllowedHostsFunc_Rejected(t *testing.T) {
@@ -537,9 +516,7 @@ func Test_HostAuthorization_AllowedHostsFunc_Rejected(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "evil.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusForbidden)
 }
 
 func Test_HostAuthorization_CustomErrorHandler(t *testing.T) {
@@ -562,9 +539,7 @@ func Test_HostAuthorization_CustomErrorHandler(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "evil.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 	require.ErrorIs(t, handlerErr, ErrForbiddenHost)
 }
 
@@ -583,9 +558,7 @@ func Test_HostAuthorization_CaseInsensitive(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "EXAMPLE.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_TrailingDot(t *testing.T) {
@@ -603,9 +576,7 @@ func Test_HostAuthorization_TrailingDot(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com."
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_ExactIP(t *testing.T) {
@@ -623,9 +594,7 @@ func Test_HostAuthorization_ExactIP(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "127.0.0.1"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_IDN_PunycodeRequest(t *testing.T) {
@@ -643,9 +612,7 @@ func Test_HostAuthorization_IDN_PunycodeRequest(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "xn--mnchen-3ya.example.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_OverlappingRules(t *testing.T) {
@@ -666,9 +633,7 @@ func Test_HostAuthorization_OverlappingRules(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "api.myapp.com"
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_XForwardedHost_TrustProxy_Allowed(t *testing.T) {
@@ -694,9 +659,7 @@ func Test_HostAuthorization_XForwardedHost_TrustProxy_Allowed(t *testing.T) {
 	req.Host = "proxy.internal"
 	req.Header.Set("X-Forwarded-Host", "example.com")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_HostAuthorization_XForwardedHost_TrustProxy_Rejected(t *testing.T) {
@@ -721,9 +684,7 @@ func Test_HostAuthorization_XForwardedHost_TrustProxy_Rejected(t *testing.T) {
 	req.Host = "example.com"
 	req.Header.Set("X-Forwarded-Host", "evil.com")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusForbidden)
 }
 
 func Test_HostAuthorization_XForwardedHost_TrustProxy_RejectsMalformedAuthority(t *testing.T) {
@@ -748,9 +709,7 @@ func Test_HostAuthorization_XForwardedHost_TrustProxy_RejectsMalformedAuthority(
 	req.Host = "proxy.internal"
 	req.Header.Set("X-Forwarded-Host", "allowed.com:443@attacker.example")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusForbidden)
 }
 
 func Test_HostAuthorization_XForwardedHost_NoTrustProxy(t *testing.T) {
@@ -770,8 +729,7 @@ func Test_HostAuthorization_XForwardedHost_NoTrustProxy(t *testing.T) {
 	req.Host = "example.com"
 	req.Header.Set("X-Forwarded-Host", "evil.com")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "X-Forwarded-Host should be ignored without TrustProxy")
 }
 
@@ -951,8 +909,7 @@ func Test_HostAuthorization_LeadingZeroPort(t *testing.T) {
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Host = tc.host
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, tc.want, resp.StatusCode, tc.host)
 	}
 }

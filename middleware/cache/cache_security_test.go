@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -42,16 +43,12 @@ func Test_Cache_Security_DoS_ExcessiveQueryParams(t *testing.T) {
 	url := "/?" + strings.Join(queryParams, "&")
 
 	// First request should be cached (but with hashed key due to param limit)
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, url, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, url, fiber.StatusOK)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, count)
 
 	// Second request should hit cache
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, url, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, url, fiber.StatusOK)
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, count, "Handler should not be called on cache hit")
 }
@@ -81,15 +78,11 @@ func Test_Cache_Security_DoS_ExcessiveQueryBuffer(t *testing.T) {
 	url := "/?" + strings.Join(queryParams, "&")
 
 	// Request should not crash or exhaust memory
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, url, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, url, fiber.StatusOK)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	// Second request should hit cache (with hashed key due to buffer limit)
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, url, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, url, fiber.StatusOK)
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, count, "Handler should not be called on cache hit")
 }
@@ -114,16 +107,12 @@ func Test_Cache_Security_DoS_ExcessiveVaryHeaders(t *testing.T) {
 	})
 
 	// First request should not be cached due to excessive Vary headers (treated as Vary: *)
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, count)
 
 	// Second request should also not be cached
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 	require.Equal(t, 2, count, "Handler should be called each time when uncacheable")
 }
@@ -144,16 +133,12 @@ func Test_Cache_Security_LongPathSegmentHashed(t *testing.T) {
 	})
 
 	// First request
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, longPath, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, longPath, fiber.StatusOK)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, count)
 
 	// Second request should hit cache with hashed key
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, longPath, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, longPath, fiber.StatusOK)
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, count, "Handler should not be called on cache hit")
 }
@@ -175,15 +160,11 @@ func Test_Cache_Security_MalformedQueryString(t *testing.T) {
 	malformedURL := "/?invalid=%ZZ%XX"
 
 	// Should not crash and should handle gracefully
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, malformedURL, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, malformedURL, fiber.StatusOK)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	// Second request should hit cache (malformed query is hashed as-is)
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, malformedURL, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, malformedURL, fiber.StatusOK)
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, count)
 }
@@ -217,13 +198,7 @@ func Test_Cache_Security_HeaderInjection(t *testing.T) {
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set("X-Custom-Header", injection)
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "response-"+injection, string(body))
+		apptest.ExpectBody(t, app, req, fiber.StatusOK, "response-"+injection)
 	}
 
 	// Each injection attempt should create a distinct cache entry
@@ -259,9 +234,7 @@ func Test_Cache_Security_CookieInjection(t *testing.T) {
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set("Cookie", "session="+injection)
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, fiber.StatusOK)
 	}
 
 	// Each injection attempt should create distinct cache entries
@@ -337,15 +310,11 @@ func Test_Cache_Security_QueryParameterRepeated(t *testing.T) {
 	}
 	url := "/?" + strings.Join(values, "&")
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, url, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, url, fiber.StatusOK)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	// Second request should hit cache (hashed due to param count)
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, url, http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, url, fiber.StatusOK)
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, count)
 }
@@ -365,14 +334,10 @@ func Test_Cache_Security_EmptyVaryHeaders(t *testing.T) {
 		return c.SendString("response")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, count)
 }
@@ -922,9 +887,7 @@ func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
 
 	doQuery := func(body string) string {
 		req := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(body))
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, fiber.StatusOK)
 		return resp.Header.Get("X-Cache")
 	}
 
@@ -959,20 +922,14 @@ func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T)
 
 	authReq := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(baseBody))
 	authReq.Header.Set(fiber.HeaderAuthorization, authHeader)
-	authResp, err := app.Test(authReq)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, authResp.StatusCode)
+	authResp := apptest.Expect(t, app, authReq, fiber.StatusOK)
 	require.Equal(t, cacheMiss, authResp.Header.Get("X-Cache"))
 
 	unauthReq := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(craftedBody))
-	unauthResp, err := app.Test(unauthReq)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, unauthResp.StatusCode)
+	unauthResp := apptest.Expect(t, app, unauthReq, fiber.StatusOK)
 	require.Equal(t, cacheMiss, unauthResp.Header.Get("X-Cache"))
 
-	body, err := io.ReadAll(unauthResp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "handler auth=", string(body))
+	require.Equal(t, "handler auth=", apptest.Body(t, unauthResp))
 	require.Equal(t, int32(2), count.Load())
 }
 
@@ -1179,12 +1136,10 @@ func Test_StoreResponseHeaders_DropsTrailer(t *testing.T) {
 		return c.SendString("hi")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/")
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	require.Empty(t, resp.Header.Values("Trailer"))
 	// A stored header that is not hop-by-hop still comes back, so the assertion
@@ -1208,12 +1163,9 @@ func Test_SetCookie2ResponseIsNotStored(t *testing.T) {
 	})
 
 	for i := 1; i <= 2; i++ {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, "/")
 		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, fmt.Sprintf("page-for-client-%d", i), string(body))
+		require.Equal(t, fmt.Sprintf("page-for-client-%d", i), apptest.Body(t, resp))
 	}
 	require.Equal(t, int32(2), calls.Load())
 }
@@ -1254,8 +1206,7 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 			do := func() string {
 				req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a=1"))
 				req.Header.Set(fiber.HeaderContentType, spelling)
-				resp, err := app.Test(req)
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, req)
 				return resp.Header.Get("X-Cache")
 			}
 
@@ -1295,11 +1246,9 @@ func Test_Vary_PartitionsWithoutHeaderNormalizing(t *testing.T) {
 			do := func(ct string) (string, string) {
 				req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a=1"))
 				req.Header.Set(fiber.HeaderContentType, ct)
-				resp, err := app.Test(req)
-				require.NoError(t, err)
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
-				return string(body), resp.Header.Get("X-Cache")
+				resp := apptest.Do(t, app, req)
+				body := apptest.Body(t, resp)
+				return body, resp.Header.Get("X-Cache")
 			}
 
 			body, status := do("application/x-www-form-urlencoded")
@@ -1335,11 +1284,9 @@ func Test_KeyHeaders_PartitionWithoutHeaderNormalizing(t *testing.T) {
 			do := func(tenant string) (string, string) {
 				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 				req.Header.Set("X-Tenant", tenant)
-				resp, err := app.Test(req)
-				require.NoError(t, err)
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
-				return string(body), resp.Header.Get("X-Cache")
+				resp := apptest.Do(t, app, req)
+				body := apptest.Body(t, resp)
+				return body, resp.Header.Get("X-Cache")
 			}
 
 			body, status := do("acme")
@@ -1374,14 +1321,12 @@ func Test_CachedRedirectKeepsItsLocation(t *testing.T) {
 		return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/old", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/old")
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
 	require.Equal(t, "/new", resp.Header.Get("Location"))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/old", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/old")
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
 	require.Equal(t, "/new", resp.Header.Get("Location"), "a cached redirect must keep its destination")
@@ -1570,8 +1515,7 @@ func Test_Cache_NonCanonicalResponseNamesAreNotDuplicated(t *testing.T) {
 			}
 
 			for _, want := range []string{cacheMiss, cacheHit} {
-				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, "/")
 				require.Equal(t, want, resp.Header.Get("X-Cache"))
 
 				for _, name := range single {
@@ -1653,8 +1597,7 @@ func Test_Cache_NonCanonicalResponseNamesAreHonored(t *testing.T) {
 				app.Get("/", tc.handler)
 
 				for _, want := range tc.statuses {
-					resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-					require.NoError(t, err)
+					resp := apptest.Do(t, app, "/")
 					require.Equal(t, want, resp.Header.Get("X-Cache"), "normalize=%v", normalize)
 					tc.assert(t, resp)
 				}
@@ -1693,8 +1636,7 @@ func Test_Cache_OuterMiddlewareHeaderNamesAreNotDuplicated(t *testing.T) {
 			})
 
 			for _, want := range []string{cacheMiss, cacheHit} {
-				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, "/")
 				require.Equal(t, want, resp.Header.Get("X-Cache"))
 
 				for _, name := range []string{fiber.HeaderCacheControl, fiber.HeaderETag, fiber.HeaderExpires} {
@@ -1734,8 +1676,7 @@ func Test_Cache_SetCookie2IsSeenWhateverItsCase(t *testing.T) {
 			})
 
 			for range 2 {
-				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, "/")
 				require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"),
 					"a response naming a cookie is never stored")
 			}
@@ -1778,8 +1719,7 @@ func Test_Cache_QuotedDirectiveDoesNotAuthorizeSharing(t *testing.T) {
 			})
 
 			for range 2 {
-				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, "/")
 				require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"),
 					"a token inside a quoted extension value does not authorize sharing")
 			}
@@ -1804,12 +1744,10 @@ func Test_Cache_QuotedDirectiveStillReadsRealOnes(t *testing.T) {
 		return c.SendString(fmt.Sprintf("shared-%d", id))
 	})
 
-	first, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	first := apptest.Do(t, app, "/")
 	require.Equal(t, cacheMiss, first.Header.Get("X-Cache"))
 
-	second, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	second := apptest.Do(t, app, "/")
 	require.Equal(t, cacheHit, second.Header.Get("X-Cache"),
 		"public written outside the quotes still authorizes sharing")
 	require.Equal(t, int64(1), n.Load())
@@ -1850,14 +1788,12 @@ func Test_Cache_EveryStaleSpellingIsReplaced(t *testing.T) {
 
 	// The miss carries both lines because both middlewares wrote one and the
 	// cache writes neither on that path — their business, not this one's.
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	// The hit is where this middleware writes them from the entry, and there it
 	// owns the field: one line, whatever spellings it had to replace.
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/")
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 
 	for _, name := range []string{fiber.HeaderCacheControl, fiber.HeaderETag} {
@@ -1960,8 +1896,7 @@ func Test_Cache_LongHeaderNameIsNotIgnored(t *testing.T) {
 	})
 
 	for _, want := range []string{cacheMiss, cacheHit} {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, "/")
 		require.Equal(t, want, resp.Header.Get("X-Cache"))
 		require.Equal(t, "kept", resp.Header.Get(long), "a name too long to be on the list is carried (%s)", want)
 	}
@@ -1994,8 +1929,7 @@ func Test_Cache_ReplayClearsEveryStoredSpelling(t *testing.T) {
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
 
 	for _, want := range []string{cacheMiss, cacheHit, cacheHit} {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, "/")
 		require.Equal(t, want, resp.Header.Get("X-Cache"))
 		require.Len(t, resp.Header.Values("X-Tenant"), 1,
 			"one field line whatever spelling each hop chose (%s): %v", want, resp.Header.Values("X-Tenant"))
@@ -2025,14 +1959,12 @@ func Test_Cache_AuthorizationFieldLinesFramed(t *testing.T) {
 	twoLines := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	twoLines.Header.Add(fiber.HeaderAuthorization, "Bearer shared")
 	twoLines.Header.Add(fiber.HeaderAuthorization, "Bearer alice")
-	resp, err := app.Test(twoLines)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, twoLines)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	oneLine := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	oneLine.Header.Set(fiber.HeaderAuthorization, "Bearer shared,Bearer alice")
-	resp, err = app.Test(oneLine)
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, oneLine)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"),
 		"a lone comma-joined credential must not land on the two-line entry")
 	require.Equal(t, int64(2), handlerRuns.Load(), "each layout is its own principal")
@@ -2061,8 +1993,7 @@ func Test_Cache_LegacyStoredSetCookieIsUnsafe(t *testing.T) {
 		return c.SendString("alice-only")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	// Rewrite the stored entry the way the older version left it.
@@ -2077,8 +2008,7 @@ func Test_Cache_LegacyStoredSetCookieIsUnsafe(t *testing.T) {
 	})
 	require.NoError(t, m.set(context.Background(), key, e, time.Minute))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/")
 	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"),
 		"an entry carrying a cookie is not replayed")
 	require.Equal(t, int64(2), handlerRuns.Load(), "the handler answers instead")
@@ -2121,12 +2051,10 @@ func Test_Cache_ProxiedResponseCasingIsRead(t *testing.T) {
 			for _, user := range []string{"alice", "bob"} {
 				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 				req.Header.Set("X-User", user)
-				resp, err := app.Test(req)
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, req)
 
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
-				require.Equal(t, "secret-for-"+user, string(body), "each client gets its own body")
+				body := apptest.Body(t, resp)
+				require.Equal(t, "secret-for-"+user, body, "each client gets its own body")
 				require.Equal(t, tc.directive, resp.Header.Get(fiber.HeaderCacheControl),
 					"the restriction the origin sent survives")
 			}
@@ -2173,13 +2101,10 @@ func Test_Cache_LegacyAnonymousEntryIsNotRead(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, storage.Set("GET|/me", raw, time.Minute))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/me", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/me", fiber.StatusOK)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "handler ran", string(body), "the legacy anonymous entry must not be served")
+	body := apptest.Body(t, resp)
+	require.Equal(t, "handler ran", body, "the legacy anonymous entry must not be served")
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 }
 
@@ -2199,13 +2124,11 @@ type authorityReply struct {
 // getFromHost sends a GET for target under the given Host through app.
 func getFromHost(t *testing.T, app *fiber.App, host, target string) authorityReply {
 	t.Helper()
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "http://"+host+target, http.NoBody))
-	require.NoError(t, err)
-	raw, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "http://"+host+target)
+	raw := apptest.Body(t, resp)
 	require.NoError(t, resp.Body.Close())
 	return authorityReply{
-		body:        string(raw),
+		body:        raw,
 		location:    resp.Header.Get(fiber.HeaderLocation),
 		cacheStatus: resp.Header.Get("X-Cache"),
 		status:      resp.StatusCode,
@@ -2298,12 +2221,10 @@ func Test_Cache_Security_KeyIncludesAuthority(t *testing.T) {
 		do := func(host string) authorityReply {
 			req := httptest.NewRequest(fiber.MethodGet, "http://"+host+"/", http.NoBody)
 			req.Header.Set("X-Tenant", "acme")
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			raw, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
+			raw := apptest.Body(t, resp)
 			require.NoError(t, resp.Body.Close())
-			return authorityReply{body: string(raw), cacheStatus: resp.Header.Get("X-Cache"), status: resp.StatusCode}
+			return authorityReply{body: raw, cacheStatus: resp.Header.Get("X-Cache"), status: resp.StatusCode}
 		}
 
 		reply := do(tenantAHost)
@@ -2360,12 +2281,10 @@ func Test_Cache_Security_KeyAuthorityFollowsTrustedProxy(t *testing.T) {
 		req := httptest.NewRequest(fiber.MethodGet, "http://backend.internal/", http.NoBody)
 		req.Header.Set(fiber.HeaderXForwardedHost, forwardedHost)
 		req.Header.Set(fiber.HeaderXForwardedProto, forwardedProto)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		raw, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
+		raw := apptest.Body(t, resp)
 		require.NoError(t, resp.Body.Close())
-		return authorityReply{body: string(raw), cacheStatus: resp.Header.Get("X-Cache"), status: resp.StatusCode}
+		return authorityReply{body: raw, cacheStatus: resp.Header.Get("X-Cache"), status: resp.StatusCode}
 	}
 	baseURL := func(c fiber.Ctx) error { return c.SendString(c.BaseURL()) }
 

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -195,9 +196,7 @@ func Test_Security_Forward_BlocksPrivateByDefault(t *testing.T) {
 	app := fiber.New()
 	app.Use(Forward("http://" + addr))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 }
 
 func Test_Security_Balancer_BlocksPrivateByDefault(t *testing.T) {
@@ -233,9 +232,7 @@ func Test_Security_Balancer_AllowsPrivateOptIn(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = addr
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTeapot)
 }
 
 // Test_Security_HopByHopRequestStripping verifies hop-by-hop headers
@@ -278,9 +275,7 @@ func Test_Security_HopByHopRequestStripping(t *testing.T) {
 	req.Header.Set(fiber.HeaderConnection, "X-Custom-Hop")
 	req.Header.Set("X-Custom-Hop", "should-be-removed")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 // Test_Security_IsForwardingHeader pins the family a client cannot have
@@ -324,8 +319,7 @@ func Test_Security_HopByHopResponseStripping(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = addr
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	require.Empty(t, resp.Header.Get(fiber.HeaderProxyAuthenticate))
 	require.Empty(t, resp.Header.Get(fiber.HeaderKeepAlive))
 	require.Empty(t, resp.Header.Get("X-Custom-Hop"))
@@ -357,9 +351,7 @@ func Test_Security_KeepConnectionPreservesOtherHopByHop(t *testing.T) {
 	req.Header.Set(fiber.HeaderConnection, "keep-alive")
 	req.Header.Set(fiber.HeaderProxyAuthorization, "Basic dXNlcjpwYXNz")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 func Test_Security_Do_BlocksFileScheme(t *testing.T) {
@@ -368,9 +360,7 @@ func Test_Security_Do_BlocksFileScheme(t *testing.T) {
 	app.Get("/test", func(c fiber.Ctx) error {
 		return Do(c, "file:///etc/passwd")
 	})
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/test", fiber.StatusInternalServerError)
 }
 
 func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
@@ -422,12 +412,9 @@ func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
 		return DoRedirects(c, "https://"+httpsLn.Addr().String(), 1, tlsClient)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "HTTPS to HTTP redirect blocked")
+	resp := apptest.Expect(t, app, "/test", fiber.StatusInternalServerError)
+	body := apptest.Body(t, resp)
+	require.Contains(t, body, "HTTPS to HTTP redirect blocked")
 }
 
 func Test_Security_JoinUpstreamPath_BlocksNetworkPathInjection(t *testing.T) {
@@ -971,9 +958,7 @@ func Test_Security_DomainForward_HostMismatchPassesThrough(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "other-host.example"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 }
 
 // Test_Security_DomainForward_InvalidUpstreamPanicsAtConstruction
@@ -1088,9 +1073,7 @@ func Test_Security_Balancer_ModifyRequestErrorPropagates(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 }
 
 // Test_Security_Balancer_ModifyResponseErrorPropagates covers the
@@ -1110,9 +1093,7 @@ func Test_Security_Balancer_ModifyResponseErrorPropagates(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 }
 
 // Test_Security_Balancer_BuildsHTTPSHostClient verifies the IsTLS
@@ -1188,8 +1169,7 @@ func Test_Security_Balancer_HostnameDefersToDial(t *testing.T) {
 	app.Use(h)
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "does-not-exist.invalid"
-	resp, err := app.Test(req, fiber.TestConfig{Timeout: 10 * time.Second, FailOnTimeout: false})
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req, fiber.TestConfig{Timeout: 10 * time.Second, FailOnTimeout: false})
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 }
 
@@ -1895,9 +1875,7 @@ func Test_Security_KeepHopByHopHeaders_Balancer(t *testing.T) {
 			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 			req.Header.Set(fiber.HeaderProxyAuthorization, "Basic dXNlcjpwYXNz")
 			req.Header.Set(fiber.HeaderKeepAlive, "timeout=5")
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			resp := apptest.Expect(t, app, req, fiber.StatusOK)
 
 			got := <-seen
 			if keep {
@@ -1935,9 +1913,7 @@ func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderProxyAuthorization, "Basic dXNlcjpwYXNz")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, "Basic dXNlcjpwYXNz", <-seen)
 	require.Equal(t, "Basic", resp.Header.Get(fiber.HeaderProxyAuthenticate))
 }

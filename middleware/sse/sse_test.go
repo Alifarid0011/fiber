@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -101,13 +102,7 @@ func Test_SSE_NewUsesAppJSONEncoder(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "data: {\"encoded\":\"custom\"}\n\n", string(body))
+	apptest.ExpectBody(t, app, "/events", fiber.StatusOK, "data: {\"encoded\":\"custom\"}\n\n")
 }
 
 func Test_SSE_EventJSONEncodesTypedNilStringer(t *testing.T) {
@@ -245,8 +240,7 @@ func Test_SSE_NewWritesHeadersAndEvents(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody)
 	req.Header.Set("Last-Event-ID", "last-1")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	require.Equal(t, "last-1", capturedLastEventID)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, fiber.MIMETextEventStream, resp.Header.Get(fiber.HeaderContentType))
@@ -254,9 +248,7 @@ func Test_SSE_NewWritesHeadersAndEvents(t *testing.T) {
 	require.Equal(t, "keep-alive", resp.Header.Get(fiber.HeaderConnection))
 	require.Equal(t, "no", resp.Header.Get("X-Accel-Buffering"))
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "retry: 1000\n\nevent: ready\ndata: ok\n\n", string(body))
+	require.Equal(t, "retry: 1000\n\nevent: ready\ndata: ok\n\n", apptest.Body(t, resp))
 }
 
 func Test_SSE_NewWritesHeartbeat(t *testing.T) {
@@ -275,11 +267,9 @@ func Test_SSE_NewWritesHeartbeat(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), ":\n\n")
+	resp := apptest.Do(t, app, "/events")
+	body := apptest.Body(t, resp)
+	require.Contains(t, body, ":\n\n")
 }
 
 func Test_SSE_OnCloseReceivesNilAfterNormalClose(t *testing.T) {
@@ -298,9 +288,7 @@ func Test_SSE_OnCloseReceivesNilAfterNormalClose(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/events", fiber.StatusOK)
 	select {
 	case err := <-closed:
 		require.NoError(t, err)
@@ -469,11 +457,10 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/events", fiber.TestConfig{
 		FailOnTimeout: false,
 		Timeout:       testTimeout,
 	})
-	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)
@@ -512,9 +499,7 @@ func Test_SSE_HandlerErrorCallsOnClose(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/events", fiber.StatusOK)
 	select {
 	case err := <-closed:
 		require.ErrorIs(t, err, handlerErr)
@@ -539,9 +524,7 @@ func Test_SSE_HandlerPanicCallsOnClose(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/events", fiber.StatusOK)
 
 	select {
 	case err := <-closed:

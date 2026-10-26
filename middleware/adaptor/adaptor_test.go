@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -225,15 +226,12 @@ func Test_HTTPHandler_Flush_App_Test(t *testing.T) {
 		fmt.Fprintf(w, "World!")
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	defer resp.Body.Close() //nolint:errcheck // not needed
 
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "Hello World!", string(body))
+	require.Equal(t, "Hello World!", apptest.Body(t, resp))
 }
 
 func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
@@ -334,18 +332,14 @@ func Test_HTTPHandlerWithContext_local_context(t *testing.T) {
 		}
 	})))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+	resp := apptest.Do(t, app, "/", fiber.TestConfig{
 		Timeout:       200 * time.Millisecond,
 		FailOnTimeout: false,
 	})
-	require.NoError(t, err)
 
 	defer resp.Body.Close() //nolint:errcheck // no need
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	require.Equal(t, testVal, string(body))
+	require.Equal(t, testVal, apptest.Body(t, resp))
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
@@ -431,17 +425,14 @@ func Test_HTTPMiddleware(t *testing.T) {
 		req.Host = expectedHost
 		require.NoError(t, err)
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, tt.statusCode, resp.StatusCode, "StatusCode")
+		apptest.Expect(t, app, req, tt.statusCode)
 	}
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", http.NoBody)
 	req.Host = expectedHost
 	require.NoError(t, err)
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	require.Equal(t, "okay", resp.Header.Get("context_okay"))
 	require.Equal(t, "okay", resp.Header.Get("context_second_okay"))
 }
@@ -486,8 +477,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 		req.AddCookie(&http.Cookie{Name: cookieOneName, Value: cookieOneValue})
 		req.AddCookie(&http.Cookie{Name: cookieTwoName, Value: cookieTwoValue})
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		cookies := resp.Cookies()
 		require.Len(t, cookies, 2)
 		for _, cookie := range cookies {
@@ -508,9 +498,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/", http.NoBody)
 		require.NoError(t, err)
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+		apptest.Expect(t, app, req, http.StatusMethodNotAllowed)
 	})
 
 	// New test case for request without cookies
@@ -519,9 +507,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", http.NoBody)
 		require.NoError(t, err)
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, http.StatusOK)
 		require.Empty(t, resp.Cookies())
 	})
 }
@@ -913,13 +899,7 @@ func Test_ConvertRequest(t *testing.T) {
 			return c.SendString("Request URL: " + httpReq.URL.String())
 		})
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test?hello=world&another=test", http.NoBody))
-		require.NoError(t, err, "app.Test(req)")
-		require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "Request URL: /test?hello=world&another=test", string(body))
+		apptest.ExpectBody(t, app, "/test?hello=world&another=test", http.StatusOK, "Request URL: /test?hello=world&another=test")
 	})
 
 	t.Run("conversion error handling", func(t *testing.T) {
@@ -1912,9 +1892,7 @@ func Test_HTTPMiddleware_MultiValueHeaders(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, []string{"one", "two"}, got)
 	require.Zero(t, emptyHeaderValues, "empty header value slices must not be copied")
 }
@@ -2310,9 +2288,7 @@ func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
 	req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
 	req.Header.Set("X-Kept", "still here")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 
 	require.Empty(t, got.forwardedFor)
 	require.Empty(t, got.authorization)
@@ -2356,9 +2332,7 @@ func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 		req.Header.Add("X-Forwarded-For", "1.1.1.1")
 		req.Header.Add("X-Forwarded-For", "2.2.2.2")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, fiber.StatusOK)
 		return values, uriHost, hdrHost
 	}
 
@@ -2452,9 +2426,7 @@ func Test_HTTPMiddleware_PropagatesConnectionRewrite(t *testing.T) {
 			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 			req.Header.Set(fiber.HeaderConnection, tc.sent)
 
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, req, fiber.StatusOK)
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.want == "close", gotClose, "the close flag follows the value")
 		})
@@ -2517,9 +2489,7 @@ func Test_HTTPMiddleware_ConnectionCloseSurvivesDownstream(t *testing.T) {
 			}))
 			app.Get("/", tc.handler)
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, tc.status, resp.StatusCode)
+			resp := apptest.Expect(t, app, "/", tc.status)
 			require.True(t, resp.Close, "the connection the middleware asked to close has to close")
 		})
 	}
@@ -2580,9 +2550,7 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 				return c.SendString("ok")
 			})
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.wantClose, resp.Close, "close has to reach the wire, not just the fiber context")
 			require.Equal(t, tc.want, afterNext, "the complete Connection field must outlive the downstream chain")
@@ -2668,12 +2636,7 @@ func Test_HTTPMiddleware_URLRewrite(t *testing.T) {
 		return c.SendString("users at " + c.Path())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/api/users?x=1", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "users at /users", string(body))
+	apptest.ExpectBody(t, app, "/api/users?x=1", fiber.StatusOK, "users at /users")
 }
 
 func Test_HTTPHandler_TLSConnectionStateCarried(t *testing.T) {
@@ -2725,12 +2688,9 @@ func Test_HTTPMiddleware_NextCalledAfterReturn(t *testing.T) {
 	app.Use(HTTPMiddleware(mw))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("downstream") })
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, http.StatusAccepted, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Empty(t, string(body))
+	resp := apptest.Expect(t, app, "/", http.StatusAccepted)
+	body := apptest.Body(t, resp)
+	require.Empty(t, body)
 
 	// The Fiber context is released by now, so a late next must be a no-op.
 	next := <-saved
@@ -2805,11 +2765,9 @@ func Test_HTTPMiddleware_NoRewriteKeepsChainPosition(t *testing.T) {
 				return c.SendString("SECRET")
 			})
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
-			require.NoError(t, err)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.NotEqual(t, "SECRET", string(body), "the adaptor resumed past the guard that already ran")
+			resp := apptest.Do(t, app, path)
+			body := apptest.Body(t, resp)
+			require.NotEqual(t, "SECRET", body, "the adaptor resumed past the guard that already ran")
 			require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 			require.False(t, authRan.Load())
 		})
