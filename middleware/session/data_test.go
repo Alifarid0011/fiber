@@ -2,6 +2,7 @@ package session
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -9,14 +10,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// sessionTestData returns pooled data holding the key/value pairs given as
+// alternating arguments, and releases it when the test ends.
+func sessionTestData(t *testing.T, pairs ...any) *data {
+	t.Helper()
+
+	d := acquireData()
+	t.Cleanup(func() { releaseData(d) })
+	for kv := range slices.Chunk(pairs, 2) {
+		d.Set(kv[0], kv[1])
+	}
+	return d
+}
+
 func TestKeys(t *testing.T) {
 	t.Parallel()
 
 	// Test case: Empty data
 	t.Run("Empty data", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
+		d := sessionTestData(t)
 		keys := d.Keys()
 		require.Empty(t, keys, "Expected no keys in empty data")
 	})
@@ -24,9 +37,7 @@ func TestKeys(t *testing.T) {
 	// Test case: Single key
 	t.Run("Single key", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
-		d.Set("key1", "value1")
+		d := sessionTestData(t, "key1", "value1")
 		keys := d.Keys()
 		require.Len(t, keys, 1, "Expected one key")
 		require.Contains(t, keys, "key1", "Expected key1 to be present")
@@ -35,11 +46,7 @@ func TestKeys(t *testing.T) {
 	// Test case: Multiple keys
 	t.Run("Multiple keys", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
-		d.Set("key1", "value1")
-		d.Set("key2", "value2")
-		d.Set("key3", "value3")
+		d := sessionTestData(t, "key1", "value1", "key2", "value2", "key3", "value3")
 		keys := d.Keys()
 		require.Len(t, keys, 3, "Expected three keys")
 		require.Contains(t, keys, "key1", "Expected key1 to be present")
@@ -50,11 +57,7 @@ func TestKeys(t *testing.T) {
 	// Test case: Concurrent access
 	t.Run("Concurrent access", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
-		d.Set("key1", "value1")
-		d.Set("key2", "value2")
-		d.Set("key3", "value3")
+		d := sessionTestData(t, "key1", "value1", "key2", "value2", "key3", "value3")
 
 		done := make(chan bool)
 		go func() {
@@ -78,8 +81,7 @@ func TestData_Len(t *testing.T) {
 	// Test case: Empty data
 	t.Run("Empty data", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
+		d := sessionTestData(t)
 		length := d.Len()
 		require.Equal(t, 0, length, "Expected length to be 0 for empty data")
 	})
@@ -87,9 +89,7 @@ func TestData_Len(t *testing.T) {
 	// Test case: Single key
 	t.Run("Single key", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
-		d.Set("key1", "value1")
+		d := sessionTestData(t, "key1", "value1")
 		length := d.Len()
 		require.Equal(t, 1, length, "Expected length to be 1 when one key is set")
 	})
@@ -97,11 +97,7 @@ func TestData_Len(t *testing.T) {
 	// Test case: Multiple keys
 	t.Run("Multiple keys", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
-		d.Set("key1", "value1")
-		d.Set("key2", "value2")
-		d.Set("key3", "value3")
+		d := sessionTestData(t, "key1", "value1", "key2", "value2", "key3", "value3")
 		length := d.Len()
 		require.Equal(t, 3, length, "Expected length to be 3 when three keys are set")
 	})
@@ -109,11 +105,7 @@ func TestData_Len(t *testing.T) {
 	// Test case: Concurrent access
 	t.Run("Concurrent access", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
-		d.Set("key1", "value1")
-		d.Set("key2", "value2")
-		d.Set("key3", "value3")
+		d := sessionTestData(t, "key1", "value1", "key2", "value2", "key3", "value3")
 
 		done := make(chan bool, 2) // Buffered channel with size 2
 		go func() {
@@ -137,8 +129,7 @@ func TestData_Get(t *testing.T) {
 	// Test case: Nonexistent key
 	t.Run("Nonexistent key", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
+		d := sessionTestData(t)
 		value := d.Get("nonexistent-key")
 		require.Nil(t, value, "Expected nil for nonexistent key")
 	})
@@ -146,9 +137,7 @@ func TestData_Get(t *testing.T) {
 	// Test case: Existing key
 	t.Run("Existing key", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
-		d.Set("key1", "value1")
+		d := sessionTestData(t, "key1", "value1")
 		value := d.Get("key1")
 		require.Equal(t, "value1", value, "Expected value1 for key1")
 	})
@@ -160,10 +149,7 @@ func TestData_Reset(t *testing.T) {
 	// Test case: Reset data
 	t.Run("Reset data", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
-		d.Set("key1", "value1")
-		d.Set("key2", "value2")
+		d := sessionTestData(t, "key1", "value1", "key2", "value2")
 		d.Reset()
 		requireDataEmpty(t, d, "Expected data map to be empty after reset")
 	})
@@ -189,10 +175,7 @@ func requireDataEmpty(t *testing.T, d *data, msg string) {
 func TestData_ResetPreservesAllocation(t *testing.T) {
 	t.Parallel()
 
-	d := acquireData()
-	t.Cleanup(func() {
-		releaseData(d)
-	})
+	d := sessionTestData(t)
 
 	originalPtr := lockedMapPointer(d)
 
@@ -265,9 +248,7 @@ func TestData_Delete(t *testing.T) {
 	// Test case: Delete existing key
 	t.Run("Delete existing key", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
-		d.Set("key1", "value1")
+		d := sessionTestData(t, "key1", "value1")
 		d.Delete("key1")
 		value := d.Get("key1")
 		require.Nil(t, value, "Expected nil for deleted key")
@@ -276,8 +257,7 @@ func TestData_Delete(t *testing.T) {
 	// Test case: Delete nonexistent key
 	t.Run("Delete nonexistent key", func(t *testing.T) {
 		t.Parallel()
-		d := acquireData()
-		defer releaseData(d)
+		d := sessionTestData(t)
 		d.Delete("nonexistent-key")
 		// No assertion needed, just ensure no panic or error
 	})
@@ -331,9 +311,7 @@ func Test_Data_DirtyTracking(t *testing.T) {
 	// standing in for the state a successful decode leaves behind.
 	cleanData := func(t *testing.T, key, value any) *data {
 		t.Helper()
-		d := acquireData()
-		t.Cleanup(func() { releaseData(d) })
-		d.Set(key, value)
+		d := sessionTestData(t, key, value)
 		d.dirty.Store(false)
 		return d
 	}

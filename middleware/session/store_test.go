@@ -14,6 +14,16 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// sessionTestResolve returns the session ID that store reads from ctx and where
+// it came from, failing the test if the extractor errors.
+func sessionTestResolve(t *testing.T, store *Store, ctx fiber.Ctx) extractors.Result {
+	t.Helper()
+
+	from, err := store.getSessionID(ctx)
+	require.NoError(t, err)
+	return from
+}
+
 // go test -run Test_Store_getSessionID
 func Test_Store_getSessionID(t *testing.T) {
 	t.Parallel()
@@ -22,57 +32,39 @@ func Test_Store_getSessionID(t *testing.T) {
 	// fiber instance
 	app := fiber.New()
 
-	t.Run("from cookie", func(t *testing.T) {
-		t.Parallel()
-		// session store
-		store := NewStore()
-		// fiber context
-		ctx := apptest.Ctx(t, app)
+	for _, tc := range []struct {
+		store *Store
+		plant func(ctx fiber.Ctx, key string) // puts expectedID where the store looks for it
+		name  string
+	}{
+		{
+			name:  "from cookie",
+			store: NewStore(),
+			plant: func(ctx fiber.Ctx, key string) { ctx.Request().Header.SetCookie(key, expectedID) },
+		},
+		{
+			name:  "from header",
+			store: NewStore(Config{Extractor: extractors.FromHeader("session_id")}),
+			plant: func(ctx fiber.Ctx, key string) { ctx.Request().Header.Set(key, expectedID) },
+		},
+		{
+			name:  "from url query",
+			store: NewStore(Config{Extractor: extractors.FromQuery("session_id")}),
+			plant: func(ctx fiber.Ctx, key string) {
+				ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", key, expectedID))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// fiber context
+			ctx := apptest.Ctx(t, app)
+			tc.plant(ctx, tc.store.Extractor.Key)
 
-		// set cookie
-		ctx.Request().Header.SetCookie(store.Extractor.Key, expectedID)
-
-		from, resolveErr := store.getSessionID(ctx)
-		require.NoError(t, resolveErr)
-		id := from.Value
-		require.Equal(t, expectedID, id)
-	})
-
-	t.Run("from header", func(t *testing.T) {
-		t.Parallel()
-		// session store
-		store := NewStore(Config{
-			Extractor: extractors.FromHeader("session_id"),
+			from := sessionTestResolve(t, tc.store, ctx)
+			require.Equal(t, expectedID, from.Value)
 		})
-		// fiber context
-		ctx := apptest.Ctx(t, app)
-
-		// set header
-		ctx.Request().Header.Set(store.Extractor.Key, expectedID)
-
-		from, resolveErr := store.getSessionID(ctx)
-		require.NoError(t, resolveErr)
-		id := from.Value
-		require.Equal(t, expectedID, id)
-	})
-
-	t.Run("from url query", func(t *testing.T) {
-		t.Parallel()
-		// session store
-		store := NewStore(Config{
-			Extractor: extractors.FromQuery("session_id"),
-		})
-		// fiber context
-		ctx := apptest.Ctx(t, app)
-
-		// set url parameter
-		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.Extractor.Key, expectedID))
-
-		from, resolveErr := store.getSessionID(ctx)
-		require.NoError(t, resolveErr)
-		id := from.Value
-		require.Equal(t, expectedID, id)
-	})
+	}
 }
 
 // go test -run Test_Store_Get
@@ -136,8 +128,7 @@ func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
 	app := fiber.New()
 
 	// Create a new context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 
 	// Mock middleware and set it in the context
 	middleware := &Middleware{}
@@ -193,12 +184,10 @@ func Test_Store_GetByID(t *testing.T) {
 
 	t.Run("valid session ID", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
 		// Create a new session
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		ctx := apptest.Ctx(t, fiber.New())
 		session, err := store.Get(ctx)
 		defer session.Release()
-		defer app.ReleaseCtx(ctx)
 		require.NoError(t, err)
 
 		// Save the session ID
@@ -247,10 +236,8 @@ func Test_Store_getSessionID_SkipsChildrenWithoutExtract(t *testing.T) {
 	ctx := apptest.Ctx(t, app)
 	ctx.Request().Header.SetCookie("session_id", "abc123")
 
-	from, resolveErr := store.getSessionID(ctx)
-	require.NoError(t, resolveErr)
-	id := from.Value
-	require.Equal(t, "abc123", id)
+	from := sessionTestResolve(t, store, ctx)
+	require.Equal(t, "abc123", from.Value)
 }
 
 // Test_Store_getSessionID_WithoutExtractor covers a Store built directly rather
@@ -262,11 +249,8 @@ func Test_Store_getSessionID_WithoutExtractor(t *testing.T) {
 	ctx := apptest.Ctx(t, fiber.New())
 	ctx.Request().Header.SetCookie("session_id", "abc123")
 
-	store := &Store{}
-	from, resolveErr := store.getSessionID(ctx)
-	require.NoError(t, resolveErr)
-	emptyID := from.Value
-	require.Empty(t, emptyID)
+	from := sessionTestResolve(t, &Store{}, ctx)
+	require.Empty(t, from.Value)
 }
 
 // Test_Store_getSessionID_HonorsChainLevelExtract pins that a chain-level
@@ -306,11 +290,9 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 		store := NewStore(Config{Extractor: decorated})
 		ctx := apptest.Ctx(t, app)
 
-		from, resolveErr := store.getSessionID(ctx)
-		require.NoError(t, resolveErr)
-		id := from.Value
+		from := sessionTestResolve(t, store, ctx)
 
-		require.Equal(t, "raw-id", id, "the chain-level Extract must produce the ID")
+		require.Equal(t, "raw-id", from.Value, "the chain-level Extract must produce the ID")
 		require.Equal(t, 1, overrideCalls, "the override must run exactly once")
 		require.Equal(t, 1, childCalls, "the children must run once, through the override")
 		require.Equal(t, extractors.SourceCustom, from.Source, "the winning child must be reported")
@@ -340,17 +322,13 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 
 		ctx := apptest.Ctx(t, app)
 		ctx.Request().Header.Set("X-Session", "attacker-supplied")
-		from, resolveErr := store.getSessionID(ctx)
-		require.NoError(t, resolveErr)
-		id := from.Value
-		require.Empty(t, id, "the validator must be able to refuse an ID")
+		from := sessionTestResolve(t, store, ctx)
+		require.Empty(t, from.Value, "the validator must be able to refuse an ID")
 
 		ok := apptest.Ctx(t, app)
 		ok.Request().Header.Set("X-Session", "trusted")
-		acceptedFrom, resolveErr := store.getSessionID(ok)
-		require.NoError(t, resolveErr)
-		acceptedID := acceptedFrom.Value
-		require.Equal(t, "trusted", acceptedID)
+		acceptedFrom := sessionTestResolve(t, store, ok)
+		require.Equal(t, "trusted", acceptedFrom.Value)
 		require.Equal(t, extractors.SourceHeader, acceptedFrom.Source)
 		require.Equal(t, "X-Session", acceptedFrom.Key)
 	})
@@ -368,56 +346,49 @@ func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
 		extractors.FromHeader("X-Sid"),
 	)
 
-	t.Run("cookie wins", func(t *testing.T) {
-		t.Parallel()
-		store := NewStore(Config{Extractor: chain})
-		ctx := apptest.Ctx(t, app)
-		ctx.Request().Header.SetCookie("sid_cookie", "from-cookie")
+	for _, tc := range []struct {
+		plant func(ctx fiber.Ctx) // puts the request in the state under test; nil leaves it blank
+		name  string
+		want  extractors.Result
+	}{
+		{
+			name:  "cookie wins",
+			plant: func(ctx fiber.Ctx) { ctx.Request().Header.SetCookie("sid_cookie", "from-cookie") },
+			want:  extractors.Result{Value: "from-cookie", Key: "sid_cookie", Source: extractors.SourceCookie, Resolved: true},
+		},
+		{
+			name:  "header wins when the cookie is absent",
+			plant: func(ctx fiber.Ctx) { ctx.Request().Header.Set("X-Sid", "from-header") },
+			want:  extractors.Result{Value: "from-header", Key: "X-Sid", Source: extractors.SourceHeader, Resolved: true},
+		},
+		{name: "nothing matches", want: extractors.Result{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			store := NewStore(Config{Extractor: chain})
+			ctx := apptest.Ctx(t, app)
+			if tc.plant != nil {
+				tc.plant(ctx)
+			}
 
-		from, resolveErr := store.getSessionID(ctx)
-		require.NoError(t, resolveErr)
-		id := from.Value
-		require.Equal(t, "from-cookie", id)
-		require.Equal(t, extractors.SourceCookie, from.Source)
-		require.Equal(t, "sid_cookie", from.Key)
-	})
-
-	t.Run("header wins when the cookie is absent", func(t *testing.T) {
-		t.Parallel()
-		store := NewStore(Config{Extractor: chain})
-		ctx := apptest.Ctx(t, app)
-		ctx.Request().Header.Set("X-Sid", "from-header")
-
-		from, resolveErr := store.getSessionID(ctx)
-		require.NoError(t, resolveErr)
-		id := from.Value
-		require.Equal(t, "from-header", id)
-		require.Equal(t, extractors.SourceHeader, from.Source)
-		require.Equal(t, "X-Sid", from.Key)
-	})
-
-	t.Run("nothing matches", func(t *testing.T) {
-		t.Parallel()
-		store := NewStore(Config{Extractor: chain})
-		ctx := apptest.Ctx(t, app)
-
-		from, resolveErr := store.getSessionID(ctx)
-		require.NoError(t, resolveErr)
-		id := from.Value
-		require.Empty(t, id)
-		require.Equal(t, extractors.Result{}, from)
-	})
+			require.Equal(t, tc.want, sessionTestResolve(t, store, ctx))
+		})
+	}
 }
 
-// Test_Store_UnattributableID_IsNotWrittenBack pins the session-fixation guard
-// against provenance that was never observed. A chain-level Extract answering
-// on its own records no child, so Resolve reports the chain's declared metadata
-// — its first child. Reading that as provenance would classify a query-supplied
-// ID as "came from a writable sink" and pin the victim to an attacker-chosen
-// session.
-func Test_Store_UnattributableID_IsNotWrittenBack(t *testing.T) {
+// go test -run Test_Store_FixationGuard
+//
+// Test_Store_FixationGuard pins the session-fixation guard: an ID that reaches a
+// store through a read-only source loads the existing session it names, and
+// saving that session must not pin the ID into a cookie, whichever way the
+// extractor hides where the ID came from.
+func Test_Store_FixationGuard(t *testing.T) {
 	t.Parallel()
 
+	// A chain-level Extract answering on its own records no child, so Resolve
+	// reports the chain's declared metadata — its first child. Reading that as
+	// provenance would classify a query-supplied ID as "came from a writable
+	// sink" and pin the victim to an attacker-chosen session.
 	base := extractors.Chain(
 		extractors.FromCookie("sid"), // declared metadata: cookie, a writable sink
 		extractors.FromQuery("sid"),
@@ -427,28 +398,53 @@ func Test_Store_UnattributableID_IsNotWrittenBack(t *testing.T) {
 		return fiber.Query[string](c, "sid"), nil // reads the query, delegates to no child
 	}
 
-	store := NewStore(Config{Extractor: attackable})
-	app := fiber.New()
+	// The guard keys off whether an ID arrived with the request, not off Key. A
+	// keyless child — FromCustom(""), or a hand-rolled one — used to skip the
+	// guard entirely and let a read-only ID reach the configured cookie sink.
+	keyless := extractors.Chain(
+		extractors.FromCustom("", func(c fiber.Ctx) (string, error) {
+			return fiber.Query[string](c, "sid"), nil
+		}),
+		extractors.FromCookie("sid"),
+	)
 
-	// Seed a real session, so the ID the attacker plants names an existing one.
-	seed := app.AcquireCtx(&fasthttp.RequestCtx{})
-	seeded, err := store.Get(seed)
-	require.NoError(t, err)
-	plantedID := seeded.ID()
-	require.NoError(t, seeded.Save())
-	app.ReleaseCtx(seed)
+	for _, tc := range []struct {
+		name      string
+		msg       string
+		extractor extractors.Extractor
+	}{
+		{
+			name:      "unattributable ID",
+			extractor: attackable,
+			msg:       "an ID whose origin cannot be attributed must never be pinned into a cookie",
+		},
+		{
+			name:      "keyless extractor",
+			extractor: keyless,
+			msg:       "a read-only ID must not be pinned into a cookie just because its extractor has no Key",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// The victim's request carries that ID in the query and no cookie.
-	ctx := apptest.Ctx(t, app)
-	ctx.Request().SetRequestURI("/p?sid=" + plantedID)
+			store := NewStore(Config{Extractor: tc.extractor})
+			app := fiber.New()
 
-	sess, err := store.Get(ctx)
-	require.NoError(t, err)
-	require.False(t, sess.Fresh(), "the planted ID should load the existing session")
-	require.NoError(t, sess.Save())
+			// Seed a real session, so the ID the attacker plants names an existing one.
+			plantedID := seedSession(t, app, store, nil)
 
-	require.NotContains(t, string(ctx.Response().Header.Peek(fiber.HeaderSetCookie)), plantedID,
-		"an ID whose origin cannot be attributed must never be pinned into a cookie")
+			// The victim's request carries that ID in the query and no cookie.
+			ctx := apptest.Ctx(t, app)
+			ctx.Request().SetRequestURI("/p?sid=" + plantedID)
+
+			sess, err := store.Get(ctx)
+			require.NoError(t, err)
+			require.False(t, sess.Fresh(), "the planted ID should load the existing session")
+			require.NoError(t, sess.Save())
+
+			require.NotContains(t, string(ctx.Response().Header.Peek(fiber.HeaderSetCookie)), plantedID, tc.msg)
+		})
+	}
 }
 
 // Test_Store_ForeignChainDoesNotSupplyProvenance pins that a leaf consulting
@@ -469,10 +465,8 @@ func Test_Store_ForeignChainDoesNotSupplyProvenance(t *testing.T) {
 	ctx.Request().SetRequestURI("/p?sid=planted")
 	ctx.Request().Header.SetCookie("tenant", "acme")
 
-	from, resolveErr := store.getSessionID(ctx)
-	require.NoError(t, resolveErr)
-	id := from.Value
-	require.Equal(t, "planted", id)
+	from := sessionTestResolve(t, store, ctx)
+	require.Equal(t, "planted", from.Value)
 	require.Equal(t, "sid", from.Key, "the leaf must not inherit the tenant chain's winner")
 	require.Equal(t, extractors.SourceCustom, from.Source)
 }
@@ -576,40 +570,6 @@ func Test_Store_ProvenanceBoxIsRecycled(t *testing.T) {
 	require.Nil(t, fctx.UserValue(sessionExtractorContextKey), "the reset must drop the box")
 }
 
-// Test_Store_KeylessExtractorStillGuarded pins that the fixation guard keys off
-// whether an ID arrived with the request, not off Key. A keyless child —
-// FromCustom(""), or a hand-rolled one — used to skip the guard entirely and let
-// a read-only ID reach the configured cookie sink.
-func Test_Store_KeylessExtractorStillGuarded(t *testing.T) {
-	t.Parallel()
-
-	store := NewStore(Config{Extractor: extractors.Chain(
-		extractors.FromCustom("", func(c fiber.Ctx) (string, error) {
-			return fiber.Query[string](c, "sid"), nil
-		}),
-		extractors.FromCookie("sid"),
-	)})
-
-	app := fiber.New()
-	seed := app.AcquireCtx(&fasthttp.RequestCtx{})
-	seeded, err := store.Get(seed)
-	require.NoError(t, err)
-	plantedID := seeded.ID()
-	require.NoError(t, seeded.Save())
-	app.ReleaseCtx(seed)
-
-	ctx := apptest.Ctx(t, app)
-	ctx.Request().SetRequestURI("/p?sid=" + plantedID)
-
-	sess, err := store.Get(ctx)
-	require.NoError(t, err)
-	require.False(t, sess.Fresh(), "the planted ID should load the existing session")
-	require.NoError(t, sess.Save())
-
-	require.NotContains(t, string(ctx.Response().Header.Peek(fiber.HeaderSetCookie)), plantedID,
-		"a read-only ID must not be pinned into a cookie just because its extractor has no Key")
-}
-
 // Test_Store_ProvenanceBoxIsReused pins that a second getSession on the same
 // request updates the box already in the request rather than taking a fresh one
 // from the pool. Overwriting the local would strand the first box outside the
@@ -626,12 +586,7 @@ func Test_Store_ProvenanceBoxIsReused(t *testing.T) {
 	store := NewStore()
 	app := fiber.New()
 
-	seed := app.AcquireCtx(&fasthttp.RequestCtx{})
-	seeded, err := store.Get(seed)
-	require.NoError(t, err)
-	require.NoError(t, seeded.Save())
-	savedID := seeded.ID()
-	app.ReleaseCtx(seed)
+	savedID := seedSession(t, app, store, nil)
 
 	ctx := apptest.Ctx(t, app)
 	ctx.Request().Header.SetCookie("session_id", savedID)

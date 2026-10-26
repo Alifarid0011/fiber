@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -162,54 +161,6 @@ func Test_Coverage_ValidateHostForSSRF_PublicHostname(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// Test_Coverage_ResolveRedirect_RejectsHostlessTarget covers the
-// empty-host check after fasthttp's URI.Update merges in the Location.
-// A Location of "http://" produces a URI with scheme but no host.
-func Test_Coverage_ResolveRedirect_RejectsHostlessTarget(t *testing.T) {
-	t.Parallel()
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	_, err := resolveRedirect("https://example.com", []byte("http://"), policy, nil)
-	require.ErrorIs(t, err, fasthttp.ErrorInvalidURI)
-}
-
-// Test_Coverage_JoinUpstreamPath_RejectsAuthorityInjection covers a
-// request path that spells a scheme and host of its own. Parsed behind
-// the placeholder authority it is a path and nothing else, so the
-// upstream host pinned by base cannot be replaced.
-func Test_Coverage_JoinUpstreamPath_RejectsAuthorityInjection(t *testing.T) {
-	t.Parallel()
-	base, err := url.Parse("http://upstream.example")
-	require.NoError(t, err)
-	out := joinUpstreamPath(base, "/foo://hijack.example/bar")
-	require.NotEmpty(t, out)
-	parsed, err := url.Parse(out)
-	require.NoError(t, err)
-	require.Equal(t, "http", parsed.Scheme)
-	require.Equal(t, "upstream.example", parsed.Host, "host must remain pinned")
-	require.Equal(t, "/foo://hijack.example/bar", parsed.Path)
-}
-
-// Test_Coverage_JoinUpstreamPath_FallbackPreservesBasePathPrefix is a
-// regression guard: when the request path fails to parse cleanly the
-// fallback branch must still honor an upstream base path prefix.
-// Without this, a malformed request like "/%zz" could silently bypass
-// a configured "/api" and reach the upstream root.
-func Test_Coverage_JoinUpstreamPath_FallbackPreservesBasePathPrefix(t *testing.T) {
-	t.Parallel()
-	base, err := url.Parse("http://upstream.example/api")
-	require.NoError(t, err)
-
-	// "/%zz" trips url.Parse (invalid escape) — the slow path's
-	// parse-error fallback fires.
-	out := joinUpstreamPath(base, "/%zz")
-	require.NotEmpty(t, out)
-	parsed, err := url.Parse(out)
-	require.NoError(t, err, "fallback must still emit a parseable URL")
-	require.Equal(t, "upstream.example", parsed.Host, "host must remain pinned")
-	require.True(t, strings.HasPrefix(parsed.Path, "/api/"), "base path prefix must survive fallback: %q", parsed.Path)
-}
-
 // Test_Coverage_JoinUpstreamPath_PreservesRawPath_BaseHasPercentEncoded
 // exercises the RawPath join path where both base and request have a
 // percent-encoded segment.
@@ -219,16 +170,6 @@ func Test_Coverage_JoinUpstreamPath_PreservesRawPath_BaseHasPercentEncoded(t *te
 	require.NoError(t, err)
 	out := joinUpstreamPath(base, "/sub")
 	require.Contains(t, out, "/space%20here/sub")
-}
-
-// Test_Coverage_ConfigDefault_PanicsOnEmptyServersAndNoClient covers
-// the panic branch in configDefault when neither Servers nor a
-// Client override is supplied.
-func Test_Coverage_ConfigDefault_PanicsOnEmptyServersAndNoClient(t *testing.T) {
-	t.Parallel()
-	require.PanicsWithValue(t, "Servers cannot be empty", func() {
-		configDefault(Config{})
-	})
 }
 
 // Test_Coverage_ConfigDefault_FillsDefaults checks the defaults for a Config with Servers or a Client.

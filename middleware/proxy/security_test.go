@@ -3,13 +3,12 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"crypto/tls"
 	"errors"
 	"io"
 	"mime/multipart"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strconv"
@@ -136,53 +135,50 @@ func Test_Security_SchemeAllowed(t *testing.T) {
 	require.True(t, schemeAllowed("ftp", []string{"ftp"}))
 }
 
-func Test_Security_ValidateUpstream_BlocksPrivateIPs(t *testing.T) {
+// go test -run Test_Security_ValidateUpstream_Rejects
+//
+// Test_Security_ValidateUpstream_Rejects pins what validateUpstream refuses: an
+// address the strict policy blocks (the private-IP filtering that
+// FuzzValidateUpstream leaves to this test), a scheme outside the allowlist, and
+// an upstream without a host.
+func Test_Security_ValidateUpstream_Rejects(t *testing.T) {
 	t.Parallel()
-	policy := DefaultSecurityPolicy()
-	bad := []string{
-		"http://127.0.0.1",
-		"http://localhost:8080",
-		"http://10.0.0.1",
-		"http://192.168.1.1/path",
-		"http://169.254.169.254/latest/meta-data/",
-		"https://[::1]/",
-	}
-	for _, raw := range bad {
-		t.Run(raw, func(t *testing.T) {
+
+	strict := DefaultSecurityPolicy()
+	allowPrivate := proxyTestAllowPrivatePolicy()
+
+	for _, tc := range []struct {
+		err      error
+		upstream string
+		policy   SecurityPolicy
+	}{
+		{upstream: "http://127.0.0.1", policy: strict, err: ErrUpstreamHostBlocked},
+		{upstream: "http://localhost:8080", policy: strict, err: ErrUpstreamHostBlocked},
+		{upstream: "http://10.0.0.1", policy: strict, err: ErrUpstreamHostBlocked},
+		{upstream: "http://192.168.1.1/path", policy: strict, err: ErrUpstreamHostBlocked},
+		{upstream: "http://169.254.169.254/latest/meta-data/", policy: strict, err: ErrUpstreamHostBlocked},
+		{upstream: "https://[::1]/", policy: strict, err: ErrUpstreamHostBlocked},
+		{upstream: "file:///etc/passwd", policy: allowPrivate, err: ErrUpstreamSchemeNotAllowed},
+		{upstream: "gopher://example.com", policy: allowPrivate, err: ErrUpstreamSchemeNotAllowed},
+		{upstream: "ftp://example.com", policy: allowPrivate, err: ErrUpstreamSchemeNotAllowed},
+		{upstream: "", policy: strict, err: ErrUpstreamHostInvalid},
+		// "http:///path" parses with scheme "http" and no host, which the post-scheme-check
+		// "host empty" guard rejects.
+		{upstream: "http:///path", policy: strict, err: ErrUpstreamHostInvalid},
+	} {
+		t.Run(cmp.Or(tc.upstream, "empty"), func(t *testing.T) {
 			t.Parallel()
-			_, err := validateUpstream(raw, policy, nil)
-			require.ErrorIs(t, err, ErrUpstreamHostBlocked, "expected block for %q", raw)
+			_, err := validateUpstream(tc.upstream, tc.policy, nil)
+			require.ErrorIs(t, err, tc.err, "expected %v for %q", tc.err, tc.upstream)
 		})
 	}
 }
 
 func Test_Security_ValidateUpstream_AllowsPrivateOptIn(t *testing.T) {
 	t.Parallel()
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	u, err := validateUpstream("http://127.0.0.1:8080", policy, nil)
+	u, err := validateUpstream("http://127.0.0.1:8080", proxyTestAllowPrivatePolicy(), nil)
 	require.NoError(t, err)
 	require.Equal(t, "127.0.0.1:8080", u.Host)
-}
-
-func Test_Security_ValidateUpstream_RejectsSchemes(t *testing.T) {
-	t.Parallel()
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	bad := []string{"file:///etc/passwd", "gopher://example.com", "ftp://example.com"}
-	for _, raw := range bad {
-		t.Run(raw, func(t *testing.T) {
-			t.Parallel()
-			_, err := validateUpstream(raw, policy, nil)
-			require.ErrorIs(t, err, ErrUpstreamSchemeNotAllowed)
-		})
-	}
-}
-
-func Test_Security_ValidateUpstream_RejectsEmpty(t *testing.T) {
-	t.Parallel()
-	_, err := validateUpstream("", DefaultSecurityPolicy(), nil)
-	require.ErrorIs(t, err, ErrUpstreamHostInvalid)
 }
 
 func Test_Security_Forward_BlocksPrivateByDefault(t *testing.T) {
@@ -222,17 +218,14 @@ func Test_Security_Balancer_AllowsPrivateOptIn(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
+	policy := proxyTestAllowPrivatePolicy()
 	app := fiber.New()
 	app.Use(Balancer(Config{
 		Servers:        []string{addr},
 		SecurityPolicy: &policy,
 	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = addr
-	apptest.Expect(t, app, req, fiber.StatusTeapot)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost(addr)), fiber.StatusTeapot)
 }
 
 // Test_Security_HopByHopRequestStripping verifies hop-by-hop headers
@@ -267,8 +260,7 @@ func Test_Security_HopByHopRequestStripping(t *testing.T) {
 	app := fiber.New()
 	app.Use(Balancer(Config{Servers: []string{addr}}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = addr
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost(addr))
 	for _, h := range hops {
 		req.Header.Set(h, "drop-me")
 	}
@@ -317,9 +309,7 @@ func Test_Security_HopByHopResponseStripping(t *testing.T) {
 	app := fiber.New()
 	app.Use(Balancer(Config{Servers: []string{addr}}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = addr
-	resp := apptest.Do(t, app, req)
+	resp := apptest.Do(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost(addr)))
 	require.Empty(t, resp.Header.Get(fiber.HeaderProxyAuthenticate))
 	require.Empty(t, resp.Header.Get(fiber.HeaderKeepAlive))
 	require.Empty(t, resp.Header.Get("X-Custom-Hop"))
@@ -346,10 +336,9 @@ func Test_Security_KeepConnectionPreservesOtherHopByHop(t *testing.T) {
 		KeepConnectionHeader: true,
 	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = addr
-	req.Header.Set(fiber.HeaderConnection, "keep-alive")
-	req.Header.Set(fiber.HeaderProxyAuthorization, "Basic dXNlcjpwYXNz")
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost(addr),
+		apptest.WithHeader(fiber.HeaderConnection, "keep-alive"),
+		apptest.WithHeader(fiber.HeaderProxyAuthorization, "Basic dXNlcjpwYXNz"))
 
 	apptest.Expect(t, app, req, fiber.StatusOK)
 }
@@ -368,9 +357,7 @@ func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
 	// otherwise race with other proxy tests that read it at runtime.
 	// Allow private IPs for the loopback test servers while keeping the
 	// downgrade protection enabled.
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	withSecurityPolicyForTest(t, policy)
+	withSecurityPolicyForTest(t, proxyTestAllowPrivatePolicy())
 
 	// Start an HTTPS server that 302-redirects to a plaintext HTTP URL.
 	cert, err := generateLocalhostCert(t)
@@ -417,76 +404,97 @@ func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
 	require.Contains(t, body, "HTTPS to HTTP redirect blocked")
 }
 
-func Test_Security_JoinUpstreamPath_BlocksNetworkPathInjection(t *testing.T) {
-	t.Parallel()
-	base, err := parseUpstream("http://upstream.example")
-	require.NoError(t, err)
+// proxyTestParseUpstream parses raw the way a configured upstream is, failing the
+// test if it does not parse.
+func proxyTestParseUpstream(t *testing.T, raw string) *url.URL {
+	t.Helper()
 
-	for _, target := range []string{
-		"//attacker.example/path",
-		"////attacker.example/path",
-		"/\\attacker.example",
-		"/?@evil.com",
-		"@evil.com",
-		"https://evil.com/path",
+	base, err := parseUpstream(raw)
+	require.NoError(t, err)
+	return base
+}
+
+// Test_Security_JoinUpstreamPath_KeepsTheUpstream pins that no request path
+// changes the scheme or the host the upstream pins, however it is spelled.
+func Test_Security_JoinUpstreamPath_KeepsTheUpstream(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		base       string
+		target     string
+		wantPath   string // the path of the joined URL, unless empty
+		wantPrefix string // what the path of the joined URL starts with, unless empty
+	}{
+		// The router keeps empty segments, so "//attacker.example/path" is not
+		// "/attacker.example/path" to it. Forwarding it collapsed would hand the
+		// upstream a path no middleware mounted on "/attacker.example" has seen.
+		{name: "network path", base: "http://upstream.example", target: "//attacker.example/path", wantPath: "//attacker.example/path"},
+		{name: "network path with more slashes", base: "http://upstream.example", target: "////attacker.example/path"},
+		{name: "backslash", base: "http://upstream.example", target: "/\\attacker.example"},
+		{name: "userinfo in the query", base: "http://upstream.example", target: "/?@evil.com"},
+		{name: "userinfo", base: "http://upstream.example", target: "@evil.com"},
+		{name: "absolute URL", base: "http://upstream.example", target: "https://evil.com/path"},
+		{name: "network path behind a base path", base: "http://upstream.example/api", target: "//attacker.example/path", wantPath: "/api//attacker.example/path"},
+		// The fallback for a target that is a fragment alone and does not parse: the
+		// opaque path it becomes is rooted, and stays under the base's prefix.
+		{name: "malformed fragment", base: "http://upstream.example", target: "#%zz", wantPath: "/#%zz"},
+		{name: "malformed fragment behind a base path", base: "http://upstream.example/api", target: "#%zz", wantPath: "/api/#%zz"},
+		// A request path that spells a scheme and host of its own. Parsed behind the
+		// placeholder authority it is a path and nothing else, so the upstream host
+		// pinned by base cannot be replaced.
+		{name: "scheme and host in the path", base: "http://upstream.example", target: "/foo://hijack.example/bar", wantPath: "/foo://hijack.example/bar"},
+		// A regression guard: when the request path fails to parse cleanly the
+		// fallback branch must still honor an upstream base path prefix. Without
+		// this, a malformed request like "/%zz" could silently bypass a configured
+		// "/api" and reach the upstream root.
+		{name: "malformed path behind a base path", base: "http://upstream.example/api", target: "/%zz", wantPrefix: "/api/"},
 	} {
-		out := joinUpstreamPath(base, target)
-		parsed, parseErr := url.Parse(out)
-		require.NoError(t, parseErr, target)
-		require.Equal(t, "http", parsed.Scheme, "scheme must not change for %q: %q", target, out)
-		require.Equal(t, "upstream.example", parsed.Host, "host must not change for %q: %q", target, out)
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			out := joinUpstreamPath(proxyTestParseUpstream(t, tc.base), tc.target)
+			require.NotEmpty(t, out)
+			parsed, err := url.Parse(out)
+			require.NoError(t, err, "%q must join into a parseable URL: %q", tc.target, out)
+			require.Equal(t, "http", parsed.Scheme, "scheme must not change for %q: %q", tc.target, out)
+			require.Equal(t, "upstream.example", parsed.Host, "host must not change for %q: %q", tc.target, out)
+			if tc.wantPath != "" {
+				require.Equal(t, tc.wantPath, parsed.Path)
+			}
+			if tc.wantPrefix != "" {
+				require.True(t, strings.HasPrefix(parsed.Path, tc.wantPrefix), "base path prefix must survive: %q", parsed.Path)
+			}
+		})
 	}
-
-	// The router keeps empty segments, so "//attacker.example/path" is not
-	// "/attacker.example/path" to it. Forwarding it collapsed would hand the
-	// upstream a path no middleware mounted on "/attacker.example" has seen.
-	parsed, err := url.Parse(joinUpstreamPath(base, "//attacker.example/path"))
-	require.NoError(t, err)
-	require.Equal(t, "//attacker.example/path", parsed.Path)
-
-	withPrefix, err := parseUpstream("http://upstream.example/api")
-	require.NoError(t, err)
-	parsed, err = url.Parse(joinUpstreamPath(withPrefix, "//attacker.example/path"))
-	require.NoError(t, err)
-	require.Equal(t, "upstream.example", parsed.Host)
-	require.Equal(t, "/api//attacker.example/path", parsed.Path)
 }
 
-// Test_Security_JoinUpstreamPath_MalformedFragmentFallsBack covers the
-// fallback for a target that is a fragment alone and does not parse: the
-// opaque path it becomes is rooted, and stays under the base's prefix.
-func Test_Security_JoinUpstreamPath_MalformedFragmentFallsBack(t *testing.T) {
+// Test_Security_JoinUpstreamPath pins the URL a request path joins into.
+func Test_Security_JoinUpstreamPath(t *testing.T) {
 	t.Parallel()
-	base, err := parseUpstream("http://upstream.example")
-	require.NoError(t, err)
-	parsed, err := url.Parse(joinUpstreamPath(base, "#%zz"))
-	require.NoError(t, err)
-	require.Equal(t, "upstream.example", parsed.Host)
-	require.Equal(t, "/#%zz", parsed.Path)
 
-	withPrefix, err := parseUpstream("http://upstream.example/api")
-	require.NoError(t, err)
-	parsed, err = url.Parse(joinUpstreamPath(withPrefix, "#%zz"))
-	require.NoError(t, err)
-	require.Equal(t, "upstream.example", parsed.Host)
-	require.Equal(t, "/api/#%zz", parsed.Path)
-}
+	for _, tc := range []struct {
+		name   string
+		base   string
+		target string
+		want   string
+	}{
+		// A path prefix configured on the upstream base survives request joining
+		// instead of being overwritten by the request path.
+		{name: "base path prefix", base: "http://upstream.example/api", target: "/foo", want: "http://upstream.example/api/foo"},
+		{name: "base path prefix and query", base: "http://upstream.example/api", target: "/foo?q=1", want: "http://upstream.example/api/foo?q=1"},
+		// Trailing slash on the base should not double up.
+		{name: "base path prefix with a trailing slash", base: "http://upstream.example/api/", target: "/foo", want: "http://upstream.example/api/foo"},
+		{name: "query", base: "http://upstream.example", target: "/x?y=1&z=2", want: "http://upstream.example/x?y=1&z=2"},
+		// The early return when the inbound request had no path component.
+		{name: "empty path", base: "http://upstream.example", target: "", want: "http://upstream.example"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-// Test_Security_JoinUpstreamPath_PreservesBasePathPrefix ensures a path
-// prefix configured on the upstream base survives request joining instead
-// of being overwritten by the request path.
-func Test_Security_JoinUpstreamPath_PreservesBasePathPrefix(t *testing.T) {
-	t.Parallel()
-	base, err := parseUpstream("http://upstream.example/api")
-	require.NoError(t, err)
-
-	require.Equal(t, "http://upstream.example/api/foo", joinUpstreamPath(base, "/foo"))
-	require.Equal(t, "http://upstream.example/api/foo?q=1", joinUpstreamPath(base, "/foo?q=1"))
-
-	// Trailing slash on the base should not double up.
-	baseSlash, err := parseUpstream("http://upstream.example/api/")
-	require.NoError(t, err)
-	require.Equal(t, "http://upstream.example/api/foo", joinUpstreamPath(baseSlash, "/foo"))
+			require.Equal(t, tc.want, joinUpstreamPath(proxyTestParseUpstream(t, tc.base), tc.target))
+		})
+	}
 }
 
 // Test_Security_FollowRedirects_ReappliesSchemePerHop verifies that a
@@ -511,24 +519,14 @@ func Test_Security_FollowRedirects_ReappliesSchemePerHop(t *testing.T) {
 	require.Equal(t, "https", secondHopScheme, "scheme upgrade must carry through to the next hop")
 }
 
-func Test_Security_JoinUpstreamPath_PreservesQuery(t *testing.T) {
-	t.Parallel()
-	base, err := parseUpstream("http://upstream.example")
-	require.NoError(t, err)
-	out := joinUpstreamPath(base, "/x?y=1&z=2")
-	require.Equal(t, "http://upstream.example/x?y=1&z=2", out)
-}
-
 func Test_Security_JoinUpstreamPath_EmptyQueryMarkersUseSlowPath(t *testing.T) {
 	t.Parallel()
 
-	baseWithEmptyQuery, err := parseUpstream("http://upstream.example?")
-	require.NoError(t, err)
+	baseWithEmptyQuery := proxyTestParseUpstream(t, "http://upstream.example?")
 	require.True(t, baseWithEmptyQuery.ForceQuery)
 	require.Equal(t, "http://upstream.example/foo?", joinUpstreamPath(baseWithEmptyQuery, "/foo"))
 
-	base, err := parseUpstream("http://upstream.example")
-	require.NoError(t, err)
+	base := proxyTestParseUpstream(t, "http://upstream.example")
 	require.Equal(t, "http://upstream.example/foo", joinUpstreamPath(base, "/foo?"))
 	require.Equal(t, "http://upstream.example/foo", joinUpstreamPath(base, "/foo#"))
 }
@@ -548,8 +546,7 @@ func Test_Security_SecureTLSConfig_DefaultMinVersion(t *testing.T) {
 
 func Test_Security_WithSecurityPolicy_RestoresDefaults(t *testing.T) {
 	// No t.Parallel: mutates the global SecurityPolicy.
-	custom := DefaultSecurityPolicy()
-	custom.AllowPrivateIPs = true
+	custom := proxyTestAllowPrivatePolicy()
 	prev := WithSecurityPolicy(custom)
 	t.Cleanup(func() { WithSecurityPolicy(prev) })
 
@@ -671,15 +668,6 @@ func Test_Security_ValidateResolved(t *testing.T) {
 	require.True(t, ips[0].Equal(public.IP))
 }
 
-// Test_Security_ValidateUpstream_EmptyHostAfterScheme covers the post-
-// scheme-check "host empty" guard. "http:///path" parses with scheme
-// "http" and no host.
-func Test_Security_ValidateUpstream_EmptyHostAfterScheme(t *testing.T) {
-	t.Parallel()
-	_, err := validateUpstream("http:///path", DefaultSecurityPolicy(), nil)
-	require.ErrorIs(t, err, ErrUpstreamHostInvalid)
-}
-
 // Test_Security_JoinUpstreamPath_NilBase guards the nil-base branch
 // that callers should never hit but we still handle.
 func Test_Security_JoinUpstreamPath_NilBase(t *testing.T) {
@@ -687,21 +675,11 @@ func Test_Security_JoinUpstreamPath_NilBase(t *testing.T) {
 	require.Empty(t, joinUpstreamPath(nil, "/foo"))
 }
 
-// Test_Security_JoinUpstreamPath_EmptyPath exercises the early-return
-// when the inbound request had no path component.
-func Test_Security_JoinUpstreamPath_EmptyPath(t *testing.T) {
-	t.Parallel()
-	base, err := parseUpstream("http://upstream.example")
-	require.NoError(t, err)
-	require.Equal(t, base.String(), joinUpstreamPath(base, ""))
-}
-
 // Test_Security_JoinUpstreamPath_QueryOnly covers the "?" leading-char
 // branch where the inbound path is just a query string.
 func Test_Security_JoinUpstreamPath_QueryOnly(t *testing.T) {
 	t.Parallel()
-	base, err := parseUpstream("http://upstream.example/api")
-	require.NoError(t, err)
+	base := proxyTestParseUpstream(t, "http://upstream.example/api")
 	out := joinUpstreamPath(base, "?q=1")
 	require.Contains(t, out, "?q=1")
 	require.True(t, strings.HasPrefix(out, "http://upstream.example/"))
@@ -769,46 +747,65 @@ func Test_Security_ResolvePolicy_OverrideEmptySchemes(t *testing.T) {
 	require.True(t, got.AllowPrivateIPs)
 }
 
-// Test_Security_ResolveRedirect_RejectsControlChars covers the CRLF /
-// control-byte rejection at the top of resolveRedirect.
-func Test_Security_ResolveRedirect_RejectsControlChars(t *testing.T) {
+// Test_Security_ResolveRedirect pins what resolveRedirect makes of the Location of a
+// redirect from "https://example.com".
+func Test_Security_ResolveRedirect(t *testing.T) {
 	t.Parallel()
-	_, err := resolveRedirect("https://example.com", []byte("https://example.com/\r\nX-Inject: 1"), DefaultSecurityPolicy(), nil)
-	require.ErrorIs(t, err, fasthttp.ErrorInvalidURI)
+
+	allowPrivate := proxyTestAllowPrivatePolicy()
+	allowDowngrade := allowPrivate
+	allowDowngrade.AllowHTTPSDowngrade = true
+
+	for _, tc := range []struct {
+		err      error
+		name     string
+		location string
+		wantURL  string // what the Location resolves to, when it is followed
+		policy   SecurityPolicy
+	}{
+		// The CRLF / control-byte rejection at the top of resolveRedirect.
+		{name: "control characters", policy: DefaultSecurityPolicy(), location: "https://example.com/\r\nX-Inject: 1", err: fasthttp.ErrorInvalidURI},
+		// The validateUpstream propagation when the redirect target's scheme is
+		// outside the allowlist.
+		{name: "disallowed scheme", policy: allowPrivate, location: "gopher://example.com/x", err: ErrUpstreamSchemeNotAllowed},
+		// The AllowHTTPSDowngrade escape hatch.
+		{name: "HTTPS to HTTP when allowed", policy: allowDowngrade, location: "http://example.com/x", wantURL: "http://example.com/x"},
+		// The HTTPS to HTTP downgrade guard.
+		{name: "HTTPS to HTTP", policy: allowPrivate, location: "http://example.com/x", err: ErrRedirectDowngrade},
+		// The empty-host check after fasthttp's URI.Update merges in the Location. A
+		// Location of "http://" produces a URI with scheme but no host.
+		{name: "hostless target", policy: allowPrivate, location: "http://", err: fasthttp.ErrorInvalidURI},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, err := resolveRedirect("https://example.com", []byte(tc.location), tc.policy, nil)
+			if tc.err != nil {
+				require.ErrorIs(t, err, tc.err)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, out)
+			require.Equal(t, tc.wantURL, out.String())
+		})
+	}
 }
 
-// Test_Security_ResolveRedirect_RejectsDisallowedScheme verifies the
-// validateUpstream propagation when the redirect target's scheme is
-// outside the allowlist.
-func Test_Security_ResolveRedirect_RejectsDisallowedScheme(t *testing.T) {
-	t.Parallel()
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	_, err := resolveRedirect("https://example.com", []byte("gopher://example.com/x"), policy, nil)
-	require.ErrorIs(t, err, ErrUpstreamSchemeNotAllowed)
-}
+// proxyTestFollow follows the redirects of a plain GET for start through client, at most
+// maxRedirects of them, and returns the error the loop ends in.
+func proxyTestFollow(t *testing.T, client *fasthttp.Client, start string, maxRedirects int, policy SecurityPolicy) error {
+	t.Helper()
 
-// Test_Security_ResolveRedirect_AllowsDowngradeWhenOptIn verifies the
-// AllowHTTPSDowngrade escape hatch.
-func Test_Security_ResolveRedirect_AllowsDowngradeWhenOptIn(t *testing.T) {
-	t.Parallel()
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	policy.AllowHTTPSDowngrade = true
-	out, err := resolveRedirect("https://example.com", []byte("http://example.com/x"), policy, nil)
-	require.NoError(t, err)
-	require.NotNil(t, out)
-	require.Equal(t, "http://example.com/x", out.String())
-}
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+	})
+	req.SetRequestURI(start)
+	req.Header.SetMethod(fasthttp.MethodGet)
 
-// Test_Security_ResolveRedirect_HTTPSDowngradeBlocked verifies the
-// HTTPS→HTTP downgrade guard.
-func Test_Security_ResolveRedirect_HTTPSDowngradeBlocked(t *testing.T) {
-	t.Parallel()
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	_, err := resolveRedirect("https://example.com", []byte("http://example.com/x"), policy, nil)
-	require.ErrorIs(t, err, ErrRedirectDowngrade)
+	return followRedirects(client, req, resp, maxRedirects, mustParseTestURL(t, start), policy)
 }
 
 // Test_Security_FollowRedirects_NegativeMaxBecomesZero ensures a
@@ -821,16 +818,7 @@ func Test_Security_FollowRedirects_NegativeMaxBecomesZero(t *testing.T) {
 		"http://example.com/start": {status: fasthttp.StatusFound, location: "http://example.com/next"},
 	})
 
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
-	req.SetRequestURI("http://example.com/start")
-	req.Header.SetMethod(fasthttp.MethodGet)
-
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	err := followRedirects(client.client, req, resp, -1, mustParseTestURL(t, "http://example.com/start"), policy)
+	err := proxyTestFollow(t, client.client, "http://example.com/start", -1, proxyTestAllowPrivatePolicy())
 	require.ErrorIs(t, err, fasthttp.ErrTooManyRedirects)
 	require.Equal(t, 1, *hits)
 }
@@ -845,16 +833,7 @@ func Test_Security_FollowRedirects_MissingLocation(t *testing.T) {
 		"http://example.com/start": {status: fasthttp.StatusFound, location: ""},
 	})
 
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
-	req.SetRequestURI("http://example.com/start")
-	req.Header.SetMethod(fasthttp.MethodGet)
-
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	err := followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy)
+	err := proxyTestFollow(t, client.client, "http://example.com/start", 3, proxyTestAllowPrivatePolicy())
 	require.ErrorIs(t, err, fasthttp.ErrMissingLocation)
 }
 
@@ -936,14 +915,7 @@ func Test_Security_FollowRedirects_PropagatesClientError(t *testing.T) {
 		Dial: func(string) (net.Conn, error) { return nil, sentinel },
 	}
 
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
-	req.SetRequestURI("http://example.com/")
-	req.Header.SetMethod(fasthttp.MethodGet)
-
-	err := followRedirects(cli, req, resp, 1, mustParseTestURL(t, "http://example.com/"), DefaultSecurityPolicy())
+	err := proxyTestFollow(t, cli, "http://example.com/", 1, DefaultSecurityPolicy())
 	require.ErrorIs(t, err, sentinel)
 }
 
@@ -956,9 +928,7 @@ func Test_Security_DomainForward_HostMismatchPassesThrough(t *testing.T) {
 	app.Use(DomainForward("only-this-host.example", "http://127.0.0.1:1"))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("pass-through") })
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = "other-host.example"
-	apptest.Expect(t, app, req, fiber.StatusOK)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost("other-host.example")), fiber.StatusOK)
 }
 
 // Test_Security_DomainForward_InvalidUpstreamPanicsAtConstruction
@@ -1056,52 +1026,41 @@ func Test_Security_ValidateUpstream_PublicIPLiteral(t *testing.T) {
 	require.Equal(t, "8.8.8.8", u.Host)
 }
 
-// Test_Security_Balancer_ModifyRequestErrorPropagates covers the
-// ModifyRequest error branch in Balancer's handler.
-func Test_Security_Balancer_ModifyRequestErrorPropagates(t *testing.T) {
+// Test_Security_Balancer_ModifyErrorPropagates covers the ModifyRequest and
+// ModifyResponse error branches in Balancer's handler.
+func Test_Security_Balancer_ModifyErrorPropagates(t *testing.T) {
 	t.Parallel()
-	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		return c.SendString("should-not-run")
-	})
 
-	sentinel := errors.New("modify-request failed")
-	app := fiber.New()
-	app.Use(Balancer(Config{
-		Servers: []string{addr},
-		ModifyRequest: func(_ fiber.Ctx) error {
-			return sentinel
-		},
-	}))
+	sentinel := errors.New("modify failed")
 
-	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
-}
+	for _, tc := range []struct {
+		name string
+		cfg  Config
+	}{
+		{name: "ModifyRequest", cfg: Config{ModifyRequest: func(fiber.Ctx) error { return sentinel }}},
+		{name: "ModifyResponse", cfg: Config{ModifyResponse: func(fiber.Ctx) error { return sentinel }}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				return c.SendString("ok")
+			})
 
-// Test_Security_Balancer_ModifyResponseErrorPropagates covers the
-// ModifyResponse error branch in Balancer's handler.
-func Test_Security_Balancer_ModifyResponseErrorPropagates(t *testing.T) {
-	t.Parallel()
-	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+			cfg := tc.cfg
+			cfg.Servers = []string{addr}
+			app := fiber.New()
+			app.Use(Balancer(cfg))
 
-	sentinel := errors.New("modify-response failed")
-	app := fiber.New()
-	app.Use(Balancer(Config{
-		Servers: []string{addr},
-		ModifyResponse: func(_ fiber.Ctx) error {
-			return sentinel
-		},
-	}))
-
-	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
+			apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
+		})
+	}
 }
 
 // Test_Security_Balancer_BuildsHTTPSHostClient verifies the IsTLS
 // branch flips on for https upstreams.
 func Test_Security_Balancer_BuildsHTTPSHostClient(t *testing.T) {
 	t.Parallel()
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
+	policy := proxyTestAllowPrivatePolicy()
 	// We can't reach the upstream, but we can confirm the handler is
 	// installed without panicking and the TLS flag was set by inspecting
 	// the resulting LBClient via the public Balancer (which would have
@@ -1167,8 +1126,7 @@ func Test_Security_Balancer_HostnameDefersToDial(t *testing.T) {
 	// rather than reaching any upstream.
 	app := fiber.New()
 	app.Use(h)
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = "does-not-exist.invalid"
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost("does-not-exist.invalid"))
 	resp := apptest.Do(t, app, req, fiber.TestConfig{Timeout: 10 * time.Second, FailOnTimeout: false})
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 }
@@ -1248,8 +1206,7 @@ func followRecording(t *testing.T, start string, steps map[string]redirectStep, 
 func followRecordingErr(t *testing.T, start string, steps map[string]redirectStep, setup, record func(req *fasthttp.Request)) (*fasthttp.Request, error) {
 	t.Helper()
 
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
+	policy := proxyTestAllowPrivatePolicy()
 	policy.AllowHTTPSDowngrade = true
 	client, _ := newCountingRedirectClient(steps)
 	client.onRequest = record
@@ -1866,15 +1823,14 @@ func Test_Security_KeepHopByHopHeaders_Balancer(t *testing.T) {
 				return c.SendString("ok")
 			})
 
-			policy := DefaultSecurityPolicy()
-			policy.AllowPrivateIPs = true
+			policy := proxyTestAllowPrivatePolicy()
 			policy.KeepHopByHopHeaders = keep
 			app := fiber.New()
 			app.Use(Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy}))
 
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-			req.Header.Set(fiber.HeaderProxyAuthorization, "Basic dXNlcjpwYXNz")
-			req.Header.Set(fiber.HeaderKeepAlive, "timeout=5")
+			req := apptest.Req(fiber.MethodGet, "/",
+				apptest.WithHeader(fiber.HeaderProxyAuthorization, "Basic dXNlcjpwYXNz"),
+				apptest.WithHeader(fiber.HeaderKeepAlive, "timeout=5"))
 			resp := apptest.Expect(t, app, req, fiber.StatusOK)
 
 			got := <-seen
@@ -1896,8 +1852,7 @@ func Test_Security_KeepHopByHopHeaders_Balancer(t *testing.T) {
 // Test_Security_KeepHopByHopHeaders_Do is the same opt-out for the helpers, via the process-wide policy.
 func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
+	policy := proxyTestAllowPrivatePolicy()
 	policy.KeepHopByHopHeaders = true
 	withSecurityPolicyForTest(t, policy)
 
@@ -1911,8 +1866,7 @@ func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
 	app := fiber.New()
 	app.Get("/", func(c fiber.Ctx) error { return Do(c, "http://"+addr) })
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderProxyAuthorization, "Basic dXNlcjpwYXNz")
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderProxyAuthorization, "Basic dXNlcjpwYXNz"))
 	resp := apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, "Basic dXNlcjpwYXNz", <-seen)
 	require.Equal(t, "Basic", resp.Header.Get(fiber.HeaderProxyAuthenticate))
@@ -1942,8 +1896,7 @@ func Test_Security_ValidateUpstream_UnparsableIsHostInvalid(t *testing.T) {
 func Test_Security_ValidateUpstreamForBalancer_Schemes(t *testing.T) {
 	t.Parallel()
 
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
+	policy := proxyTestAllowPrivatePolicy()
 
 	for raw, wantScheme := range map[string]string{
 		"203.0.113.5:8080":          schemeHTTP,
