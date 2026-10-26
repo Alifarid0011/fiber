@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"iter"
 	"maps"
 	"mime/multipart"
 	"net"
@@ -23,48 +24,327 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-func Test_Request_Method(t *testing.T) {
-	t.Parallel()
+// clientTestBRequest returns a pooled request that is released when the test ends.
+func clientTestBRequest(t *testing.T) *Request {
+	t.Helper()
 
 	req := AcquireRequest()
-	req.SetMethod("GET")
-	require.Equal(t, "GET", req.Method())
+	t.Cleanup(func() { ReleaseRequest(req) })
 
-	req.SetMethod("POST")
-	require.Equal(t, "POST", req.Method())
-
-	req.SetMethod("PUT")
-	require.Equal(t, "PUT", req.Method())
-
-	req.SetMethod("DELETE")
-	require.Equal(t, "DELETE", req.Method())
-
-	req.SetMethod("PATCH")
-	require.Equal(t, "PATCH", req.Method())
-
-	req.SetMethod("OPTIONS")
-	require.Equal(t, "OPTIONS", req.Method())
-
-	req.SetMethod("HEAD")
-	require.Equal(t, "HEAD", req.Method())
-
-	req.SetMethod("TRACE")
-	require.Equal(t, "TRACE", req.Method())
-
-	req.SetMethod("CUSTOM")
-	require.Equal(t, "CUSTOM", req.Method())
+	return req
 }
 
-func Test_Request_URL(t *testing.T) {
+// clientTestBMultiValue names the request methods that read and write one kind of
+// multi-valued entry, so headers, query parameters and form fields run the same
+// scenarios. The scenarios chain the calls through the returned request, as the
+// fluent API is used. Headers have no struct or delete form: they leave setStruct
+// and del nil and do not register the scenarios that need them.
+type clientTestBMultiValue struct {
+	add       func(r *Request, key, val string) *Request
+	set       func(r *Request, key, val string) *Request
+	addMany   func(r *Request, m map[string][]string) *Request
+	setMany   func(r *Request, m map[string]string) *Request
+	setStruct func(r *Request, v any) *Request
+	del       func(r *Request, keys ...string) *Request
+	get       func(r *Request, key string) []string
+	noun      string // as in the scenario names: "header", "param" or "form field"
+}
+
+// run registers the scenarios that hold for every kind of entry.
+func (e clientTestBMultiValue) run(t *testing.T) {
+	t.Helper()
+
+	t.Run("add "+e.noun, func(t *testing.T) {
+		t.Parallel()
+
+		req := clientTestBRequest(t)
+		e.add(e.add(req, "foo", "bar"), "foo", "fiber")
+
+		require.Equal(t, []string{"bar", "fiber"}, e.get(req, "foo"))
+	})
+
+	t.Run("set "+e.noun, func(t *testing.T) {
+		t.Parallel()
+
+		req := clientTestBRequest(t)
+		e.set(e.add(req, "foo", "bar"), "foo", "fiber")
+
+		require.Equal(t, []string{"fiber"}, e.get(req, "foo"))
+	})
+
+	t.Run("add "+e.noun+"s", func(t *testing.T) {
+		t.Parallel()
+
+		req := clientTestBRequest(t)
+		e.addMany(e.set(req, "foo", "bar"), map[string][]string{
+			"foo": {"fiber", "buaa"},
+			"bar": {"foo"},
+		})
+
+		require.Equal(t, []string{"bar", "fiber", "buaa"}, e.get(req, "foo"))
+		require.Equal(t, []string{"foo"}, e.get(req, "bar"))
+	})
+
+	t.Run("set "+e.noun+"s", func(t *testing.T) {
+		t.Parallel()
+
+		req := clientTestBRequest(t)
+		e.setMany(e.set(req, "foo", "bar"), map[string]string{
+			"foo": "fiber",
+			"bar": "foo",
+		})
+
+		require.Equal(t, []string{"fiber"}, e.get(req, "foo"))
+		require.Equal(t, []string{"foo"}, e.get(req, "bar"))
+	})
+}
+
+// runStruct registers the scenario that sets entries from a struct.
+func (e clientTestBMultiValue) runStruct(t *testing.T) {
+	t.Helper()
+
+	// The struct carries the tag of every kind: each one reads only its own.
+	type args struct {
+		TString   string
+		TSlice    []string
+		TIntSlice []int `param:"int_slice" form:"int_slice"`
+		TInt      int
+		TFloat    float64
+		TBool     bool
+	}
+
+	t.Run("set "+e.noun+"s with struct", func(t *testing.T) {
+		t.Parallel()
+
+		req := clientTestBRequest(t)
+		e.setStruct(req, &args{
+			TInt:      5,
+			TString:   "string",
+			TFloat:    3.1,
+			TBool:     true,
+			TSlice:    []string{"foo", "bar"},
+			TIntSlice: []int{1, 2},
+		})
+
+		require.Empty(t, e.get(req, "unexport"))
+		require.Equal(t, []string{"5"}, e.get(req, "TInt"))
+		require.Equal(t, []string{"string"}, e.get(req, "TString"))
+		require.Equal(t, []string{"3.1"}, e.get(req, "TFloat"))
+		require.Equal(t, []string{"true"}, e.get(req, "TBool"))
+		require.Equal(t, []string{"foo", "bar"}, e.get(req, "TSlice"))
+		require.Equal(t, []string{"1", "2"}, e.get(req, "int_slice"))
+	})
+}
+
+// runDel registers the scenario that deletes entries.
+func (e clientTestBMultiValue) runDel(t *testing.T) {
+	t.Helper()
+
+	t.Run("del "+e.noun+"s", func(t *testing.T) {
+		t.Parallel()
+
+		req := clientTestBRequest(t)
+		e.del(e.setMany(e.set(req, "foo", "bar"), map[string]string{
+			"foo": "fiber",
+			"bar": "foo",
+		}), "foo", "bar")
+
+		require.Empty(t, e.get(req, "foo"))
+		require.Empty(t, e.get(req, "bar"))
+	})
+}
+
+// runIter registers the scenarios of the iterator over all entries, which all
+// returns for a request.
+func (e clientTestBMultiValue) runIter(t *testing.T, all func(r *Request) iter.Seq2[string, []string]) {
+	t.Helper()
+
+	t.Run("empty iterator", func(t *testing.T) {
+		t.Parallel()
+
+		called := false
+		all(clientTestBRequest(t))(func(_ string, _ []string) bool {
+			called = true
+			return true
+		})
+
+		require.False(t, called)
+	})
+
+	t.Run("populated iterator", func(t *testing.T) {
+		t.Parallel()
+
+		req := clientTestBRequest(t)
+		e.addMany(req, map[string][]string{
+			"foo": {"bar", "fiber"},
+			"bar": {"foo"},
+		})
+
+		got := maps.Collect(all(req))
+
+		require.Contains(t, got["foo"], "bar")
+		require.Contains(t, got["foo"], "fiber")
+		require.Contains(t, got["bar"], "foo")
+
+		require.Len(t, got, 2)
+	})
+}
+
+// clientTestBSingleValue names the request methods that read and write one kind of
+// single-valued entry, so cookies and path parameters run the same scenarios. The
+// scenarios chain the calls through the returned request, as the fluent API is used.
+type clientTestBSingleValue struct {
+	get       func(r *Request, key string) string
+	set       func(r *Request, key, val string) *Request
+	setMany   func(r *Request, m map[string]string) *Request
+	setStruct func(r *Request, v any) *Request
+	del       func(r *Request, keys ...string) *Request
+	noun      string // as in the scenario names: "cookie" or "path param"
+}
+
+// run registers the scenarios that hold for every kind of entry.
+func (e clientTestBSingleValue) run(t *testing.T) {
+	t.Helper()
+
+	// The struct carries the tag of every kind: each one reads only its own.
+	type args struct {
+		String string `cookie:"string" path:"string"`
+		Int    int    `cookie:"int" path:"int"`
+	}
+
+	t.Run("set "+e.noun, func(t *testing.T) {
+		t.Parallel()
+
+		req := e.set(clientTestBRequest(t), "foo", "bar")
+		require.Equal(t, "bar", e.get(req, "foo"))
+
+		e.set(req, "foo", "bar1")
+		require.Equal(t, "bar1", e.get(req, "foo"))
+	})
+
+	t.Run("set "+e.noun+"s", func(t *testing.T) {
+		t.Parallel()
+
+		req := e.setMany(clientTestBRequest(t), map[string]string{
+			"foo": "bar",
+			"bar": "foo",
+		})
+		require.Equal(t, "bar", e.get(req, "foo"))
+		require.Equal(t, "foo", e.get(req, "bar"))
+
+		e.setMany(req, map[string]string{
+			"foo": "bar1",
+		})
+		require.Equal(t, "bar1", e.get(req, "foo"))
+		require.Equal(t, "foo", e.get(req, "bar"))
+	})
+
+	t.Run("set "+e.noun+"s with struct", func(t *testing.T) {
+		t.Parallel()
+
+		req := e.setStruct(clientTestBRequest(t), &args{
+			Int:    5,
+			String: "foo",
+		})
+
+		require.Equal(t, "5", e.get(req, "int"))
+		require.Equal(t, "foo", e.get(req, "string"))
+	})
+
+	t.Run("del "+e.noun+"s", func(t *testing.T) {
+		t.Parallel()
+
+		req := e.setMany(clientTestBRequest(t), map[string]string{
+			"foo": "bar",
+			"bar": "foo",
+		})
+		require.Equal(t, "bar", e.get(req, "foo"))
+		require.Equal(t, "foo", e.get(req, "bar"))
+
+		e.del(req, "foo")
+		require.Empty(t, e.get(req, "foo"))
+		require.Equal(t, "foo", e.get(req, "bar"))
+	})
+}
+
+// The kinds of entry a request holds.
+var (
+	clientTestBHeaders = clientTestBMultiValue{
+		noun:    "header",
+		add:     (*Request).AddHeader,
+		set:     (*Request).SetHeader,
+		addMany: (*Request).AddHeaders,
+		setMany: (*Request).SetHeaders,
+		get:     (*Request).Header,
+	}
+
+	clientTestBParams = clientTestBMultiValue{
+		noun:      "param",
+		add:       (*Request).AddParam,
+		set:       (*Request).SetParam,
+		addMany:   (*Request).AddParams,
+		setMany:   (*Request).SetParams,
+		setStruct: (*Request).SetParamsWithStruct,
+		del:       (*Request).DelParams,
+		get:       (*Request).Param,
+	}
+
+	clientTestBFormData = clientTestBMultiValue{
+		noun:      "form field",
+		add:       (*Request).AddFormData,
+		set:       (*Request).SetFormData,
+		addMany:   (*Request).AddFormDataWithMap,
+		setMany:   (*Request).SetFormDataWithMap,
+		setStruct: (*Request).SetFormDataWithStruct,
+		del:       (*Request).DelFormData,
+		get:       (*Request).FormData,
+	}
+
+	clientTestBCookies = clientTestBSingleValue{
+		noun:      "cookie",
+		get:       (*Request).Cookie,
+		set:       (*Request).SetCookie,
+		setMany:   (*Request).SetCookies,
+		setStruct: (*Request).SetCookiesWithStruct,
+		del:       (*Request).DelCookies,
+	}
+
+	clientTestBPathParams = clientTestBSingleValue{
+		noun:      "path param",
+		get:       (*Request).PathParam,
+		set:       (*Request).SetPathParam,
+		setMany:   (*Request).SetPathParams,
+		setStruct: (*Request).SetPathParamsWithStruct,
+		del:       (*Request).DelPathParams,
+	}
+)
+
+// Test_Request_Setters sets each string field of a request to its values in turn:
+// every call must replace the value the previous one set.
+func Test_Request_Setters(t *testing.T) {
 	t.Parallel()
 
-	req := AcquireRequest()
+	for _, tc := range []struct {
+		set    func(r *Request, value string) *Request
+		get    func(r *Request) string
+		name   string
+		values []string
+	}{
+		{name: "method", set: (*Request).SetMethod, get: (*Request).Method, values: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "TRACE", "CUSTOM"}},
+		{name: "URL", set: (*Request).SetURL, get: (*Request).URL, values: []string{"http://example.com/normal", "https://example.com/normal"}},
+		{name: "user agent", set: (*Request).SetUserAgent, get: (*Request).UserAgent, values: []string{"fiber", "foo"}},
+		{name: "referer", set: (*Request).SetReferer, get: (*Request).Referer, values: []string{"http://example.com", "https://example.com"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	req.SetURL("http://example.com/normal")
-	require.Equal(t, "http://example.com/normal", req.URL())
-
-	req.SetURL("https://example.com/normal")
-	require.Equal(t, "https://example.com/normal", req.URL())
+			req := clientTestBRequest(t)
+			for _, value := range tc.values {
+				req = tc.set(req, value)
+				require.Equal(t, value, tc.get(req), "after setting %q", value)
+			}
+		})
+	}
 }
 
 func Test_Request_Client(t *testing.T) {
@@ -99,64 +379,7 @@ func Test_Request_Context(t *testing.T) {
 func Test_Request_Header(t *testing.T) {
 	t.Parallel()
 
-	t.Run("add header", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		req.AddHeader("foo", "bar").AddHeader("foo", "fiber")
-
-		res := req.Header("foo")
-		require.Len(t, res, 2)
-		require.Equal(t, "bar", res[0])
-		require.Equal(t, "fiber", res[1])
-	})
-
-	t.Run("set header", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		req.AddHeader("foo", "bar").SetHeader("foo", "fiber")
-
-		res := req.Header("foo")
-		require.Len(t, res, 1)
-		require.Equal(t, "fiber", res[0])
-	})
-
-	t.Run("add headers", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		req.SetHeader("foo", "bar").
-			AddHeaders(map[string][]string{
-				"foo": {"fiber", "buaa"},
-				"bar": {"foo"},
-			})
-
-		res := req.Header("foo")
-		require.Len(t, res, 3)
-		require.Equal(t, "bar", res[0])
-		require.Equal(t, "fiber", res[1])
-		require.Equal(t, "buaa", res[2])
-
-		res = req.Header("bar")
-		require.Len(t, res, 1)
-		require.Equal(t, "foo", res[0])
-	})
-
-	t.Run("set headers", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		req.SetHeader("foo", "bar").
-			SetHeaders(map[string]string{
-				"foo": "fiber",
-				"bar": "foo",
-			})
-
-		res := req.Header("foo")
-		require.Len(t, res, 1)
-		require.Equal(t, "fiber", res[0])
-
-		res = req.Header("bar")
-		require.Len(t, res, 1)
-		require.Equal(t, "foo", res[0])
-	})
+	clientTestBHeaders.run(t)
 }
 
 func Test_Request_Headers(t *testing.T) {
@@ -199,126 +422,9 @@ func Benchmark_Request_Headers(b *testing.B) {
 func Test_Request_QueryParam(t *testing.T) {
 	t.Parallel()
 
-	t.Run("add param", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		req.AddParam("foo", "bar").AddParam("foo", "fiber")
-
-		res := req.Param("foo")
-		require.Len(t, res, 2)
-		require.Equal(t, "bar", res[0])
-		require.Equal(t, "fiber", res[1])
-	})
-
-	t.Run("set param", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		req.AddParam("foo", "bar").SetParam("foo", "fiber")
-
-		res := req.Param("foo")
-		require.Len(t, res, 1)
-		require.Equal(t, "fiber", res[0])
-	})
-
-	t.Run("add params", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		req.SetParam("foo", "bar").
-			AddParams(map[string][]string{
-				"foo": {"fiber", "buaa"},
-				"bar": {"foo"},
-			})
-
-		res := req.Param("foo")
-		require.Len(t, res, 3)
-		require.Equal(t, "bar", res[0])
-		require.Equal(t, "fiber", res[1])
-		require.Equal(t, "buaa", res[2])
-
-		res = req.Param("bar")
-		require.Len(t, res, 1)
-		require.Equal(t, "foo", res[0])
-	})
-
-	t.Run("set headers", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		req.SetParam("foo", "bar").
-			SetParams(map[string]string{
-				"foo": "fiber",
-				"bar": "foo",
-			})
-
-		res := req.Param("foo")
-		require.Len(t, res, 1)
-		require.Equal(t, "fiber", res[0])
-
-		res = req.Param("bar")
-		require.Len(t, res, 1)
-		require.Equal(t, "foo", res[0])
-	})
-
-	t.Run("set params with struct", func(t *testing.T) {
-		t.Parallel()
-
-		type args struct {
-			TString   string
-			TSlice    []string
-			TIntSlice []int `param:"int_slice"`
-			TInt      int
-			TFloat    float64
-			TBool     bool
-		}
-
-		p := AcquireRequest()
-		p.SetParamsWithStruct(&args{
-			TInt:      5,
-			TString:   "string",
-			TFloat:    3.1,
-			TBool:     true,
-			TSlice:    []string{"foo", "bar"},
-			TIntSlice: []int{1, 2},
-		})
-
-		require.Empty(t, p.Param("unexport"))
-
-		require.Len(t, p.Param("TInt"), 1)
-		require.Equal(t, "5", p.Param("TInt")[0])
-
-		require.Len(t, p.Param("TString"), 1)
-		require.Equal(t, "string", p.Param("TString")[0])
-
-		require.Len(t, p.Param("TFloat"), 1)
-		require.Equal(t, "3.1", p.Param("TFloat")[0])
-
-		require.Len(t, p.Param("TBool"), 1)
-
-		tslice := p.Param("TSlice")
-		require.Len(t, tslice, 2)
-		require.Equal(t, "foo", tslice[0])
-		require.Equal(t, "bar", tslice[1])
-
-		tint := p.Param("TSlice")
-		require.Len(t, tint, 2)
-		require.Equal(t, "foo", tint[0])
-		require.Equal(t, "bar", tint[1])
-	})
-
-	t.Run("del params", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		req.SetParam("foo", "bar").
-			SetParams(map[string]string{
-				"foo": "fiber",
-				"bar": "foo",
-			}).DelParams("foo", "bar")
-
-		res := req.Param("foo")
-		require.Empty(t, res)
-
-		res = req.Param("bar")
-		require.Empty(t, res)
-	})
+	clientTestBParams.run(t)
+	clientTestBParams.runStruct(t)
+	clientTestBParams.runDel(t)
 }
 
 var keysTestCases = []struct {
@@ -333,42 +439,43 @@ var keysTestCases = []struct {
 	{name: "after Del", add: []string{"a", "b", "a", "c"}, del: "a", want: []string{"b", "c"}},
 }
 
-func Test_QueryParam_Keys(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range keysTestCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			p := &QueryParam{Args: fasthttp.AcquireArgs()}
-			defer fasthttp.ReleaseArgs(p.Args)
-			for _, k := range tc.add {
-				p.Add(k, "v")
-			}
-			if tc.del != "" {
-				p.Del(tc.del)
-			}
-			require.Equal(t, tc.want, p.Keys())
-		})
-	}
+// clientTestBKeyed is what the Keys tests use of QueryParam and FormData, the
+// types that wrap fasthttp.Args and list each of its keys once.
+type clientTestBKeyed interface {
+	Add(key, val string)
+	Del(key string)
+	Keys() []string
 }
 
-func Test_FormData_Keys(t *testing.T) {
+func Test_QueryParam_And_FormData_Keys(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range keysTestCases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, kind := range []struct {
+		wrap func(args *fasthttp.Args) clientTestBKeyed
+		name string
+	}{
+		{name: "QueryParam", wrap: func(args *fasthttp.Args) clientTestBKeyed { return &QueryParam{Args: args} }},
+		{name: "FormData", wrap: func(args *fasthttp.Args) clientTestBKeyed { return &FormData{Args: args} }},
+	} {
+		t.Run(kind.name, func(t *testing.T) {
 			t.Parallel()
 
-			f := &FormData{Args: fasthttp.AcquireArgs()}
-			defer fasthttp.ReleaseArgs(f.Args)
-			for _, k := range tc.add {
-				f.Add(k, "v")
+			for _, tc := range keysTestCases {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
+
+					args := fasthttp.AcquireArgs()
+					defer fasthttp.ReleaseArgs(args)
+					p := kind.wrap(args)
+					for _, k := range tc.add {
+						p.Add(k, "v")
+					}
+					if tc.del != "" {
+						p.Del(tc.del)
+					}
+					require.Equal(t, tc.want, p.Keys())
+				})
 			}
-			if tc.del != "" {
-				f.Del(tc.del)
-			}
-			require.Equal(t, tc.want, f.Keys())
 		})
 	}
 }
@@ -390,44 +497,7 @@ func Benchmark_QueryParam_Keys(b *testing.B) {
 func Test_Request_Params(t *testing.T) {
 	t.Parallel()
 
-	t.Run("empty iterator", func(t *testing.T) {
-		t.Parallel()
-
-		req := AcquireRequest()
-		t.Cleanup(func() {
-			ReleaseRequest(req)
-		})
-
-		called := false
-		req.Params()(func(_ string, _ []string) bool {
-			called = true
-			return true
-		})
-
-		require.False(t, called)
-	})
-
-	t.Run("populated iterator", func(t *testing.T) {
-		t.Parallel()
-
-		req := AcquireRequest()
-		t.Cleanup(func() {
-			ReleaseRequest(req)
-		})
-
-		req.AddParams(map[string][]string{
-			"foo": {"bar", "fiber"},
-			"bar": {"foo"},
-		})
-
-		pathParams := maps.Collect(req.Params())
-
-		require.Contains(t, pathParams["foo"], "bar")
-		require.Contains(t, pathParams["foo"], "fiber")
-		require.Contains(t, pathParams["bar"], "foo")
-
-		require.Len(t, pathParams, 2)
-	})
+	clientTestBParams.runIter(t, (*Request).Params)
 }
 
 func Benchmark_Request_Params(b *testing.B) {
@@ -447,86 +517,10 @@ func Benchmark_Request_Params(b *testing.B) {
 	}
 }
 
-func Test_Request_UA(t *testing.T) {
-	t.Parallel()
-
-	req := AcquireRequest().SetUserAgent("fiber")
-	require.Equal(t, "fiber", req.UserAgent())
-
-	req.SetUserAgent("foo")
-	require.Equal(t, "foo", req.UserAgent())
-}
-
-func Test_Request_Referer(t *testing.T) {
-	t.Parallel()
-
-	req := AcquireRequest().SetReferer("http://example.com")
-	require.Equal(t, "http://example.com", req.Referer())
-
-	req.SetReferer("https://example.com")
-	require.Equal(t, "https://example.com", req.Referer())
-}
-
 func Test_Request_Cookie(t *testing.T) {
 	t.Parallel()
 
-	t.Run("set cookie", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest().
-			SetCookie("foo", "bar")
-		require.Equal(t, "bar", req.Cookie("foo"))
-
-		req.SetCookie("foo", "bar1")
-		require.Equal(t, "bar1", req.Cookie("foo"))
-	})
-
-	t.Run("set cookies", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest().
-			SetCookies(map[string]string{
-				"foo": "bar",
-				"bar": "foo",
-			})
-		require.Equal(t, "bar", req.Cookie("foo"))
-		require.Equal(t, "foo", req.Cookie("bar"))
-
-		req.SetCookies(map[string]string{
-			"foo": "bar1",
-		})
-		require.Equal(t, "bar1", req.Cookie("foo"))
-		require.Equal(t, "foo", req.Cookie("bar"))
-	})
-
-	t.Run("set cookies with struct", func(t *testing.T) {
-		t.Parallel()
-		type args struct {
-			CookieString string `cookie:"string"`
-			CookieInt    int    `cookie:"int"`
-		}
-
-		req := AcquireRequest().SetCookiesWithStruct(&args{
-			CookieInt:    5,
-			CookieString: "foo",
-		})
-
-		require.Equal(t, "5", req.Cookie("int"))
-		require.Equal(t, "foo", req.Cookie("string"))
-	})
-
-	t.Run("del cookies", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest().
-			SetCookies(map[string]string{
-				"foo": "bar",
-				"bar": "foo",
-			})
-		require.Equal(t, "bar", req.Cookie("foo"))
-		require.Equal(t, "foo", req.Cookie("bar"))
-
-		req.DelCookies("foo")
-		require.Empty(t, req.Cookie("foo"))
-		require.Equal(t, "foo", req.Cookie("bar"))
-	})
+	clientTestBCookies.run(t)
 }
 
 func Test_Request_Cookies(t *testing.T) {
@@ -574,67 +568,12 @@ func Benchmark_Request_Cookies(b *testing.B) {
 func Test_Request_PathParam(t *testing.T) {
 	t.Parallel()
 
-	t.Run("set path param", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest().
-			SetPathParam("foo", "bar")
-		require.Equal(t, "bar", req.PathParam("foo"))
-
-		req.SetPathParam("foo", "bar1")
-		require.Equal(t, "bar1", req.PathParam("foo"))
-	})
-
-	t.Run("set path params", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest().
-			SetPathParams(map[string]string{
-				"foo": "bar",
-				"bar": "foo",
-			})
-		require.Equal(t, "bar", req.PathParam("foo"))
-		require.Equal(t, "foo", req.PathParam("bar"))
-
-		req.SetPathParams(map[string]string{
-			"foo": "bar1",
-		})
-		require.Equal(t, "bar1", req.PathParam("foo"))
-		require.Equal(t, "foo", req.PathParam("bar"))
-	})
-
-	t.Run("set path params with struct", func(t *testing.T) {
-		t.Parallel()
-		type args struct {
-			CookieString string `path:"string"`
-			CookieInt    int    `path:"int"`
-		}
-
-		req := AcquireRequest().SetPathParamsWithStruct(&args{
-			CookieInt:    5,
-			CookieString: "foo",
-		})
-
-		require.Equal(t, "5", req.PathParam("int"))
-		require.Equal(t, "foo", req.PathParam("string"))
-	})
-
-	t.Run("del path params", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest().
-			SetPathParams(map[string]string{
-				"foo": "bar",
-				"bar": "foo",
-			})
-		require.Equal(t, "bar", req.PathParam("foo"))
-		require.Equal(t, "foo", req.PathParam("bar"))
-
-		req.DelPathParams("foo")
-		require.Empty(t, req.PathParam("foo"))
-		require.Equal(t, "foo", req.PathParam("bar"))
-	})
+	clientTestBPathParams.run(t)
 
 	t.Run("clear path params", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireRequest().
+
+		req := clientTestBRequest(t).
 			SetPathParams(map[string]string{
 				"foo": "bar",
 				"bar": "foo",
@@ -693,132 +632,9 @@ func Benchmark_Request_PathParams(b *testing.B) {
 func Test_Request_FormData(t *testing.T) {
 	t.Parallel()
 
-	t.Run("add form data", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		defer ReleaseRequest(req)
-		req.AddFormData("foo", "bar").AddFormData("foo", "fiber")
-
-		res := req.FormData("foo")
-		require.Len(t, res, 2)
-		require.Equal(t, "bar", res[0])
-		require.Equal(t, "fiber", res[1])
-	})
-
-	t.Run("set param", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		defer ReleaseRequest(req)
-		req.AddFormData("foo", "bar").SetFormData("foo", "fiber")
-
-		res := req.FormData("foo")
-		require.Len(t, res, 1)
-		require.Equal(t, "fiber", res[0])
-	})
-
-	t.Run("add params", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		defer ReleaseRequest(req)
-		req.SetFormData("foo", "bar").
-			AddFormDataWithMap(map[string][]string{
-				"foo": {"fiber", "buaa"},
-				"bar": {"foo"},
-			})
-
-		res := req.FormData("foo")
-		require.Len(t, res, 3)
-		require.Contains(t, res, "bar")
-		require.Contains(t, res, "buaa")
-		require.Contains(t, res, "fiber")
-
-		res = req.FormData("bar")
-		require.Len(t, res, 1)
-		require.Equal(t, "foo", res[0])
-	})
-
-	t.Run("set headers", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		defer ReleaseRequest(req)
-		req.SetFormData("foo", "bar").
-			SetFormDataWithMap(map[string]string{
-				"foo": "fiber",
-				"bar": "foo",
-			})
-
-		res := req.FormData("foo")
-		require.Len(t, res, 1)
-		require.Equal(t, "fiber", res[0])
-
-		res = req.FormData("bar")
-		require.Len(t, res, 1)
-		require.Equal(t, "foo", res[0])
-	})
-
-	t.Run("set params with struct", func(t *testing.T) {
-		t.Parallel()
-
-		type args struct {
-			TString   string
-			TSlice    []string
-			TIntSlice []int `form:"int_slice"`
-			TInt      int
-			TFloat    float64
-			TBool     bool
-		}
-
-		p := AcquireRequest()
-		defer ReleaseRequest(p)
-		p.SetFormDataWithStruct(&args{
-			TInt:      5,
-			TString:   "string",
-			TFloat:    3.1,
-			TBool:     true,
-			TSlice:    []string{"foo", "bar"},
-			TIntSlice: []int{1, 2},
-		})
-
-		require.Empty(t, p.FormData("unexport"))
-
-		require.Len(t, p.FormData("TInt"), 1)
-		require.Equal(t, "5", p.FormData("TInt")[0])
-
-		require.Len(t, p.FormData("TString"), 1)
-		require.Equal(t, "string", p.FormData("TString")[0])
-
-		require.Len(t, p.FormData("TFloat"), 1)
-		require.Equal(t, "3.1", p.FormData("TFloat")[0])
-
-		require.Len(t, p.FormData("TBool"), 1)
-
-		tslice := p.FormData("TSlice")
-		require.Len(t, tslice, 2)
-		require.Contains(t, tslice, "bar")
-		require.Contains(t, tslice, "foo")
-
-		tint := p.FormData("TSlice")
-		require.Len(t, tint, 2)
-		require.Contains(t, tint, "bar")
-		require.Contains(t, tint, "foo")
-	})
-
-	t.Run("del params", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-		defer ReleaseRequest(req)
-		req.SetFormData("foo", "bar").
-			SetFormDataWithMap(map[string]string{
-				"foo": "fiber",
-				"bar": "foo",
-			}).DelFormData("foo", "bar")
-
-		res := req.FormData("foo")
-		require.Empty(t, res)
-
-		res = req.FormData("bar")
-		require.Empty(t, res)
-	})
+	clientTestBFormData.run(t)
+	clientTestBFormData.runStruct(t)
+	clientTestBFormData.runDel(t)
 }
 
 func Test_Request_File(t *testing.T) {
@@ -919,248 +735,91 @@ func Test_Request_Unsupported_Protocol(t *testing.T) {
 	require.Equal(t, (*Response)(nil), resp)
 }
 
-func Test_Request_Get(t *testing.T) {
+// Test_Request_Methods_With_Server sends five requests through each method that
+// sends a request (Get, Post, Head, Put, Delete, Options, Patch, Query and Send)
+// to a route registered for the HTTP method it uses, and checks the status and
+// body of every response.
+func Test_Request_Methods_With_Server(t *testing.T) {
 	t.Parallel()
 
-	app, ln, start := createHelperServer(t)
-	app.Get("/", func(c fiber.Ctx) error {
+	const target = "http://example.com"
+
+	// What the routes answer with.
+	hostname := func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())
-	})
-
-	go start()
-	time.Sleep(100 * time.Millisecond)
-
-	client := New().SetDial(ln)
-
-	for range 5 {
-		req := AcquireRequest().SetClient(client)
-
-		resp, err := req.Get("http://example.com")
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "example.com", resp.String())
-		resp.Close()
 	}
-}
-
-func Test_Request_Post(t *testing.T) {
-	t.Parallel()
-
-	app, ln, start := createHelperServer(t)
-	app.Post("/", func(c fiber.Ctx) error {
+	form := func(c fiber.Ctx) error {
+		return c.SendString(c.FormValue("foo"))
+	}
+	created := func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusCreated).
 			SendString(c.FormValue("foo"))
-	})
-
-	go start()
-	time.Sleep(100 * time.Millisecond)
-
-	client := New().SetDial(ln)
-
-	for range 5 {
-		resp, err := AcquireRequest().
-			SetClient(client).
-			SetFormData("foo", "bar").
-			Post("http://example.com")
-
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusCreated, resp.StatusCode())
-		require.Equal(t, "bar", resp.String())
-		resp.Close()
 	}
-}
-
-func Test_Request_Head(t *testing.T) {
-	t.Parallel()
-
-	app, ln, start := createHelperServer(t)
-	app.Head("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname())
-	})
-
-	go start()
-	time.Sleep(100 * time.Millisecond)
-
-	client := New().SetDial(ln)
-
-	for range 5 {
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Head("http://example.com")
-
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Empty(t, resp.String())
-		resp.Close()
+	echo := func(c fiber.Ctx) error {
+		return c.Send(c.Body())
 	}
-}
-
-func Test_Request_Put(t *testing.T) {
-	t.Parallel()
-
-	app, ln, start := createHelperServer(t)
-	app.Put("/", func(c fiber.Ctx) error {
-		return c.SendString(c.FormValue("foo"))
-	})
-
-	go start()
-	time.Sleep(100 * time.Millisecond)
-
-	client := New().SetDial(ln)
-
-	for range 5 {
-		resp, err := AcquireRequest().
-			SetClient(client).
-			SetFormData("foo", "bar").
-			Put("http://example.com")
-
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "bar", resp.String())
-
-		resp.Close()
+	reply := func(status int, body string) fiber.Handler {
+		return func(c fiber.Ctx) error {
+			return c.Status(status).SendString(body)
+		}
 	}
-}
 
-func Test_Request_Delete(t *testing.T) {
-	t.Parallel()
-
-	app, ln, start := createHelperServer(t)
-
-	app.Delete("/", func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusNoContent).
-			SendString("deleted")
-	})
-
-	go start()
-	time.Sleep(100 * time.Millisecond)
-
-	client := New().SetDial(ln)
-
-	for range 5 {
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Delete("http://example.com")
-
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-		require.Empty(t, resp.String())
-
-		resp.Close()
+	// What the requests carry and how they are sent.
+	withForm := func(r *Request) {
+		r.SetFormData("foo", "bar")
 	}
-}
-
-func Test_Request_Options(t *testing.T) {
-	t.Parallel()
-
-	app, ln, start := createHelperServer(t)
-
-	app.Options("/", func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusOK).
-			SendString("options")
-	})
-
-	go start()
-	time.Sleep(100 * time.Millisecond)
-
-	client := New().SetDial(ln)
-
-	for range 5 {
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Options("http://example.com")
-
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "options", resp.String())
-
-		resp.Close()
+	withRawBody := func(r *Request) {
+		r.SetRawBody([]byte("query body"))
 	}
-}
-
-func Test_Request_Send(t *testing.T) {
-	t.Parallel()
-
-	app, ln, start := createHelperServer(t)
-
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusOK).
-			SendString("post")
-	})
-
-	go start()
-	time.Sleep(100 * time.Millisecond)
-
-	client := New().SetDial(ln)
-
-	for range 5 {
-		resp, err := AcquireRequest().
-			SetClient(client).
-			SetURL("http://example.com").
+	send := func(r *Request, url string) (*Response, error) {
+		return r.SetURL(url).
 			SetMethod(fiber.MethodPost).
 			Send()
-
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "post", resp.String())
-
-		resp.Close()
 	}
-}
 
-func Test_Request_Patch(t *testing.T) {
-	t.Parallel()
-
-	app, ln, start := createHelperServer(t)
-
-	app.Patch("/", func(c fiber.Ctx) error {
-		return c.SendString(c.FormValue("foo"))
-	})
-
-	go start()
-	time.Sleep(100 * time.Millisecond)
-
-	client := New().SetDial(ln)
-
-	for range 5 {
-		resp, err := AcquireRequest().
-			SetClient(client).
-			SetFormData("foo", "bar").
-			Patch("http://example.com")
-
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "bar", resp.String())
-
-		resp.Close()
+	tests := []struct {
+		register func(app *fiber.App, path string, handler any, handlers ...any) fiber.Router
+		handler  fiber.Handler
+		call     func(r *Request, url string) (*Response, error)
+		setup    func(r *Request)
+		name     string
+		body     string
+		status   int
+	}{
+		{name: "get", register: (*fiber.App).Get, handler: hostname, call: (*Request).Get, status: fiber.StatusOK, body: "example.com"},
+		{name: "post", register: (*fiber.App).Post, handler: created, setup: withForm, call: (*Request).Post, status: fiber.StatusCreated, body: "bar"},
+		// A response to HEAD carries no body, whatever the handler sends.
+		{name: "head", register: (*fiber.App).Head, handler: hostname, call: (*Request).Head, status: fiber.StatusOK},
+		{name: "put", register: (*fiber.App).Put, handler: form, setup: withForm, call: (*Request).Put, status: fiber.StatusOK, body: "bar"},
+		// A 204 response carries no body, whatever the handler sends.
+		{name: "delete", register: (*fiber.App).Delete, handler: reply(fiber.StatusNoContent, "deleted"), call: (*Request).Delete, status: fiber.StatusNoContent},
+		{name: "options", register: (*fiber.App).Options, handler: reply(fiber.StatusOK, "options"), call: (*Request).Options, status: fiber.StatusOK, body: "options"},
+		{name: "send", register: (*fiber.App).Post, handler: reply(fiber.StatusOK, "post"), call: send, status: fiber.StatusOK, body: "post"},
+		{name: "patch", register: (*fiber.App).Patch, handler: form, setup: withForm, call: (*Request).Patch, status: fiber.StatusOK, body: "bar"},
+		{name: "query", register: (*fiber.App).Query, handler: echo, setup: withRawBody, call: (*Request).Query, status: fiber.StatusOK, body: "query body"},
 	}
-}
 
-func Test_Request_Query(t *testing.T) {
-	t.Parallel()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	app, ln, start := createHelperServer(t)
+			client := clientTestAClient(t, func(app *fiber.App) {
+				tc.register(app, "/", tc.handler)
+			})
 
-	app.Query("/", func(c fiber.Ctx) error {
-		return c.Send(c.Body())
-	})
+			for range 5 {
+				req := AcquireRequest().SetClient(client)
+				if tc.setup != nil {
+					tc.setup(req)
+				}
 
-	go start()
-	time.Sleep(100 * time.Millisecond)
-
-	client := New().SetDial(ln)
-
-	for range 5 {
-		resp, err := AcquireRequest().
-			SetClient(client).
-			SetRawBody([]byte("query body")).
-			Query("http://example.com")
-
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "query body", resp.String())
-
-		resp.Close()
+				resp, err := tc.call(req, target)
+				require.NoError(t, err)
+				require.Equal(t, tc.status, resp.StatusCode())
+				require.Equal(t, tc.body, resp.String())
+				resp.Close()
+			}
+		})
 	}
 }
 
@@ -1283,62 +942,34 @@ func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 func Test_Request_Body_With_Server(t *testing.T) {
 	t.Parallel()
 
-	t.Run("json body", func(t *testing.T) {
-		t.Parallel()
-		testRequest(
-			t,
-			func(c fiber.Ctx) error {
-				require.Equal(t, "application/json", string(c.Request().Header.ContentType()))
-				return c.SendString(string(c.Request().Body()))
-			},
-			func(agent *Request) {
-				agent.SetJSON(map[string]string{
-					"success": "hello",
-				})
-			},
-			"{\"success\":\"hello\"}",
-		)
-	})
+	// The tags of both encodings: each reads only its own.
+	type args struct {
+		Content string `xml:"content" cbor:"content"`
+	}
 
-	t.Run("xml body", func(t *testing.T) {
-		t.Parallel()
-		testRequest(
-			t,
-			func(c fiber.Ctx) error {
-				require.Equal(t, "application/xml", string(c.Request().Header.ContentType()))
-				return c.SendString(string(c.Request().Body()))
-			},
-			func(agent *Request) {
-				type args struct {
-					Content string `xml:"content"`
-				}
-				agent.SetXML(args{
-					Content: "hello",
-				})
-			},
-			"<args><content>hello</content></args>",
-		)
-	})
-
-	t.Run("cbor body", func(t *testing.T) {
-		t.Parallel()
-		testRequest(
-			t,
-			func(c fiber.Ctx) error {
-				require.Equal(t, "application/cbor", string(c.Request().Header.ContentType()))
-				return c.SendString(string(c.Request().Body()))
-			},
-			func(agent *Request) {
-				type args struct {
-					Content string `cbor:"content"`
-				}
-				agent.SetCBOR(args{
-					Content: "hello",
-				})
-			},
-			"\xa1gcontentehello",
-		)
-	})
+	for _, tc := range []struct {
+		set         func(r *Request)
+		name        string
+		contentType string
+		want        string
+	}{
+		{name: "json body", contentType: "application/json", set: func(r *Request) { r.SetJSON(map[string]string{"success": "hello"}) }, want: "{\"success\":\"hello\"}"},
+		{name: "xml body", contentType: "application/xml", set: func(r *Request) { r.SetXML(args{Content: "hello"}) }, want: "<args><content>hello</content></args>"},
+		{name: "cbor body", contentType: "application/cbor", set: func(r *Request) { r.SetCBOR(args{Content: "hello"}) }, want: "\xa1gcontentehello"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			testRequest(
+				t,
+				func(c fiber.Ctx) error {
+					require.Equal(t, tc.contentType, string(c.Request().Header.ContentType()))
+					return c.SendString(string(c.Request().Body()))
+				},
+				tc.set,
+				tc.want,
+			)
+		})
+	}
 
 	t.Run("formdata", func(t *testing.T) {
 		t.Parallel()
@@ -1360,20 +991,17 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	t.Run("multipart form", func(t *testing.T) {
 		t.Parallel()
 
-		app, ln, start := createHelperServer(t)
-		app.Post("/", func(c fiber.Ctx) error {
-			require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
+		client := clientTestAClient(t, func(app *fiber.App) {
+			app.Post("/", func(c fiber.Ctx) error {
+				require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
 
-			mf, err := c.MultipartForm()
-			require.NoError(t, err)
-			require.Equal(t, "bar", mf.Value["foo"][0])
+				mf, err := c.MultipartForm()
+				require.NoError(t, err)
+				require.Equal(t, "bar", mf.Value["foo"][0])
 
-			return c.Send(c.Request().Body())
+				return c.Send(c.Request().Body())
+			})
 		})
-
-		go start()
-
-		client := New().SetDial(ln)
 
 		req := AcquireRequest().
 			SetClient(client).
@@ -1400,35 +1028,32 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	t.Run("multipart form send file", func(t *testing.T) {
 		t.Parallel()
 
-		app, ln, start := createHelperServer(t)
-		app.Post("/", func(c fiber.Ctx) error {
-			require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
+		client := clientTestAClient(t, func(app *fiber.App) {
+			app.Post("/", func(c fiber.Ctx) error {
+				require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
 
-			fh1, err := c.FormFile("field1")
-			require.NoError(t, err)
-			require.Equal(t, "name", fh1.Filename)
-			buf := make([]byte, fh1.Size)
-			f, err := fh1.Open()
-			require.NoError(t, err)
-			defer func() { require.NoError(t, f.Close()) }()
-			_, err = f.Read(buf)
-			require.NoError(t, err)
-			require.Equal(t, "form file", string(buf))
+				fh1, err := c.FormFile("field1")
+				require.NoError(t, err)
+				require.Equal(t, "name", fh1.Filename)
+				buf := make([]byte, fh1.Size)
+				f, err := fh1.Open()
+				require.NoError(t, err)
+				defer func() { require.NoError(t, f.Close()) }()
+				_, err = f.Read(buf)
+				require.NoError(t, err)
+				require.Equal(t, "form file", string(buf))
 
-			fh2, err := c.FormFile("file2")
-			require.NoError(t, err)
-			checkFormFile(t, fh2, "../.github/testdata/index.html")
+				fh2, err := c.FormFile("file2")
+				require.NoError(t, err)
+				checkFormFile(t, fh2, "../.github/testdata/index.html")
 
-			fh3, err := c.FormFile("file3")
-			require.NoError(t, err)
-			checkFormFile(t, fh3, "../.github/testdata/index.tmpl")
+				fh3, err := c.FormFile("file3")
+				require.NoError(t, err)
+				checkFormFile(t, fh3, "../.github/testdata/index.tmpl")
 
-			return c.SendString("multipart form files")
+				return c.SendString("multipart form files")
+			})
 		})
-
-		go start()
-
-		client := New().SetDial(ln)
 
 		for range 5 {
 			req := AcquireRequest().
@@ -1455,17 +1080,14 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	t.Run("multipart random boundary", func(t *testing.T) {
 		t.Parallel()
 
-		app, ln, start := createHelperServer(t)
-		app.Post("/", func(c fiber.Ctx) error {
-			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{33}`)
-			require.True(t, reg.MatchString(c.Get(fiber.HeaderContentType)))
+		client := clientTestAClient(t, func(app *fiber.App) {
+			app.Post("/", func(c fiber.Ctx) error {
+				reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{33}`)
+				require.True(t, reg.MatchString(c.Get(fiber.HeaderContentType)))
 
-			return c.Send(c.Request().Body())
+				return c.Send(c.Request().Body())
+			})
 		})
-
-		go start()
-
-		client := New().SetDial(ln)
 
 		req := AcquireRequest().
 			SetClient(client).
@@ -1499,44 +1121,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 func Test_Request_AllFormData(t *testing.T) {
 	t.Parallel()
 
-	t.Run("empty iterator", func(t *testing.T) {
-		t.Parallel()
-
-		req := AcquireRequest()
-		t.Cleanup(func() {
-			ReleaseRequest(req)
-		})
-
-		called := false
-		req.AllFormData()(func(_ string, _ []string) bool {
-			called = true
-			return true
-		})
-
-		require.False(t, called)
-	})
-
-	t.Run("populated iterator", func(t *testing.T) {
-		t.Parallel()
-
-		req := AcquireRequest()
-		t.Cleanup(func() {
-			ReleaseRequest(req)
-		})
-
-		req.AddFormDataWithMap(map[string][]string{
-			"foo": {"bar", "fiber"},
-			"bar": {"foo"},
-		})
-
-		pathParams := maps.Collect(req.AllFormData())
-
-		require.Contains(t, pathParams["foo"], "bar")
-		require.Contains(t, pathParams["foo"], "fiber")
-		require.Contains(t, pathParams["bar"], "foo")
-
-		require.Len(t, pathParams, 2)
-	})
+	clientTestBFormData.runIter(t, (*Request).AllFormData)
 }
 
 func Benchmark_Request_AllFormData(b *testing.B) {
@@ -1558,33 +1143,20 @@ func Benchmark_Request_AllFormData(b *testing.B) {
 
 func Test_Request_Error_Body_With_Server(t *testing.T) {
 	t.Parallel()
-	t.Run("json error", func(t *testing.T) {
-		t.Parallel()
-		testRequestFail(
-			t,
-			func(c fiber.Ctx) error {
-				return c.SendString("")
-			},
-			func(agent *Request) {
-				agent.SetJSON(complex(1, 1))
-			},
-			errors.New("json: unsupported type: complex128"),
-		)
-	})
 
-	t.Run("xml error", func(t *testing.T) {
-		t.Parallel()
-		testRequestFail(
-			t,
-			func(c fiber.Ctx) error {
-				return c.SendString("")
-			},
-			func(agent *Request) {
-				agent.SetXML(complex(1, 1))
-			},
-			errors.New("xml: unsupported type: complex128"),
-		)
-	})
+	for _, tc := range []struct {
+		set  func(r *Request)
+		want error
+		name string
+	}{
+		{name: "json error", set: func(r *Request) { r.SetJSON(complex(1, 1)) }, want: errors.New("json: unsupported type: complex128")},
+		{name: "xml error", set: func(r *Request) { r.SetXML(complex(1, 1)) }, want: errors.New("xml: unsupported type: complex128")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			testRequestFail(t, func(c fiber.Ctx) error { return c.SendString("") }, tc.set, tc.want)
+		})
+	}
 
 	t.Run("form body with invalid boundary", func(t *testing.T) {
 		t.Parallel()
@@ -1609,14 +1181,12 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 func Test_Request_Timeout_With_Server(t *testing.T) {
 	t.Parallel()
 
-	app, ln, start := createHelperServer(t)
-	app.Get("/", func(c fiber.Ctx) error {
-		time.Sleep(time.Millisecond * 200)
-		return c.SendString("timeout")
+	client := clientTestAClient(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			time.Sleep(time.Millisecond * 200)
+			return c.SendString("timeout")
+		})
 	})
-	go start()
-
-	client := New().SetDial(ln)
 
 	_, err := AcquireRequest().
 		SetClient(client).
@@ -1763,50 +1333,11 @@ func Test_SetValWithStruct(t *testing.T) {
 		require.Equal(t, []byte("3.1"), p.Peek("TFloat"))
 		require.Equal(t, []byte("(3+4i)"), p.Peek("TComplex"))
 		require.Equal(t, []byte("false"), p.Peek("TBool"))
-		require.True(t, func() bool {
-			for _, v := range p.PeekMulti("TSlice") {
-				if string(v) == "foo" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(t, func() bool {
-			for _, v := range p.PeekMulti("TSlice") {
-				if string(v) == "bar" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(t, func() bool {
-			for _, v := range p.PeekMulti("int_slice") {
-				if string(v) == "0" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(t, func() bool {
-			for _, v := range p.PeekMulti("int_slice") {
-				if string(v) == "1" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(t, func() bool {
-			for _, v := range p.PeekMulti("int_slice") {
-				if string(v) == "2" {
-					return true
-				}
-			}
-			return false
-		}())
+		require.Contains(t, p.PeekMulti("TSlice"), []byte("foo"))
+		require.Contains(t, p.PeekMulti("TSlice"), []byte("bar"))
+		require.Contains(t, p.PeekMulti("int_slice"), []byte("0"))
+		require.Contains(t, p.PeekMulti("int_slice"), []byte("1"))
+		require.Contains(t, p.PeekMulti("int_slice"), []byte("2"))
 	})
 
 	t.Run("the pointer of a struct should be applied", func(t *testing.T) {
@@ -1828,41 +1359,10 @@ func Test_SetValWithStruct(t *testing.T) {
 		require.Equal(t, []byte("string"), p.Peek("TString"))
 		require.Equal(t, []byte("3.1"), p.Peek("TFloat"))
 		require.Equal(t, "true", string(p.Peek("TBool")))
-		require.True(t, func() bool {
-			for _, v := range p.PeekMulti("TSlice") {
-				if string(v) == "foo" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(t, func() bool {
-			for _, v := range p.PeekMulti("TSlice") {
-				if string(v) == "bar" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(t, func() bool {
-			for _, v := range p.PeekMulti("int_slice") {
-				if string(v) == "1" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(t, func() bool {
-			for _, v := range p.PeekMulti("int_slice") {
-				if string(v) == "2" {
-					return true
-				}
-			}
-			return false
-		}())
+		require.Contains(t, p.PeekMulti("TSlice"), []byte("foo"))
+		require.Contains(t, p.PeekMulti("TSlice"), []byte("bar"))
+		require.Contains(t, p.PeekMulti("int_slice"), []byte("1"))
+		require.Contains(t, p.PeekMulti("int_slice"), []byte("2"))
 	})
 
 	t.Run("error type should ignore", func(t *testing.T) {
