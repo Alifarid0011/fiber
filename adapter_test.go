@@ -3,7 +3,6 @@ package fiber
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -525,17 +525,15 @@ func TestAdapter_MixedHandlerIntegration(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			req := buildRequest()
 
-			resp, err := app.Test(req)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
 			t.Cleanup(func() {
 				require.NoError(t, resp.Body.Close())
 			})
 
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
+			body := apptest.Body(t, resp)
 
 			require.Equal(t, expectStatus, resp.StatusCode)
-			require.Equal(t, expectBody, string(body))
+			require.Equal(t, expectBody, body)
 			require.Equal(t, "fiber", resp.Header.Get("X-Middleware"))
 			require.Equal(t, "middleware", resp.Header.Get("X-Express"))
 			require.Equal(t, expectRoute, resp.Header.Get("X-Route"))
@@ -638,10 +636,7 @@ func TestToFiberHandler_ExpressNextNoArgMiddleware(t *testing.T) {
 		return c.SendStatus(http.StatusOK)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", http.StatusOK)
 	require.NoError(t, resp.Body.Close())
 
 	require.Equal(t, []string{"middleware", "handler"}, callOrder)
@@ -765,15 +760,12 @@ func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
 		fmt.Fprintf(w, "World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	defer resp.Body.Close() //nolint:errcheck // not needed
 
 	require.Equal(t, StatusOK, resp.StatusCode)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "Hello World!", string(body))
+	require.Equal(t, "Hello World!", apptest.Body(t, resp))
 }
 
 func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {

@@ -45,6 +45,7 @@ import (
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -514,8 +515,7 @@ func Test_Ctx_TypedParsingDefaults(t *testing.T) {
 	req := httptest.NewRequest(MethodGet, "/42?count=5&bad=oops", http.NoBody)
 	req.Header.Set("X-Limit", "11")
 	req.Header.Set("X-Bad", "oops")
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, req)
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
@@ -591,12 +591,10 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 	app.Get("/:id", func(c Ctx) error {
 		return c.SendString(c.Params("id"))
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v3", &bytes.Buffer{}))
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, httptest.NewRequest(MethodGet, "/v3", &bytes.Buffer{}))
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	body := apptest.BodyBytes(t, resp)
 	require.Len(t, body, len("prefix_v3"))
 	require.Equal(t, "prefix_v3", string(body))
 	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
@@ -658,13 +656,10 @@ func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
 		return c.SendString(custom.Params(""))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, "/")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "io.ReadAll(resp.Body)")
-	require.Equal(t, "prefix_", string(body))
+	require.Equal(t, "prefix_", apptest.Body(t, resp))
 }
 
 // go test -run Test_Ctx_CustomCtx_JSON_WithMiddleware
@@ -683,13 +678,11 @@ func Test_Ctx_CustomCtx_JSON_WithMiddleware(t *testing.T) {
 			return c.JSON(Map{"a": "b"})
 		})
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/vvv", http.NoBody))
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, "/vvv")
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err, "io.ReadAll(resp.Body)")
-		require.JSONEq(t, `{"code":200,"data":{"a":"b"},"message":"OK"}`, string(body))
+		body := apptest.Body(t, resp)
+		require.JSONEq(t, `{"code":200,"data":{"a":"b"},"message":"OK"}`, body)
 	})
 
 	t.Run("with middleware", func(t *testing.T) {
@@ -703,14 +696,12 @@ func Test_Ctx_CustomCtx_JSON_WithMiddleware(t *testing.T) {
 			return c.JSON(Map{"a": "b"})
 		})
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/vvv", http.NoBody))
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, "/vvv")
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err, "io.ReadAll(resp.Body)")
+		body := apptest.Body(t, resp)
 		// Middleware must not drop the custom JSON wrapper (#3319).
-		require.JSONEq(t, `{"code":200,"data":{"a":"b"},"message":"OK"}`, string(body))
+		require.JSONEq(t, `{"code":200,"data":{"a":"b"},"message":"OK"}`, body)
 	})
 }
 
@@ -730,13 +721,11 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 
 	// Add route with custom method
 	app.Add([]string{"JOHN"}, "/doe", testEmptyHandler)
-	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, apptest.Req("JOHN", "/doe"))
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	body := apptest.BodyBytes(t, resp)
 	require.Empty(t, body)
 	require.Empty(t, resp.Header.Get(HeaderContentType))
 	require.Equal(t, int64(0), resp.ContentLength)
@@ -2108,8 +2097,7 @@ func Test_Ctx_Cookie_ValueQuoting_NetHTTP(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
 
 	cookies := resp.Cookies()
@@ -2986,13 +2974,11 @@ func Test_Ctx_FormFile(t *testing.T) {
 	req.Header.Set(HeaderContentType, writer.FormDataContentType())
 	req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
 
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, req)
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	respBody, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	respBody := apptest.BodyBytes(t, resp)
 	require.Empty(t, respBody)
 	require.Empty(t, resp.Header.Get(HeaderContentType))
 	require.Equal(t, int64(0), resp.ContentLength)
@@ -3017,13 +3003,11 @@ func Test_Ctx_FormValue(t *testing.T) {
 	req.Header.Set("Content-Type", "multipart/form-data; boundary="+writer.Boundary())
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, req)
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	respBody, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	respBody := apptest.BodyBytes(t, resp)
 	require.Empty(t, respBody)
 	require.Empty(t, resp.Header.Get(HeaderContentType))
 	require.Equal(t, int64(0), resp.ContentLength)
@@ -4040,13 +4024,7 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 		return c.SendString(c.Port())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/port", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "0", string(body))
+	apptest.ExpectBody(t, app, "/port", StatusOK, "0")
 }
 
 // go test -run Test_Ctx_IP
@@ -4497,13 +4475,10 @@ func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines_Wire(t *testing.T) {
 	req.Header.Add(HeaderXForwardedFor, "9.9.9.9")
 	req.Header.Add(HeaderXForwardedFor, "198.51.100.77, 0.0.0.0")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "198.51.100.77", string(body))
+	require.Equal(t, "198.51.100.77", apptest.Body(t, resp))
 }
 
 // fasthttp trims the OWS at either end of a field value but keeps the OWS
@@ -4526,13 +4501,10 @@ func Test_Ctx_IP_ProxyHeader_TabOWS_Wire(t *testing.T) {
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Header.Set(HeaderXForwardedFor, "203.0.113.50\t,\t0.0.0.0")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "203.0.113.50|203.0.113.50,0.0.0.0", string(body))
+	require.Equal(t, "203.0.113.50|203.0.113.50,0.0.0.0", apptest.Body(t, resp))
 }
 
 func Test_Ctx_IP_ProxyHeader_InvalidIPs(t *testing.T) {
@@ -4927,9 +4899,7 @@ func Test_Ctx_Locals(t *testing.T) {
 		require.Equal(t, "doe", c.Locals("john"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 }
 
 // go test -run Test_Ctx_Deadline
@@ -4951,9 +4921,7 @@ func Test_Ctx_Deadline(t *testing.T) {
 		require.False(t, ok)
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 }
 
 // go test -run Test_Ctx_Done
@@ -4974,9 +4942,7 @@ func Test_Ctx_Done(t *testing.T) {
 		require.Nil(t, c.Done())
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 }
 
 // go test -run Test_Ctx_Err
@@ -4996,9 +4962,7 @@ func Test_Ctx_Err(t *testing.T) {
 		require.ErrorIs(t, c.Context().Err(), context.Canceled)
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 }
 
 // go test -run Test_Ctx_Value
@@ -5013,9 +4977,7 @@ func Test_Ctx_Value(t *testing.T) {
 		require.Equal(t, "doe", c.Value("john"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 }
 
 // go test -run Test_Ctx_Value_AfterRelease
@@ -5029,9 +4991,7 @@ func Test_Ctx_Value_AfterRelease(t *testing.T) {
 		require.Equal(t, "value", c.Locals("test"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 
 	// After the handler completes, the context is released and fasthttp is nil
 	// Value should return nil instead of panicking
@@ -5051,9 +5011,7 @@ func Test_Ctx_Locals_AfterRelease(t *testing.T) {
 		c.Locals("test", "value")
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 
 	require.NotPanics(t, func() {
 		val := ctx.Locals("test")
@@ -5081,9 +5039,7 @@ func Test_Ctx_SetLocal(t *testing.T) {
 		require.Equal(t, 19, Locals[int](c, "age"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 }
 
 // go test -run Test_Ctx_SetLocal_AfterRelease
@@ -5095,9 +5051,7 @@ func Test_Ctx_SetLocal_AfterRelease(t *testing.T) {
 		ctx = c
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 
 	require.NotPanics(t, func() {
 		ctx.SetLocal("test", "value")
@@ -5203,9 +5157,7 @@ func Test_Ctx_Value_InGoroutine(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 
 	// Signal goroutine to proceed - context has been released after app.Test returns
 	// since the handler (and its deferred ReleaseCtx) has completed
@@ -5251,9 +5203,7 @@ func Test_Ctx_Context_AfterHandlerPanics(t *testing.T) {
 		ctx = c
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 	// After the fix, Context() returns context.Background() instead of panicking
 	require.NotPanics(t, func() {
 		c := ctx.Context()
@@ -5271,9 +5221,7 @@ func Test_Ctx_Request_Response_AfterRelease(t *testing.T) {
 		ctx = c
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 
 	// After the handler completes and context is released,
 	// Request() and Response() should return nil instead of panicking
@@ -5469,9 +5417,7 @@ func Test_Ctx_Locals_Generic(t *testing.T) {
 		require.Equal(t, 0, Locals[int](c, "isHuman"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 }
 
 // go test -run Test_Ctx_Locals_GenericCustomStruct
@@ -5492,9 +5438,7 @@ func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
 		require.Equal(t, User{name: "john", age: 18}, Locals[User](c, "user"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 }
 
 // go test -run Test_Ctx_Method
@@ -5586,8 +5530,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	// Test without TLS handler
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ServerName", http.NoBody))
 	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, []byte("ClientHelloInfo is nil"), body)
 
 	// Test with TLS Handler
@@ -5604,26 +5547,20 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test ServerName
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ServerName", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/ServerName")
 
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, resp)
 	require.Equal(t, []byte("example.golang"), body)
 
 	// Test SignatureSchemes
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/SignatureSchemes")
 
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, resp)
 	require.Equal(t, "["+strconv.Itoa(pssWithSHA256)+"]", string(body))
 
 	// Test SupportedVersions
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", http.NoBody))
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/SupportedVersions")
+	body = apptest.BodyBytes(t, resp)
 	require.Equal(t, "["+strconv.Itoa(versionTLS13)+"]", string(body))
 }
 
@@ -5667,9 +5604,7 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	req.Header.Set(HeaderContentType, "multipart/form-data; boundary="+writer.Boundary())
 	req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
 
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, req, StatusOK)
 }
 
 func Test_Ctx_MultipartForm_BodyLimitExceeded(t *testing.T) {
@@ -5766,25 +5701,15 @@ func Test_Ctx_Params(t *testing.T) {
 		require.Equal(t, "first", c.Params("Id"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test/john", StatusOK)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test2/im/a/cookie", StatusOK)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test3/1111/blafasel/2222", StatusOK)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test4", StatusOK)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test5/first/second", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test5/first/second", StatusOK)
 }
 
 func Test_Ctx_Params_ErrorHandler_Panic_Issue_2832(t *testing.T) {
@@ -5819,13 +5744,9 @@ func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 		require.Equal(t, "second", c.Params("Id"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test/john", StatusOK)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/first/second", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test2/first/second", StatusOK)
 }
 
 func Test_Ctx_Params_Immutable(t *testing.T) {
@@ -5893,9 +5814,7 @@ func Test_Ctx_Path(t *testing.T) {
 		require.Equal(t, "/اختبار/", string(c.Request().URI().Path()))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/specialChars/cr%C3%A9er", StatusOK)
 }
 
 // Test_Ctx_Path_OverrideNormalizes pins that an overridden path is normalized
@@ -5920,9 +5839,7 @@ func Test_Ctx_Path_OverrideNormalizes(t *testing.T) {
 	})
 
 	for _, target := range []string{"/plain", "/%78"} {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-		require.NoError(t, err, target)
-		require.Equal(t, StatusOK, resp.StatusCode, target)
+		apptest.Expect(t, app, target, StatusOK)
 	}
 }
 
@@ -6319,9 +6236,7 @@ func Test_Ctx_Range_MalformedStatusCode(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
 	req.Header.Set(HeaderRange, "bytes=a-700")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusBadRequest, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusBadRequest)
 }
 
 // Test_Ctx_Range_MaxRangesCountsEmptyElements verifies that empty list
@@ -6393,9 +6308,7 @@ func Test_Ctx_Range_Unsatisfiable(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
 	req.Header.Set(HeaderRange, "bytes=20-30")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, StatusRequestedRangeNotSatisfiable)
 	require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
 }
 
@@ -6412,9 +6325,7 @@ func Test_Ctx_Range_TooManyRanges(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
 	req.Header.Set(HeaderRange, "bytes=0-1,2-3,4-5")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, StatusRequestedRangeNotSatisfiable)
 	require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
 }
 
@@ -6505,8 +6416,7 @@ func Test_Ctx_Range_SuffixNormalization(t *testing.T) {
 				req.Header.Set(HeaderRange, tc.rangeHeader)
 			}
 
-			resp, err := app.Test(req)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
 			t.Cleanup(func() {
 				require.NoError(t, resp.Body.Close())
 			})
@@ -6515,8 +6425,7 @@ func Test_Ctx_Range_SuffixNormalization(t *testing.T) {
 			require.Equal(t, tc.contentRange, resp.Header.Get(HeaderContentRange))
 
 			if tc.expectedBodySize > 0 {
-				bodyBytes, bodyErr := io.ReadAll(resp.Body)
-				require.NoError(t, bodyErr)
+				bodyBytes := apptest.BodyBytes(t, resp)
 				require.Len(t, bodyBytes, tc.expectedBodySize)
 			}
 		})
@@ -6566,9 +6475,7 @@ func Test_Ctx_Route(t *testing.T) {
 		require.Equal(t, "/test", c.Route().Path)
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test", StatusOK)
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -6587,8 +6494,7 @@ func Test_Ctx_FullPath(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, "/test")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
 	require.Equal(t, StatusOK, resp.StatusCode)
@@ -6605,8 +6511,7 @@ func Test_Ctx_FullPath_Group(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, "/v1/test")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
 	require.Equal(t, StatusOK, resp.StatusCode)
@@ -6636,8 +6541,7 @@ func Test_Ctx_FullPath_Middleware(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, "/test")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
 	require.Equal(t, StatusOK, resp.StatusCode)
@@ -6665,8 +6569,7 @@ func Test_Ctx_Endpoint_Middleware(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	}).Name("user.show")
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/users/42", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, "/users/42")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
 	require.Equal(t, StatusOK, resp.StatusCode)
@@ -6684,8 +6587,7 @@ func Test_Ctx_Endpoint_NotFound(t *testing.T) {
 		return c.Next()
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/not-found", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, "/not-found")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
 	require.Equal(t, StatusNotFound, resp.StatusCode)
@@ -6715,8 +6617,7 @@ func Test_Ctx_Endpoint_RepeatedAndSkipped(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	}).Name("user.show")
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/users/42", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, "/users/42")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
 	require.Equal(t, StatusOK, resp.StatusCode)
@@ -6850,8 +6751,7 @@ func Test_Ctx_Endpoint_FollowsMethodOverride(t *testing.T) {
 	app.Get("/x", func(c Ctx) error { return c.SendStatus(StatusOK) }).Name("x.get")
 	app.Post("/x", func(c Ctx) error { return c.SendStatus(StatusOK) }).Name("x.post")
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, "/x")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
 	require.Equal(t, "x.get", before)
@@ -6880,8 +6780,7 @@ func Test_Ctx_Endpoint_LooksPastTheCurrentRoute(t *testing.T) {
 			})
 			app.Get("/:second", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
-			resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
-			require.NoError(t, err, "app.Test(req)")
+			resp := apptest.Do(t, app, "/x")
 			defer func() { require.NoError(t, resp.Body.Close()) }()
 
 			require.Equal(t, StatusOK, resp.StatusCode)
@@ -6908,8 +6807,7 @@ func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/items/7", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, "/items/7")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
 	require.Equal(t, StatusOK, resp.StatusCode)
@@ -6960,12 +6858,10 @@ func Test_Ctx_Path_DisablePathNormalizing(t *testing.T) {
 	}
 
 	for _, target := range []string{"/dotted", "/plain"} {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, target)
 		require.Equal(t, StatusOK, resp.StatusCode, "Status code for %s", target)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "/a/b", string(body), "path for %s", target)
+		body := apptest.Body(t, resp)
+		require.Equal(t, "/a/b", body, "path for %s", target)
 	}
 }
 
@@ -6977,9 +6873,7 @@ func Test_Ctx_RouteNormalized(t *testing.T) {
 		require.Equal(t, "/test", c.Route().Path)
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "//test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "//test", StatusNotFound)
 }
 
 // go test -run Test_Ctx_SaveFile
@@ -7024,9 +6918,7 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, req, StatusOK)
 }
 
 func createMultipartFileHeader(t *testing.T, filename string, data []byte) *multipart.FileHeader {
@@ -7093,9 +6985,7 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, req, StatusOK)
 }
 
 func Test_Ctx_SaveFileToStorage_LargeUpload(t *testing.T) {
@@ -7509,9 +7399,7 @@ func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, req, StatusOK)
 }
 
 // go test -run Test_Ctx_Secure
@@ -7840,15 +7728,9 @@ func Test_Ctx_SendEarlyHints(t *testing.T) {
 		return c.SendString("fail")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/earlyhints", http.NoBody)
-	resp, err := app.Test(req)
-
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusBadRequest, resp.StatusCode, "Status code")
+	resp := apptest.Expect(t, app, "/earlyhints", StatusBadRequest)
 	require.Equal(t, hints, resp.Header["Link"], "Link header")
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "fail", string(body))
+	require.Equal(t, "fail", apptest.Body(t, resp))
 }
 
 // Test_Ctx_SendEarlyHints_HTTP10 verifies that no interim 103 response is
@@ -8035,12 +7917,10 @@ func Test_Static_Compress(t *testing.T) {
 
 			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
 			req.Header.Set("Accept-Encoding", algo)
-			resp, err := app.Test(req, TestConfig{
+			resp := apptest.Do(t, app, req, TestConfig{
 				Timeout:       10 * time.Second,
 				FailOnTimeout: true,
 			})
-
-			require.NoError(t, err, "app.Test(req)")
 			require.Equal(t, 200, resp.StatusCode, "Status code")
 			require.NotEqual(t, "58726", resp.Header.Get(HeaderContentLength))
 		})
@@ -8132,12 +8012,9 @@ func Test_Ctx_SendFile_EmbedFS(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/test", StatusOK)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, expectFileContent, body)
 }
 
@@ -8149,13 +8026,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 		return c.SendFile("ctx12.go")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "sendfile: file ctx12.go not found", string(body))
+	apptest.ExpectBody(t, app, "/", StatusNotFound, "sendfile: file ctx12.go not found")
 }
 
 // Test_Ctx_SendFile_NameIsLiteral pins that SendFile opens exactly the name it
@@ -8210,8 +8081,7 @@ func Test_Ctx_SendFile_EncodedSeparatorStaysInDirectory(t *testing.T) {
 			return c.SendFile(filepath.Join(pub, c.Params("*")))
 		})
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/files/ok.txt", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, "/files/ok.txt")
 		require.Equal(t, StatusOK, resp.StatusCode, "unescape=%v", unescape)
 
 		for _, target := range []string{
@@ -8221,8 +8091,7 @@ func Test_Ctx_SendFile_EncodedSeparatorStaysInDirectory(t *testing.T) {
 			"/files/ok.txt%3Fx",
 			"/files/ok.txt%23x",
 		} {
-			resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-			require.NoError(t, err, target)
+			resp := apptest.Do(t, app, target)
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err, target)
 			require.Equal(t, StatusNotFound, resp.StatusCode, "unescape=%v target=%s", unescape, target)
@@ -8248,17 +8117,15 @@ func Test_Ctx_SendFile_DirectoryIsNotFound(t *testing.T) {
 		app.Get("/", func(c Ctx) error {
 			return c.SendFile(filepath.Join(dir, name))
 		})
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, "/")
 		require.Equal(t, StatusNotFound, resp.StatusCode, name)
 		require.Empty(t, resp.Header.Get(HeaderLocation), name)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NotContains(t, string(body), "INDEX", name)
+		body := apptest.Body(t, resp)
+		require.NotContains(t, body, "INDEX", name)
 		// the error the default handler writes names neither the directory
 		// nor where it lives
-		require.NotContains(t, string(body), filepath.ToSlash(dir), name)
-		require.NotContains(t, string(body), name, name)
+		require.NotContains(t, body, filepath.ToSlash(dir), name)
+		require.NotContains(t, body, name, name)
 	}
 }
 
@@ -8296,8 +8163,7 @@ func Test_Ctx_SendFile_DecodedParamWithRoot(t *testing.T) {
 		"/files/100%25.txt":      "FILE 100%.txt",
 		"/files/..%2Fsecret.txt": "",
 	} {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-		require.NoError(t, err, target)
+		resp := apptest.Do(t, app, target)
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err, target)
 		if want == "" {
@@ -8328,12 +8194,10 @@ func Test_Ctx_SendFile_ControlByteIsNotFound(t *testing.T) {
 			}
 			return c.SendFile(name, cfg)
 		})
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, "/")
 		require.Equal(t, StatusNotFound, resp.StatusCode, "fs=%v", cfg.FS != nil)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NotContains(t, string(body), "INDEX", "fs=%v", cfg.FS != nil)
+		body := apptest.Body(t, resp)
+		require.NotContains(t, body, "INDEX", "fs=%v", cfg.FS != nil)
 	}
 }
 
@@ -8380,14 +8244,11 @@ func Test_Ctx_SendFile_Multiple(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.url, http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, tc.url, StatusOK)
 		require.Equal(t, tc.contentDisposition, resp.Header.Get(HeaderContentDisposition))
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Contains(t, string(body), tc.body)
+		body := apptest.Body(t, resp)
+		require.Contains(t, body, tc.body)
 	}
 
 	app.sendfilesMutex.RLock()
@@ -8429,13 +8290,9 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 		t.Run(endpoint, func(t *testing.T) {
 			t.Parallel()
 			// 1st try
-			resp, err := app.Test(httptest.NewRequest(MethodGet, endpoint, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, endpoint, StatusOK)
 			// 2nd try
-			resp, err = app.Test(httptest.NewRequest(MethodGet, endpoint, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, endpoint, StatusOK)
 		})
 	}
 }
@@ -8479,18 +8336,12 @@ func Test_SendFile_withRoutes(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/file", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/file", StatusOK)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/file/download", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/file/download", StatusOK)
 	require.Equal(t, "attachment", resp.Header.Get(HeaderContentDisposition))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/file/fs", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/file/fs", StatusOK)
 }
 
 func Test_SendFile_ByteRange(t *testing.T) {
@@ -8517,8 +8368,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=0-4")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, req)
 		defer func() {
 			require.NoError(t, resp.Body.Close())
 		}()
@@ -8527,8 +8377,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		require.Equal(t, "bytes 0-4/10", resp.Header.Get(HeaderContentRange))
 		require.EqualValues(t, len(content[:5]), resp.ContentLength)
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		body := apptest.BodyBytes(t, resp)
 		require.Equal(t, content[:5], body)
 	})
 
@@ -8536,8 +8385,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=4-4")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, req)
 		defer func() {
 			require.NoError(t, resp.Body.Close())
 		}()
@@ -8546,8 +8394,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		require.Equal(t, "bytes 4-4/10", resp.Header.Get(HeaderContentRange))
 		require.EqualValues(t, 1, resp.ContentLength)
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		body := apptest.BodyBytes(t, resp)
 		require.Equal(t, content[4:5], body)
 	})
 
@@ -8555,8 +8402,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=4-")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, req)
 		defer func() {
 			require.NoError(t, resp.Body.Close())
 		}()
@@ -8565,8 +8411,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		require.Equal(t, "bytes 4-9/10", resp.Header.Get(HeaderContentRange))
 		require.EqualValues(t, len(content[4:]), resp.ContentLength)
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		body := apptest.BodyBytes(t, resp)
 		require.Equal(t, content[4:], body)
 	})
 
@@ -8574,8 +8419,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=5-20")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, req)
 		defer func() {
 			require.NoError(t, resp.Body.Close())
 		}()
@@ -8584,8 +8428,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		require.Equal(t, "bytes 5-9/10", resp.Header.Get(HeaderContentRange))
 		require.EqualValues(t, len(content[5:]), resp.ContentLength)
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		body := apptest.BodyBytes(t, resp)
 		require.Equal(t, content[5:], body)
 	})
 
@@ -8593,8 +8436,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=-3")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, req)
 		defer func() {
 			require.NoError(t, resp.Body.Close())
 		}()
@@ -8603,8 +8445,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		require.Equal(t, "bytes 7-9/10", resp.Header.Get(HeaderContentRange))
 		require.EqualValues(t, len(content[len(content)-3:]), resp.ContentLength)
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		body := apptest.BodyBytes(t, resp)
 		require.Equal(t, content[len(content)-3:], body)
 	})
 
@@ -8612,8 +8453,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=-20")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, req)
 		defer func() {
 			require.NoError(t, resp.Body.Close())
 		}()
@@ -8622,8 +8462,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		require.Equal(t, "bytes 0-9/10", resp.Header.Get(HeaderContentRange))
 		require.EqualValues(t, len(content), resp.ContentLength)
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		body := apptest.BodyBytes(t, resp)
 		require.Equal(t, content, body)
 	})
 
@@ -8631,8 +8470,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=1000-2000")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, req)
 		defer func() {
 			require.NoError(t, resp.Body.Close())
 		}()
@@ -8644,8 +8482,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=6-5")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, req)
 		defer func() {
 			require.NoError(t, resp.Body.Close())
 		}()
@@ -8657,8 +8494,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=10-")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, req)
 		defer func() {
 			require.NoError(t, resp.Body.Close())
 		}()
@@ -8670,8 +8506,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/norange", http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=0-4")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err, "app.Test(req)")
+		resp := apptest.Do(t, app, req)
 		defer func() {
 			require.NoError(t, resp.Body.Close())
 		}()
@@ -8680,8 +8515,7 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		require.Empty(t, resp.Header.Get(HeaderContentRange))
 		require.EqualValues(t, len(content), resp.ContentLength)
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		body := apptest.BodyBytes(t, resp)
 		require.Equal(t, content, body)
 	})
 }
@@ -8743,15 +8577,12 @@ func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
 			for k, v := range tc.fields {
 				req.Header.Set(k, v)
 			}
-			resp, err := app.Test(req)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
 			t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
 
 			require.Equal(t, tc.wantStatus, resp.StatusCode)
 			require.Equal(t, tc.wantRange, resp.Header.Get(HeaderContentRange))
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, tc.wantBody, string(body))
+			require.Equal(t, tc.wantBody, apptest.Body(t, resp))
 
 			if tc.wantWhole {
 				require.Equal(t, "20", resp.Header.Get(HeaderContentLength))
@@ -8787,20 +8618,17 @@ func Test_SendFile_ByteRange_DotSegments(t *testing.T) {
 	for _, target := range []string{"/os", "/fs"} {
 		req := httptest.NewRequest(MethodGet, target, http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=100-200")
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode, target)
 		require.Equal(t, "bytes */20", resp.Header.Get(HeaderContentRange), target)
 		require.NoError(t, resp.Body.Close())
 
 		req = httptest.NewRequest(MethodGet, target, http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=0-4")
-		resp, err = app.Test(req)
-		require.NoError(t, err)
+		resp = apptest.Do(t, app, req)
 		require.Equal(t, StatusPartialContent, resp.StatusCode, target)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "01234", string(body), target)
+		body := apptest.Body(t, resp)
+		require.Equal(t, "01234", body, target)
 		require.NoError(t, resp.Body.Close())
 	}
 }
@@ -8839,8 +8667,7 @@ func Test_SendFile_ByteRange_DirectoryIndex(t *testing.T) {
 	for target, want := range map[string]string{"/os": "bytes */20", "/fs": "bytes */20", "/fs-root": "bytes */4"} {
 		req := httptest.NewRequest(MethodGet, target, http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=100-200")
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode, target)
 		require.Equal(t, want, resp.Header.Get(HeaderContentRange), target)
 		require.NoError(t, resp.Body.Close())
@@ -8850,8 +8677,7 @@ func Test_SendFile_ByteRange_DirectoryIndex(t *testing.T) {
 	for _, target := range []string{"/os-missing", "/fs-missing"} {
 		req := httptest.NewRequest(MethodGet, target, http.NoBody)
 		req.Header.Set(HeaderRange, "bytes=100-200")
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, StatusNotFound, resp.StatusCode, target)
 		require.Empty(t, resp.Header.Get(HeaderContentRange), target)
 		require.NoError(t, resp.Body.Close())
@@ -8885,8 +8711,7 @@ func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
 			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
 			req.Header.Set(HeaderRange, "bytes=0-4")
 			req.Header.Set(HeaderIfRange, ifRange)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
 			require.NoError(t, resp.Body.Close())
 			require.Equal(t, wantStatus, resp.StatusCode)
 		})
@@ -9537,9 +9362,7 @@ func Test_Ctx_Next(t *testing.T) {
 		c.Set("X-Next-Result", "Works")
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	resp := apptest.Expect(t, app, "http://example.com/test", StatusOK)
 	require.Equal(t, "Works", resp.Header.Get("X-Next-Result"))
 }
 
@@ -9552,9 +9375,7 @@ func Test_Ctx_Next_Error(t *testing.T) {
 		return ErrNotFound
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	resp := apptest.Expect(t, app, "http://example.com/test", StatusNotFound)
 	require.Equal(t, "Works", resp.Header.Get("X-Next-Result"))
 }
 
@@ -9640,13 +9461,9 @@ func Test_Ctx_Matched_AfterNext(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/one", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/one", StatusOK)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/missing", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/missing", StatusNotFound)
 }
 
 func Test_Ctx_Matched_RouteError(t *testing.T) {
@@ -9662,9 +9479,7 @@ func Test_Ctx_Matched_RouteError(t *testing.T) {
 		return ErrNotFound
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", StatusNotFound)
 }
 
 func Test_Ctx_IsMiddleware(t *testing.T) {
@@ -9689,13 +9504,9 @@ func Test_Ctx_IsMiddleware(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", StatusOK)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/route", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/route", StatusOK)
 }
 
 func Test_Ctx_HasBody(t *testing.T) {
@@ -10045,9 +9856,7 @@ func Test_Ctx_RestartRouting(t *testing.T) {
 		}
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "http://example.com/", StatusOK)
 	require.Equal(t, 3, calls, "Number of calls")
 }
 
@@ -10070,9 +9879,7 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "http://example.com/old", StatusOK)
 	require.False(t, executedOldHandler, "Executed old handler")
 	require.True(t, executedNewHandler, "Executed new handler")
 }
@@ -10093,9 +9900,7 @@ func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 		return ErrNotFound
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "http://example.com/old", StatusOK)
 }
 
 type testTemplateEngine struct {
@@ -10650,9 +10455,7 @@ func Test_Ctx_Status_Invalid(t *testing.T) {
 				logged.Reset()
 
 				// app.Test reads the response with net/http, which refuses malformed status lines.
-				resp, err := app.Test(httptest.NewRequest(MethodGet, "/"+kind+"/"+strconv.Itoa(code), http.NoBody))
-				require.NoError(t, err)
-				require.Equal(t, StatusInternalServerError, resp.StatusCode)
+				resp := apptest.Expect(t, app, "/"+kind+"/"+strconv.Itoa(code), StatusInternalServerError)
 				require.NoError(t, resp.Body.Close())
 
 				require.Contains(t, logged.String(), fmt.Sprintf("status code %d is not a three-digit HTTP status, sending 500 instead", code))
@@ -11735,8 +11538,7 @@ func Test_Ctx_Drop(t *testing.T) {
 	require.Nil(t, resp)
 
 	// Test the no-response handler
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/no-response", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/no-response")
 	require.NotNil(t, resp)
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, "0", resp.Header.Get("Content-Length"))
@@ -11775,13 +11577,10 @@ func Test_Ctx_End(t *testing.T) {
 		return c.End()
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	require.NotNil(t, resp)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "io.ReadAll(resp.Body)")
-	require.Equal(t, "Hello, World!", string(body))
+	require.Equal(t, "Hello, World!", apptest.Body(t, resp))
 }
 
 // go test -run Test_Ctx_End_after_timeout
@@ -11816,8 +11615,7 @@ func Test_Ctx_End_with_drop_middleware(t *testing.T) {
 		return c.End()
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/")
 	require.NotNil(t, resp)
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
@@ -11869,8 +11667,7 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 
 		req, err := http.NewRequest(http.MethodGet, "/user/original/123", http.NoBody)
 		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
@@ -11892,8 +11689,7 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 
 		req, err := http.NewRequest(http.MethodGet, "/filesoriginal/original2", http.NoBody)
 		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
@@ -11908,8 +11704,7 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 		})
 		req, err := http.NewRequest(http.MethodGet, "/files/testing", http.NoBody)
 		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
@@ -11926,8 +11721,7 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 		})
 		req, err := http.NewRequest(http.MethodGet, "/files/testing/testing", http.NoBody)
 		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
@@ -11952,8 +11746,7 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 		req, err := http.NewRequest(http.MethodGet, "/user/original", http.NoBody)
 		require.NoError(t, err)
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -11980,8 +11773,7 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 		req, err := http.NewRequest(http.MethodGet, "/user/original", http.NoBody)
 		require.NoError(t, err)
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		require.Equal(t, StatusOK, resp.StatusCode)
@@ -12603,12 +12395,7 @@ func Test_Ctx_SendFile_UncomparableFS(t *testing.T) {
 		{path: "/other", body: "other"},
 		{path: "/", body: "hello"},
 	} {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, tc.body, string(body))
+		apptest.ExpectBody(t, app, tc.path, StatusOK, tc.body)
 	}
 }
 
@@ -12623,12 +12410,7 @@ func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
 	})
 
 	for range 10 {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "hello", string(body))
+		apptest.ExpectBody(t, app, "/", StatusOK, "hello")
 	}
 
 	app.sendfilesMutex.RLock()
@@ -12652,9 +12434,7 @@ func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Header.Set(HeaderAcceptEncoding, "gzip")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, StatusOK)
 	require.Equal(t, "gzip", seen)
 	require.Empty(t, resp.Header.Get(HeaderContentEncoding), "Compress is off, so the file is served as-is")
 }
@@ -12679,9 +12459,7 @@ func Test_Ctx_SendFile_CompressedByMiddleware(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Header.Set(HeaderAcceptEncoding, "gzip")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, StatusOK)
 	require.Equal(t, "gzip", resp.Header.Get(HeaderContentEncoding))
 }
 
@@ -12713,13 +12491,9 @@ func Test_Ctx_AutoFormat_NoAcceptHeader(t *testing.T) {
 			if tc.accept != "" {
 				req.Header.Set(HeaderAccept, tc.accept)
 			}
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, StatusOK, resp.StatusCode)
+			resp := apptest.Expect(t, app, req, StatusOK)
 			require.Equal(t, tc.contentType, resp.Header.Get(HeaderContentType))
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, tc.body, string(body))
+			require.Equal(t, tc.body, apptest.Body(t, resp))
 		})
 	}
 }
@@ -12801,11 +12575,9 @@ func Test_Ctx_Format_CustomCtx(t *testing.T) {
 		if accept != "" {
 			req.Header.Set(HeaderAccept, accept)
 		}
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "custom", string(body), "Accept %q", accept)
+		resp := apptest.Do(t, app, req)
+		body := apptest.Body(t, resp)
+		require.Equal(t, "custom", body, "Accept %q", accept)
 	}
 }
 

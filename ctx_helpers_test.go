@@ -9,13 +9,13 @@ import (
 	"compress/gzip"
 	"io"
 	"net"
-	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -126,8 +126,7 @@ func Test_Req_ContentLength(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodPost, "/", strings.NewReader("0123456789")))
-	require.NoError(t, err)
+	apptest.Do(t, app, httptest.NewRequest(MethodPost, "/", strings.NewReader("0123456789")))
 	require.Equal(t, 10, length)
 
 	chunked := &fasthttp.RequestCtx{}
@@ -143,8 +142,7 @@ func Test_Req_ContentLength(t *testing.T) {
 		bodyless = c.Req().ContentLength()
 		return nil
 	})
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 	require.Equal(t, -2, bodyless)
 }
 
@@ -164,8 +162,7 @@ func Test_Req_GetAll_AbsentSlottedHeaders(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 
 	for key, lines := range got {
 		require.Nil(t, lines, key)
@@ -629,8 +626,7 @@ func Test_Res_Cookies_RepeatedNames(t *testing.T) {
 		c.Cookie(&Cookie{Name: "other", Value: "z"})
 		return nil
 	})
-	resp, err := over.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, over, "/")
 	require.Len(t, resp.Header.Values(HeaderSetCookie), 3)
 }
 
@@ -737,13 +733,10 @@ func Test_Res_NoContent_OverHTTP(t *testing.T) {
 		return c.Res().NoContent()
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodDelete, "/item", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNoContent, resp.StatusCode)
+	resp := apptest.Expect(t, app, apptest.Req(MethodDelete, "/item"), StatusNoContent)
 	require.Empty(t, resp.Header.Get(HeaderContentType))
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, resp)
 	require.Empty(t, body)
 }
 
@@ -759,14 +752,10 @@ func Test_Res_NoContent_DiffersFromSendStatus(t *testing.T) {
 		return c.Res().NoContent()
 	})
 
-	sent, err := app.Test(httptest.NewRequest(MethodGet, "/sendstatus", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNoContent, sent.StatusCode)
+	sent := apptest.Expect(t, app, "/sendstatus", StatusNoContent)
 	require.NotEmpty(t, sent.Header.Get(HeaderContentType))
 
-	none, err := app.Test(httptest.NewRequest(MethodGet, "/nocontent", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNoContent, none.StatusCode)
+	none := apptest.Expect(t, app, "/nocontent", StatusNoContent)
 	require.Empty(t, none.Header.Get(HeaderContentType))
 }
 
@@ -820,8 +809,7 @@ func Test_Ctx_ID_StartTime_Elapsed(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 
 	require.NotZero(t, id)
 	require.True(t, stable, "ID is stable within a request")
@@ -841,8 +829,7 @@ func Test_Ctx_LocalAddr_RemoteAddr(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 
 	require.NotNil(t, local)
 	require.NotNil(t, remote)
@@ -875,8 +862,7 @@ func Test_Ctx_RouteName(t *testing.T) {
 		return nil
 	}).Name("home")
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/home", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/home")
 
 	require.Equal(t, "home", handlerName)
 	require.Empty(t, mwName, "middleware reports its own unnamed route, not the endpoint's")
@@ -913,8 +899,7 @@ func Test_Ctx_IsFinal(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/chain", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/chain")
 
 	require.False(t, inGlobalMW)
 	require.False(t, inRouteMW, "a route handler with another after it is not final")
@@ -935,8 +920,7 @@ func Test_Ctx_IsFinal_ScopedToTheRoute(t *testing.T) {
 		inUse = c.IsFinal()
 		return c.SendString("done")
 	})
-	_, err := terminal.Test(httptest.NewRequest(MethodGet, "/anything", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, terminal, "/anything")
 	require.False(t, inUse, "a Use route is middleware by registration, whatever its position")
 
 	overlapping := New()
@@ -949,8 +933,7 @@ func Test_Ctx_IsFinal_ScopedToTheRoute(t *testing.T) {
 		inCatchAll = true
 		return nil
 	})
-	_, err = overlapping.Test(httptest.NewRequest(MethodGet, "/specific", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, overlapping, "/specific")
 	require.True(t, inSpecific, "it is the last handler of its own route")
 	require.True(t, inCatchAll, "but another route still matched after it")
 }
@@ -974,18 +957,15 @@ func Test_Ctx_MountPath(t *testing.T) {
 	})
 	app.Use("/john", micro)
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
-	require.NoError(t, err)
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/top", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/john/doe")
+	apptest.Do(t, app, "/top")
 
 	var standalone string
 	micro.Get("/solo", func(c Ctx) error {
 		standalone = c.MountPath()
 		return nil
 	})
-	_, err = micro.Test(httptest.NewRequest(MethodGet, "/solo", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, micro, "/solo")
 	require.Empty(t, standalone)
 	require.Equal(t, "/john", micro.MountPath(), "App.MountPath still reports the mount")
 
@@ -1025,13 +1005,7 @@ func Test_Ctx_Error_ReachesErrorHandler(t *testing.T) {
 		return c.Error(StatusBadRequest, "id must be numeric")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusBadRequest, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "id must be numeric", string(body))
+	apptest.ExpectBody(t, app, "/", StatusBadRequest, "id must be numeric")
 }
 
 func Test_Req_HeaderFieldWithoutNormalizing(t *testing.T) {
@@ -1184,11 +1158,9 @@ func Test_Res_SendStatus_DropsDeclaredContentLength(t *testing.T) {
 	})
 
 	get := func(path string) []string {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, path)
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		body := apptest.BodyBytes(t, resp)
 		require.Empty(t, body, path)
 		require.NotContains(t, resp.Header.Values(HeaderContentLength), "42", path)
 		return resp.Header.Values(HeaderContentLength)

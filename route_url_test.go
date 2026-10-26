@@ -2,12 +2,12 @@ package fiber
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -82,9 +82,8 @@ func Test_Route_URL_ParameterRepresentability(t *testing.T) {
 			require.NoError(t, err)
 			defer func() { require.NoError(t, response.Body.Close()) }()
 			require.Equal(t, StatusOK, response.StatusCode)
-			body, err := io.ReadAll(response.Body)
-			require.NoError(t, err)
-			value := string(body)
+			body := apptest.Body(t, response)
+			value := body
 			if !tc.unescape {
 				value, err = url.PathUnescape(value)
 				require.NoError(t, err)

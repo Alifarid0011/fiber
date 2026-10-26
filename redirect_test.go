@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -513,8 +513,7 @@ func Test_Redirect_Back_RejectsEmptyAuthorityReferer(t *testing.T) {
 			req := httptest.NewRequest(MethodGet, "/back", http.NoBody)
 			req.Host = "victim.test"
 			req.Header.Set(HeaderReferer, referer)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
 			require.Equal(t, "/fallback", resp.Header.Get(HeaderLocation))
 		})
 	}
@@ -531,8 +530,7 @@ func Test_Redirect_Back_RejectsEmptyAuthorityReferer(t *testing.T) {
 			req := httptest.NewRequest(MethodGet, "/back", http.NoBody)
 			req.Host = "victim.test"
 			req.Header.Set(HeaderReferer, referer)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
 			require.Equal(t, "/", resp.Header.Get(HeaderLocation))
 		})
 	}
@@ -1029,15 +1027,12 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	// Step 2: Make the second request to the target route with the cookie
 	req = httptest.NewRequest(MethodGet, "/target", http.NoBody)
 	req.Header.Set("Cookie", flashCookie.Name+"="+flashCookie.Value)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, req, StatusOK)
 
 	assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
 
 	// Parse the JSON response and verify flash messages
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, resp)
 
 	var result map[string]any
 	err = json.Unmarshal(body, &result)
@@ -1094,15 +1089,12 @@ func Test_Redirect_FlashMessagesWithSpecialChars(t *testing.T) {
 	// Step 2: Make the second request with the cookie
 	req = httptest.NewRequest(MethodGet, "/special-target", http.NoBody)
 	req.Header.Set("Cookie", flashCookie.Name+"="+flashCookie.Value)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, req, StatusOK)
 
 	assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
 
 	// Parse and verify the response
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, resp)
 
 	var result map[string]any
 	err = json.Unmarshal(body, &result)
@@ -1239,9 +1231,7 @@ func Test_Redirect_DisableFlashMessages(t *testing.T) {
 					return c.SendString(fmt.Sprintf("%d/%d", len(c.Redirect().Messages()), len(c.Redirect().OldInputs())))
 				})
 
-				resp, err := app.Test(httptest.NewRequest(MethodGet, "/source?name=john", http.NoBody))
-				require.NoError(t, err)
-				require.Equal(t, StatusSeeOther, resp.StatusCode)
+				resp := apptest.Expect(t, app, "/source?name=john", StatusSeeOther)
 				if disabled {
 					require.Empty(t, resp.Header.Get(HeaderSetCookie), "no flash cookie may be set")
 				} else {
@@ -1250,16 +1240,13 @@ func Test_Redirect_DisableFlashMessages(t *testing.T) {
 
 				req := httptest.NewRequest(MethodGet, "/target", http.NoBody)
 				req.Header.Set(HeaderCookie, incoming)
-				resp, err = app.Test(req)
-				require.NoError(t, err)
-				require.Equal(t, StatusOK, resp.StatusCode)
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
+				resp = apptest.Expect(t, app, req, StatusOK)
+				body := apptest.Body(t, resp)
 				if disabled {
-					require.Equal(t, "0/0", string(body))
+					require.Equal(t, "0/0", body)
 					require.Empty(t, resp.Header.Get(HeaderSetCookie), "the incoming cookie must be left alone")
 				} else {
-					require.Equal(t, "2/2", string(body))
+					require.Equal(t, "2/2", body)
 					assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
 				}
 			})
@@ -1563,8 +1550,7 @@ func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
 		if scheme != "" {
 			req.Header.Set(HeaderXForwardedProto, scheme)
 		}
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 
 		for _, cookie := range resp.Header.Values(HeaderSetCookie) {
 			if strings.HasPrefix(cookie, FlashCookieName+"=") {
@@ -1632,11 +1618,9 @@ func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
 		if flashCookie != "" {
 			req.Header.Set(HeaderCookie, FlashCookieName+"="+flashCookie)
 		}
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		return string(body)
+		resp := apptest.Do(t, app, req)
+		body := apptest.Body(t, resp)
+		return body
 	}
 
 	// One request carries real flash data and leaves it unread.

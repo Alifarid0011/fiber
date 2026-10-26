@@ -6,14 +6,13 @@ package fiber
 
 import (
 	"fmt"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -189,9 +188,7 @@ func Test_Route_OptionalParamDoesNotSwallowSlash(t *testing.T) {
 
 	req, err := http.NewRequest(MethodGet, "/api/1-/-", http.NoBody)
 	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Path_ParameterEndChars_MatchesRouteGrammar pins the shared set against
@@ -748,9 +745,7 @@ func Test_RegexHandler_Default(t *testing.T) {
 		return c.SendString("matched")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/api/123", StatusOK)
 }
 
 // mockRegexCompiler is a mock implementation of regex matching for testing
@@ -807,14 +802,10 @@ func Test_RegexHandler_Custom(t *testing.T) {
 	require.Equal(t, `\d+`, lastPattern, "Pattern should match")
 
 	// Test the route
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/api/123", StatusOK)
 
 	// Test with non-matching pattern
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/api/abc", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/api/abc", StatusNotFound)
 }
 
 // Test_RegexHandler_MatchOnlyCompiler verifies Fiber accepts compilers that only implement MatchString.
@@ -836,9 +827,7 @@ func Test_RegexHandler_MatchOnlyCompiler(t *testing.T) {
 
 	require.True(t, compileCalled)
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/api/123", StatusOK)
 }
 
 // Test_RegexHandler_DefaultCompilerPreservesConstraintField verifies stdlib handlers still populate the exported regexp field.
@@ -918,9 +907,7 @@ func Test_RegexHandler_NilDefaultsToStdlib(t *testing.T) {
 	})
 
 	// Test the route works
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
+	apptest.Expect(t, app, "/api/123", 200)
 }
 
 // Test_RegexHandler_ComplexPattern tests complex regex patterns
@@ -934,13 +921,9 @@ func Test_RegexHandler_ComplexPattern(t *testing.T) {
 		return c.SendString("date: " + c.Params("date"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/date/2024-01-15", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
+	apptest.Expect(t, app, "/date/2024-01-15", 200)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/date/2024-1-5", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 404, resp.StatusCode)
+	apptest.Expect(t, app, "/date/2024-1-5", 404)
 }
 
 // Test_RegexHandler_InvalidConfigurationPanics verifies invalid handlers fail fast.
@@ -1405,8 +1388,7 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 						return nil
 					})
 
-					_, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody), sweepTestConfig)
-					require.NoError(t, err)
+					apptest.Do(t, app, path, sweepTestConfig)
 
 					require.Equal(t, matched, RoutePatternMatch(path, pattern, cfg),
 						"pattern=%q path=%q", pattern, path)
@@ -1463,23 +1445,18 @@ func Test_RoutePatternNormalization_RegistrationMountAndRemoval(t *testing.T) {
 							}
 							path := prefix + tc.path
 							require.True(t, RoutePatternMatch(path, pattern, cfg))
-							resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-							require.NoError(t, err)
-							require.Equal(t, StatusOK, resp.StatusCode)
-							body, err := io.ReadAll(resp.Body)
-							require.NoError(t, err)
+							resp := apptest.Expect(t, app, path, StatusOK)
+							body := apptest.Body(t, resp)
 							require.NoError(t, resp.Body.Close())
 							want := tc.param
 							if want == "" {
 								want = "literal"
 							}
-							require.Equal(t, want, string(body))
+							require.Equal(t, want, body)
 
 							app.RemoveRoute(pattern, MethodGet)
 							app.RebuildTree()
-							resp, err = app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-							require.NoError(t, err)
-							require.Equal(t, StatusNotFound, resp.StatusCode)
+							resp = apptest.Expect(t, app, path, StatusNotFound)
 							require.NoError(t, resp.Body.Close())
 						})
 					}

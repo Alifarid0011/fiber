@@ -3,7 +3,6 @@ package fiber_test
 import (
 	"bytes"
 	"errors"
-	"io"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/middleware/basicauth"
 	"github.com/gofiber/fiber/v3/middleware/cache"
 	"github.com/gofiber/fiber/v3/middleware/compress"
@@ -150,9 +150,7 @@ func Test_Integration_RequestID_ContextPropagationFlag(t *testing.T) {
 			return c.SendStatus(fiber.StatusOK)
 		})
 
-		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/", fiber.StatusOK)
 	})
 
 	t.Run("enabled", func(t *testing.T) {
@@ -167,9 +165,7 @@ func Test_Integration_RequestID_ContextPropagationFlag(t *testing.T) {
 			return c.SendStatus(fiber.StatusOK)
 		})
 
-		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/", fiber.StatusOK)
 	})
 }
 
@@ -721,11 +717,8 @@ func Test_Integration_Domain_WithMiddleware(t *testing.T) {
 	// Test matching domain
 	req := httptest.NewRequest(http.MethodGet, "/users", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "api users", string(body))
 	require.NotEmpty(t, resp.Header.Get("X-Request-ID"))
 	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
@@ -733,12 +726,7 @@ func Test_Integration_Domain_WithMiddleware(t *testing.T) {
 	// Test non-matching domain (fallback)
 	req = httptest.NewRequest(http.MethodGet, "/users", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "default users", string(body))
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, "default users")
 }
 
 func Test_Integration_Domain_WithCORS(t *testing.T) {
@@ -759,9 +747,7 @@ func Test_Integration_Domain_WithCORS(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/data", http.NoBody)
 	req.Host = "api.example.com"
 	req.Header.Set(fiber.HeaderOrigin, apiOrigin)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, apiOrigin, resp.Header.Get(fiber.HeaderAccessControlAllowOrigin))
 	require.Equal(t, "true", resp.Header.Get(fiber.HeaderAccessControlAllowCredentials))
 }
@@ -791,11 +777,8 @@ func Test_Integration_Domain_WithGroup(t *testing.T) {
 	// Test v1
 	req := httptest.NewRequest(http.MethodGet, "/v1/posts", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "v1 posts", string(body))
 	require.Equal(t, "domain-request-id", resp.Header.Get("X-Request-ID"))
 	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
@@ -803,12 +786,7 @@ func Test_Integration_Domain_WithGroup(t *testing.T) {
 	// Test v2
 	req = httptest.NewRequest(http.MethodGet, "/v2/posts", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "v2 posts", string(body))
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, "v2 posts")
 }
 
 func Test_Integration_Domain_WithSubAppMount(t *testing.T) {
@@ -838,11 +816,8 @@ func Test_Integration_Domain_WithSubAppMount(t *testing.T) {
 	// Test domain-mounted sub-app
 	req := httptest.NewRequest(http.MethodGet, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Contains(t, string(body), "alice")
 	require.NotEmpty(t, resp.Header.Get("X-Request-ID"))
 	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
@@ -850,12 +825,7 @@ func Test_Integration_Domain_WithSubAppMount(t *testing.T) {
 	// Test non-matching domain (fallback)
 	req = httptest.NewRequest(http.MethodGet, "/api/users", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "default users", string(body))
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, "default users")
 }
 
 func Test_Integration_Domain_WithParams(t *testing.T) {
@@ -876,13 +846,10 @@ func Test_Integration_Domain_WithParams(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard", http.NoBody)
 	req.Host = "acme.app.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "acme")
-	require.Contains(t, string(body), "dashboard")
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
+	body := apptest.Body(t, resp)
+	require.Contains(t, body, "acme")
+	require.Contains(t, body, "dashboard")
 	require.NotEmpty(t, resp.Header.Get("X-Request-ID"))
 }
 
@@ -925,12 +892,7 @@ func Test_Integration_Domain_MultipleDomains(t *testing.T) {
 			t.Parallel()
 			req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 			req.Host = tt.host
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, tt.expected, string(body))
+			apptest.ExpectBody(t, app, req, fiber.StatusOK, tt.expected)
 		})
 	}
 }
@@ -952,9 +914,7 @@ func Test_Integration_Domain_WithSession(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/session", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Contains(t, resp.Header.Get(fiber.HeaderSetCookie), "session_id=")
 }
 
@@ -972,9 +932,7 @@ func Test_Integration_Domain_WithCompress(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/data", http.NoBody)
 	req.Host = "api.example.com"
 	req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 }
 
@@ -995,14 +953,11 @@ func Test_Integration_Domain_ErrorHandling(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/error", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, fiber.StatusInternalServerError)
 	require.Equal(t, "true", resp.Header.Get("X-Error-Handled"))
 	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "domain error")
+	body := apptest.Body(t, resp)
+	require.Contains(t, body, "domain error")
 }
 
 func Test_Integration_Domain_WithLimiter(t *testing.T) {
@@ -1027,18 +982,14 @@ func Test_Integration_Domain_WithLimiter(t *testing.T) {
 	for range maxRequests {
 		req := httptest.NewRequest(http.MethodGet, "/limited", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, fiber.StatusOK)
 		require.Equal(t, strconv.Itoa(maxRequests), resp.Header.Get("X-RateLimit-Limit"))
 	}
 
 	// Next request should be rate limited
 	req := httptest.NewRequest(http.MethodGet, "/limited", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusTooManyRequests)
 }
 
 func Test_Integration_Domain_WithCSRF(t *testing.T) {
@@ -1058,9 +1009,7 @@ func Test_Integration_Domain_WithCSRF(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/form", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Contains(t, resp.Header.Get(fiber.HeaderSetCookie), csrfCookie+"=")
 }
 
@@ -1086,12 +1035,7 @@ func Test_Integration_Domain_CaseInsensitiveMatching(t *testing.T) {
 			t.Parallel()
 			req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 			req.Host = host
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, "matched", string(body))
+			apptest.ExpectBody(t, app, req, fiber.StatusOK, "matched")
 		})
 	}
 }
@@ -1114,20 +1058,12 @@ func Test_Integration_Domain_ReusableSubApp(t *testing.T) {
 	// Test first domain
 	req := httptest.NewRequest(http.MethodGet, "/v1/status", http.NoBody)
 	req.Host = "api1.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "ok", string(body))
 
 	// Test second domain
 	req = httptest.NewRequest(http.MethodGet, "/v2/status", http.NoBody)
 	req.Host = "api2.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "ok", string(body))
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, "ok")
 }

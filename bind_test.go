@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/schema"
 	"github.com/shamaton/msgpack/v3"
 	"github.com/stretchr/testify/require"
@@ -288,8 +288,7 @@ func Test_BindError_Sources(t *testing.T) {
 			require.ErrorAs(t, err, &MultiError{})
 			return nil
 		})
-		_, err := app.Test(httptest.NewRequest(http.MethodGet, "/user/notanint", http.NoBody))
-		require.NoError(t, err)
+		apptest.Do(t, app, "/user/notanint")
 	})
 
 	t.Run("Query", func(t *testing.T) {
@@ -385,8 +384,7 @@ func Test_BindError_All(t *testing.T) {
 		})
 		req := httptest.NewRequest(http.MethodGet, "/users/notanint", bytes.NewReader([]byte(`{"name":"ok"}`)))
 		req.Header.Set("Content-Type", MIMEApplicationJSON)
-		_, err := app.Test(req)
-		require.NoError(t, err)
+		apptest.Do(t, app, req)
 	})
 }
 
@@ -1906,10 +1904,8 @@ func Test_Bind_URI(t *testing.T) {
 		require.Equal(t, uint(222), d.RoleID)
 		return nil
 	})
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", http.NoBody))
-	require.NoError(t, err)
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/test1/111/role/222")
+	apptest.Do(t, app, "/test2/111/role/222")
 }
 
 // go test -run Test_Bind_URI_Map
@@ -1927,10 +1923,8 @@ func Test_Bind_URI_Map(t *testing.T) {
 		require.Equal(t, uint(222), d["roleId"])
 		return nil
 	})
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", http.NoBody))
-	require.NoError(t, err)
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/test1/111/role/222")
+	apptest.Do(t, app, "/test2/111/role/222")
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_URI -benchmem -count=4
@@ -2940,9 +2934,7 @@ func Test_Bind_All_Uri_Precedence(t *testing.T) {
 	body := strings.NewReader(`{"id": 999, "name": "john", "email": "john@doe.com"}`)
 	req := httptest.NewRequest(MethodPost, "/test1/111?id=888", body)
 	req.Header.Set("Content-Type", "application/json")
-	res, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
+	apptest.Expect(t, app, req, 200)
 }
 
 // go test -run Test_Bind_All_Query_Precedence
@@ -3294,9 +3286,7 @@ func Test_Bind_Body_ContentTypeNormalization(t *testing.T) {
 
 			req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(body.Bytes()))
 			req.Header.Set(HeaderContentType, ctype)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, req, StatusOK)
 		})
 	}
 
@@ -3315,9 +3305,7 @@ func Test_Bind_Body_ContentTypeNormalization(t *testing.T) {
 
 		req := httptest.NewRequest(MethodPost, "/", strings.NewReader("name=john"))
 		req.Header.Set(HeaderContentType, "APPLICATION/X-WWW-FORM-URLENCODED")
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, StatusOK)
 	})
 
 	t.Run("boundary case is preserved", testBindBodyPreservesBoundary)
@@ -3362,9 +3350,7 @@ func testBindBodyPreservesBoundary(t *testing.T) {
 
 	req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(raw))
 	req.Header.Set(HeaderContentType, wantCType)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusOK)
 }
 
 // Test_Bind_Form_ContentTypeNormalization covers the Form entry point
@@ -3395,9 +3381,7 @@ func Test_Bind_Form_ContentTypeNormalization(t *testing.T) {
 
 		req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(body.Bytes()))
 		req.Header.Set(HeaderContentType, "Multipart/Form-Data; BOUNDARY=AbCdEfMixed12345")
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, StatusOK)
 	})
 
 	t.Run("urlencoded", func(t *testing.T) {
@@ -3415,9 +3399,7 @@ func Test_Bind_Form_ContentTypeNormalization(t *testing.T) {
 
 		req := httptest.NewRequest(MethodPost, "/", strings.NewReader("name=john"))
 		req.Header.Set(HeaderContentType, "APPLICATION/X-WWW-FORM-URLENCODED")
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, StatusOK)
 	})
 }
 
@@ -3471,9 +3453,6 @@ func Test_Bind_CustomBinder_CustomCtx(t *testing.T) {
 
 	req := httptest.NewRequest(MethodPost, "/", strings.NewReader(`{"name":"john"}`))
 	req.Header.Set(HeaderContentType, "application/x-ctxtype")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "custom,custom", string(body))
+	resp := apptest.Do(t, app, req)
+	require.Equal(t, "custom,custom", apptest.Body(t, resp))
 }

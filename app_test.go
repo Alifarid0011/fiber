@@ -29,6 +29,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/utils/v2"
 
 	"github.com/stretchr/testify/assert"
@@ -71,11 +72,7 @@ func testEmptyHandler(_ Ctx) error {
 func testStatus200(t *testing.T, app *App, url, method string) {
 	t.Helper()
 
-	req := httptest.NewRequest(method, url, http.NoBody)
-
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, apptest.Req(method, url), 200)
 }
 
 func testErrorResponse(t *testing.T, err error, resp *http.Response, expectedBodyError string) {
@@ -84,9 +81,8 @@ func testErrorResponse(t *testing.T, err error, resp *http.Response, expectedBod
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 500, resp.StatusCode, "Status code")
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, expectedBodyError, string(body), "Response body")
+	body := apptest.Body(t, resp)
+	require.Equal(t, expectedBodyError, body, "Response body")
 }
 
 func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
@@ -192,43 +188,29 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 
 	app.Options("/", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
+	resp := apptest.Expect(t, app, apptest.Req(MethodPost, "/"), 200)
 	require.Empty(t, resp.Header.Get(HeaderAllow))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 405, resp.StatusCode)
+	resp = apptest.Expect(t, app, "/", 405)
 	require.Equal(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
-	resp, err = app.Test(httptest.NewRequest(MethodPatch, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 405, resp.StatusCode)
+	resp = apptest.Expect(t, app, apptest.Req(MethodPatch, "/"), 405)
 	require.Equal(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
-	resp, err = app.Test(httptest.NewRequest(MethodPut, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 405, resp.StatusCode)
+	resp = apptest.Expect(t, app, apptest.Req(MethodPut, "/"), 405)
 	require.Equal(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	app.Get("/", testEmptyHandler)
 
-	resp, err = app.Test(httptest.NewRequest(MethodTrace, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 405, resp.StatusCode)
+	resp = apptest.Expect(t, app, apptest.Req(MethodTrace, "/"), 405)
 	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
-	resp, err = app.Test(httptest.NewRequest(MethodPatch, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 405, resp.StatusCode)
+	resp = apptest.Expect(t, app, apptest.Req(MethodPatch, "/"), 405)
 	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	app.Head("/", testEmptyHandler)
 
-	resp, err = app.Test(httptest.NewRequest(MethodPut, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 405, resp.StatusCode)
+	resp = apptest.Expect(t, app, apptest.Req(MethodPut, "/"), 405)
 	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 }
 
@@ -238,14 +220,11 @@ func Test_App_QueryMethod_AllowHeader(t *testing.T) {
 	app.Query("/", testEmptyHandler)
 
 	// OPTIONS auto-response advertises QUERY in the Allow header.
-	resp, err := app.Test(httptest.NewRequest(MethodOptions, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, apptest.Req(MethodOptions, "/"))
 	require.Contains(t, resp.Header.Get(HeaderAllow), MethodQuery)
 
 	// A non-registered method yields 405 with QUERY listed in Allow.
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	resp = apptest.Expect(t, app, "/", StatusMethodNotAllowed)
 	require.Contains(t, resp.Header.Get(HeaderAllow), MethodQuery)
 }
 
@@ -355,13 +334,10 @@ func Test_App_RegisterNetHTTPHandler(t *testing.T) {
 				req.URL.Host = "example.com"
 			}
 
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, http.StatusAccepted, resp.StatusCode)
+			resp := apptest.Expect(t, app, req, http.StatusAccepted)
 			require.Equal(t, tt.method, resp.Header.Get("X-Test"))
 
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
+			body := apptest.BodyBytes(t, resp)
 
 			if tt.expectBody {
 				require.Equal(t, "hello from net/http "+tt.method, string(body))
@@ -382,12 +358,9 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 
 	app.Post("/", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 404, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", 404)
 	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "Not Found", string(body))
 	require.Equal(t, strconv.Itoa(len("Not Found")), resp.Header.Get(HeaderContentLength))
 
@@ -397,12 +370,9 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 
 	g.Post("/", testEmptyHandler)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/with-next", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 404, resp.StatusCode)
+	resp = apptest.Expect(t, app, "/with-next", 404)
 	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, resp)
 	require.Equal(t, "Not Found", string(body))
 	require.Equal(t, strconv.Itoa(len("Not Found")), resp.Header.Get(HeaderContentLength))
 }
@@ -469,9 +439,7 @@ func Test_App_BodyLimit_Negative(t *testing.T) {
 
 		smallBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit-1)
 		req = httptest.NewRequest(MethodPost, "/", bytes.NewReader(smallBody))
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, StatusOK)
 	}
 }
 
@@ -491,9 +459,7 @@ func Test_App_BodyLimit_Zero(t *testing.T) {
 
 	smallBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit-1)
 	req = httptest.NewRequest(MethodPost, "/", bytes.NewReader(smallBody))
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusOK)
 }
 
 func Test_App_BodyLimit_LargerThanDefault(t *testing.T) {
@@ -555,25 +521,15 @@ func Test_App_CustomConstraint(t *testing.T) {
 		return c.SendString("test")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test/test", 200)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/test2", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test/test2", 404)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/c", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test2/c", 200)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/cc", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test2/cc", 404)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/cc", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test3/cc", 404)
 }
 
 func Test_App_ErrorHandler_Custom(t *testing.T) {
@@ -588,13 +544,7 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 		return errors.New("hi, i'm an error")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "hi, i'm a custom error", string(body))
+	apptest.ExpectBody(t, app, "/", 200, "hi, i'm a custom error")
 }
 
 func Test_App_ErrorHandler_HandlerStack(t *testing.T) {
@@ -618,13 +568,7 @@ func Test_App_ErrorHandler_HandlerStack(t *testing.T) {
 		return errors.New("0: GET error")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 500, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "1: USE error", string(body))
+	apptest.ExpectBody(t, app, "/", 500, "1: USE error")
 }
 
 func Test_App_ErrorHandler_RouteStack(t *testing.T) {
@@ -644,13 +588,7 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 		return errors.New("0: GET error") // [1] return to USE
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 500, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "1: USE error", string(body))
+	apptest.ExpectBody(t, app, "/test", 500, "1: USE error")
 }
 
 func Test_DefaultErrorHandler_TypedNilFiberError(t *testing.T) {
@@ -781,9 +719,7 @@ func Test_App_serverErrorHandler_Unsupported_Method_Request(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, StatusNotImplemented, resp.StatusCode)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, utils.StatusMessage(StatusNotImplemented), string(body))
+	require.Equal(t, utils.StatusMessage(StatusNotImplemented), apptest.Body(t, resp))
 	require.NoError(t, resp.Body.Close())
 	require.NoError(t, conn.Close())
 
@@ -808,11 +744,7 @@ func Test_App_Nested_Params(t *testing.T) {
 		return c.Status(200).Send([]byte("Good job"))
 	})
 
-	req := httptest.NewRequest(MethodGet, "/test/john/test/doe", http.NoBody)
-	resp, err := app.Test(req)
-
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test/john/test/doe", 200)
 }
 
 func Test_App_Use_Params(t *testing.T) {
@@ -835,17 +767,11 @@ func Test_App_Use_Params(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/prefix/john", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/prefix/john", 200)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/john/doe", 200)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/foo", 200)
 
 	require.PanicsWithValue(t, "use: invalid handler func()\n", func() {
 		app.Use("/:param/*", func() {
@@ -868,9 +794,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cR%C3%A9eR/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	resp := apptest.Expect(t, app, "/cR%C3%A9eR/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", StatusOK)
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
@@ -878,9 +802,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 	require.Equal(t, "اختبار", app.toString(body))
 
 	// with lowercase letters
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", StatusNotFound)
 }
 
 func Test_App_Use_CaseSensitive(t *testing.T) {
@@ -892,21 +814,15 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	})
 
 	// wrong letters in the requested route -> 404
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/AbC", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/AbC", StatusNotFound)
 
 	// right letters in the requested route -> 200
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/abc", StatusOK)
 
 	// check the detected path when the case-insensitive recognition is activated
 	app.config.CaseSensitive = false
 	// check the case-sensitive feature
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/AbC", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	resp := apptest.Expect(t, app, "/AbC", StatusOK)
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
@@ -928,24 +844,16 @@ func Test_App_Not_Use_StrictRouting(t *testing.T) {
 	})
 
 	// wrong path in the requested route -> 404
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/abc/", StatusOK)
 
 	// right path in the requested route -> 200
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/abc", StatusOK)
 
 	// wrong path with group in the requested route -> 404
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/foo", StatusOK)
 
 	// right path with group in the requested route -> 200
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/foo/", StatusOK)
 }
 
 func Test_App_Use_MultiplePrefix(t *testing.T) {
@@ -961,37 +869,22 @@ func Test_App_Use_MultiplePrefix(t *testing.T) {
 		return c.SendString(c.Path())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	resp := apptest.Expect(t, app, "/john", StatusOK)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "/john", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/doe", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	resp = apptest.Expect(t, app, "/doe", StatusOK)
 
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, resp)
 	require.Equal(t, "/doe", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	resp = apptest.Expect(t, app, "/test/john", StatusOK)
 
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, resp)
 	require.Equal(t, "/test/john", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/doe", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "/test/doe", string(body))
+	apptest.ExpectBody(t, app, "/test/doe", StatusOK, "/test/doe")
 }
 
 func Test_Group_Use_NoBoundary(t *testing.T) {
@@ -1004,13 +897,9 @@ func Test_Group_Use_NoBoundary(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/foo/bar", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/api/foo/bar", StatusOK)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/api/foobar", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/api/foobar", StatusNotFound)
 }
 
 func Test_App_Use_StrictRouting(t *testing.T) {
@@ -1027,24 +916,16 @@ func Test_App_Use_StrictRouting(t *testing.T) {
 	})
 
 	// wrong path in the requested route -> 404
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/abc/", StatusNotFound)
 
 	// right path in the requested route -> 200
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/abc", StatusOK)
 
 	// wrong path with group in the requested route -> 404
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/foo", StatusNotFound)
 
 	// right path with group in the requested route -> 200
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/foo/", StatusOK)
 }
 
 func Test_App_Add_Method_Test(t *testing.T) {
@@ -1057,17 +938,11 @@ func Test_App_Add_Method_Test(t *testing.T) {
 
 	app.Add([]string{"JOHN"}, "/john", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest("JOHN", "/john", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, apptest.Req("JOHN", "/john"), StatusOK)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/john", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/john", StatusMethodNotAllowed)
 
-	resp, err = app.Test(httptest.NewRequest("UNKNOWN", "/john", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotImplemented, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, apptest.Req("UNKNOWN", "/john"), StatusNotImplemented)
 
 	// Add a new method
 	require.Panics(t, func() {
@@ -1086,9 +961,7 @@ func Test_App_All_Method_Test(t *testing.T) {
 	// Add a new method with All
 	app.All("/doe", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, apptest.Req("JOHN", "/doe"), StatusOK)
 
 	// Add a new method
 	require.Panics(t, func() {
@@ -1107,10 +980,7 @@ func Test_App_GETOnly(t *testing.T) {
 		return c.SendString("Hello 👋!")
 	})
 
-	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, apptest.Req(MethodPost, "/"), StatusMethodNotAllowed)
 }
 
 // go test -run Test_App_GETOnly_Middleware_Status
@@ -1131,10 +1001,7 @@ func Test_App_GETOnly_Middleware_Status(t *testing.T) {
 		return c.SendString("Hello 👋!")
 	})
 
-	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, apptest.Req(MethodPost, "/"), StatusMethodNotAllowed)
 	require.Equal(t, StatusMethodNotAllowed, <-observed, "Status code seen by middleware")
 }
 
@@ -1154,14 +1021,10 @@ func Test_App_GETOnly_ErrorHandler_WithoutStatus(t *testing.T) {
 		return c.SendString("Hello 👋!")
 	})
 
-	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+	resp := apptest.Expect(t, app, apptest.Req(MethodPost, "/"), StatusMethodNotAllowed)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "Method Not Allowed", string(body), "Body")
+	body := apptest.Body(t, resp)
+	require.Equal(t, "Method Not Allowed", body, "Body")
 }
 
 // RFC 9110 §15.5.6: a 405 lists the allowed methods, even when a custom
@@ -1214,9 +1077,7 @@ func Test_App_Use_Params_Group(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/prefix/john/doe/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/prefix/john/doe/test", 200)
 }
 
 func Test_App_Chaining(t *testing.T) {
@@ -1233,9 +1094,7 @@ func Test_App_Chaining(t *testing.T) {
 
 	req := httptest.NewRequest(MethodPost, "/john", http.NoBody)
 
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 202, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, req, 202)
 
 	app.Get("/test", n, n, n, n, func(c Ctx) error {
 		return c.SendStatus(203)
@@ -1243,9 +1102,7 @@ func Test_App_Chaining(t *testing.T) {
 
 	req = httptest.NewRequest(MethodGet, "/test", http.NoBody)
 
-	resp, err = app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 203, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, req, 203)
 }
 
 func Test_App_Order(t *testing.T) {
@@ -1272,15 +1129,7 @@ func Test_App_Order(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
-
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "123", string(body))
+	apptest.ExpectBody(t, app, "/test", 200, "123")
 }
 
 func Test_App_AutoHead_Compliance(t *testing.T) {
@@ -1293,21 +1142,16 @@ func Test_App_AutoHead_Compliance(t *testing.T) {
 	})
 	app.startupProcess()
 
-	getReq := httptest.NewRequest(MethodGet, "/hello", http.NoBody)
-	getResp, err := app.Test(getReq)
-	require.NoError(t, err, "app.Test(get)")
+	getResp := apptest.Do(t, app, "/hello")
 	defer func() {
 		require.NoError(t, getResp.Body.Close())
 	}()
 
-	body, err := io.ReadAll(getResp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, getResp)
 	require.Equal(t, "hello", string(body))
 	require.Equal(t, "string", getResp.Header.Get("X-Test"))
 
-	headReq := httptest.NewRequest(MethodHead, "/hello", http.NoBody)
-	headResp, err := app.Test(headReq)
-	require.NoError(t, err, "app.Test(head)")
+	headResp := apptest.Do(t, app, apptest.Req(MethodHead, "/hello"))
 	defer func() {
 		require.NoError(t, headResp.Body.Close())
 	}()
@@ -1317,8 +1161,7 @@ func Test_App_AutoHead_Compliance(t *testing.T) {
 	require.Equal(t, getResp.Header.Get(HeaderContentType), headResp.Header.Get(HeaderContentType))
 	require.Equal(t, getResp.Header.Get("X-Test"), headResp.Header.Get("X-Test"))
 
-	headBody, err := io.ReadAll(headResp.Body)
-	require.NoError(t, err)
+	headBody := apptest.BodyBytes(t, headResp)
 	require.Empty(t, headBody)
 }
 
@@ -1341,21 +1184,16 @@ func Test_App_AutoHead_Compliance_SendFile(t *testing.T) {
 	})
 	app.startupProcess()
 
-	getReq := httptest.NewRequest(MethodGet, "/file", http.NoBody)
-	getResp, err := app.Test(getReq)
-	require.NoError(t, err, "app.Test(get)")
+	getResp := apptest.Do(t, app, "/file")
 	defer func() {
 		require.NoError(t, getResp.Body.Close())
 	}()
 
-	body, err := io.ReadAll(getResp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, getResp)
 	require.Equal(t, fileContent, body)
 	require.Equal(t, "file", getResp.Header.Get("X-Test"))
 
-	headReq := httptest.NewRequest(MethodHead, "/file", http.NoBody)
-	headResp, err := app.Test(headReq)
-	require.NoError(t, err, "app.Test(head)")
+	headResp := apptest.Do(t, app, apptest.Req(MethodHead, "/file"))
 	defer func() {
 		require.NoError(t, headResp.Body.Close())
 	}()
@@ -1365,8 +1203,7 @@ func Test_App_AutoHead_Compliance_SendFile(t *testing.T) {
 	require.Equal(t, getResp.Header.Get(HeaderContentType), headResp.Header.Get(HeaderContentType))
 	require.Equal(t, getResp.Header.Get("X-Test"), headResp.Header.Get("X-Test"))
 
-	headBody, err := io.ReadAll(headResp.Body)
-	require.NoError(t, err)
+	headBody := apptest.BodyBytes(t, headResp)
 	require.Empty(t, headBody)
 }
 
@@ -1899,8 +1736,7 @@ func Test_App_OptionsAsterisk(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, "GET, POST", resp.Header.Get(HeaderAllow))
 	require.Zero(t, resp.ContentLength)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, resp)
 	require.Empty(t, body)
 	require.NoError(t, resp.Body.Close())
 	require.NoError(t, conn.Close())
@@ -1915,8 +1751,7 @@ func Test_App_OptionsAsterisk(t *testing.T) {
 	require.Equal(t, StatusNoContent, controlResp.StatusCode)
 	require.Equal(t, "GET", controlResp.Header.Get(HeaderAllow))
 	require.Zero(t, controlResp.ContentLength)
-	controlBody, err := io.ReadAll(controlResp.Body)
-	require.NoError(t, err)
+	controlBody := apptest.BodyBytes(t, controlResp)
 	require.Empty(t, controlBody)
 	require.NoError(t, controlResp.Body.Close())
 	require.NoError(t, controlConn.Close())
@@ -1944,28 +1779,22 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 
 	// match get route
 	req := httptest.NewRequest(MethodGet, "/foobar", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	resp := apptest.Expect(t, app, req, 200)
 	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
 	require.Equal(t, "TestValue", resp.Header.Get("TestHeader"))
 	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "FOO_BAR", string(body))
 
 	// match static route
 	req = httptest.NewRequest(MethodGet, "/tesbar", http.NoBody)
-	resp, err = app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	resp = apptest.Expect(t, app, req, 200)
 	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
 	require.Equal(t, "TestValue", resp.Header.Get("TestHeader"))
 	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body = apptest.BodyBytes(t, resp)
 	require.Contains(t, string(body), "TEST_BAR")
 }
 
@@ -2029,14 +1858,10 @@ func Test_App_Group(t *testing.T) {
 	api := grp.Group("/v1")
 	api.Post("/", dummyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, apptest.Req(MethodPost, "/test/v1/"), 200)
 
 	api.Get("/users", dummyHandler)
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test/v1/UsErS", 200)
 }
 
 func Test_App_RouteChain(t *testing.T) {
@@ -2070,23 +1895,15 @@ func Test_App_RouteChain(t *testing.T) {
 
 	register.RouteChain("/v1").Get(dummyHandler).Post(dummyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, apptest.Req(MethodPost, "/test/v1"), 200)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test/v1", 200)
 
 	register.RouteChain("/v1").RouteChain("/v2").RouteChain("/v3").Get(dummyHandler).Trace(dummyHandler)
 
-	resp, err = app.Test(httptest.NewRequest(MethodTrace, "/test/v1/v2/v3", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, apptest.Req(MethodTrace, "/test/v1/v2/v3"), 200)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/v2/v3", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test/v1/v2/v3", 200)
 }
 
 func Test_App_Route(t *testing.T) {
@@ -2104,9 +1921,7 @@ func Test_App_Route(t *testing.T) {
 
 	testStatus200(t, app, "/test/foo", MethodGet)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/bar/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/test/bar/", http.StatusOK)
 
 	require.Equal(t, "/test/foo", app.GetRoute("test.foo").Path)
 	require.Equal(t, "/test/bar/", app.GetRoute("test.bar.index").Path)
@@ -2148,9 +1963,7 @@ func Test_Group_RouteChain_All(t *testing.T) {
 		return c.SendStatus(http.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/users", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/api/users", http.StatusOK)
 	require.Equal(t, []string{"group", "routechain"}, calls)
 }
 
@@ -2186,9 +1999,7 @@ func Test_App_Next_Method(t *testing.T) {
 		return err
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/", 404)
 }
 
 // go test -v -run=^$ -bench=Benchmark_NewError -benchmem -count=4
@@ -3253,9 +3064,7 @@ func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 	}
 	app.server.GetOnly = true
 
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 500, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(MethodPost, "/"), 500)
 }
 
 // go test -race -run Test_App_New_Test_Parallel
@@ -3264,14 +3073,12 @@ func Test_App_New_Test_Parallel(t *testing.T) {
 	t.Run("Test_App_New_Test_Parallel_1", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
-		_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		apptest.Do(t, app, "/")
 	})
 	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
-		_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		apptest.Do(t, app, "/")
 	})
 }
 
@@ -3283,11 +3090,8 @@ func Test_App_ReadBodyStream(t *testing.T) {
 		return c.SendString(fmt.Sprintf("%v %s", c.Request().IsBodyStream(), c.Body()))
 	})
 	testString := "this is a test"
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", bytes.NewBufferString(testString)))
-	require.NoError(t, err, "app.Test(req)")
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "io.ReadAll(resp.Body)")
-	require.Equal(t, "true "+testString, string(body))
+	resp := apptest.Do(t, app, httptest.NewRequest(MethodPost, "/", bytes.NewBufferString(testString)))
+	require.Equal(t, "true "+testString, apptest.Body(t, resp))
 }
 
 func Test_App_DisablePreParseMultipartForm(t *testing.T) {
@@ -3330,12 +3134,8 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 
 	req := httptest.NewRequest(MethodPost, "/", b)
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "io.ReadAll(resp.Body)")
-
-	require.Equal(t, testString, string(body))
+	resp := apptest.Do(t, app, req)
+	require.Equal(t, testString, apptest.Body(t, resp))
 }
 
 func Test_App_Test_no_timeout_infinitely(t *testing.T) {
@@ -3400,11 +3200,10 @@ func Test_App_Test_timeout_empty_response(t *testing.T) {
 
 	// When FailOnTimeout is false, the test should return whatever response is available
 	// at timeout without failing
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{
+	resp := apptest.Do(t, app, "/", TestConfig{
 		Timeout:       10 * time.Millisecond,
 		FailOnTimeout: false,
 	})
-	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
@@ -3976,8 +3775,7 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutFalse(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode)
 
 	var response groupIDResponse
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, resp)
 	err = json.Unmarshal(body, &response)
 	require.NoError(t, err)
 
@@ -4191,8 +3989,7 @@ func Test_Group_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 	grp.Use([]string{"/one", "/two"}, sub)
 
 	for _, prefix := range []string{"/g/one/ping", "/g/two/ping"} {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, prefix, http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, prefix)
 		require.Equal(t, StatusOK, resp.StatusCode, "%s was not mounted", prefix)
 	}
 }
@@ -4209,8 +4006,7 @@ func Test_Domain_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 	for _, prefix := range []string{"/one/ping", "/two/ping"} {
 		req := httptest.NewRequest(MethodGet, prefix, http.NoBody)
 		req.Host = "example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, StatusOK, resp.StatusCode, "%s was not mounted", prefix)
 	}
 }
@@ -4304,13 +4100,12 @@ func rawExchange(t *testing.T, server dialer, raw string, want int) (responses [
 	for range want {
 		resp, readErr := http.ReadResponse(reader, request)
 		require.NoError(t, readErr, "reading response %d of %d", len(responses)+1, want)
-		body, readErr := io.ReadAll(resp.Body)
-		require.NoError(t, readErr)
+		body := apptest.Body(t, resp)
 		require.NoError(t, resp.Body.Close())
 		responses = append(responses, rawResponse{
 			status:        resp.StatusCode,
 			header:        resp.Header,
-			body:          string(body),
+			body:          body,
 			closes:        resp.Close,
 			contentLength: resp.ContentLength,
 			chunked:       len(resp.TransferEncoding) > 0 && resp.TransferEncoding[0] == "chunked",
@@ -4559,8 +4354,7 @@ func Test_App_ContentLengthWithTransferEncoding_KeepsUserHeaderReceived(t *testi
 			}
 
 			if tc.testFirst {
-				resp, err := app.Test(httptest.NewRequest(MethodPost, "/", http.NoBody))
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, apptest.Req(MethodPost, "/"))
 				require.NoError(t, resp.Body.Close())
 			}
 
@@ -4658,8 +4452,7 @@ func Test_App_Test_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 	req.TransferEncoding = []string{"chunked"}
 	req.Header.Set(HeaderContentLength, "4")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.True(t, resp.Close, "Connection: close expected")

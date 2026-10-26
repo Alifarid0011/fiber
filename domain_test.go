@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -30,19 +30,12 @@ func Test_Domain_Basic(t *testing.T) {
 	// Matching domain
 	req := httptest.NewRequest(MethodGet, "/hello", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "api hello", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "api hello")
 
 	// Non-matching domain → 404
 	req = httptest.NewRequest(MethodGet, "/hello", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 func Test_Domain_Params(t *testing.T) {
@@ -57,12 +50,7 @@ func Test_Domain_Params(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "john.blog.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "blog of john", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "blog of john")
 }
 
 func Test_Domain_MultipleParams(t *testing.T) {
@@ -78,12 +66,7 @@ func Test_Domain_MultipleParams(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.us-east.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "api-us-east", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "api-us-east")
 }
 
 func Test_Domain_CaseInsensitive(t *testing.T) {
@@ -97,12 +80,7 @@ func Test_Domain_CaseInsensitive(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "ok", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "ok")
 }
 
 func Test_Domain_ParamNameCasePreserved(t *testing.T) {
@@ -117,12 +95,7 @@ func Test_Domain_ParamNameCasePreserved(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "alice.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "alice", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "alice")
 }
 
 func Test_Domain_TrailingDot(t *testing.T) {
@@ -137,12 +110,7 @@ func Test_Domain_TrailingDot(t *testing.T) {
 	// Fully-qualified domain name with trailing dot should match
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.example.com."
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "ok", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "ok")
 }
 
 func Test_Domain_MultipleDomains(t *testing.T) {
@@ -161,29 +129,19 @@ func Test_Domain_MultipleDomains(t *testing.T) {
 	// First domain
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "api", string(body))
 
 	// Second domain
 	req = httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "www", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "www")
 
 	// Unknown domain
 	req = httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "other.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 func Test_Domain_WithGroup(t *testing.T) {
@@ -200,19 +158,12 @@ func Test_Domain_WithGroup(t *testing.T) {
 	// Matching domain + path
 	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "users list", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "users list")
 
 	// Wrong domain
 	req = httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 func Test_Domain_WithMiddleware(t *testing.T) {
@@ -232,17 +183,13 @@ func Test_Domain_WithMiddleware(t *testing.T) {
 	// Matching domain - middleware should set header
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, StatusOK)
 	require.Equal(t, "api", resp.Header.Get("X-Domain"))
 
 	// Non-matching domain - middleware should not set header
 	req = httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	resp = apptest.Expect(t, app, req, StatusNotFound)
 	require.Empty(t, resp.Header.Get("X-Domain"))
 }
 
@@ -276,9 +223,7 @@ func Test_Domain_HTTPMethods(t *testing.T) {
 
 			req := httptest.NewRequest(m.method, "/test", http.NoBody)
 			req.Host = "api.example.com"
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, req, StatusOK)
 		})
 	}
 }
@@ -295,9 +240,7 @@ func Test_Domain_Head(t *testing.T) {
 
 	req := httptest.NewRequest(MethodHead, "/test", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusOK)
 }
 
 func Test_Domain_All(t *testing.T) {
@@ -312,9 +255,7 @@ func Test_Domain_All(t *testing.T) {
 	for _, method := range []string{MethodGet, MethodPost, MethodPut, MethodDelete} {
 		req := httptest.NewRequest(method, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, StatusOK)
 	}
 }
 
@@ -330,16 +271,12 @@ func Test_Domain_Add(t *testing.T) {
 	// GET should work
 	req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusOK)
 
 	// POST should work
 	req = httptest.NewRequest(MethodPost, "/test", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusOK)
 }
 
 func Test_Domain_DomainParam_DefaultValue(t *testing.T) {
@@ -355,12 +292,7 @@ func Test_Domain_DomainParam_DefaultValue(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "default", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "default")
 }
 
 func Test_Domain_DomainParam_NoDefault(t *testing.T) {
@@ -375,11 +307,8 @@ func Test_Domain_DomainParam_NoDefault(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "user=", string(body))
+	resp := apptest.Do(t, app, req)
+	require.Equal(t, "user=", apptest.Body(t, resp))
 }
 
 func Test_Domain_WithHostPort(t *testing.T) {
@@ -394,9 +323,7 @@ func Test_Domain_WithHostPort(t *testing.T) {
 	// Host with port - Hostname() strips the port
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.example.com:8080"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusOK)
 }
 
 func Test_Domain_NoMatch_WrongPartCount(t *testing.T) {
@@ -411,15 +338,11 @@ func Test_Domain_NoMatch_WrongPartCount(t *testing.T) {
 	// Different number of domain parts
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 
 	req = httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "sub.api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 func Test_Domain_Route(t *testing.T) {
@@ -438,28 +361,18 @@ func Test_Domain_Route(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "users", string(body))
 
 	req = httptest.NewRequest(MethodGet, "/api/posts", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "posts", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "posts")
 
 	// Wrong domain
 	req = httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 func Test_Domain_Name(t *testing.T) {
@@ -526,29 +439,19 @@ func Test_Domain_RouteChain(t *testing.T) {
 	// GET
 	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "get users", string(body))
 
 	// POST
 	req = httptest.NewRequest(MethodPost, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "create user", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "create user")
 
 	// Wrong domain
 	req = httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 func Test_Domain_GroupFromGroup(t *testing.T) {
@@ -564,19 +467,12 @@ func Test_Domain_GroupFromGroup(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "users from group domain", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "users from group domain")
 
 	// Wrong domain
 	req = httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 func Test_Domain_UseWithPrefix(t *testing.T) {
@@ -595,9 +491,7 @@ func Test_Domain_UseWithPrefix(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/data", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, StatusOK)
 	require.Equal(t, "true", resp.Header.Get("X-API"))
 }
 
@@ -619,19 +513,15 @@ func Test_Domain_FallbackToNonDomain(t *testing.T) {
 	// Domain route matches
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "api", string(body))
 
 	// Fallback route matches for other domains
 	req = httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, req)
+	body = apptest.BodyBytes(t, resp)
 	require.Equal(t, "fallback", string(body))
 }
 
@@ -648,12 +538,7 @@ func Test_Domain_WithPathParams(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/users/42", http.NoBody)
 	req.Host = "acme.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "acme:42", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "acme:42")
 }
 
 func Test_Domain_NestedGroups(t *testing.T) {
@@ -670,12 +555,7 @@ func Test_Domain_NestedGroups(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/v1/users/", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "v1 users", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "v1 users")
 }
 
 func Test_Domain_Chaining(t *testing.T) {
@@ -691,15 +571,11 @@ func Test_Domain_Chaining(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/a", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusOK)
 
 	req = httptest.NewRequest(MethodPost, "/b", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusOK)
 }
 
 func Test_Domain_MultipleHandlers(t *testing.T) {
@@ -721,20 +597,14 @@ func Test_Domain_MultipleHandlers(t *testing.T) {
 	// Matching host — both handlers should run
 	req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, StatusOK)
 	require.Equal(t, "true", resp.Header.Get("X-First"))
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "final", string(body))
+	require.Equal(t, "final", apptest.Body(t, resp))
 
 	// Non-matching host — none of the handlers should run
 	req = httptest.NewRequest(MethodGet, "/test", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	resp = apptest.Expect(t, app, req, StatusNotFound)
 	require.Empty(t, resp.Header.Get("X-First"))
 }
 
@@ -755,9 +625,7 @@ func Test_Domain_NetHTTPHandler(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/http", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusOK)
 }
 
 func Test_Domain_EmptyHostname(t *testing.T) {
@@ -772,9 +640,7 @@ func Test_Domain_EmptyHostname(t *testing.T) {
 	// Empty host should not match
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = ""
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 func Test_Domain_DomainOnDomain(t *testing.T) {
@@ -792,12 +658,7 @@ func Test_Domain_DomainOnDomain(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "www", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "www")
 }
 
 func Test_Domain_GroupMiddleware(t *testing.T) {
@@ -817,17 +678,13 @@ func Test_Domain_GroupMiddleware(t *testing.T) {
 	// Matching domain
 	req := httptest.NewRequest(MethodGet, "/api/data", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, StatusOK)
 	require.Equal(t, "yes", resp.Header.Get("X-Group-MW"))
 
 	// Non-matching domain
 	req = httptest.NewRequest(MethodGet, "/api/data", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	resp = apptest.Expect(t, app, req, StatusNotFound)
 	require.Empty(t, resp.Header.Get("X-Group-MW"))
 }
 
@@ -850,16 +707,12 @@ func Test_Domain_UseMultiplePrefixes(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/a/test", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, StatusOK)
 	require.Equal(t, "true", resp.Header.Get("X-Domain-MW"))
 
 	req = httptest.NewRequest(MethodGet, "/b/test", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, req, StatusOK)
 	require.Equal(t, "true", resp.Header.Get("X-Domain-MW"))
 }
 
@@ -893,29 +746,19 @@ func Test_Domain_UseMount(t *testing.T) {
 	// Test that sub-app routes work on the correct domain
 	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "users list", string(body))
 
 	// Test second route
 	req = httptest.NewRequest(MethodGet, "/api/posts", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "posts list", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "posts list")
 
 	// Test that sub-app routes don't work on wrong domain
 	req = httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 func Test_Domain_UseMountNoPrefix(t *testing.T) {
@@ -935,19 +778,12 @@ func Test_Domain_UseMountNoPrefix(t *testing.T) {
 	// Test that sub-app routes work
 	req := httptest.NewRequest(MethodGet, "/users", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "users list", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "users list")
 
 	// Wrong domain should 404
 	req = httptest.NewRequest(MethodGet, "/users", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 func Test_Domain_UseMountFromGroup(t *testing.T) {
@@ -968,19 +804,12 @@ func Test_Domain_UseMountFromGroup(t *testing.T) {
 	// Test that sub-app routes work with group prefix + mount prefix
 	req := httptest.NewRequest(MethodGet, "/api/v1/data", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "data response", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "data response")
 
 	// Wrong domain should 404
 	req = httptest.NewRequest(MethodGet, "/api/v1/data", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 func Test_Domain_StaleParamsCleared(t *testing.T) {
@@ -1003,12 +832,7 @@ func Test_Domain_StaleParamsCleared(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/check", http.NoBody)
 	req.Host = "static.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "tenant=", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "tenant=")
 }
 
 func Test_Domain_RouteChainNested(t *testing.T) {
@@ -1023,12 +847,7 @@ func Test_Domain_RouteChainNested(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/v1", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "v1", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "v1")
 }
 
 func Test_Domain_RouteChainAllMethods(t *testing.T) {
@@ -1069,9 +888,7 @@ func Test_Domain_RouteChainAllMethods(t *testing.T) {
 	for _, method := range []string{MethodPut, MethodDelete, MethodPatch, MethodOptions, MethodQuery} {
 		req := httptest.NewRequest(method, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, StatusOK)
 	}
 }
 
@@ -1156,12 +973,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		})
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "fiber", string(body))
+		apptest.ExpectBody(t, app, req, StatusOK, "fiber")
 	})
 
 	t.Run("fiber handler no error", func(t *testing.T) {
@@ -1172,9 +984,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		})
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "no-error", resp.Header.Get("X-Handler"))
 	})
 
@@ -1186,12 +996,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		})
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "express-err", string(body))
+		apptest.ExpectBody(t, app, req, StatusOK, "express-err")
 	})
 
 	t.Run("express req res no error", func(t *testing.T) {
@@ -1202,9 +1007,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		})
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "ok", resp.Header.Get("X-Express"))
 	})
 
@@ -1223,13 +1026,9 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		)
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "yes", resp.Header.Get("X-MW"))
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "chained", string(body))
+		require.Equal(t, "chained", apptest.Body(t, resp))
 	})
 
 	t.Run("express with next error", func(t *testing.T) {
@@ -1247,9 +1046,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		)
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "yes", resp.Header.Get("X-MW"))
 	})
 
@@ -1269,9 +1066,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		)
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "yes", resp.Header.Get("X-MW"))
 	})
 
@@ -1290,9 +1085,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		)
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "yes", resp.Header.Get("X-MW"))
 	})
 
@@ -1311,9 +1104,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		)
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "yes", resp.Header.Get("X-MW"))
 	})
 
@@ -1333,9 +1124,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		)
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "yes", resp.Header.Get("X-MW"))
 	})
 
@@ -1354,9 +1143,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		)
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "yes", resp.Header.Get("X-MW"))
 	})
 
@@ -1375,9 +1162,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		)
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "yes", resp.Header.Get("X-MW"))
 	})
 
@@ -1389,9 +1174,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		}))
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, StatusOK)
 	})
 
 	t.Run("net/http func handler", func(t *testing.T) {
@@ -1402,9 +1185,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		})
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, StatusOK)
 	})
 
 	t.Run("fasthttp RequestHandler", func(t *testing.T) {
@@ -1416,9 +1197,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		}))
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, StatusOK)
 	})
 
 	t.Run("fasthttp handler with error", func(t *testing.T) {
@@ -1431,9 +1210,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		})
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, StatusOK)
 	})
 
 	// Verify non-matching domain doesn't execute any handler type
@@ -1449,9 +1226,7 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		)
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "wrong.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusNotFound, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusNotFound)
 		require.Empty(t, resp.Header.Get("X-Handler"))
 	})
 }
@@ -1473,9 +1248,7 @@ func Test_Domain_UseHandlerTypes(t *testing.T) {
 		})
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "fiber", resp.Header.Get("X-MW"))
 	})
 
@@ -1492,9 +1265,7 @@ func Test_Domain_UseHandlerTypes(t *testing.T) {
 		})
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusOK)
 		require.Equal(t, "express", resp.Header.Get("X-MW"))
 	})
 }
@@ -1654,9 +1425,7 @@ func Test_Domain_Security_TooManyPartsRuntime(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = maliciousHost
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_Security_ExcessiveHostnameLength tests DoS protection against very long hostnames
@@ -1673,9 +1442,7 @@ func Test_Domain_Security_ExcessiveHostnameLength(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = maliciousHost
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_Security_ExcessiveLabelLength tests DoS protection against very long labels
@@ -1692,9 +1459,7 @@ func Test_Domain_Security_ExcessiveLabelLength(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = maliciousHost
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_Security_InvalidHostnameChars tests that hostnames with invalid characters are rejected
@@ -1744,9 +1509,7 @@ func Test_Domain_Security_EmptyHostnameLabel(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "example..com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_Security_ValidParamNames tests that valid parameter names are accepted
@@ -1801,9 +1564,7 @@ func Test_Domain_Security_NonASCIIHostnameRejected(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "ünïcödé.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountReusable verifies that mounting the same sub-app on
@@ -1826,29 +1587,19 @@ func Test_Domain_UseMountReusable(t *testing.T) {
 	// Test first domain works
 	req := httptest.NewRequest(MethodGet, "/v1/data", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "data response", string(body))
 
 	// Test second domain works
 	req = httptest.NewRequest(MethodGet, "/v1/data", http.NoBody)
 	req.Host = "admin.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "data response", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "data response")
 
 	// Test wrong domain is rejected for both
 	req = httptest.NewRequest(MethodGet, "/v1/data", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountRoutesAfterMount verifies that routes added to a sub-app
@@ -1877,28 +1628,19 @@ func Test_Domain_UseMountRoutesAfterMount(t *testing.T) {
 	// Route registered before mount should be domain-filtered
 	req := httptest.NewRequest(MethodGet, "/api/before", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "before mount", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "before mount")
 
 	// Route registered before mount should be rejected on wrong domain
 	req = httptest.NewRequest(MethodGet, "/api/before", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 
 	// Route registered after mount on the original sub-app is NOT included
 	// in the wrapper. Since the mount group references the wrapper, the
 	// after-mount route is never expanded into the parent app.
 	req = httptest.NewRequest(MethodGet, "/api/after", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountNested verifies that a sub-app that itself mounts another
@@ -1924,29 +1666,20 @@ func Test_Domain_UseMountNested(t *testing.T) {
 	// The nested route is reachable on the matching host
 	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "nested x", string(body))
 
 	// The sub-app's own routes still work alongside the nested ones
 	req = httptest.NewRequest(MethodGet, "/api/flat", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "flat", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "flat")
 
 	// Both are rejected on a non-matching host
 	for _, path := range []string{"/api/v1/x", "/api/flat"} {
 		req = httptest.NewRequest(MethodGet, path, http.NoBody)
 		req.Host = "www.example.com"
-		resp, err = app.Test(req)
-		require.NoError(t, err)
+		resp = apptest.Do(t, app, req)
 		require.Equal(t, StatusNotFound, resp.StatusCode, path)
 	}
 }
@@ -1972,18 +1705,11 @@ func Test_Domain_UseMountNestedDeep(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/v1/v2/deep", http.NoBody)
 	req.Host = "acme.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "tenant=acme", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "tenant=acme")
 
 	req = httptest.NewRequest(MethodGet, "/api/v1/v2/deep", http.NoBody)
 	req.Host = "acme.example.org"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountNestedMiddleware verifies that middleware of a nested
@@ -2014,22 +1740,14 @@ func Test_Domain_UseMountNestedMiddleware(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "fallback", string(body))
 	require.Equal(t, 0, hits, "nested middleware must not run on a non-matching host")
 
 	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "nested x", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "nested x")
 	require.Equal(t, 1, hits)
 }
 
@@ -2051,18 +1769,11 @@ func Test_Domain_UseMountNestedAtRoot(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "nested x", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "nested x")
 
 	req = httptest.NewRequest(MethodGet, "/x", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountNestedFromGroup verifies a nested mount registered
@@ -2084,18 +1795,11 @@ func Test_Domain_UseMountNestedFromGroup(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/mnt/v1/data", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "data response", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "data response")
 
 	req = httptest.NewRequest(MethodGet, "/api/mnt/v1/data", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountNestedReusable verifies that a sub-app with a nested
@@ -2119,19 +1823,15 @@ func Test_Domain_UseMountNestedReusable(t *testing.T) {
 	for _, host := range []string{"api.example.com", "admin.example.com"} {
 		req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 		req.Host = host
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, StatusOK, resp.StatusCode, host)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "nested x", string(body), host)
+		body := apptest.Body(t, resp)
+		require.Equal(t, "nested x", body, host)
 	}
 
 	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 
 	// The original sub-app's handlers were never wrapped, so a plain mount of
 	// it still serves on any host.
@@ -2140,12 +1840,7 @@ func Test_Domain_UseMountNestedReusable(t *testing.T) {
 
 	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "anything.example.net"
-	resp, err = plain.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "nested x", string(body))
+	apptest.ExpectBody(t, plain, req, StatusOK, "nested x")
 }
 
 // Test_Domain_UseMountNestedOrder verifies the nested app's routes are expanded
@@ -2174,22 +1869,14 @@ func Test_Domain_UseMountNestedOrder(t *testing.T) {
 	// Registered before the mount, so it takes precedence over the nested /x
 	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "before mount", string(body))
 
 	// Routes registered after the mount are kept as well
 	req = httptest.NewRequest(MethodGet, "/api/v1/y", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "after mount", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "after mount")
 }
 
 // Test_Domain_UseMountNestedParams verifies parameters and wildcards of a
@@ -2213,21 +1900,13 @@ func Test_Domain_UseMountNestedParams(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/v1/user/42", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "id=42", string(body))
 
 	req = httptest.NewRequest(MethodGet, "/api/v1/files/a/b.txt", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "file=a/b.txt", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "file=a/b.txt")
 }
 
 // Test_Domain_UseMountNestedDomainMount verifies that a sub-app whose own
@@ -2251,18 +1930,13 @@ func Test_Domain_UseMountNestedDomainMount(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "nested x", string(body))
 
 	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 
 	// Mounted plainly: the sub-app's own domain filter still applies.
 	plain := New()
@@ -2270,18 +1944,11 @@ func Test_Domain_UseMountNestedDomainMount(t *testing.T) {
 
 	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = plain.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "nested x", string(body))
+	apptest.ExpectBody(t, plain, req, StatusOK, "nested x")
 
 	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = plain.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, plain, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountNestedRestrictedMethods verifies that a sub-app which
@@ -2301,18 +1968,11 @@ func Test_Domain_UseMountNestedRestrictedMethods(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "restricted x", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "restricted x")
 
 	req = httptest.NewRequest(MethodGet, "/api/x", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountNestedExtraMethods verifies that a sub-app can be
@@ -2336,18 +1996,11 @@ func Test_Domain_UseMountNestedExtraMethods(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "nested x", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "nested x")
 
 	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountNestedRequestMethods verifies that a nested sub-app
@@ -2384,12 +2037,10 @@ func Test_Domain_UseMountNestedRequestMethods(t *testing.T) {
 	for method, want := range map[string]string{MethodGet: "get x", MethodPost: "post x"} {
 		req := httptest.NewRequest(method, "/api/v1/x", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, StatusOK, resp.StatusCode, method)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, want, string(body), method)
+		body := apptest.Body(t, resp)
+		require.Equal(t, want, body, method)
 	}
 }
 
@@ -2418,14 +2069,12 @@ func Test_Domain_UseMountAutoHead(t *testing.T) {
 	for _, path := range []string{"/api/v1/nested", "/api/flat"} {
 		req := httptest.NewRequest(MethodHead, path, http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, StatusOK, resp.StatusCode, path)
 
 		req = httptest.NewRequest(MethodHead, path, http.NoBody)
 		req.Host = "www.example.com"
-		resp, err = app.Test(req)
-		require.NoError(t, err)
+		resp = apptest.Do(t, app, req)
 		require.Equal(t, StatusNotFound, resp.StatusCode, path)
 	}
 }
@@ -2445,9 +2094,7 @@ func Test_Domain_UseMountAutoHeadDisabled(t *testing.T) {
 
 	req := httptest.NewRequest(MethodHead, "/api/flat", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusMethodNotAllowed)
 }
 
 // Test_Domain_UseMountCustomConstraint verifies that custom constraints of a
@@ -2480,8 +2127,7 @@ func Test_Domain_UseMountCustomConstraint(t *testing.T) {
 	} {
 		req := httptest.NewRequest(MethodGet, path, http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, want, resp.StatusCode, path)
 	}
 }
@@ -2530,36 +2176,26 @@ func Test_Domain_UseMountPerHostConfig(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
 	req.Host = "a.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 591, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, 591)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "a error", string(body))
 
 	req = httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
 	req.Host = "b.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 592, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp = apptest.Expect(t, app, req, 592)
+	body = apptest.BodyBytes(t, resp)
 	require.Equal(t, "b error", string(body))
 
 	req = httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
 	req.Host = "a.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, req)
+	body = apptest.BodyBytes(t, resp)
 	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
 
 	req = httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
 	req.Host = "b.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, req)
+	body = apptest.BodyBytes(t, resp)
 	require.Equal(t, "<h1>Hello b!</h1>", string(body))
 }
 
@@ -2586,19 +2222,12 @@ func Test_Domain_UseMountConfigIgnoredOnOtherHost(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/own", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusInternalServerError)
 
 	// On a matching host the sub-app still governs its own prefix.
 	req = httptest.NewRequest(MethodGet, "/api/mounted", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 593, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "sub error", string(body))
+	apptest.ExpectBody(t, app, req, 593, "sub error")
 }
 
 // Test_Domain_UseMountNestedErrorHandler verifies that the deepest mount
@@ -2631,8 +2260,7 @@ func Test_Domain_UseMountNestedErrorHandler(t *testing.T) {
 	for path, want := range map[string]int{"/api/v1/boom": 594, "/api/boom": 595} {
 		req := httptest.NewRequest(MethodGet, path, http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, want, resp.StatusCode, path)
 	}
 }
@@ -2659,20 +2287,13 @@ func Test_Domain_UseMountLeavesSubAppIntact(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusOK)
 
 	require.Len(t, subApp.stack[getIndex], routesBefore, "the sub-app's own stack was rewritten")
 	require.True(t, subApp.stack[getIndex][0].mount, "the sub-app's mount was expanded in place")
 
 	// The sub-app still resolves its own mount when served on its own.
-	resp, err = subApp.Test(httptest.NewRequest(MethodGet, "/v1/x", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "nested x", string(body))
+	apptest.ExpectBody(t, subApp, "/v1/x", StatusOK, "nested x")
 }
 
 // Test_Domain_UseMountViewsLayout verifies that a domain-mounted sub-app's
@@ -2693,12 +2314,7 @@ func Test_Domain_UseMountViewsLayout(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>Hello, World!</h1><h1>I'm main</h1>", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "<h1>Hello, World!</h1><h1>I'm main</h1>")
 }
 
 // Test_Domain_UseMountViewsError verifies that a render failure in a
@@ -2720,12 +2336,9 @@ func Test_Domain_UseMountViewsError(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusInternalServerError, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "errorTemplateEngine")
+	resp := apptest.Expect(t, app, req, StatusInternalServerError)
+	body := apptest.Body(t, resp)
+	require.Contains(t, body, "errorTemplateEngine")
 }
 
 // Test_Domain_UseMountWithoutViews verifies that a domain-mounted sub-app with
@@ -2746,12 +2359,7 @@ func Test_Domain_UseMountWithoutViews(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>from parent</h1>", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "<h1>from parent</h1>")
 }
 
 // Test_Domain_UseMountReloadViews verifies that ReloadViews reaches the view
@@ -2774,12 +2382,7 @@ func Test_Domain_UseMountReloadViews(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "<h1>I'm Bruh</h1>")
 }
 
 // Test_Domain_UseMountSelf verifies that mounting an app on its own domain
@@ -2835,12 +2438,7 @@ func Test_Domain_UseMountViewsPathOnly(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/elsewhere?next=/api/view", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>parent</h1>", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "<h1>parent</h1>")
 }
 
 // Test_Domain_UseMountAutoHeadKeepsMiddleware verifies that a sub-app which
@@ -2864,18 +2462,14 @@ func Test_Domain_UseMountAutoHeadKeepsMiddleware(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/secret", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusUnauthorized, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusUnauthorized)
 
 	// Twice: app.Test runs the startup process on every call, and the second
 	// pass sees the mount already expanded into the parent's stack.
 	for range 2 {
 		req = httptest.NewRequest(MethodHead, "/api/secret", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err = app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		resp := apptest.Expect(t, app, req, StatusMethodNotAllowed)
 		require.Empty(t, resp.Header.Get("X-Secret"))
 	}
 }
@@ -2898,9 +2492,7 @@ func Test_Domain_UseMountNestedAutoHeadDisabled(t *testing.T) {
 
 	req := httptest.NewRequest(MethodHead, "/api/v1/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusMethodNotAllowed)
 }
 
 // Test_Domain_UseMountAfterOuterMount verifies that a domain mount registered
@@ -2927,18 +2519,11 @@ func Test_Domain_UseMountAfterOuterMount(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/mid/child/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 596, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "child error", string(body))
+	apptest.ExpectBody(t, app, req, 596, "child error")
 
 	req = httptest.NewRequest(MethodGet, "/mid/child/boom", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountOverlappingPatterns verifies that when two domain mounts
@@ -2972,15 +2557,11 @@ func Test_Domain_UseMountOverlappingPatterns(t *testing.T) {
 	// admin.example.com matches both patterns; the route belongs to the first.
 	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
 	req.Host = "admin.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 597, resp.StatusCode)
+	apptest.Expect(t, app, req, 597)
 
 	req = httptest.NewRequest(MethodGet, "/api/other", http.NoBody)
 	req.Host = "acme.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 598, resp.StatusCode)
+	apptest.Expect(t, app, req, 598)
 }
 
 // Test_Domain_UseMountParametricPrefix verifies that a parametric mount prefix
@@ -3002,18 +2583,11 @@ func Test_Domain_UseMountParametricPrefix(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/v1/42/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "version=42", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "version=42")
 
 	req = httptest.NewRequest(MethodGet, "/api/v1/42/x", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountCaseInsensitivePath verifies that a domain mount
@@ -3043,24 +2617,17 @@ func Test_Domain_UseMountCaseInsensitivePath(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 599, resp.StatusCode)
+	apptest.Expect(t, app, req, 599)
 
 	req = httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
+	resp := apptest.Do(t, app, req)
+	require.Equal(t, "<h1>I'm Bruh</h1>", apptest.Body(t, resp))
 
 	// Still host-scoped: another host gets neither the route nor the config.
 	req = httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountRecordedOnce verifies that a domain mount reached through
@@ -3087,8 +2654,7 @@ func Test_Domain_UseMountRecordedOnce(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/unrouted", http.NoBody)
 	req.Host = "api.example.com"
-	_, err := app.Test(req)
-	require.NoError(t, err)
+	apptest.Do(t, app, req)
 
 	require.Len(t, app.mountFields.domainAppList, 1)
 }
@@ -3145,12 +2711,7 @@ func Test_Domain_UseMountOverlappingViews(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
 	req.Host = "admin.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>exact</h1>", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "<h1>exact</h1>")
 }
 
 // Test_Domain_UseMountOverlappingViewsLaterMount verifies that the second of two
@@ -3188,12 +2749,7 @@ func Test_Domain_UseMountOverlappingViewsLaterMount(t *testing.T) {
 	// all is what proves the engine of the mount that owns the route was used.
 	req := httptest.NewRequest(MethodGet, "/api/other", http.NoBody)
 	req.Host = "admin.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "<h1>I'm Bruh</h1>")
 }
 
 // Test_Domain_UseMountOverlappingErrorHandler verifies that two mounts at one
@@ -3223,8 +2779,7 @@ func Test_Domain_UseMountOverlappingErrorHandler(t *testing.T) {
 	for path, want := range map[string]int{"/api/first": 581, "/api/second": 582} {
 		req := httptest.NewRequest(MethodGet, path, http.NoBody)
 		req.Host = "admin.example.com" // matches both patterns
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, want, resp.StatusCode, path)
 	}
 }
@@ -3255,9 +2810,7 @@ func Test_Domain_UseMountOverlappingErrorHandlerAutoHead(t *testing.T) {
 
 	req := httptest.NewRequest(MethodHead, "/api/second", http.NoBody)
 	req.Host = "admin.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 584, resp.StatusCode)
+	apptest.Expect(t, app, req, 584)
 }
 
 // Test_Domain_UseMountDeclinedHostKeepsRootErrorHandler verifies that a mount
@@ -3278,9 +2831,7 @@ func Test_Domain_UseMountDeclinedHostKeepsRootErrorHandler(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
 	req.Host = "other.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountViewsLayoutWithoutViews verifies that a domain mount
@@ -3302,12 +2853,7 @@ func Test_Domain_UseMountViewsLayoutWithoutViews(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>Hello</h1><h1>I'm main</h1>", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "<h1>Hello</h1><h1>I'm main</h1>")
 }
 
 // Test_Domain_UseMountBehindPlainDescendant verifies that an app domain-mounted
@@ -3334,17 +2880,13 @@ func Test_Domain_UseMountBehindPlainDescendant(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/mid/child/boom", http.NoBody)
 	req.Host = "admin.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 586, resp.StatusCode)
+	apptest.Expect(t, app, req, 586)
 
 	// Both patterns have to match: the inner app is behind its own domain
 	// router as well as the one it was reached through.
 	req = httptest.NewRequest(MethodGet, "/api/mid/child/boom", http.NoBody)
 	req.Host = "other.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, StatusNotFound)
 }
 
 // Test_Domain_UseMountStartedSubApp verifies that a sub-app which has already
@@ -3367,17 +2909,14 @@ func Test_Domain_UseMountStartedSubApp(t *testing.T) {
 
 	// Run the sub-app on its own first, which replaces its mount placeholders
 	// with the child's routes.
-	_, err := subApp.Test(httptest.NewRequest(MethodGet, "/mid/boom", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, subApp, "/mid/boom")
 
 	app := New()
 	app.Domain("api.example.com").Use("/api", subApp)
 
 	req := httptest.NewRequest(MethodGet, "/api/mid/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 587, resp.StatusCode)
+	apptest.Expect(t, app, req, 587)
 }
 
 // Test_Domain_UseMountLateOrdinaryDescendant verifies that an app mounted on a
@@ -3404,9 +2943,7 @@ func Test_Domain_UseMountLateOrdinaryDescendant(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/mid/child/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 589, resp.StatusCode)
+	apptest.Expect(t, app, req, 589)
 }
 
 // Test_Domain_UseMountViewsSkipsPlainSibling verifies that a domain mount
@@ -3439,12 +2976,7 @@ func Test_Domain_UseMountViewsSkipsPlainSibling(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>domain</h1>", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "<h1>domain</h1>")
 }
 
 // Test_Domain_UseMountInheritsEnclosingErrorHandler verifies that a domain
@@ -3468,9 +3000,7 @@ func Test_Domain_UseMountInheritsEnclosingErrorHandler(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/mid/child/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 590, resp.StatusCode)
+	apptest.Expect(t, app, req, 590)
 }
 
 // Test_Domain_UseMountDropsPlainSiblingErrorHandler verifies that a domain
@@ -3500,9 +3030,7 @@ func Test_Domain_UseMountDropsPlainSiblingErrorHandler(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 593, resp.StatusCode)
+	apptest.Expect(t, app, req, 593)
 }
 
 // Test_Domain_UseMountCyclicOrdinaryMounts verifies that domain-mounting an app
@@ -3524,12 +3052,7 @@ func Test_Domain_UseMountCyclicOrdinaryMounts(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/second/ping", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "pong", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "pong")
 }
 
 // Test_Domain_UseMountAutoHeadPerMount verifies that a HEAD route one mounted
@@ -3561,8 +3084,7 @@ func Test_Domain_UseMountAutoHeadPerMount(t *testing.T) {
 	} {
 		req := httptest.NewRequest(MethodHead, "/api/x", http.NoBody)
 		req.Host = host
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, StatusOK, resp.StatusCode, host)
 		require.Equal(t, want, resp.Header.Get("X-Handler"), host)
 	}
@@ -3591,9 +3113,7 @@ func Test_Domain_UseMountInheritsDomainErrorHandler(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/child/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 594, resp.StatusCode)
+	apptest.Expect(t, app, req, 594)
 }
 
 // Test_Domain_UseMountInheritsOnlyFromCoveringMounts verifies that inheritance
@@ -3625,9 +3145,7 @@ func Test_Domain_UseMountInheritsOnlyFromCoveringMounts(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/child/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 597, resp.StatusCode)
+	apptest.Expect(t, app, req, 597)
 }
 
 // Test_Domain_UseMountIgnoresOverlappingSibling verifies that inheritance
@@ -3657,9 +3175,7 @@ func Test_Domain_UseMountIgnoresOverlappingSibling(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/child/boom", http.NoBody)
 	req.Host = "admin.example.com" // matches both patterns
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 599, resp.StatusCode)
+	apptest.Expect(t, app, req, 599)
 }
 
 // Test_Domain_UseMountPlainRouteKeepsItsOwnConfig verifies that a domain mount
@@ -3688,16 +3204,12 @@ func Test_Domain_UseMountPlainRouteKeepsItsOwnConfig(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 602, resp.StatusCode)
+	apptest.Expect(t, app, req, 602)
 
 	// The domain mount still answers for the routes it did serve.
 	req = httptest.NewRequest(MethodGet, "/api/other", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 601, resp.StatusCode)
+	apptest.Expect(t, app, req, 601)
 }
 
 // Test_Domain_UseMountConcurrentRegistration verifies that cloning a sub-app's
@@ -3757,8 +3269,7 @@ func Test_Domain_UseMountNestedPrefixConstraint(t *testing.T) {
 	for path, want := range map[string]int{"/api/mid/foo/nope": 603, "/api/mid/bar/nope": 604} {
 		req := httptest.NewRequest(MethodGet, path, http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, want, resp.StatusCode, path)
 	}
 }
@@ -3790,9 +3301,7 @@ func Test_Domain_UseMountAncestryIsStable(t *testing.T) {
 
 		req := httptest.NewRequest(MethodGet, "/api/mid/child/boom", http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, 605, resp.StatusCode)
+		apptest.Expect(t, app, req, 605)
 	}
 }
 
@@ -3822,12 +3331,7 @@ func Test_Domain_UseMountLayoutStopsAtEngine(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/child/view", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>child</h1>", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "<h1>child</h1>")
 }
 
 // Test_Domain_UseMountAutoHeadPerSubtree verifies that one app opting out of
@@ -3855,8 +3359,7 @@ func Test_Domain_UseMountAutoHeadPerSubtree(t *testing.T) {
 	} {
 		req := httptest.NewRequest(MethodHead, path, http.NoBody)
 		req.Host = "api.example.com"
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, want, resp.StatusCode, path)
 	}
 }
@@ -3883,9 +3386,7 @@ func Test_Domain_UseMountInheritsEqualDepthAncestor(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/mid/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 607, resp.StatusCode)
+	apptest.Expect(t, app, req, 607)
 }
 
 // Test_Domain_UseMountTreeVisitsEachMountOnce verifies that recording a mount
@@ -3934,8 +3435,7 @@ func Test_Domain_UseMountSharedAppOnTwoPatterns(t *testing.T) {
 	for _, host := range []string{"a.example.com", "b.example.com"} {
 		req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
 		req.Host = host
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, 608, resp.StatusCode, host)
 	}
 }
@@ -3967,16 +3467,12 @@ func Test_Domain_UseMountOutranksDeeperUnrelatedMount(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/admin/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 609, resp.StatusCode)
+	apptest.Expect(t, app, req, 609)
 
 	// The deeper mount still answers for the routes it does serve.
 	req = httptest.NewRequest(MethodGet, "/api/admin/missing", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 610, resp.StatusCode)
+	apptest.Expect(t, app, req, 610)
 }
 
 // Test_Domain_UseMountInheritsDomainViews verifies the same inheritance for the
@@ -4005,12 +3501,7 @@ func Test_Domain_UseMountInheritsDomainViews(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/child/view", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>child</h1>", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "<h1>child</h1>")
 }
 
 // Test_Domain_UseMountKeepsParentAutoHead verifies that a domain mount which
@@ -4032,8 +3523,7 @@ func Test_Domain_UseMountKeepsParentAutoHead(t *testing.T) {
 
 	req := httptest.NewRequest(MethodHead, "/api/x", http.NoBody)
 	req.Host = "www.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	require.Equal(t, StatusOK, resp.StatusCode, "the parent's own route keeps its HEAD route")
 }
 
@@ -4057,9 +3547,7 @@ func Test_Domain_UseMountParametricMountPath(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/acme/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 571, resp.StatusCode)
+	apptest.Expect(t, app, req, 571)
 }
 
 // Test_Domain_UseMountRootIsShallowest verifies that a mount at the root is
@@ -4092,9 +3580,7 @@ func Test_Domain_UseMountRootIsShallowest(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 573, resp.StatusCode)
+	apptest.Expect(t, app, req, 573)
 }
 
 // Test_Domain_UseMountViewsRankedAgainstPlain verifies that a domain mount and
@@ -4126,22 +3612,14 @@ func Test_Domain_UseMountViewsRankedAgainstPlain(t *testing.T) {
 	// The deeper plain mount owns this one.
 	req := httptest.NewRequest(MethodGet, "/api/admin/view", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	resp := apptest.Expect(t, app, req, StatusOK)
+	body := apptest.BodyBytes(t, resp)
 	require.Equal(t, "<h1>Hello deep!</h1>", string(body))
 
 	// And the domain mount still owns its own.
 	req = httptest.NewRequest(MethodGet, "/api/x", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
+	apptest.ExpectBody(t, app, req, StatusOK, "<h1>I'm Bruh</h1>")
 }
 
 // Test_Domain_UseMountNestedCycle verifies that cloning a sub-app whose mount
