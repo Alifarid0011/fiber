@@ -38,9 +38,7 @@ func Test_Logger_DefaultFormat_StatusColors(t *testing.T) {
 		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
 			t.Parallel()
 
-			buf := bytes.NewBuffer(nil)
-			app := fiber.New()
-			app.Use(New(Config{Stream: buf, ForceColors: true}))
+			app, buf := loggerTestApp(t, &Config{ForceColors: true})
 			app.Get("/", func(c fiber.Ctx) error {
 				return c.SendStatus(tc.status)
 			})
@@ -73,9 +71,7 @@ func Test_Logger_DefaultFormat_MethodColors(t *testing.T) {
 		t.Run(tc.method, func(t *testing.T) {
 			t.Parallel()
 
-			buf := bytes.NewBuffer(nil)
-			app := fiber.New()
-			app.Use(New(Config{Stream: buf, ForceColors: true}))
+			app, buf := loggerTestApp(t, &Config{ForceColors: true})
 			app.All("/", func(c fiber.Ctx) error {
 				return c.SendString("ok")
 			})
@@ -93,10 +89,7 @@ func Test_Logger_DefaultFormat_ColoredError(t *testing.T) {
 	t.Parallel()
 
 	colors := fiber.DefaultColors
-	buf := bytes.NewBuffer(nil)
-
-	app := fiber.New()
-	app.Use(New(Config{Stream: buf, ForceColors: true}))
+	app, buf := loggerTestApp(t, &Config{ForceColors: true})
 	app.Get("/", func(fiber.Ctx) error {
 		return errors.New("boom\r\n200 | forged")
 	})
@@ -123,33 +116,27 @@ func Test_beforeHandlerFunc_StdoutColorSelection(t *testing.T) {
 		return ok
 	}
 
-	t.Run("NO_COLOR strips colors", func(t *testing.T) {
-		t.Setenv("TERM", "xterm")
-		t.Setenv("NO_COLOR", "1")
+	for _, tc := range []struct {
+		name        string
+		term        string
+		noColor     string
+		forceColors bool
+		wantPlain   bool
+	}{
+		{name: "NO_COLOR strips colors", term: "xterm", noColor: "1", wantPlain: true},
+		{name: "dumb terminal strips colors", term: "dumb", noColor: "", wantPlain: true},
+		{name: "ForceColors overrides both", term: "dumb", noColor: "1", forceColors: true, wantPlain: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TERM", tc.term)
+			t.Setenv("NO_COLOR", tc.noColor)
 
-		cfg := stdoutCfg()
-		beforeHandlerFunc(cfg)
-		require.True(t, isPlain(cfg.Stream))
-	})
-
-	t.Run("dumb terminal strips colors", func(t *testing.T) {
-		t.Setenv("TERM", "dumb")
-		t.Setenv("NO_COLOR", "")
-
-		cfg := stdoutCfg()
-		beforeHandlerFunc(cfg)
-		require.True(t, isPlain(cfg.Stream))
-	})
-
-	t.Run("ForceColors overrides both", func(t *testing.T) {
-		t.Setenv("TERM", "dumb")
-		t.Setenv("NO_COLOR", "1")
-
-		cfg := stdoutCfg()
-		cfg.ForceColors = true
-		beforeHandlerFunc(cfg)
-		require.False(t, isPlain(cfg.Stream))
-	})
+			cfg := stdoutCfg()
+			cfg.ForceColors = tc.forceColors
+			beforeHandlerFunc(cfg)
+			require.Equal(t, tc.wantPlain, isPlain(cfg.Stream))
+		})
+	}
 
 	t.Run("custom stream is left alone", func(t *testing.T) {
 		t.Setenv("NO_COLOR", "1")

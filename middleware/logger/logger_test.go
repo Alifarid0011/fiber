@@ -4,6 +4,7 @@ package logger
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -71,39 +72,161 @@ func benchmarkSetupParallel(b *testing.B, app *fiber.App, path string) {
 	})
 }
 
-// go test -run Test_Logger
-func Test_Logger(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
+// loggerTestBuf returns a pooled buffer that goes back to the pool once the
+// test and all of its subtests have finished.
+func loggerTestBuf(tb testing.TB) *bytebufferpool.ByteBuffer {
+	tb.Helper()
 
 	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
+	tb.Cleanup(func() { bytebufferpool.Put(buf) })
+	return buf
+}
 
-	app.Use(New(Config{
-		Format: "${error}",
-		Stream: buf,
-	}))
+// loggerTestApp returns an app whose first middleware is the logger configured
+// by cfg, plus the pooled buffer it writes to: the copy of cfg the logger gets
+// has its Stream replaced by that buffer. appCfg, when given, configures the
+// app itself.
+func loggerTestApp(t *testing.T, cfg *Config, appCfg ...fiber.Config) (*fiber.App, *bytebufferpool.ByteBuffer) {
+	t.Helper()
 
-	app.Get("/", func(_ fiber.Ctx) error {
-		return errors.New("some random error")
-	})
+	buf := loggerTestBuf(t)
+	logCfg := *cfg
+	logCfg.Stream = buf
+	app := fiber.New(appCfg...)
+	app.Use(New(logCfg))
+	return app, buf
+}
 
-	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
-	require.Equal(t, "some random error", buf.String())
+// loggerTestTag returns a LogFunc that writes s.
+func loggerTestTag(s string) LogFunc {
+	return func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+		return output.WriteString(s)
+	}
+}
+
+// loggerTestLog sends one GET / that its handler answers with 200 through a
+// logger configured by cfg and returns what the logger wrote.
+func loggerTestLog(t *testing.T, cfg *Config) string {
+	t.Helper()
+
+	app, buf := loggerTestApp(t, cfg)
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	apptest.Expect(t, app, "/", fiber.StatusOK)
+	return buf.String()
+}
+
+// Test_Logger_Output pins the exact line the logger writes for one request,
+// one scenario per row. A row without a handler registers no route, so its
+// request is a 404.
+//
+// go test -run Test_Logger_Output
+func Test_Logger_Output(t *testing.T) {
+	t.Parallel()
+
+	const customTag = "it is a custom tag"
+	templateErr := errors.New("template failure")
+	colors := fiber.DefaultColors
+	hello := func(c fiber.Ctx) error { return c.SendString("Hello fiber!") }
+	testHeader := apptest.WithHeader("test", "Hello fiber!")
+
+	for _, tc := range []struct {
+		handler fiber.Handler
+		name    string
+		target  string // defaults to "/"
+		want    string
+		opts    []apptest.Option
+		cfg     Config
+		status  int
+	}{
+		{
+			name:    "error tag",
+			cfg:     Config{Format: "${error}"},
+			handler: func(_ fiber.Ctx) error { return errors.New("some random error") },
+			status:  fiber.StatusInternalServerError,
+			want:    "some random error",
+		},
+		{
+			name:   "queryParams tag",
+			cfg:    Config{Format: "${queryParams}"},
+			target: "/?foo=bar&baz=moz",
+			status: fiber.StatusNotFound,
+			want:   "foo=bar&baz=moz",
+		},
+		{
+			name:    "reqHeader tag",
+			cfg:     Config{Format: "${reqHeader:test}"},
+			handler: hello,
+			opts:    []apptest.Option{testHeader},
+			status:  fiber.StatusOK,
+			want:    "Hello fiber!",
+		},
+		{
+			// Formerly Test_ReqHeader_Header: identical to the row above, and
+			// kept as a scenario of its own.
+			name:    "reqHeader tag again",
+			cfg:     Config{Format: "${reqHeader:test}"},
+			handler: hello,
+			opts:    []apptest.Option{testHeader},
+			status:  fiber.StatusOK,
+			want:    "Hello fiber!",
+		},
+		{
+			name: "custom tag",
+			cfg: Config{
+				Format:     "${custom_tag}",
+				CustomTags: map[string]LogFunc{"custom_tag": loggerTestTag(customTag)},
+			},
+			handler: hello,
+			opts:    []apptest.Option{testHeader},
+			status:  fiber.StatusOK,
+			want:    customTag,
+		},
+		{
+			name: "failing tag leaves its error in the line",
+			cfg: Config{
+				Format: "${fail}",
+				CustomTags: map[string]LogFunc{
+					"fail": func(_ Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+						return 0, templateErr
+					},
+				},
+			},
+			status: fiber.StatusNotFound,
+			want:   templateErr.Error(),
+		},
+		{
+			name:   "every tag",
+			cfg:    Config{Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}"},
+			target: pathFooBar,
+			status: fiber.StatusNotFound,
+			want:   fmt.Sprintf("%dHost=example.comhttpHTTP/1.10.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sNot Found", os.Getpid(), colors.Black, colors.Red, colors.Green, colors.Yellow, colors.Blue, colors.Magenta, colors.Cyan, colors.White, colors.Reset),
+		},
+		{
+			name:   "forced colors",
+			cfg:    Config{Format: "${ip}${status}${method}${path}${error}\n", DisableColors: true, ForceColors: true},
+			status: fiber.StatusNotFound,
+			want:   fmt.Sprintf("0.0.0.0%s404%s%sGET%s/%sNot Found%s\n", colors.Yellow, colors.Reset, colors.Cyan, colors.Reset, colors.Red, colors.Reset),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app, buf := loggerTestApp(t, &tc.cfg)
+			if tc.handler != nil {
+				app.Get("/", tc.handler)
+			}
+
+			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, cmp.Or(tc.target, "/"), tc.opts...), tc.status)
+			require.Equal(t, tc.want, buf.String())
+		})
+	}
 }
 
 // go test -run Test_Logger_locals
 func Test_Logger_locals(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app.Use(New(Config{
-		Format: "${locals:demo}",
-		Stream: buf,
-	}))
+	app, buf := loggerTestApp(t, &Config{Format: "${locals:demo}"})
 
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Locals("demo", "johndoe")
@@ -233,17 +356,13 @@ func Test_Logger_Filter(t *testing.T) {
 
 	t.Run("Test Not Found", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-
-		logOutput := bytes.Buffer{}
 
 		// Return true to skip logging for all requests != 404
-		app.Use(New(Config{
+		app, logOutput := loggerTestApp(t, &Config{
 			Skip: func(c fiber.Ctx) bool {
 				return c.Response().StatusCode() != fiber.StatusNotFound
 			},
-			Stream: &logOutput,
-		}))
+		})
 
 		apptest.Expect(t, app, "/nonexistent", fiber.StatusNotFound)
 
@@ -253,17 +372,13 @@ func Test_Logger_Filter(t *testing.T) {
 
 	t.Run("Test OK", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-
-		logOutput := bytes.Buffer{}
 
 		// Return true to skip logging for all requests == 200
-		app.Use(New(Config{
+		app, logOutput := loggerTestApp(t, &Config{
 			Skip: func(c fiber.Ctx) bool {
 				return c.Response().StatusCode() == fiber.StatusOK
 			},
-			Stream: &logOutput,
-		}))
+		})
 
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendStatus(fiber.StatusOK)
@@ -277,17 +392,13 @@ func Test_Logger_Filter(t *testing.T) {
 
 	t.Run("Always Skip", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-
-		logOutput := bytes.Buffer{}
 
 		// Filter always returns true => skip all logs
-		app.Use(New(Config{
+		app, logOutput := loggerTestApp(t, &Config{
 			Skip: func(_ fiber.Ctx) bool {
 				return true // always skip
 			},
-			Stream: &logOutput,
-		}))
+		})
 
 		app.Get("/something", func(c fiber.Ctx) error {
 			return c.Status(fiber.StatusTeapot).SendString("I'm a teapot")
@@ -301,17 +412,13 @@ func Test_Logger_Filter(t *testing.T) {
 
 	t.Run("Never Skip", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-
-		logOutput := bytes.Buffer{}
 
 		// Filter always returns false => never skip logs
-		app.Use(New(Config{
+		app, logOutput := loggerTestApp(t, &Config{
 			Skip: func(_ fiber.Ctx) bool {
 				return false // never skip
 			},
-			Stream: &logOutput,
-		}))
+		})
 
 		app.Get("/always", func(c fiber.Ctx) error {
 			return c.Status(fiber.StatusTeapot).SendString("Teapot again")
@@ -325,17 +432,13 @@ func Test_Logger_Filter(t *testing.T) {
 
 	t.Run("Skip /healthz", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-
-		logOutput := bytes.Buffer{}
 
 		// Filter returns true (skip logs) if the request path is /healthz
-		app.Use(New(Config{
+		app, logOutput := loggerTestApp(t, &Config{
 			Skip: func(c fiber.Ctx) bool {
 				return c.Path() == "/healthz"
 			},
-			Stream: &logOutput,
-		}))
+		})
 
 		// Normal route
 		app.Get("/", func(c fiber.Ctx) error {
@@ -375,10 +478,7 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 func Test_Logger_LoggerToWriter(t *testing.T) {
 	app := fiber.New()
 
-	buf := bytebufferpool.Get()
-	t.Cleanup(func() {
-		bytebufferpool.Put(buf)
-	})
+	buf := loggerTestBuf(t)
 
 	logger := fiberlog.DefaultLogger[*log.Logger]()
 	stdlogger := logger.Logger()
@@ -444,26 +544,52 @@ func Test_Logger_LoggerToWriter(t *testing.T) {
 	}
 }
 
-type fakeErrorOutput int
-
-func (o *fakeErrorOutput) Write([]byte) (int, error) {
-	*o++
-	return 0, errors.New("fake output")
+// loggerTestOutput is a Config.Stream that counts the writes it receives and,
+// when err is set, rejects every one of them with it.
+type loggerTestOutput struct {
+	err    error
+	writes int
 }
 
-// go test -run Test_Logger_ErrorOutput_WithoutColor
-func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
+func (o *loggerTestOutput) Write(b []byte) (int, error) {
+	o.writes++
+	if o.err != nil {
+		return 0, o.err
+	}
+	return len(b), nil
+}
+
+// Test_Logger_StreamWrites counts the writes made to Config.Stream for one
+// request. A stream that rejects the line is written the error text as well;
+// one that takes it is written the line only.
+//
+// go test -run Test_Logger_StreamWrites
+func Test_Logger_StreamWrites(t *testing.T) {
 	t.Parallel()
-	o := new(fakeErrorOutput)
-	app := fiber.New()
 
-	app.Use(New(Config{
-		Stream:        o,
-		DisableColors: true,
-	}))
+	errFakeOutput := errors.New("fake output")
 
-	apptest.Expect(t, app, "/", fiber.StatusNotFound)
-	require.EqualValues(t, 2, *o)
+	for _, tc := range []struct {
+		err           error
+		name          string
+		writes        int
+		disableColors bool
+	}{
+		{name: "error output without color", disableColors: true, err: errFakeOutput, writes: 2},
+		{name: "error output", err: errFakeOutput, writes: 2},
+		{name: "enable colors", writes: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			out := &loggerTestOutput{err: tc.err}
+			app := fiber.New()
+			app.Use(New(Config{Stream: out, DisableColors: tc.disableColors}))
+
+			apptest.Expect(t, app, "/", fiber.StatusNotFound)
+			require.Equal(t, tc.writes, out.writes)
+		})
+	}
 }
 
 // Test_AppendIntPadded pins the right-align pad loop directly: statuses are
@@ -471,8 +597,7 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 // exercise the padding (and net/http rejects 2-digit status lines).
 func Test_AppendIntPadded(t *testing.T) {
 	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
+	buf := loggerTestBuf(t)
 
 	testCases := []struct {
 		expected string
@@ -497,14 +622,7 @@ func Test_AppendIntPadded(t *testing.T) {
 // field that is appended digit-wise without an intermediate string.
 func Test_Logger_DefaultFormat_WithoutColor(t *testing.T) {
 	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Stream:        buf,
-		DisableColors: true,
-	}))
+	app, buf := loggerTestApp(t, &Config{DisableColors: true})
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusNotFound)
 	})
@@ -512,42 +630,6 @@ func Test_Logger_DefaultFormat_WithoutColor(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 	require.Contains(t, buf.String(), " | 404 | ", "status field must be width-3 with separators")
 	require.Contains(t, buf.String(), " | GET     | ", "method field must be width-7, left aligned")
-}
-
-// go test -run Test_Logger_ErrorOutput
-func Test_Logger_ErrorOutput(t *testing.T) {
-	t.Parallel()
-	o := new(fakeErrorOutput)
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Stream: o,
-	}))
-
-	apptest.Expect(t, app, "/", fiber.StatusNotFound)
-	require.EqualValues(t, 2, *o)
-}
-
-func Test_Logger_ErrorOutput_TemplateFailure(t *testing.T) {
-	t.Parallel()
-
-	templateErr := errors.New("template failure")
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: "${fail}",
-		Stream: buf,
-		CustomTags: map[string]LogFunc{
-			"fail": func(_ Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
-				return 0, templateErr
-			},
-		},
-	}))
-
-	apptest.Expect(t, app, "/", fiber.StatusNotFound)
-	require.Equal(t, templateErr.Error(), buf.String())
 }
 
 func Test_Logger_UnknownTagPanicsWithTypedError(t *testing.T) {
@@ -587,119 +669,60 @@ func Test_Logger_UnknownTagPanicsWithTypedError(t *testing.T) {
 	}
 }
 
-// go test -run Test_Logger_All
-func Test_Logger_All(t *testing.T) {
+// Test_Logger_NamedFormats pins the layout of the exported format constants.
+// The timestamp is matched, not compared, because it moves with the clock.
+//
+// go test -run Test_Logger_NamedFormats
+func Test_Logger_NamedFormats(t *testing.T) {
 	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
 
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}",
-		Stream: buf,
-	}))
-
-	// Alias colors
-	colors := app.Config().ColorScheme
-
-	apptest.Expect(t, app, pathFooBar, fiber.StatusNotFound)
-
-	expected := fmt.Sprintf("%dHost=example.comhttpHTTP/1.10.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sNot Found", os.Getpid(), colors.Black, colors.Red, colors.Green, colors.Yellow, colors.Blue, colors.Magenta, colors.Cyan, colors.White, colors.Reset)
-	require.Equal(t, expected, buf.String())
-}
-
-func Test_Logger_CLF_Format(t *testing.T) {
-	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: CommonFormat,
-		Stream: buf,
-	}))
-
-	method := fiber.MethodGet
-	status := fiber.StatusNotFound
-	bytesSent := 0
-
-	apptest.Expect(t, app, apptest.Req(method, pathFooBar), status)
-
-	pattern := fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d`, method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent)
-	require.Regexp(t, pattern, buf.String())
-}
-
-func Test_Logger_Combined_CLF_Format(t *testing.T) {
-	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: CombinedFormat,
-		Stream: buf,
-	}))
-
-	method := fiber.MethodGet
-	status := fiber.StatusNotFound
-	bytesSent := 0
-	referer := "http://example.com"
-	ua := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
-
-	req := httptest.NewRequest(method, pathFooBar, http.NoBody)
-	req.Header.Set("Referer", referer)
-	req.Header.Set("User-Agent", ua)
-
-	apptest.Expect(t, app, req, status)
-
-	pattern := fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d "%s" "%s"`, method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent, regexp.QuoteMeta(referer), regexp.QuoteMeta(ua)) //nolint:gocritic // double quoting for regex and string is not needed
-	require.Regexp(t, pattern, buf.String())
-}
-
-func Test_Logger_Json_Format(t *testing.T) {
-	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: JSONFormat,
-		Stream: buf,
-	}))
-
-	method := fiber.MethodGet
-	status := fiber.StatusNotFound
-	ip := "0.0.0.0"
-	bytesSent := 0
-
-	apptest.Expect(t, app, apptest.Req(method, pathFooBar), status)
-
-	pattern := fmt.Sprintf(`\{"time":"\d{2}:\d{2}:\d{2}","ip":"%s","method":%q,"url":"%s","status":%d,"bytesSent":%d\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(pathFooBar), status, bytesSent) //nolint:gocritic // double quoting for regex and string is not needed
-	require.Regexp(t, pattern, buf.String())
-}
-
-func Test_Logger_ECS_Format(t *testing.T) {
-	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: ECSFormat,
-		Stream: buf,
-	}))
-
-	method := fiber.MethodGet
-	status := fiber.StatusNotFound
-	ip := "0.0.0.0"
-	bytesSent := 0
+	const (
+		method    = fiber.MethodGet
+		status    = fiber.StatusNotFound
+		ip        = "0.0.0.0"
+		bytesSent = 0
+		referer   = "http://example.com"
+		ua        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+	)
 	msg := fmt.Sprintf("%s %s responded with %d", method, pathFooBar, status)
 
-	apptest.Expect(t, app, apptest.Req(method, pathFooBar), status)
+	for _, tc := range []struct {
+		name    string
+		format  string
+		pattern string
+		opts    []apptest.Option
+	}{
+		{
+			name:    "CLF",
+			format:  CommonFormat,
+			pattern: fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d`, method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent),
+		},
+		{
+			name:    "combined CLF",
+			format:  CombinedFormat,
+			opts:    []apptest.Option{apptest.WithHeader("Referer", referer), apptest.WithHeader("User-Agent", ua)},
+			pattern: fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d "%s" "%s"`, method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent, regexp.QuoteMeta(referer), regexp.QuoteMeta(ua)), //nolint:gocritic // double quoting for regex and string is not needed
+		},
+		{
+			name:    "JSON",
+			format:  JSONFormat,
+			pattern: fmt.Sprintf(`\{"time":"\d{2}:\d{2}:\d{2}","ip":"%s","method":%q,"url":"%s","status":%d,"bytesSent":%d\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(pathFooBar), status, bytesSent), //nolint:gocritic // double quoting for regex and string is not needed
+		},
+		{
+			name:    "ECS",
+			format:  ECSFormat,
+			pattern: fmt.Sprintf(`\{"@timestamp":"\d{2}:\d{2}:\d{2}","ecs":\{"version":"1.6.0"\},"client":\{"ip":"%s"\},"http":\{"request":\{"method":%q,"url":"%s","protocol":%q\},"response":\{"status_code":%d,"body":\{"bytes":%d\}\}\},"log":\{"level":"INFO","logger":"fiber"\},"message":"%s"\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent, regexp.QuoteMeta(msg)), //nolint:gocritic // double quoting for regex and string is not needed
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	pattern := fmt.Sprintf(`\{"@timestamp":"\d{2}:\d{2}:\d{2}","ecs":\{"version":"1.6.0"\},"client":\{"ip":"%s"\},"http":\{"request":\{"method":%q,"url":"%s","protocol":%q\},"response":\{"status_code":%d,"body":\{"bytes":%d\}\}\},"log":\{"level":"INFO","logger":"fiber"\},"message":"%s"\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent, regexp.QuoteMeta(msg)) //nolint:gocritic // double quoting for regex and string is not needed
-	require.Regexp(t, pattern, buf.String())
+			app, buf := loggerTestApp(t, &Config{Format: tc.format})
+
+			apptest.Expect(t, app, apptest.Req(method, pathFooBar, tc.opts...), status)
+			require.Regexp(t, tc.pattern, buf.String())
+		})
+	}
 }
 
 func getLatencyTimeUnits() []struct {
@@ -727,133 +750,76 @@ func getLatencyTimeUnits() []struct {
 	}
 }
 
+// Test_Logger_WithLatency checks that the latency is rendered in the unit that
+// fits its magnitude, both through the ${latency} tag and in the default format.
+// The latency is injected through LoggerFunc, so no request has to be slow.
+//
 // go test -run Test_Logger_WithLatency
 func Test_Logger_WithLatency(t *testing.T) {
-	buff := bytebufferpool.Get()
-	defer bytebufferpool.Put(buff)
-	app := fiber.New()
-
-	var latencyDuration time.Duration
-	fixedStart := time.Unix(0, 0)
-	logger := New(Config{
-		Stream: buff,
-		Format: "${latency}",
-		LoggerFunc: func(c fiber.Ctx, data *Data, cfg *Config) error {
-			data.Start = fixedStart
-			data.Stop = fixedStart.Add(latencyDuration)
-			return defaultLoggerInstance(c, data, cfg)
+	for _, tc := range []struct {
+		// latency extracts the rendered latency from what was logged.
+		latency func(logged []byte) []byte
+		name    string
+		format  string
+		timeout time.Duration
+	}{
+		{
+			name:    "latency tag",
+			format:  "${latency}",
+			timeout: 3 * time.Second,
+			latency: func(logged []byte) []byte { return logged },
 		},
-	})
-	app.Use(logger)
-
-	// Define a list of time units to test
-	timeUnits := getLatencyTimeUnits()
-
-	// Define a test route
-	app.Get("/test", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	// Loop through each time unit and assert that the log output contains the expected latency value
-	for _, tu := range timeUnits {
-		// Update the latency duration for the next iteration
-		latencyDuration = tu.div
-
-		// Create a new HTTP request to the test route
-		resp := apptest.Do(t, app, "/test", fiber.TestConfig{
-			Timeout:       3 * time.Second,
-			FailOnTimeout: true,
-		})
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-		// Assert that the log output contains the expected latency value in the current time unit
-		require.True(t, bytes.HasSuffix(buff.Bytes(), []byte(tu.unit)), "Expected latency to be in %s, got %s", tu.unit, buff.String())
-
-		// Reset the buffer
-		buff.Reset()
-	}
-}
-
-// go test -run Test_Logger_WithLatency_DefaultFormat
-func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
-	buff := bytebufferpool.Get()
-	defer bytebufferpool.Put(buff)
-	app := fiber.New()
-
-	var latencyDuration time.Duration
-	fixedStart := time.Unix(0, 0)
-	logger := New(Config{
-		Stream: buff,
-		LoggerFunc: func(c fiber.Ctx, data *Data, cfg *Config) error {
-			data.Start = fixedStart
-			data.Stop = fixedStart.Add(latencyDuration)
-			return defaultLoggerInstance(c, data, cfg)
+		{
+			// The latency is the third column of the default line.
+			name:    "default format",
+			timeout: 2 * time.Second,
+			latency: func(logged []byte) []byte { return bytes.Split(logged, []byte(" | "))[2] },
 		},
-	})
-	app.Use(logger)
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var latencyDuration time.Duration
+			fixedStart := time.Unix(0, 0)
+			app, buff := loggerTestApp(t, &Config{
+				Format: tc.format,
+				LoggerFunc: func(c fiber.Ctx, data *Data, cfg *Config) error {
+					data.Start = fixedStart
+					data.Stop = fixedStart.Add(latencyDuration)
+					return defaultLoggerInstance(c, data, cfg)
+				},
+			})
 
-	// Define a list of time units to test
-	timeUnits := getLatencyTimeUnits()
+			// Define a test route
+			app.Get("/test", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
 
-	// Define a test route
-	app.Get("/test", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+			// Loop through each time unit and assert that the log output contains the expected latency value
+			for _, tu := range getLatencyTimeUnits() {
+				// Update the latency duration for the next iteration
+				latencyDuration = tu.div
 
-	// Loop through each time unit and assert that the log output contains the expected latency value
-	for _, tu := range timeUnits {
-		// Update the latency duration for the next iteration
-		latencyDuration = tu.div
+				// Create a new HTTP request to the test route
+				resp := apptest.Do(t, app, "/test", fiber.TestConfig{
+					Timeout:       tc.timeout,
+					FailOnTimeout: true,
+				})
+				require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-		// Create a new HTTP request to the test route
-		resp := apptest.Do(t, app, "/test", fiber.TestConfig{
-			Timeout:       2 * time.Second,
-			FailOnTimeout: true,
+				// Assert that the latency value is in the current time unit
+				latency := tc.latency(buff.Bytes())
+				require.True(t, bytes.HasSuffix(latency, []byte(tu.unit)), "Expected latency to be in %s, got %s", tu.unit, latency)
+
+				// Reset the buffer
+				buff.Reset()
+			}
 		})
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-		// Assert that the log output contains the expected latency value in the current time unit
-		// parse out the latency value from the log output
-		latency := bytes.Split(buff.Bytes(), []byte(" | "))[2]
-		// Assert that the latency value is in the current time unit
-		require.True(t, bytes.HasSuffix(latency, []byte(tu.unit)), "Expected latency to be in %s, got %s", tu.unit, latency)
-
-		// Reset the buffer
-		buff.Reset()
 	}
-}
-
-// go test -run Test_Query_Params
-func Test_Query_Params(t *testing.T) {
-	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Format: "${queryParams}",
-		Stream: buf,
-	}))
-
-	apptest.Expect(t, app, "/?foo=bar&baz=moz", fiber.StatusNotFound)
-
-	expected := "foo=bar&baz=moz"
-	require.Equal(t, expected, buf.String())
 }
 
 // go test -run Test_Response_Body
 func Test_Response_Body(t *testing.T) {
 	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Format: "${resBody}",
-		Stream: buf,
-	}))
+	app, buf := loggerTestApp(t, &Config{Format: "${resBody}"})
 
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Sample response body")
@@ -863,31 +829,22 @@ func Test_Response_Body(t *testing.T) {
 		return c.Send([]byte("Post in test"))
 	})
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 
 	expectedGetResponse := "Sample response body"
 	require.Equal(t, expectedGetResponse, buf.String())
 
 	buf.Reset() // Reset buffer to test POST
-	_, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/test", http.NoBody))
+	apptest.Do(t, app, apptest.Req(fiber.MethodPost, "/test"))
 
 	expectedPostResponse := "Post in test"
-	require.NoError(t, err)
 	require.Equal(t, expectedPostResponse, buf.String())
 }
 
 // go test -run Test_Request_Body
 func Test_Request_Body(t *testing.T) {
 	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Format: "${bytesReceived} ${bytesSent} ${status}",
-		Stream: buf,
-	}))
+	app, buf := loggerTestApp(t, &Config{Format: "${bytesReceived} ${bytesSent} ${status}"})
 
 	app.Post("/", func(c fiber.Ctx) error {
 		c.Response().Header.SetContentLength(5)
@@ -906,15 +863,7 @@ func Test_Request_Body(t *testing.T) {
 // go test -run Test_Logger_AppendUint
 func Test_Logger_AppendUint(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app.Use(New(Config{
-		Format: "${bytesReceived} ${bytesSent} ${status}",
-		Stream: buf,
-	}))
+	app, buf := loggerTestApp(t, &Config{Format: "${bytesReceived} ${bytesSent} ${status}"})
 
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("hello")
@@ -937,9 +886,6 @@ func Test_Logger_AppendUint(t *testing.T) {
 func Test_Logger_Data_Race(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
 
 	app.Use(New(ConfigDefault))
 	app.Use(New(Config{
@@ -1016,8 +962,7 @@ func Test_Logger_SharedTimestampState(t *testing.T) {
 // go test -run Test_Response_Header
 func Test_Response_Header(t *testing.T) {
 	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
+	buf := loggerTestBuf(t)
 
 	app := fiber.New()
 
@@ -1042,18 +987,9 @@ func Test_Logger_RegisteredTag(t *testing.T) {
 
 	const tag = "registered-test-tag"
 
-	require.NoError(t, RegisterTag(tag, func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
-		return output.WriteString("registered")
-	}))
+	require.NoError(t, RegisterTag(tag, loggerTestTag("registered")))
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: "${" + tag + "}",
-		Stream: buf,
-	}))
+	app, buf := loggerTestApp(t, &Config{Format: "${" + tag + "}"})
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
@@ -1067,23 +1003,12 @@ func Test_Logger_CustomTagOverridesRegisteredTag(t *testing.T) {
 
 	const tag = "registered-override-test-tag"
 
-	require.NoError(t, RegisterTag(tag, func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
-		return output.WriteString("registered")
-	}))
+	require.NoError(t, RegisterTag(tag, loggerTestTag("registered")))
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: "${" + tag + "}",
-		CustomTags: map[string]LogFunc{
-			tag: func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
-				return output.WriteString("override")
-			},
-		},
-		Stream: buf,
-	}))
+	app, buf := loggerTestApp(t, &Config{
+		Format:     "${" + tag + "}",
+		CustomTags: map[string]LogFunc{tag: loggerTestTag("override")},
+	})
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
@@ -1095,9 +1020,7 @@ func Test_Logger_CustomTagOverridesRegisteredTag(t *testing.T) {
 func Test_Logger_RegisterTagRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 
-	require.ErrorIs(t, RegisterTag("", func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
-		return output.WriteString("ignored")
-	}), ErrTagInvalid)
+	require.ErrorIs(t, RegisterTag("", loggerTestTag("ignored")), ErrTagInvalid)
 	require.ErrorIs(t, RegisterTag("missing", nil), ErrTagInvalid)
 }
 
@@ -1105,90 +1028,14 @@ func Test_Logger_MustRegisterTagPanicsOnInvalidInput(t *testing.T) {
 	t.Parallel()
 
 	require.PanicsWithError(t, ErrTagInvalid.Error(), func() {
-		MustRegisterTag("", func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString("ignored")
-		})
+		MustRegisterTag("", loggerTestTag("ignored"))
 	})
-}
-
-// go test -run Test_Req_Header
-func Test_Req_Header(t *testing.T) {
-	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Format: "${reqHeader:test}",
-		Stream: buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello fiber!")
-	})
-	headerReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	headerReq.Header.Add("test", "Hello fiber!")
-
-	apptest.Expect(t, app, headerReq, fiber.StatusOK)
-	require.Equal(t, "Hello fiber!", buf.String())
-}
-
-// go test -run Test_ReqHeader_Header
-func Test_ReqHeader_Header(t *testing.T) {
-	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Format: "${reqHeader:test}",
-		Stream: buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello fiber!")
-	})
-	reqHeaderReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	reqHeaderReq.Header.Add("test", "Hello fiber!")
-
-	apptest.Expect(t, app, reqHeaderReq, fiber.StatusOK)
-	require.Equal(t, "Hello fiber!", buf.String())
-}
-
-// go test -run Test_CustomTags
-func Test_CustomTags(t *testing.T) {
-	t.Parallel()
-	customTag := "it is a custom tag"
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Format: "${custom_tag}",
-		CustomTags: map[string]LogFunc{
-			"custom_tag": func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
-				return output.WriteString(customTag)
-			},
-		},
-		Stream: buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello fiber!")
-	})
-	reqHeaderReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	reqHeaderReq.Header.Add("test", "Hello fiber!")
-
-	apptest.Expect(t, app, reqHeaderReq, fiber.StatusOK)
-	require.Equal(t, customTag, buf.String())
 }
 
 func Test_Logger_DataLegacyTemplateChains(t *testing.T) {
 	t.Parallel()
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
+	buf := loggerTestBuf(t)
 
 	app := fiber.New()
 	app.Use(New(Config{
@@ -1228,15 +1075,7 @@ func Test_Logger_DataLegacyTemplateChains(t *testing.T) {
 // go test -run Test_Logger_ByteSent_Streaming
 func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app.Use(New(Config{
-		Format: "${bytesReceived} ${bytesSent} ${status}",
-		Stream: buf,
-	}))
+	app, buf := loggerTestApp(t, &Config{Format: "${bytesReceived} ${bytesSent} ${status}"})
 
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set("Connection", "keep-alive")
@@ -1263,51 +1102,6 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 
 	// -2 means identity, -1 means chunked, 200 status
 	require.Equal(t, "-2 -1 200", buf.String())
-}
-
-type fakeOutput int
-
-func (o *fakeOutput) Write(b []byte) (int, error) {
-	*o++
-	return len(b), nil
-}
-
-// go test -run Test_Logger_EnableColors
-func Test_Logger_EnableColors(t *testing.T) {
-	t.Parallel()
-	o := new(fakeOutput)
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Stream: o,
-	}))
-
-	apptest.Expect(t, app, "/", fiber.StatusNotFound)
-	require.EqualValues(t, 1, *o)
-}
-
-// go test -run Test_Logger_ForceColors
-func Test_Logger_ForceColors(t *testing.T) {
-	t.Parallel()
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Format:        "${ip}${status}${method}${path}${error}\n",
-		Stream:        buf,
-		DisableColors: true,
-		ForceColors:   true,
-	}))
-
-	// Alias colors
-	colors := app.Config().ColorScheme
-
-	apptest.Expect(t, app, "/", fiber.StatusNotFound)
-
-	expected := fmt.Sprintf("0.0.0.0%s404%s%sGET%s/%sNot Found%s\n", colors.Yellow, colors.Reset, colors.Cyan, colors.Reset, colors.Red, colors.Reset)
-	require.Equal(t, expected, buf.String())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Logger$ -benchmem -count=4
@@ -1719,6 +1513,51 @@ func (b *failingBuffer) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+// loggerTestAllWrites is a failAfter that no scenario comes close to using up,
+// for the cases where every write is meant to succeed.
+const loggerTestAllWrites = 99
+
+// loggerTestWriteCase is one scenario for loggerTestWriteErrors: the sink takes
+// failAfter writes and rejects every later one, and the function under test must
+// then report wantN bytes written and leave exactly wantOut in the sink. Unless
+// succeeds is set it must also return errWriteFailed. note says why those are
+// the right values and is part of the failure message.
+type loggerTestWriteCase struct {
+	name      string
+	wantOut   string
+	note      string
+	failAfter int
+	wantN     int
+	succeeds  bool
+}
+
+// loggerTestWriteErrors runs call against a failingBuffer once per case, in
+// parallel subtests named after the cases. The contract it pins is the one a
+// sink that fails partway through a column needs: the sequence stops at the
+// failure, the error surfaces, and the returned byte count covers only what
+// actually reached the sink. call receives the subtest's t for scenarios that
+// need a fixture of their own.
+func loggerTestWriteErrors(t *testing.T, call func(t *testing.T, sink Buffer) (int, error), cases []loggerTestWriteCase) {
+	t.Helper()
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := &failingBuffer{ByteBuffer: loggerTestBuf(t), failAfter: tc.failAfter}
+
+			n, err := call(t, buf)
+			if tc.succeeds {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, errWriteFailed)
+			}
+			require.Equal(t, tc.wantN, n, tc.note)
+			require.Equal(t, tc.wantOut, buf.String(), tc.note)
+		})
+	}
+}
+
 // Test_writeSanitizedColored_PropagatesWriteErrors pins the short-circuits in
 // writeSanitizedColored. A sink that fails partway must stop the sequence and
 // surface the error rather than writing a reset escape with no matching color
@@ -1729,53 +1568,17 @@ func Test_writeSanitizedColored_PropagatesWriteErrors(t *testing.T) {
 
 	const color, value, reset = "<c>", "va\nlue", "<r>"
 
-	t.Run("color write fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeSanitizedColored(buf, color, value, reset)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Zero(t, n)
-		require.Empty(t, buf.String(), "nothing may reach the sink once the color fails")
-	})
-
-	t.Run("value write fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeSanitizedColored(buf, color, value, reset)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Equal(t, len(color), n, "only the color made it out")
-		require.Equal(t, color, buf.String(), "the reset must not be written after a failure")
-	})
-
-	t.Run("reset write fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeSanitizedColored(buf, color, value, reset)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Equal(t, len(color)+len(value), n, "the color and value made it out, the reset did not")
-		require.Equal(t, "<c>va lue", buf.String())
-	})
-
-	t.Run("all writes succeed", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeSanitizedColored(buf, color, value, reset)
-		require.NoError(t, err)
-		require.Equal(t, len(color)+len(value)+len(reset), n)
-		require.Equal(t, "<c>va lue<r>", buf.String(),
-			"the value is scrubbed but the color escapes pass through verbatim")
+	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
+		return writeSanitizedColored(sink, color, value, reset)
+	}, []loggerTestWriteCase{
+		{name: "color write fails", failAfter: 0, note: "nothing may reach the sink once the color fails"},
+		{name: "value write fails", failAfter: 1, wantN: len(color), wantOut: color, note: "only the color made it out, and the reset must not be written after a failure"},
+		{name: "reset write fails", failAfter: 2, wantN: len(color) + len(value), wantOut: "<c>va lue", note: "the color and value made it out, the reset did not"},
+		{
+			name: "all writes succeed", failAfter: loggerTestAllWrites, succeeds: true,
+			wantN: len(color) + len(value) + len(reset), wantOut: "<c>va lue<r>",
+			note: "the value is scrubbed but the color escapes pass through verbatim",
+		},
 	})
 }
 
@@ -1792,40 +1595,12 @@ func Test_writeSanitizedColored_PropagatesWriteErrors(t *testing.T) {
 func Test_appendIntTag_PropagatesWriteErrors(t *testing.T) {
 	t.Parallel()
 
-	t.Run("padding write fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := appendIntTag(buf, 7, 3)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Zero(t, n)
-		require.Empty(t, buf.String())
-	})
-
-	t.Run("digit write fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := appendIntTag(buf, 7, 3)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Equal(t, 2, n, "both padding spaces made it out, the digit did not")
-		require.Equal(t, "  ", buf.String())
-	})
-
-	t.Run("all writes succeed", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := appendIntTag(buf, 7, 3)
-		require.NoError(t, err)
-		require.Equal(t, 3, n)
-		require.Equal(t, "  7", buf.String())
+	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
+		return appendIntTag(sink, 7, 3)
+	}, []loggerTestWriteCase{
+		{name: "padding write fails", failAfter: 0},
+		{name: "digit write fails", failAfter: 2, wantN: 2, wantOut: "  ", note: "both padding spaces made it out, the digit did not"},
+		{name: "all writes succeed", failAfter: loggerTestAllWrites, succeeds: true, wantN: 3, wantOut: "  7"},
 	})
 }
 
@@ -1834,13 +1609,11 @@ func Test_appendIntTag_PropagatesWriteErrors(t *testing.T) {
 func Test_appendInt_PropagatesWriteErrors(t *testing.T) {
 	t.Parallel()
 
-	buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
-	defer bytebufferpool.Put(buf.ByteBuffer)
-
-	n, err := appendInt(buf, 200)
-	require.ErrorIs(t, err, errWriteFailed)
-	require.Equal(t, 1, n, "only the first digit made it out")
-	require.Equal(t, "2", buf.String())
+	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
+		return appendInt(sink, 200)
+	}, []loggerTestWriteCase{
+		{name: "second digit write fails", failAfter: 1, wantN: 1, wantOut: "2", note: "only the first digit made it out"},
+	})
 }
 
 // Test_appendDurationTag_PropagatesWriteErrors covers the ${latency} column.
@@ -1849,59 +1622,33 @@ func Test_appendInt_PropagatesWriteErrors(t *testing.T) {
 func Test_appendDurationTag_PropagatesWriteErrors(t *testing.T) {
 	t.Parallel()
 
-	const width = 13
+	const (
+		width  = 13
+		padded = "        145µs"
+	)
 	d := 145 * time.Microsecond // "145µs": 5 runes, 6 bytes
 
-	t.Run("padding write fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := appendDurationTag(buf, d, width)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Zero(t, n)
-		require.Empty(t, buf.String())
-	})
-
-	t.Run("duration write fails", func(t *testing.T) {
-		t.Parallel()
-
+	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
+		return appendDurationTag(sink, d, width)
+	}, []loggerTestWriteCase{
+		{name: "padding write fails", failAfter: 0},
 		// Eight spaces pad "145µs" to 13 columns; the ninth write is the
 		// first byte of the duration itself.
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 8}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := appendDurationTag(buf, d, width)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Equal(t, 8, n, "the padding made it out, the duration did not")
-		require.Equal(t, "        ", buf.String())
+		{name: "duration write fails", failAfter: 8, wantN: 8, wantOut: "        ", note: "the padding made it out, the duration did not"},
+		{
+			name: "all writes succeed", failAfter: loggerTestAllWrites, succeeds: true,
+			wantN: len(padded), wantOut: padded,
+			note: "padded to 13 columns, which is 14 bytes because of the two-byte micro sign",
+		},
 	})
-
-	t.Run("all writes succeed", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := appendDurationTag(buf, d, width)
-		require.NoError(t, err)
-		require.Equal(t, "        145µs", buf.String(),
-			"padded to 13 columns, which is 14 bytes because of the two-byte micro sign")
-		require.Equal(t, len(buf.String()), n)
-	})
-
-	t.Run("value wider than the column", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := appendDurationTag(buf, d, 2)
-		require.NoError(t, err)
-		require.Equal(t, "145µs", buf.String(),
-			"a latency past the column width is written whole, with no padding")
-		require.Equal(t, len(buf.String()), n)
+	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
+		return appendDurationTag(sink, d, 2)
+	}, []loggerTestWriteCase{
+		{
+			name: "value wider than the column", failAfter: loggerTestAllWrites, succeeds: true,
+			wantN: len("145µs"), wantOut: "145µs",
+			note: "a latency past the column width is written whole, with no padding",
+		},
 	})
 }
 
@@ -1911,53 +1658,17 @@ func Test_writeColored_PropagatesWriteErrors(t *testing.T) {
 
 	const color, value, reset = "<c>", "GET", "<r>"
 
-	t.Run("color write fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeColored(buf, color, value, reset)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Zero(t, n)
-		require.Empty(t, buf.String())
-	})
-
-	t.Run("value write fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeColored(buf, color, value, reset)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Equal(t, len(color), n)
-		require.Equal(t, color, buf.String(), "the reset must not follow a failed value")
-	})
-
-	t.Run("reset write fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeColored(buf, color, value, reset)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Equal(t, len(color)+len(value), n)
-		require.Equal(t, color+value, buf.String())
-	})
-
-	t.Run("all writes succeed", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeColored(buf, color, value, reset)
-		require.NoError(t, err)
-		require.Equal(t, len(color)+len(value)+len(reset), n)
-		require.Equal(t, color+value+reset, buf.String(),
-			"the method is written verbatim, as the uncolored branch writes it")
+	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
+		return writeColored(sink, color, value, reset)
+	}, []loggerTestWriteCase{
+		{name: "color write fails", failAfter: 0},
+		{name: "value write fails", failAfter: 1, wantN: len(color), wantOut: color, note: "the reset must not follow a failed value"},
+		{name: "reset write fails", failAfter: 2, wantN: len(color) + len(value), wantOut: color + value},
+		{
+			name: "all writes succeed", failAfter: loggerTestAllWrites, succeeds: true,
+			wantN: len(color) + len(value) + len(reset), wantOut: color + value + reset,
+			note: "the method is written verbatim, as the uncolored branch writes it",
+		},
 	})
 }
 
@@ -1968,67 +1679,27 @@ func Test_writeColoredInt_PropagatesWriteErrors(t *testing.T) {
 
 	const color, reset = "<c>", "<r>"
 
-	t.Run("color write fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeColoredInt(buf, color, 200, 3, reset)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Zero(t, n)
-		require.Empty(t, buf.String())
-	})
-
-	t.Run("status write fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeColoredInt(buf, color, 200, 3, reset)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Equal(t, len(color), n)
-		require.Equal(t, color, buf.String(), "the reset must not follow a failed status")
-	})
-
-	t.Run("reset write fails", func(t *testing.T) {
-		t.Parallel()
-
+	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
+		return writeColoredInt(sink, color, 200, 3, reset)
+	}, []loggerTestWriteCase{
+		{name: "color write fails", failAfter: 0},
+		{name: "status write fails", failAfter: 1, wantN: len(color), wantOut: color, note: "the reset must not follow a failed status"},
 		// One WriteString for the color, then three WriteByte calls for the
 		// digits; the fifth write is the reset.
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 4}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeColoredInt(buf, color, 200, 3, reset)
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Equal(t, len(color)+3, n)
-		require.Equal(t, color+"200", buf.String())
+		{name: "reset write fails", failAfter: 4, wantN: len(color) + 3, wantOut: color + "200"},
+		{
+			name: "all writes succeed", failAfter: loggerTestAllWrites, succeeds: true,
+			wantN: len(color) + 3 + len(reset), wantOut: color + "200" + reset,
+		},
 	})
-
-	t.Run("all writes succeed", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeColoredInt(buf, color, 200, 3, reset)
-		require.NoError(t, err)
-		require.Equal(t, len(color)+3+len(reset), n)
-		require.Equal(t, color+"200"+reset, buf.String())
-	})
-
-	t.Run("value wider than the column", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := writeColoredInt(buf, color, 200, 1, reset)
-		require.NoError(t, err)
-		require.Equal(t, len(color)+3+len(reset), n)
-		require.Equal(t, color+"200"+reset, buf.String(),
-			"a status past the column width is written whole, with no padding")
+	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
+		return writeColoredInt(sink, color, 200, 1, reset)
+	}, []loggerTestWriteCase{
+		{
+			name: "value wider than the column", failAfter: loggerTestAllWrites, succeeds: true,
+			wantN: len(color) + 3 + len(reset), wantOut: color + "200" + reset,
+			note: "a status past the column width is written whole, with no padding",
+		},
 	})
 }
 
@@ -2054,11 +1725,7 @@ func Test_Logger_SanitizesLocalsByType(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			buf := bytebufferpool.Get()
-			defer bytebufferpool.Put(buf)
-
-			app := fiber.New()
-			app.Use(New(Config{Format: "${locals:demo}", Stream: buf}))
+			app, buf := loggerTestApp(t, &Config{Format: "${locals:demo}"})
 			app.Get("/", func(c fiber.Ctx) error {
 				if tc.value != nil {
 					c.Locals("demo", tc.value)
@@ -2079,10 +1746,11 @@ func Test_Logger_SanitizesControlBytes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		format   string
-		build    func() *http.Request
-		expected string
+		build        func() *http.Request
+		name         string
+		format       string
+		expected     string
+		unescapePath bool
 	}{
 		{
 			name:   "query",
@@ -2110,17 +1778,24 @@ func Test_Logger_SanitizesControlBytes(t *testing.T) {
 			},
 			expected: "a\tb",
 		},
+		{
+			// The decoded-path case: with UnescapePath enabled c.Path() carries
+			// the percent-decoded bytes, so ${path} would otherwise emit raw CRLF.
+			name:         "decoded path",
+			format:       "${path}",
+			unescapePath: true,
+			build: func() *http.Request {
+				return httptest.NewRequest(fiber.MethodGet, "/admin%0d%0a200", http.NoBody)
+			},
+			expected: "/admin  200",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			buf := bytebufferpool.Get()
-			defer bytebufferpool.Put(buf)
-
-			app := fiber.New()
-			app.Use(New(Config{Format: tt.format, Stream: buf}))
+			app, buf := loggerTestApp(t, &Config{Format: tt.format}, fiber.Config{UnescapePath: tt.unescapePath})
 			app.Add([]string{fiber.MethodGet, fiber.MethodPost}, "/", func(c fiber.Ctx) error {
 				return c.SendString("ok")
 			})
@@ -2129,22 +1804,6 @@ func Test_Logger_SanitizesControlBytes(t *testing.T) {
 			require.Equal(t, tt.expected, buf.String())
 		})
 	}
-}
-
-// Test_Logger_SanitizesPath covers the decoded-path case: with UnescapePath
-// enabled c.Path() carries the percent-decoded bytes, so ${path} would
-// otherwise emit raw CRLF.
-func Test_Logger_SanitizesPath(t *testing.T) {
-	t.Parallel()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New(fiber.Config{UnescapePath: true})
-	app.Use(New(Config{Format: "${path}", Stream: buf}))
-
-	apptest.Do(t, app, "/admin%0d%0a200")
-	require.Equal(t, "/admin  200", buf.String())
 }
 
 // Test_Logger_DefaultFormat_SanitizesControlBytes covers the default logger
@@ -2158,17 +1817,7 @@ func Test_Logger_DefaultFormat_SanitizesControlBytes(t *testing.T) {
 		t.Run(fmt.Sprintf("colors=%v", colors), func(t *testing.T) {
 			t.Parallel()
 
-			buf := bytebufferpool.Get()
-			defer bytebufferpool.Put(buf)
-
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			cfg := Config{Stream: buf}
-			if colors {
-				cfg.ForceColors = true
-			} else {
-				cfg.DisableColors = true
-			}
-			app.Use(New(cfg))
+			app, buf := loggerTestApp(t, &Config{ForceColors: colors, DisableColors: !colors}, fiber.Config{UnescapePath: true})
 			app.Get("/*", func(_ fiber.Ctx) error {
 				return errors.New("boom\r\nFORGED-ERROR-LINE")
 			})
@@ -2218,71 +1867,67 @@ func Test_SanitizeValue(t *testing.T) {
 	}
 }
 
-// Test_Logger_IPs_RepeatedFieldLines asserts ${ips} logs every X-Forwarded-For
-// field line, not just the first.
-//
-// A recipient may combine repeated field lines into the comma-joined form (RFC
-// 9110 §5.2), and Fiber's proxy-header accessors do exactly that — so reading
-// only the first here logged a shorter chain than the one c.IP() and c.IPs()
-// parsed, and the access log did not explain what was actually enforced.
-func Test_Logger_IPs_RepeatedFieldLines(t *testing.T) {
-	t.Parallel()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app := fiber.New(fiber.Config{TrustProxy: true})
-	app.Use(New(Config{Format: "${ips}", Stream: buf}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("hi") })
-
-	raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" +
-		"X-Forwarded-For: 1.1.1.1\r\n" +
-		"X-Forwarded-For: 2.2.2.2, 3.3.3.3\r\n\r\n"
-
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Init(req, nil, nil)
-	app.Handler()(fctx)
-
-	require.Equal(t, "1.1.1.1,2.2.2.2,3.3.3.3", buf.String(),
-		"every field line must be logged, as the chain the framework parsed")
-}
-
-// Test_Logger_IPs_WithoutHeaderNormalizing asserts the tag logs the chain the
-// framework acted on, whatever case the field name arrived in.
-//
-// Reading the header here rather than asking c.IPs() meant reading it a second
-// way, and PeekAll compares stored names byte for byte — so under
-// DisableHeaderNormalizing a lower-case "x-forwarded-for:" matched nothing and
-// the tag logged an empty chain, while c.IPs() went on parsing it and the trust
-// decisions went on using it.
-func Test_Logger_IPs_WithoutHeaderNormalizing(t *testing.T) {
+// Test_Logger_IPs asserts ${ips} logs the chain the framework acted on: every
+// X-Forwarded-For field line, whatever case the field name arrived in.
+func Test_Logger_IPs(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
 		name    string
+		want    string
 		lines   []string
 		disable bool
 	}{
-		{"normalized, one line", []string{"X-Forwarded-For: 1.1.1.1, 2.2.2.2"}, false},
-		{"raw, lower-case name", []string{"x-forwarded-for: 1.1.1.1, 2.2.2.2"}, true},
-		{"normalized, two lines", []string{"X-Forwarded-For: 1.1.1.1", "X-Forwarded-For: 2.2.2.2"}, false},
-		{"raw, mixed-case names", []string{"x-forwarded-for: 1.1.1.1", "X-Forwarded-For: 2.2.2.2"}, true},
+		// ${ips} logs every X-Forwarded-For field line, not just the first.
+		//
+		// A recipient may combine repeated field lines into the comma-joined form
+		// (RFC 9110 §5.2), and Fiber's proxy-header accessors do exactly that — so
+		// reading only the first here logged a shorter chain than the one c.IP() and
+		// c.IPs() parsed, and the access log did not explain what was actually
+		// enforced.
+		{
+			name:  "normalized, two lines, three addresses",
+			lines: []string{"X-Forwarded-For: 1.1.1.1", "X-Forwarded-For: 2.2.2.2, 3.3.3.3"},
+			want:  "1.1.1.1,2.2.2.2,3.3.3.3",
+		},
+		// The tag logs the chain the framework acted on, whatever case the field
+		// name arrived in.
+		//
+		// Reading the header here rather than asking c.IPs() meant reading it a
+		// second way, and PeekAll compares stored names byte for byte — so under
+		// DisableHeaderNormalizing a lower-case "x-forwarded-for:" matched nothing
+		// and the tag logged an empty chain, while c.IPs() went on parsing it and the
+		// trust decisions went on using it.
+		{
+			name:  "normalized, one line",
+			lines: []string{"X-Forwarded-For: 1.1.1.1, 2.2.2.2"},
+			want:  "1.1.1.1,2.2.2.2",
+		},
+		{
+			name:    "raw, lower-case name",
+			lines:   []string{"x-forwarded-for: 1.1.1.1, 2.2.2.2"},
+			disable: true,
+			want:    "1.1.1.1,2.2.2.2",
+		},
+		{
+			name:  "normalized, two lines",
+			lines: []string{"X-Forwarded-For: 1.1.1.1", "X-Forwarded-For: 2.2.2.2"},
+			want:  "1.1.1.1,2.2.2.2",
+		},
+		{
+			name:    "raw, mixed-case names",
+			lines:   []string{"x-forwarded-for: 1.1.1.1", "X-Forwarded-For: 2.2.2.2"},
+			disable: true,
+			want:    "1.1.1.1,2.2.2.2",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			buf := bytebufferpool.Get()
-			defer bytebufferpool.Put(buf)
-
-			app := fiber.New(fiber.Config{
+			app, buf := loggerTestApp(t, &Config{Format: "${ips}"}, fiber.Config{
 				TrustProxy:               true,
 				DisableHeaderNormalizing: tc.disable,
 			})
-			app.Use(New(Config{Format: "${ips}", Stream: buf}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("hi") })
 
 			parts := []string{"GET / HTTP/1.1\r\nHost: example.com\r\n"}
@@ -2302,8 +1947,8 @@ func Test_Logger_IPs_WithoutHeaderNormalizing(t *testing.T) {
 			fctx.Init(req, nil, nil)
 			app.Handler()(fctx)
 
-			require.Equal(t, "1.1.1.1,2.2.2.2", buf.String(),
-				"the log must show the chain the trust decisions used")
+			require.Equal(t, tc.want, buf.String(),
+				"every field line must be logged, as the chain the framework parsed and the trust decisions used")
 		})
 	}
 }
@@ -2326,17 +1971,7 @@ func Test_Logger_RegisterContextTag_Sanitizes(t *testing.T) {
 		return "before\r\nGET /forged HTTP/1.1\nafter"
 	})
 
-	var buf bytes.Buffer
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: "${sanitize-probe}\n",
-		Stream: &buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
-
-	apptest.Do(t, app, "/")
-
-	line := buf.String()
+	line := loggerTestLog(t, &Config{Format: "${sanitize-probe}\n"})
 	require.NotContains(t, line, "\r", "a CR must not reach the log")
 	require.Equal(t, 1, strings.Count(line, "\n"), "the entry must occupy one line: %q", line)
 	require.Contains(t, line, "before")
@@ -2358,61 +1993,21 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 	})
 	tag := createTagMap(&ConfigDefault)[TagIPs]
 
-	withChain := func(t *testing.T, chain string) fiber.Ctx {
+	loggerTestWriteErrors(t, func(t *testing.T, sink Buffer) (int, error) {
 		t.Helper()
+
 		fctx := &fasthttp.RequestCtx{}
 		fctx.Request.Header.SetMethod(fiber.MethodGet)
 		fctx.Request.SetRequestURI("/")
-		fctx.Request.Header.Set(fiber.HeaderXForwardedFor, chain)
-		c := apptest.CtxFor(t, app, fctx)
-		return c
-	}
-
-	t.Run("the whole chain is written", func(t *testing.T) {
-		t.Parallel()
-
-		buf := bytebufferpool.Get()
-		defer bytebufferpool.Put(buf)
-
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
-		require.NoError(t, err)
-		require.Equal(t, "1.1.1.1,2.2.2.2", buf.String())
-		require.Equal(t, len(buf.String()), n)
-	})
-
-	t.Run("the first entry fails", func(t *testing.T) {
-		t.Parallel()
-
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Zero(t, n)
-	})
-
-	t.Run("the separator fails", func(t *testing.T) {
-		t.Parallel()
-
+		fctx.Request.Header.Set(fiber.HeaderXForwardedFor, "1.1.1.1, 2.2.2.2")
+		return tag(sink, apptest.CtxFor(t, app, fctx), nil, "")
+	}, []loggerTestWriteCase{
+		{name: "the whole chain is written", failAfter: loggerTestAllWrites, succeeds: true, wantN: len("1.1.1.1,2.2.2.2"), wantOut: "1.1.1.1,2.2.2.2"},
+		{name: "the first entry fails", failAfter: 0},
 		// One successful write for the first address, then the "," fails.
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Equal(t, len("1.1.1.1"), n, "only the first address reached the sink")
-	})
-
-	t.Run("the second entry fails", func(t *testing.T) {
-		t.Parallel()
-
+		{name: "the separator fails", failAfter: 1, wantN: len("1.1.1.1"), wantOut: "1.1.1.1", note: "only the first address reached the sink"},
 		// The first address and the separator succeed; the second fails.
-		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
-		defer bytebufferpool.Put(buf.ByteBuffer)
-
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
-		require.ErrorIs(t, err, errWriteFailed)
-		require.Equal(t, len("1.1.1.1,"), n)
+		{name: "the second entry fails", failAfter: 2, wantN: len("1.1.1.1,"), wantOut: "1.1.1.1,"},
 	})
 }
 
@@ -2482,10 +2077,8 @@ func Test_LatencyColumns_MatchFmt(t *testing.T) {
 		durations = append(durations, d)
 	}
 
-	tagBuf := bytebufferpool.Get()
-	defer bytebufferpool.Put(tagBuf)
-	padBuf := bytebufferpool.Get()
-	defer bytebufferpool.Put(padBuf)
+	tagBuf := loggerTestBuf(t)
+	padBuf := loggerTestBuf(t)
 
 	for _, d := range durations {
 		tagBuf.Reset()
@@ -2537,13 +2130,8 @@ func Test_Logger_DefaultFormat_WithColor_MatchesFmt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			buf := bytebufferpool.Get()
-			defer bytebufferpool.Put(buf)
-
 			var want string
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Stream:      buf,
+			app, buf := loggerTestApp(t, &Config{
 				ForceColors: true,
 				LoggerFunc: func(c fiber.Ctx, data *Data, cfg *Config) error {
 					data.Start = fixedStart
@@ -2566,7 +2154,7 @@ func Test_Logger_DefaultFormat_WithColor_MatchesFmt(t *testing.T) {
 					)
 					return defaultLoggerInstance(c, data, cfg)
 				},
-			}))
+			}, fiber.Config{UnescapePath: true})
 			app.Get("/*", func(c fiber.Ctx) error {
 				if tc.err != nil {
 					return tc.err

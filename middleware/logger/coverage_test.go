@@ -1,14 +1,12 @@
 package logger
 
 import (
-	"bytes"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/apptest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/require"
 )
@@ -97,18 +95,7 @@ func Test_RegisterContextTag(t *testing.T) {
 		return "rendered-value"
 	})
 
-	buf := bytes.NewBuffer(nil)
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: "${" + tagName + "}\n",
-		Stream: buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
-
-	apptest.Expect(t, app, "/", fiber.StatusOK)
-	require.Contains(t, buf.String(), "rendered-value")
+	require.Contains(t, loggerTestLog(t, &Config{Format: "${" + tagName + "}\n"}), "rendered-value")
 
 	require.Panics(t, func() {
 		RegisterContextTag("", func(_ any) string { return "" })
@@ -128,18 +115,7 @@ func Test_RegisterContextTag_EmptyValue(t *testing.T) {
 		return ""
 	})
 
-	buf := bytes.NewBuffer(nil)
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: "[${" + tagName + "}]\n",
-		Stream: buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
-
-	apptest.Expect(t, app, "/", fiber.StatusOK)
-	require.Contains(t, buf.String(), "[]")
+	require.Contains(t, loggerTestLog(t, &Config{Format: "[${" + tagName + "}]\n"}), "[]")
 }
 
 // Test_Logger_PreRegisteredMiddlewareTag exercises emptyLogTag: a format that
@@ -148,18 +124,7 @@ func Test_RegisterContextTag_EmptyValue(t *testing.T) {
 func Test_Logger_PreRegisteredMiddlewareTag(t *testing.T) {
 	t.Parallel()
 
-	buf := bytes.NewBuffer(nil)
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: "[${" + fiberlog.TagAPIKey + "}]\n",
-		Stream: buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
-
-	apptest.Expect(t, app, "/", fiber.StatusOK)
-	require.Contains(t, buf.String(), "[]")
+	require.Contains(t, loggerTestLog(t, &Config{Format: "[${" + fiberlog.TagAPIKey + "}]\n"}), "[]")
 }
 
 // Test_Logger_New_TimeDoneUpdater verifies the New path that starts a dedicated
@@ -170,25 +135,17 @@ func Test_Logger_New_TimeDoneUpdater(t *testing.T) {
 	done := make(chan struct{})
 	defer close(done)
 
-	buf := bytes.NewBuffer(nil)
-	app := fiber.New()
-	app.Use(New(Config{
+	logged := loggerTestLog(t, &Config{
 		Format:       "${time}\n",
 		TimeFormat:   time.RFC3339Nano,
 		TimeInterval: 5 * time.Millisecond,
 		TimeDone:     done,
-		Stream:       buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
 	})
-
-	apptest.Expect(t, app, "/", fiber.StatusOK)
 
 	// The format always emits a trailing newline, so a non-empty buffer alone
 	// would pass even if ${time} rendered empty. Trim it and assert the rendered
 	// timestamp is present and well-formed, proving the updater path ran.
-	rendered := strings.TrimRight(buf.String(), "\n")
+	rendered := strings.TrimRight(logged, "\n")
 	require.NotEmpty(t, rendered)
 	_, parseErr := time.Parse(time.RFC3339Nano, rendered)
 	require.NoError(t, parseErr)
