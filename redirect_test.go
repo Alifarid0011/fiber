@@ -7,6 +7,7 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -48,95 +49,226 @@ func Test_Redirect_To(t *testing.T) {
 	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Redirect_To_WithFlashMessages
-func Test_Redirect_To_WithFlashMessages(t *testing.T) {
+// go test -run Test_Redirect_WithFlashMessages
+//
+// Test_Redirect_WithFlashMessages sends flash messages, and the request's input for the rows that ask for
+// it, through each way of redirecting, and checks them twice: as the redirect collected them and as the
+// cookie carries them to the next request.
+func Test_Redirect_WithFlashMessages(t *testing.T) {
 	t.Parallel()
-	c := apptest.Ctx(t, New())
 
-	err := c.Redirect().With("success", "2").With("success", "1").With("message", "test", 2).To("http://example.com")
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
+	flash := redirectionMsgs{
+		{key: "success", value: "1"},
+		{key: "message", value: "test"},
+	}
+	flashWithInput := redirectionMsgs{
+		{key: "success", value: "1"},
+		{key: "message", value: "test"},
+		{key: "id", value: "1", isOldInput: true},
+		{key: "name", value: "tom", isOldInput: true},
+	}
+	routeWithInput := func(r *Redirect) error {
+		return r.With("success", "1").With("message", "test").WithInput().Route("user")
+	}
 
-	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	require.NoError(t, writer.WriteField("id", "1"))
+	require.NoError(t, writer.WriteField("name", "tom"))
+	require.NoError(t, writer.Close())
 
-	var msgs redirectionMsgs
-	decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
-	require.NoError(t, err)
-	_, err = msgs.UnmarshalMsg(decoded)
-	require.NoError(t, err)
-
-	require.Len(t, msgs, 2)
-	require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-	require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 2, isOldInput: false})
-}
-
-// go test -run Test_Redirect_Route_WithParams
-func Test_Redirect_Route_WithParams(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := apptest.Ctx(t, app)
-
-	err := c.Redirect().Route("user", RedirectConfig{
-		Params: Map{
-			"name": "fiber",
+	tests := []struct {
+		prepare  func(c *DefaultCtx)
+		redirect func(r *Redirect) error
+		name     string
+		method   string // of the route "user"; GET when empty
+		location string
+		want     redirectionMsgs
+	}{
+		{
+			// A later With replaces an earlier one for the same key.
+			name: "To",
+			redirect: func(r *Redirect) error {
+				return r.With("success", "2").With("success", "1").With("message", "test", 2).To("http://example.com")
+			},
+			location: "http://example.com",
+			want: redirectionMsgs{
+				{key: "success", value: "1"},
+				{key: "message", value: "test", level: 2},
+			},
 		},
-	})
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Redirect_Route_WithParams_WithQueries
-func Test_Redirect_Route_WithParams_WithQueries(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := apptest.Ctx(t, app)
-
-	err := c.Redirect().Route("user", RedirectConfig{
-		Params: Map{
-			"name": "fiber",
+		{
+			name:     "Back",
+			redirect: func(r *Redirect) error { return r.With("success", "1").With("message", "test").Back("/") },
+			location: "/",
+			want:     flash,
 		},
-		Queries: map[string]string{"data[0][name]": "john", "data[0][age]": "10", "test": "doe"},
-	})
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+		{
+			name:     "Route",
+			redirect: func(r *Redirect) error { return r.With("success", "1").With("message", "test").Route("user") },
+			location: "/user",
+			want:     flash,
+		},
+		{
+			name: "Route with old input from the query",
+			prepare: func(c *DefaultCtx) {
+				c.Request().URI().SetQueryString("id=1&name=tom")
+			},
+			redirect: routeWithInput,
+			location: "/user",
+			want:     flashWithInput,
+		},
+		{
+			name:   "Route with old input from a form",
+			method: MethodPost,
+			prepare: func(c *DefaultCtx) {
+				c.Request().Header.Set(HeaderContentType, MIMEApplicationForm)
+				c.Request().SetBodyString("id=1&name=tom")
+			},
+			redirect: routeWithInput,
+			location: "/user",
+			want:     flashWithInput,
+		},
+		{
+			name: "Route with old input from a multipart form",
+			prepare: func(c *DefaultCtx) {
+				c.Request().SetBody(body.Bytes())
+				c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+			},
+			redirect: routeWithInput,
+			location: "/user",
+			want:     flashWithInput,
+		},
+	}
 
-	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
-	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
-	require.NoError(t, err, "url.Parse(location)")
-	require.Equal(t, "/user/fiber", location.Path)
-	require.Equal(t, url.Values{"data[0][name]": []string{"john"}, "data[0][age]": []string{"10"}, "test": []string{"doe"}}, location.Query())
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Add([]string{cmp.Or(tc.method, MethodGet)}, "/user", func(c Ctx) error {
+				return c.SendString("user")
+			}).Name("user")
+			c := apptest.CtxAs[*DefaultCtx](t, app)
+			if tc.prepare != nil {
+				tc.prepare(c)
+			}
+
+			require.NoError(t, tc.redirect(c.Redirect()))
+			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+			require.Equal(t, tc.location, string(c.Response().Header.Peek(HeaderLocation)))
+
+			// What the redirect collected, and then what the cookie carries to the next request.
+			require.ElementsMatch(t, tc.want, c.redirect.messages)
+
+			c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+
+			var msgs redirectionMsgs
+			decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
+			require.NoError(t, err)
+			_, err = msgs.UnmarshalMsg(decoded)
+			require.NoError(t, err)
+
+			require.ElementsMatch(t, tc.want, msgs)
+		})
+	}
 }
 
-// go test -run Test_Redirect_Route_WithQueries_SpecialChars
-func Test_Redirect_Route_WithQueries_SpecialChars(t *testing.T) {
+// go test -run Test_Redirect_Route_Location
+func Test_Redirect_Route_Location(t *testing.T) {
 	t.Parallel()
-	app := New()
-	app.Get("/user/:name", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := apptest.Ctx(t, app)
 
-	err := c.Redirect().Route("user", RedirectConfig{
-		Params:  Map{"name": "fiber"},
-		Queries: map[string]string{"q": "a&b=c"},
-	})
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+	tests := []struct {
+		name    string
+		pattern string
+		want    string
+		config  []RedirectConfig
+	}{
+		{
+			name:    "param",
+			pattern: "/user/:name",
+			config:  []RedirectConfig{{Params: Map{"name": "fiber"}}},
+			want:    "/user/fiber",
+		},
+		{
+			name:    "optional param",
+			pattern: "/user/:name?",
+			config:  []RedirectConfig{{Params: Map{"name": "fiber"}}},
+			want:    "/user/fiber",
+		},
+		{
+			name:    "optional param without a value",
+			pattern: "/user/:name?",
+			want:    "/user/",
+		},
+		{
+			name:    "greedy param",
+			pattern: "/user/+",
+			config:  []RedirectConfig{{Params: Map{"+": "test/routes"}}},
+			want:    "/user/test/routes",
+		},
+	}
 
-	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
-	require.NoError(t, err, "url.Parse(location)")
-	require.Equal(t, "/user/fiber", location.Path)
-	// The value must survive as a single query parameter, not be split into
-	// `q=a` and `b=c`.
-	require.Equal(t, url.Values{"q": []string{"a&b=c"}}, location.Query())
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Get(tc.pattern, emptyHandler).Name("user")
+			c := apptest.Ctx(t, app)
+
+			require.NoError(t, c.Redirect().Route("user", tc.config...))
+			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
+		})
+	}
+}
+
+// go test -run Test_Redirect_Route_WithQueries
+func Test_Redirect_Route_WithQueries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		queries map[string]string
+		want    url.Values
+		name    string
+	}{
+		{
+			name:    "nested keys",
+			queries: map[string]string{"data[0][name]": "john", "data[0][age]": "10", "test": "doe"},
+			want:    url.Values{"data[0][name]": []string{"john"}, "data[0][age]": []string{"10"}, "test": []string{"doe"}},
+		},
+		{
+			// The value must survive as a single query parameter, not be split into
+			// `q=a` and `b=c`.
+			name:    "special characters in a value",
+			queries: map[string]string{"q": "a&b=c"},
+			want:    url.Values{"q": []string{"a&b=c"}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Get("/user/:name", emptyHandler).Name("user")
+			c := apptest.Ctx(t, app)
+
+			err := c.Redirect().Route("user", RedirectConfig{
+				Params:  Map{"name": "fiber"},
+				Queries: tc.queries,
+			})
+			require.NoError(t, err)
+			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+
+			// analysis of query parameters with url parsing, since a map pass is always randomly ordered
+			location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
+			require.NoError(t, err, "url.Parse(location)")
+			require.Equal(t, "/user/fiber", location.Path)
+			require.Equal(t, tc.want, location.Query())
+		})
+	}
 }
 
 // go test -run Test_Redirect_Route_ParamCannotMoveTheQuery
@@ -285,59 +417,6 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 	}
 }
 
-// go test -run Test_Redirect_Route_WithOptionalParams
-func Test_Redirect_Route_WithOptionalParams(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name?", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := apptest.Ctx(t, app)
-
-	err := c.Redirect().Route("user", RedirectConfig{
-		Params: Map{
-			"name": "fiber",
-		},
-	})
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Redirect_Route_WithOptionalParamsWithoutValue
-func Test_Redirect_Route_WithOptionalParamsWithoutValue(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name?", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := apptest.Ctx(t, app)
-
-	err := c.Redirect().Route("user")
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Redirect_Route_WithGreedyParameters
-func Test_Redirect_Route_WithGreedyParameters(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/+", func(c Ctx) error {
-		return c.JSON(c.Params("+"))
-	}).Name("user")
-	c := apptest.Ctx(t, app)
-
-	err := c.Redirect().Route("user", RedirectConfig{
-		Params: Map{
-			"+": "test/routes",
-		},
-	})
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
 // go test -run Test_Redirect_Back
 func Test_Redirect_Back(t *testing.T) {
 	t.Parallel()
@@ -355,35 +434,6 @@ func Test_Redirect_Back(t *testing.T) {
 	err = c.Redirect().Back()
 	require.Equal(t, 500, c.Response().StatusCode())
 	require.ErrorIs(t, err, ErrRedirectBackNoFallback)
-}
-
-// go test -run Test_Redirect_Back_WithFlashMessages
-func Test_Redirect_Back_WithFlashMessages(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
-
-	c := apptest.CtxAs[*DefaultCtx](t, app)
-
-	err := c.Redirect().With("success", "1").With("message", "test").Back("/")
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
-
-	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
-
-	var msgs redirectionMsgs
-	decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
-	require.NoError(t, err)
-	_, err = msgs.UnmarshalMsg(decoded)
-	require.NoError(t, err)
-
-	require.Len(t, msgs, 2)
-	require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-	require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
 }
 
 // go test -run Test_Redirect_Back_WithReferer
@@ -406,85 +456,60 @@ func Test_Redirect_Back_WithReferer(t *testing.T) {
 	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
+// rootMiscBExpectBackTo asks a context for a request to example.com that came from referer to redirect back,
+// with fallback as the fallback, and expects a 303 to want.
+func rootMiscBExpectBackTo(t *testing.T, referer, fallback, want string) {
+	t.Helper()
+
+	c := apptest.Ctx(t, New())
+	c.Request().Header.Set(HeaderReferer, referer)
+	c.Request().URI().SetHost("example.com")
+
+	require.NoError(t, c.Redirect().Back(fallback))
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+	require.Equal(t, want, string(c.Response().Header.Peek(HeaderLocation)))
+}
+
 // go test -run Test_Redirect_Back_WithCrossOriginReferer
 func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	t.Parallel()
-	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.JSON("Home")
-	}).Name("home")
-	c := apptest.Ctx(t, app)
 
-	// Cross-origin referer should be rejected, fallback used
-	c.Request().Header.Set(HeaderReferer, "https://evil.com/phishing")
-	c.Request().URI().SetHost("example.com")
-	err := c.Redirect().Back("/")
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+	// The request is to example.com over plain HTTP, and the fallback is "/".
+	tests := []struct {
+		name    string
+		referer string
+		want    string
+	}{
+		{name: "cross-origin referer is rejected", referer: "https://evil.com/phishing", want: "/"},
+		{name: "same-origin referer with host is accepted", referer: "http://example.com/dashboard", want: "http://example.com/dashboard"},
+		{name: "same-origin referer with a default port is accepted", referer: "http://example.com:80/dashboard", want: "http://example.com:80/dashboard"},
+		{name: "scheme mismatch is rejected", referer: "https://example.com/dashboard", want: "/"},
+		{name: "port mismatch is rejected", referer: "http://example.com:8080/admin", want: "/"},
+		{name: "relative path referer is accepted (no host in URL)", referer: "/back", want: "/back"},
+		// Scheme-only referrers are rejected.
+		{name: "javascript scheme-only referer is rejected", referer: "javascript:alert(1)", want: "/"},
+		{name: "mailto scheme-only referer is rejected", referer: "mailto:test@example.com", want: "/"},
+	}
 
-	// Cross-origin referer with no fallback should return error
-	c.Response().Reset()
-	c.Request().Header.Set(HeaderReferer, "https://evil.com/phishing")
-	err = c.Redirect().Back()
-	require.Equal(t, 500, c.Response().StatusCode())
-	require.ErrorIs(t, err, ErrRedirectBackNoFallback)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Same-origin referer with host should be accepted.
-	c.Response().Reset()
-	c.Request().Header.Set(HeaderReferer, "http://example.com/dashboard")
-	c.Request().URI().SetHost("example.com")
-	err = c.Redirect().Back("/")
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "http://example.com/dashboard", string(c.Response().Header.Peek(HeaderLocation)))
+			rootMiscBExpectBackTo(t, tc.referer, "/", tc.want)
+		})
+	}
 
-	// Same-origin referer with a default port should be accepted.
-	c.Response().Reset()
-	c.Request().Header.Set(HeaderReferer, "http://example.com:80/dashboard")
-	err = c.Redirect().Back("/")
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "http://example.com:80/dashboard", string(c.Response().Header.Peek(HeaderLocation)))
+	t.Run("cross-origin referer with no fallback is an error", func(t *testing.T) {
+		t.Parallel()
 
-	// Scheme mismatch should be rejected.
-	c.Response().Reset()
-	c.Request().Header.Set(HeaderReferer, "https://example.com/dashboard")
-	err = c.Redirect().Back("/")
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+		c := apptest.Ctx(t, New())
+		c.Request().Header.Set(HeaderReferer, "https://evil.com/phishing")
+		c.Request().URI().SetHost("example.com")
 
-	// Port mismatch should be rejected.
-	c.Response().Reset()
-	c.Request().Header.Set(HeaderReferer, "http://example.com:8080/admin")
-	err = c.Redirect().Back("/")
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
-
-	// Relative path referer should be accepted (no host in URL).
-	c.Response().Reset()
-	c.Request().Header.Set(HeaderReferer, "/back")
-	err = c.Redirect().Back("/")
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
-
-	// Scheme-only referrers should be rejected.
-	c.Response().Reset()
-	c.Request().Header.Set(HeaderReferer, "javascript:alert(1)")
-	err = c.Redirect().Back("/")
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
-
-	c.Response().Reset()
-	c.Request().Header.Set(HeaderReferer, "mailto:test@example.com")
-	err = c.Redirect().Back("/")
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+		err := c.Redirect().Back()
+		require.Equal(t, 500, c.Response().StatusCode())
+		require.ErrorIs(t, err, ErrRedirectBackNoFallback)
+	})
 }
 
 // go test -run Test_Redirect_Back_RejectsEmptyAuthorityReferer
@@ -500,35 +525,29 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 func Test_Redirect_Back_RejectsEmptyAuthorityReferer(t *testing.T) {
 	t.Parallel()
 
-	for _, referer := range []string{"//?x", "//#f", "//@"} {
-		t.Run(referer, func(t *testing.T) {
-			t.Parallel()
-
-			app := New()
-			app.Get("/back", func(c Ctx) error { return c.Redirect().Back("/fallback") })
-
-			req := httptest.NewRequest(MethodGet, "/back", http.NoBody)
-			req.Host = "victim.test"
-			req.Header.Set(HeaderReferer, referer)
-			resp := apptest.Do(t, app, req)
-			require.Equal(t, "/fallback", resp.Header.Get(HeaderLocation))
-		})
+	tests := []struct {
+		referer string
+		want    string
+	}{
+		{referer: "//?x", want: "/fallback"},
+		{referer: "//#f", want: "/fallback"},
+		{referer: "//@", want: "/fallback"},
+		// A reference that is only slashes normalizes to a plain absolute path and
+		// really is this origin, so it is still honored.
+		{referer: "//", want: "/"},
+		{referer: "///", want: "/"},
 	}
 
-	// A reference that is only slashes normalizes to a plain absolute path and
-	// really is this origin, so it is still honored.
-	for _, referer := range []string{"//", "///"} {
-		t.Run(referer, func(t *testing.T) {
+	for _, tc := range tests {
+		t.Run(tc.referer, func(t *testing.T) {
 			t.Parallel()
 
 			app := New()
 			app.Get("/back", func(c Ctx) error { return c.Redirect().Back("/fallback") })
 
-			req := httptest.NewRequest(MethodGet, "/back", http.NoBody)
-			req.Host = "victim.test"
-			req.Header.Set(HeaderReferer, referer)
+			req := apptest.Req(MethodGet, "/back", apptest.WithHost("victim.test"), apptest.WithHeader(HeaderReferer, tc.referer))
 			resp := apptest.Do(t, app, req)
-			require.Equal(t, "/", resp.Header.Get(HeaderLocation))
+			require.Equal(t, tc.want, resp.Header.Get(HeaderLocation))
 		})
 	}
 }
@@ -553,19 +572,11 @@ func Test_Redirect_Back_RejectsBrowserNormalizedReferer(t *testing.T) {
 		`https:///evil.com`,
 	}
 
-	app := New()
 	for _, referer := range crossOrigin {
 		t.Run(referer, func(t *testing.T) {
 			t.Parallel()
 
-			c := apptest.Ctx(t, app)
-
-			c.Request().Header.Set(HeaderReferer, referer)
-			c.Request().URI().SetHost("example.com")
-
-			require.NoError(t, c.Redirect().Back("/fallback"))
-			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-			require.Equal(t, "/fallback", string(c.Response().Header.Peek(HeaderLocation)))
+			rootMiscBExpectBackTo(t, referer, "/fallback", "/fallback")
 		})
 	}
 }
@@ -597,180 +608,13 @@ func Test_Redirect_Back_NormalizesSameOriginReferer(t *testing.T) {
 		{referer: "/back?x=caf\xe9\\y", expected: "/back?x=caf\xe9\\y"},
 	}
 
-	app := New()
 	for _, tc := range tests {
 		t.Run(tc.referer, func(t *testing.T) {
 			t.Parallel()
 
-			c := apptest.Ctx(t, app)
-
-			c.Request().Header.Set(HeaderReferer, tc.referer)
-			c.Request().URI().SetHost("example.com")
-
-			require.NoError(t, c.Redirect().Back("/fallback"))
-			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-			require.Equal(t, tc.expected, string(c.Response().Header.Peek(HeaderLocation)))
+			rootMiscBExpectBackTo(t, tc.referer, "/fallback", tc.expected)
 		})
 	}
-}
-
-// go test -run Test_Redirect_Route_WithFlashMessages
-func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
-
-	c := apptest.CtxAs[*DefaultCtx](t, app)
-
-	err := c.Redirect().With("success", "1").With("message", "test").Route("user")
-
-	require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-	require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
-
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
-
-	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
-
-	var msgs redirectionMsgs
-	decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
-	require.NoError(t, err)
-	_, err = msgs.UnmarshalMsg(decoded)
-	require.NoError(t, err)
-
-	require.Len(t, msgs, 2)
-	require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-	require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
-}
-
-// go test -run Test_Redirect_Route_WithOldInput
-func Test_Redirect_Route_WithOldInput(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Query", func(t *testing.T) {
-		t.Parallel()
-
-		app := New()
-		app.Get("/user", func(c Ctx) error {
-			return c.SendString("user")
-		}).Name("user")
-
-		c := apptest.CtxAs[*DefaultCtx](t, app)
-
-		c.Request().URI().SetQueryString("id=1&name=tom")
-		err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
-
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "id", value: "1", isOldInput: true})
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
-
-		require.NoError(t, err)
-		require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
-
-		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
-
-		var msgs redirectionMsgs
-		decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
-		require.NoError(t, err)
-		_, err = msgs.UnmarshalMsg(decoded)
-		require.NoError(t, err)
-
-		require.Len(t, msgs, 4)
-		require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-		require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
-		require.Contains(t, msgs, redirectionMsg{key: "id", value: "1", level: 0, isOldInput: true})
-		require.Contains(t, msgs, redirectionMsg{key: "name", value: "tom", level: 0, isOldInput: true})
-	})
-
-	t.Run("Form", func(t *testing.T) {
-		t.Parallel()
-
-		app := New()
-		app.Post("/user", func(c Ctx) error {
-			return c.SendString("user")
-		}).Name("user")
-
-		c := apptest.CtxAs[*DefaultCtx](t, app)
-
-		c.Request().Header.Set(HeaderContentType, MIMEApplicationForm)
-		c.Request().SetBodyString("id=1&name=tom")
-		err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
-
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "id", value: "1", isOldInput: true})
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
-
-		require.NoError(t, err)
-		require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
-
-		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
-
-		var msgs redirectionMsgs
-		decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
-		require.NoError(t, err)
-		_, err = msgs.UnmarshalMsg(decoded)
-		require.NoError(t, err)
-
-		require.Len(t, msgs, 4)
-		require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-		require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
-		require.Contains(t, msgs, redirectionMsg{key: "id", value: "1", level: 0, isOldInput: true})
-		require.Contains(t, msgs, redirectionMsg{key: "name", value: "tom", level: 0, isOldInput: true})
-	})
-
-	t.Run("MultipartForm", func(t *testing.T) {
-		t.Parallel()
-
-		app := New()
-		app.Get("/user", func(c Ctx) error {
-			return c.SendString("user")
-		}).Name("user")
-
-		c := apptest.CtxAs[*DefaultCtx](t, app)
-
-		body := &bytes.Buffer{}
-		writer := multipart.NewWriter(body)
-
-		require.NoError(t, writer.WriteField("id", "1"))
-		require.NoError(t, writer.WriteField("name", "tom"))
-		require.NoError(t, writer.Close())
-
-		c.Request().SetBody(body.Bytes())
-		c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
-
-		err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
-
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "id", value: "1", isOldInput: true})
-		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
-
-		require.NoError(t, err)
-		require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
-
-		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
-
-		var msgs redirectionMsgs
-		decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
-		require.NoError(t, err)
-		_, err = msgs.UnmarshalMsg(decoded)
-		require.NoError(t, err)
-
-		require.Len(t, msgs, 4)
-		require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-		require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
-		require.Contains(t, msgs, redirectionMsg{key: "id", value: "1", level: 0, isOldInput: true})
-		require.Contains(t, msgs, redirectionMsg{key: "name", value: "tom", level: 0, isOldInput: true})
-	})
 }
 
 func Test_Redirect_WithInput_ReusesClearedMap(t *testing.T) {
@@ -880,35 +724,6 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	require.Empty(t, c.Redirect().messages)
 }
 
-// Test_Redirect_parseAndClearFlashMessages_InvalidHex tests the case where hex decoding fails
-func Test_Redirect_parseAndClearFlashMessages_InvalidHex(t *testing.T) {
-	t.Parallel()
-
-	c := apptest.CtxAs[*DefaultCtx](t, New())
-
-	// Create redirect instance
-	r := AcquireRedirect()
-	r.c = c
-
-	// Set invalid hex value in flash cookie
-	c.Request().Header.SetCookie(FlashCookieName, "not-a-valid-hex-string")
-
-	// Call parseAndClearFlashMessages
-	r.parseAndClearFlashMessages()
-
-	// Verify that no flash messages are processed (should be empty)
-	require.Empty(t, r.messages)
-
-	// The cookie is expired even though hex decoding failed. A value this
-	// application cannot decode is one it will never decode, so leaving it in
-	// place would mean re-running hex and msgp over attacker-controlled bytes
-	// on every subsequent request for as long as the browser kept sending it.
-	assertFlashCookieCleared(t, string(c.Response().Header.Peek(HeaderSetCookie)))
-
-	// Release redirect
-	ReleaseRedirect(r)
-}
-
 // Test_Redirect_release_ZeroesMessages asserts that a *Redirect handed back to
 // the pool does not carry the submitted form with it. WithInput copies the
 // whole request body into r.messages — a rejected login puts the password the
@@ -969,129 +784,88 @@ func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {
 	}, c.Redirect().OldInputs())
 }
 
+// go test -run Test_Redirect_CompleteFlowWithFlashMessages
 func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-
-	// First handler that sets flash messages and redirects
-	app.Get("/source", func(c Ctx) error {
-		// Redirect to the target handler
-		return c.Redirect().With("string_message", "Hello, World!").
-			With("number_message", "12345").
-			With("bool_message", "true").
-			To("/target")
-	})
-
-	// Second handler that receives and processes flash messages
-	app.Get("/target", func(c Ctx) error {
-		// Get all flash messages and return them as a JSON response
-		return c.JSON(Map{
-			"string_message": c.Redirect().Message("string_message").Value,
-			"number_message": c.Redirect().Message("number_message").Value,
-			"bool_message":   c.Redirect().Message("bool_message").Value,
-		})
-	})
-
-	// Step 1: Make the initial request to the source route
-	req := httptest.NewRequest(MethodGet, "/source", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, resp.StatusCode)
-	require.Equal(t, "/target", resp.Header.Get(HeaderLocation))
-
-	// Verify and get the cookie from the response
-	cookies := resp.Cookies()
-	var flashCookie *http.Cookie
-	for _, cookie := range cookies {
-		if cookie.Name == "fiber_flash" {
-			flashCookie = cookie
-			break
-		}
+	tests := []struct {
+		flash  map[string]string
+		name   string
+		source string
+		target string
+	}{
+		{
+			name:   "plain values",
+			source: "/source",
+			target: "/target",
+			flash: map[string]string{
+				"string_message": "Hello, World!",
+				"number_message": "12345",
+				"bool_message":   "true",
+			},
+		},
+		{
+			// Values that need encoding to travel in a cookie.
+			name:   "special characters",
+			source: "/special-source",
+			target: "/special-target",
+			flash: map[string]string{
+				"null_bytes":    "Contains\x00null\x00bytes",
+				"control_chars": "Contains\r\ncontrol\tcharacters",
+				"unicode":       "Unicode: 你好世界",
+				"emoji":         "Emoji: 🔥🚀😊",
+			},
+		},
 	}
-	require.NotNil(t, flashCookie, "Flash cookie should be set")
 
-	// Step 2: Make the second request to the target route with the cookie
-	req = httptest.NewRequest(MethodGet, "/target", http.NoBody)
-	req.Header.Set("Cookie", flashCookie.Name+"="+flashCookie.Value)
-	resp = apptest.Expect(t, app, req, StatusOK)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
+			app := New()
 
-	// Parse the JSON response and verify flash messages
-	body := apptest.BodyBytes(t, resp)
+			// The source handler sets the flash messages and redirects to the target.
+			app.Get(tc.source, func(c Ctx) error {
+				r := c.Redirect()
+				for key, value := range tc.flash {
+					r.With(key, value)
+				}
+				return r.To(tc.target)
+			})
 
-	var result map[string]any
-	err = json.Unmarshal(body, &result)
-	require.NoError(t, err)
+			// The target handler receives the flash messages and returns them as a JSON response.
+			app.Get(tc.target, func(c Ctx) error {
+				received := make(map[string]string, len(tc.flash))
+				for key := range tc.flash {
+					received[key] = c.Redirect().Message(key).Value
+				}
+				return c.JSON(received)
+			})
 
-	// Verify all flash messages were received correctly
-	require.Equal(t, "Hello, World!", result["string_message"])
-	require.Equal(t, "12345", result["number_message"]) // JSON numbers are float64
-	require.Equal(t, "true", result["bool_message"])
-}
+			// Step 1: make the initial request to the source route, which sets the flash cookie.
+			resp := apptest.Expect(t, app, tc.source, StatusSeeOther)
+			require.Equal(t, tc.target, resp.Header.Get(HeaderLocation))
 
-func Test_Redirect_FlashMessagesWithSpecialChars(t *testing.T) {
-	t.Parallel()
+			var flashCookie *http.Cookie
+			for _, cookie := range resp.Cookies() {
+				if cookie.Name == FlashCookieName {
+					flashCookie = cookie
+					break
+				}
+			}
+			require.NotNil(t, flashCookie, "Flash cookie should be set")
 
-	app := New()
+			// Step 2: make the second request to the target route with the cookie, which the target consumes.
+			req := apptest.Req(MethodGet, tc.target, apptest.WithHeader(HeaderCookie, flashCookie.Name+"="+flashCookie.Value))
+			resp = apptest.Expect(t, app, req, StatusOK)
+			assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
 
-	// Handler that sets flash messages with special characters and redirects
-	app.Get("/special-source", func(c Ctx) error {
-		// Create a large message to test encoding of larger data
-		return c.Redirect().With("null_bytes", "Contains\x00null\x00bytes").
-			With("control_chars", "Contains\r\ncontrol\tcharacters").
-			With("unicode", "Unicode: 你好世界").
-			With("emoji", "Emoji: 🔥🚀😊").
-			To("/special-target")
-	})
-
-	// Target handler that receives the flash messages
-	app.Get("/special-target", func(c Ctx) error {
-		return c.JSON(Map{
-			"null_bytes":    c.Redirect().Message("null_bytes").Value,
-			"control_chars": c.Redirect().Message("control_chars").Value,
-			"unicode":       c.Redirect().Message("unicode").Value,
-			"emoji":         c.Redirect().Message("emoji").Value,
+			// Every flash message was received correctly.
+			var received map[string]string
+			require.NoError(t, json.Unmarshal(apptest.BodyBytes(t, resp), &received))
+			require.Equal(t, tc.flash, received)
 		})
-	})
-
-	// Step 1: Make the initial request
-	req := httptest.NewRequest(MethodGet, "/special-source", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusSeeOther, resp.StatusCode)
-	require.Equal(t, "/special-target", resp.Header.Get(HeaderLocation))
-
-	// Get the flash cookie
-	var flashCookie *http.Cookie
-	for _, cookie := range resp.Cookies() {
-		if cookie.Name == "fiber_flash" {
-			flashCookie = cookie
-			break
-		}
 	}
-	require.NotNil(t, flashCookie, "Flash cookie should be set")
-
-	// Step 2: Make the second request with the cookie
-	req = httptest.NewRequest(MethodGet, "/special-target", http.NoBody)
-	req.Header.Set("Cookie", flashCookie.Name+"="+flashCookie.Value)
-	resp = apptest.Expect(t, app, req, StatusOK)
-
-	assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
-
-	// Parse and verify the response
-	body := apptest.BodyBytes(t, resp)
-
-	var result map[string]any
-	err = json.Unmarshal(body, &result)
-	require.NoError(t, err)
-
-	// Verify special character handling
-	require.Equal(t, "Contains\x00null\x00bytes", result["null_bytes"])
-	require.Equal(t, "Contains\r\ncontrol\tcharacters", result["control_chars"])
-	require.Equal(t, "Unicode: 你好世界", result["unicode"])
-	require.Equal(t, "Emoji: 🔥🚀😊", result["emoji"])
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route -benchmem -count=4
@@ -1225,9 +999,7 @@ func Test_Redirect_DisableFlashMessages(t *testing.T) {
 					require.Contains(t, resp.Header.Get(HeaderSetCookie), FlashCookieName+"=")
 				}
 
-				req := httptest.NewRequest(MethodGet, "/target", http.NoBody)
-				req.Header.Set(HeaderCookie, incoming)
-				resp = apptest.Expect(t, app, req, StatusOK)
+				resp = apptest.Expect(t, app, apptest.Req(MethodGet, "/target", apptest.WithHeader(HeaderCookie, incoming)), StatusOK)
 				body := apptest.Body(t, resp)
 				if disabled {
 					require.Equal(t, "0/0", body)
@@ -1722,7 +1494,8 @@ func Test_Redirect_Back_RejectsAnUnusableReferer(t *testing.T) {
 }
 
 // Test_Redirect_parseAndClearFlashMessages_UndecodablePayload covers a cookie
-// that decodes as hex but is not what this application wrote.
+// that is not what this application wrote: one that is not even hex, and ones
+// that decode as hex but not as a list of messages.
 //
 // UnmarshalMsg re-slices to the length the payload declares before it decodes
 // any element, so a failure partway leaves the slice holding zero-valued
@@ -1733,16 +1506,21 @@ func Test_Redirect_parseAndClearFlashMessages_UndecodablePayload(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		payload []byte
+		name   string
+		cookie string
 	}{
+		// The cookie is expired even though hex decoding failed. A value this
+		// application cannot decode is one it will never decode, so leaving it in
+		// place would mean re-running hex and msgp over attacker-controlled bytes
+		// on every subsequent request for as long as the browser kept sending it.
+		{name: "not hex", cookie: "not-a-valid-hex-string"},
 		// An array header claiming four elements, and then nothing.
-		{name: "truncated after the count", payload: []byte{0x94}},
+		{name: "truncated after the count", cookie: hex.EncodeToString([]byte{0x94})},
 		// A byte message-pack never assigns.
-		{name: "never a valid type", payload: []byte{0xc1, 0xc1}},
+		{name: "never a valid type", cookie: hex.EncodeToString([]byte{0xc1, 0xc1})},
 		// A long claimed length with no elements behind it, which is the shape
 		// that leaves the most zero-valued entries.
-		{name: "claims more than it carries", payload: []byte{0xdc, 0x01, 0x00}},
+		{name: "claims more than it carries", cookie: hex.EncodeToString([]byte{0xdc, 0x01, 0x00})},
 	}
 
 	for _, tc := range tests {
@@ -1755,7 +1533,7 @@ func Test_Redirect_parseAndClearFlashMessages_UndecodablePayload(t *testing.T) {
 			r.c = c
 			defer ReleaseRedirect(r)
 
-			c.Request().Header.SetCookie(FlashCookieName, hex.EncodeToString(tc.payload))
+			c.Request().Header.SetCookie(FlashCookieName, tc.cookie)
 
 			r.parseAndClearFlashMessages()
 

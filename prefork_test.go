@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/prefork"
 )
@@ -36,25 +35,15 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	err := app.prefork("invalid", nil, &cfg)
 	require.Error(t, err)
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
+	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
 
 	ipv6Cfg := ListenConfig{ListenerNetwork: NetworkTCP6}
 	require.NoError(t, app.prefork("[::1]:", nil, &ipv6Cfg))
 
 	// Create tls certificate
-	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	if err != nil {
-		require.NoError(t, err)
-	}
-	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+	config := &tls.Config{Certificates: []tls.Certificate{rootMiscBTestCert(t)}}
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
+	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
 
 	cfg = listenConfigDefault()
 	require.NoError(t, app.prefork("127.0.0.1:", config, &cfg))

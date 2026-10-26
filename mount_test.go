@@ -6,8 +6,6 @@ package fiber
 
 import (
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"regexp"
 	"testing"
 
@@ -117,12 +115,6 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 			return c.SendString(body)
 		}
 	}
-	testEndpoint := func(app *App, route, expectedBody string, expectedStatusCode int) {
-		resp := apptest.Do(t, app, route)
-		body := apptest.Body(t, resp)
-		require.Equal(t, expectedStatusCode, resp.StatusCode, "Status code")
-		require.Equal(t, expectedBody, body, "Unexpected response body")
-	}
 
 	app := New()
 	subApp := New()
@@ -146,11 +138,11 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 		return c.SendStatus(StatusNotFound)
 	})
 	// expectation check
-	testEndpoint(app, "/world", "subapp world!", StatusOK)
-	testEndpoint(app, "/hello", "app hello!", StatusOK)
-	testEndpoint(app, "/bar", "subapp bar!", StatusOK)
-	testEndpoint(app, "/foo", "subapp foo!", StatusOK)
-	testEndpoint(app, "/unknown", ErrNotFound.Message, StatusNotFound)
+	apptest.ExpectBody(t, app, "/world", StatusOK, "subapp world!")
+	apptest.ExpectBody(t, app, "/hello", StatusOK, "app hello!")
+	apptest.ExpectBody(t, app, "/bar", StatusOK, "subapp bar!")
+	apptest.ExpectBody(t, app, "/foo", StatusOK, "subapp foo!")
+	apptest.ExpectBody(t, app, "/unknown", StatusNotFound, ErrNotFound.Message)
 
 	require.Equal(t, uint32(17), app.handlersCount)
 }
@@ -158,12 +150,6 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 // go test -run Test_App_Mount_RoutePositions
 func Test_App_Mount_RoutePositions(t *testing.T) {
 	t.Parallel()
-	testEndpoint := func(app *App, route, expectedBody string) {
-		resp := apptest.Do(t, app, route)
-		body := apptest.Body(t, resp)
-		require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-		require.Equal(t, expectedBody, body, "Unexpected response body")
-	}
 
 	app := New()
 	subApp1 := New()
@@ -198,7 +184,7 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 		app.Use("", subApp2)
 	}
 
-	testEndpoint(app, "/subApp2/world", "hello")
+	apptest.ExpectBody(t, app, "/subApp2/world", StatusOK, "hello")
 
 	routeStackGET := app.Stack()[0]
 	require.True(t, routeStackGET[0].use)
@@ -237,44 +223,60 @@ func Test_App_MountPath(t *testing.T) {
 	require.Empty(t, app.MountPath())
 }
 
-func Test_App_ErrorHandler_GroupMount(t *testing.T) {
+// go test -run Test_App_Mount_ErrorHandler
+func Test_App_Mount_ErrorHandler(t *testing.T) {
 	t.Parallel()
-	micro := New(Config{
-		ErrorHandler: func(c Ctx, err error) error {
-			require.Equal(t, "0: GET error", err.Error())
-			return c.Status(500).SendString("1: custom error")
-		},
-	})
-	micro.Get("/doe", func(_ Ctx) error {
-		return errors.New("0: GET error")
-	})
 
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Use("/john", micro)
+	const (
+		routeErr = "0: GET error"
+		body     = "1: custom error"
+	)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", http.NoBody))
-	testErrorResponse(t, err, resp, "1: custom error")
-}
+	tests := []struct {
+		name   string
+		group  string // the mounted app is mounted on this group of the parent when set
+		prefix string // where the mounted app is mounted
+		route  string // the route of the mounted app, which always fails
+		target string // the request that reaches the failing route
+		// handledByParent tells which app has the custom error handler: the one mounting or the mounted one.
+		handledByParent bool
+	}{
+		{name: "group mount", group: "/v1", prefix: "/john", route: "/doe", target: "/v1/john/doe"},
+		{name: "group mount at the root level", group: "/v1", prefix: "/", route: "/john/doe", target: "/v1/john/doe"},
+		{name: "the mounting app's handler is used", prefix: "/api", route: "/", target: "/api", handledByParent: true},
+		{name: "the mounted app's handler is used", prefix: "/api", route: "/", target: "/api"},
+		{name: "the mounted app's handler is used at the root level", prefix: "/", route: "/api", target: "/api"},
+	}
 
-func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
-	t.Parallel()
-	micro := New(Config{
-		ErrorHandler: func(c Ctx, err error) error {
-			require.Equal(t, "0: GET error", err.Error())
-			return c.Status(500).SendString("1: custom error")
-		},
-	})
-	micro.Get("/john/doe", func(_ Ctx) error {
-		return errors.New("0: GET error")
-	})
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Use("/", micro)
+			errorHandler := func(c Ctx, err error) error {
+				require.Equal(t, routeErr, err.Error())
+				return c.Status(StatusInternalServerError).SendString(body)
+			}
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", http.NoBody))
-	testErrorResponse(t, err, resp, "1: custom error")
+			app := New()
+			micro := New()
+			if tc.handledByParent {
+				app = New(Config{ErrorHandler: errorHandler})
+			} else {
+				micro = New(Config{ErrorHandler: errorHandler})
+			}
+			micro.Get(tc.route, func(_ Ctx) error {
+				return errors.New(routeErr)
+			})
+
+			var router Router = app
+			if tc.group != "" {
+				router = app.Group(tc.group)
+			}
+			router.Use(tc.prefix, micro)
+
+			apptest.ExpectBody(t, app, tc.target, StatusInternalServerError, body)
+		})
+	}
 }
 
 // go test -run Test_App_Group_Mount
@@ -291,63 +293,6 @@ func Test_App_Group_Mount(t *testing.T) {
 
 	apptest.Expect(t, app, "/v1/john/doe", 200)
 	require.Equal(t, uint32(2), app.handlersCount)
-}
-
-func Test_App_UseParentErrorHandler(t *testing.T) {
-	t.Parallel()
-	app := New(Config{
-		ErrorHandler: func(ctx Ctx, _ error) error {
-			return ctx.Status(500).SendString("hi, i'm a custom error")
-		},
-	})
-
-	fiber := New()
-	fiber.Get("/", func(_ Ctx) error {
-		return errors.New("something happened")
-	})
-
-	app.Use("/api", fiber)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", http.NoBody))
-	testErrorResponse(t, err, resp, "hi, i'm a custom error")
-}
-
-func Test_App_UseMountedErrorHandler(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	fiber := New(Config{
-		ErrorHandler: func(c Ctx, _ error) error {
-			return c.Status(500).SendString("hi, i'm a custom error")
-		},
-	})
-	fiber.Get("/", func(_ Ctx) error {
-		return errors.New("something happened")
-	})
-
-	app.Use("/api", fiber)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", http.NoBody))
-	testErrorResponse(t, err, resp, "hi, i'm a custom error")
-}
-
-func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	fiber := New(Config{
-		ErrorHandler: func(c Ctx, _ error) error {
-			return c.Status(500).SendString("hi, i'm a custom error")
-		},
-	})
-	fiber.Get("/api", func(_ Ctx) error {
-		return errors.New("something happened")
-	})
-
-	app.Use("/", fiber)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", http.NoBody))
-	testErrorResponse(t, err, resp, "hi, i'm a custom error")
 }
 
 func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
@@ -388,19 +333,8 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 
 	app.Use("/api", fiber)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub", http.NoBody))
-	require.NoError(t, err, "/api/sub req")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	b := apptest.BodyBytes(t, resp)
-	require.Equal(t, "hi, i'm a custom sub fiber error", string(b), "Response body")
-
-	resp2, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub/third", http.NoBody))
-	require.NoError(t, err, "/api/sub/third req")
-	require.Equal(t, 200, resp2.StatusCode, "Status code")
-
-	b = apptest.BodyBytes(t, resp2)
-	require.Equal(t, "hi, i'm a custom sub fiber error 2", string(b), "Third fiber Response body")
+	apptest.ExpectBody(t, app, "/api/sub", 200, "hi, i'm a custom sub fiber error")
+	apptest.ExpectBody(t, app, "/api/sub/third", 200, "hi, i'm a custom sub fiber error 2")
 }
 
 // go test -run Test_Mount_Route_Names
@@ -435,40 +369,32 @@ func Test_Mount_Route_Names(t *testing.T) {
 
 	rootApp.startupProcess()
 
-	// take route directly from sub-app
-	route := subApp1.GetRoute("get-users")
-	require.Equal(t, MethodGet, route.Method)
-	require.Equal(t, "/users", route.Path)
-
-	route = subApp1.GetRoute("add-user")
-	require.Equal(t, MethodPost, route.Method)
-	require.Equal(t, "/users", route.Path)
-
-	// take route directly from sub-app with group
-	route = subApp2.GetRoute("users.get")
-	require.Equal(t, MethodGet, route.Method)
-	require.Equal(t, "/users", route.Path)
-
-	route = subApp2.GetRoute("users.add")
-	require.Equal(t, MethodPost, route.Method)
-	require.Equal(t, "/users", route.Path)
-
-	// take route from root app (using names of sub-apps)
-	route = rootApp.GetRoute("add-user")
-	require.Equal(t, MethodPost, route.Method)
-	require.Equal(t, "/app1/users", route.Path)
-
-	route = rootApp.GetRoute("users.add")
-	require.Equal(t, MethodPost, route.Method)
-	require.Equal(t, "/app2/users", route.Path)
+	for _, tc := range []struct {
+		app    *App
+		name   string
+		method string
+		path   string
+	}{
+		// take route directly from sub-app
+		{app: subApp1, name: "get-users", method: MethodGet, path: "/users"},
+		{app: subApp1, name: "add-user", method: MethodPost, path: "/users"},
+		// take route directly from sub-app with group
+		{app: subApp2, name: "users.get", method: MethodGet, path: "/users"},
+		{app: subApp2, name: "users.add", method: MethodPost, path: "/users"},
+		// take route from root app (using names of sub-apps)
+		{app: rootApp, name: "add-user", method: MethodPost, path: "/app1/users"},
+		{app: rootApp, name: "users.add", method: MethodPost, path: "/app2/users"},
+	} {
+		route := tc.app.GetRoute(tc.name)
+		require.Equal(t, tc.method, route.Method, tc.name)
+		require.Equal(t, tc.path, route.Path, tc.name)
+	}
 
 	// GetRouteURL inside handler
-	req := httptest.NewRequest(MethodGet, "/app1/users", http.NoBody)
-	apptest.Expect(t, rootApp, req, StatusOK)
+	apptest.Expect(t, rootApp, "/app1/users", StatusOK)
 
 	// ctx.App().GetRoute() inside handler
-	req = httptest.NewRequest(MethodPost, "/app1/users", http.NoBody)
-	apptest.Expect(t, rootApp, req, StatusOK)
+	apptest.Expect(t, rootApp, apptest.Req(MethodPost, "/app1/users"), StatusOK)
 }
 
 // go test -run Test_Ctx_Render_Mount
@@ -492,11 +418,7 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	app := New()
 	app.Use("/hello", sub)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", http.NoBody))
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.NoError(t, err, "app.Test(req)")
-
-	require.Equal(t, "<h1>Hello a!</h1>", apptest.Body(t, resp))
+	apptest.ExpectBody(t, app, "/hello/a", StatusOK, "<h1>Hello a!</h1>")
 }
 
 // go test -run Test_Ctx_Render_Mount_ParentOrSubHasViews
@@ -546,26 +468,9 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	sub.Use("/bruh", sub2)
 	app.Use("/hello", sub)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/world/a", http.NoBody))
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.NoError(t, err, "app.Test(req)")
-
-	body := apptest.BodyBytes(t, resp)
-	require.Equal(t, "<h1>Hello a!</h1>", string(body))
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.NoError(t, err, "app.Test(req)")
-
-	body = apptest.BodyBytes(t, resp)
-	require.Equal(t, "<h1>Hello, World!</h1>", string(body))
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/hello/bruh/moment", http.NoBody))
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.NoError(t, err, "app.Test(req)")
-
-	body = apptest.BodyBytes(t, resp)
-	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
+	apptest.ExpectBody(t, app, "/hello/world/a", StatusOK, "<h1>Hello a!</h1>")
+	apptest.ExpectBody(t, app, "/test", StatusOK, "<h1>Hello, World!</h1>")
+	apptest.ExpectBody(t, app, "/hello/bruh/moment", StatusOK, "<h1>I'm Bruh</h1>")
 }
 
 func Test_Ctx_Render_MountGroup(t *testing.T) {
@@ -656,9 +561,7 @@ func Test_App_Mount_ReorderedRequestMethods(t *testing.T) {
 	app := New()
 	app.Use("/john", micro)
 
-	resp := apptest.Expect(t, app, "/john/doe", StatusOK)
-	body := apptest.BodyBytes(t, resp)
-	require.Equal(t, "get doe", string(body))
+	apptest.ExpectBody(t, app, "/john/doe", StatusOK, "get doe")
 
 	apptest.ExpectBody(t, app, apptest.Req(MethodPost, "/john/doe"), StatusOK, "post doe")
 }
@@ -735,9 +638,7 @@ func Test_App_Mount_SiblingConstraintNames(t *testing.T) {
 		resp := apptest.Do(t, plain, path)
 		require.Equal(t, status, resp.StatusCode, "plain "+path)
 
-		req := httptest.NewRequest(MethodGet, path, http.NoBody)
-		req.Host = "api.example.com"
-		resp = apptest.Do(t, domain, req)
+		resp = apptest.Do(t, domain, apptest.Req(MethodGet, path, apptest.WithHost("api.example.com")))
 		require.Equal(t, status, resp.StatusCode, "domain "+path)
 	}
 }
@@ -787,15 +688,11 @@ func Test_App_Mount_CarriesDomainMount(t *testing.T) {
 	app := New()
 	app.Use("/john", sub)
 
-	req := httptest.NewRequest(MethodGet, "/john/v1/doe", http.NoBody)
-	req.Host = "api.example.com"
-	apptest.Expect(t, app, req, 596)
+	apptest.Expect(t, app, apptest.Req(MethodGet, "/john/v1/doe", apptest.WithHost("api.example.com")), 596)
 
 	// The route does not match on another host, and the sub-app's error
 	// handler must not answer for it either.
-	req = httptest.NewRequest(MethodGet, "/john/v1/doe", http.NoBody)
-	req.Host = "www.example.com"
-	apptest.Expect(t, app, req, StatusNotFound)
+	apptest.Expect(t, app, apptest.Req(MethodGet, "/john/v1/doe", apptest.WithHost("www.example.com")), StatusNotFound)
 }
 
 // Test_App_Mount_AutoHeadKeepsMiddleware verifies that a mounted app which does
