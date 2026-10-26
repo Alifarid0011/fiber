@@ -9813,7 +9813,6 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 		ctx := apptest.Ctx(t, app)
 		c, ok := ctx.(*DefaultCtx)
 		require.True(t, ok)
-		defer app.ReleaseCtx(c)
 		c.route = nil
 
 		c.OverrideParam("test", "value") // Should not change
@@ -9847,7 +9846,8 @@ func Test_Ctx_AbandonSkipsReleaseCtx(t *testing.T) {
 func Test_Ctx_ForceReleaseClearsAbandon(t *testing.T) {
 	t.Parallel()
 
-	ctx := apptest.CtxAs[*DefaultCtx](t, New())
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // controlled test setup
 	ctx.route = &Route{}
 
 	ctx.Abandon()
@@ -10316,8 +10316,6 @@ func Benchmark_Ctx_OverrideParam(b *testing.B) {
 	if !ok {
 		b.Fatal("AcquireCtx did not return *DefaultCtx")
 	}
-
-	defer app.ReleaseCtx(c)
 
 	c.values = [maxParams]string{"original", "12345"}
 	c.route = &Route{Params: []string{"name", "id"}}
