@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -335,12 +336,11 @@ func Test_CSRF_Extractor_Error_Types(t *testing.T) {
 
 			tc.setupRequest(ctx)
 
-			c := app.AcquireCtx(ctx)
+			c := apptest.CtxFor(t, app, ctx)
 
 			_, err := tc.extractor.Extract(c)
 			require.Error(t, err)
 			require.Equal(t, tc.expectedError, err)
-			app.ReleaseCtx(c)
 		})
 	}
 }

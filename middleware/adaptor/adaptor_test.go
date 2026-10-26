@@ -102,9 +102,7 @@ func Test_HTTPHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	fctx.Init(&req, remoteAddr, &disableLogger{})
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fctx)
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.CtxFor(t, fiber.New(), &fctx)
 
 	err = fiberH(ctx)
 	require.NoError(t, err)
@@ -192,9 +190,7 @@ func Test_HTTPHandler_Flush(t *testing.T) {
 	require.NoError(t, err)
 
 	fctx.Init(&req, remoteAddr, &disableLogger{})
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fctx)
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.CtxFor(t, fiber.New(), &fctx)
 
 	err = fiberH(ctx)
 	require.NoError(t, err)
@@ -905,9 +901,7 @@ func Test_ConvertRequest(t *testing.T) {
 	t.Run("conversion error handling", func(t *testing.T) {
 		t.Parallel()
 		// Test error case by creating a context with an invalid URL that will cause fasthttpadaptor.ConvertRequest to fail
-		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, fiber.New())
 
 		// Create a malformed request URI that should cause conversion to fail
 		ctx.Request().SetRequestURI("http://[::1:bad:url") // Invalid URL format

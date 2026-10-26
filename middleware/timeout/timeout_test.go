@@ -429,9 +429,7 @@ func TestIsTimeoutError_CustomErrors(t *testing.T) {
 // TestIsTimeoutError_WithOnTimeout verifies that custom OnTimeout is called for custom errors.
 func TestIsTimeoutError_WithOnTimeout(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, fiber.New())
 
 	called := false
 	cfg := Config{

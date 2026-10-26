@@ -11,7 +11,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 const (
@@ -223,11 +222,9 @@ func Test_configDefault_WithConfig(t *testing.T) {
 	require.NotNil(t, cfg.AllowEarlyData)
 
 	// Verify default functions behave as expected.
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, fiber.New())
 	c.Request().Header.Set(DefaultHeaderName, DefaultHeaderTrueValue)
 	c.Request().Header.SetMethod(fiber.MethodGet)
 	require.True(t, cfg.IsEarlyData(c))
 	require.True(t, cfg.AllowEarlyData(c))
-	app.ReleaseCtx(c)
 }

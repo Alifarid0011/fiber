@@ -2186,9 +2186,7 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 func Test_deleteTokenFromStorage(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+	ctx := apptest.Ctx(t, fiber.New())
 
 	token := "token123"
 	dummy := []byte("dummy")
@@ -2616,8 +2614,7 @@ func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 			requestCtx := &fasthttp.RequestCtx{}
 			tc.setupCtx(requestCtx) // Set up the context properly
 
-			ctx := app.AcquireCtx(requestCtx)
-			defer app.ReleaseCtx(ctx)
+			ctx := apptest.CtxFor(t, app, requestCtx)
 
 			token, err := tc.extractor.Extract(ctx)
 			require.Empty(t, token)
@@ -3087,8 +3084,7 @@ func Test_CSRF_Security_SecFetchSite_Normalization(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(c)
+			c := apptest.Ctx(t, app)
 			if tc.value != "" {
 				c.Request().Header.Set(fiber.HeaderSecFetchSite, tc.value)
 			}

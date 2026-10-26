@@ -2364,8 +2364,7 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 		fctx.Request.Header.SetMethod(fiber.MethodGet)
 		fctx.Request.SetRequestURI("/")
 		fctx.Request.Header.Set(fiber.HeaderXForwardedFor, chain)
-		c := app.AcquireCtx(fctx)
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c := apptest.CtxFor(t, app, fctx)
 		return c
 	}
 

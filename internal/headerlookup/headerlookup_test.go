@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 // newCtx returns a context on an app configured with cfg, released when the
@@ -15,9 +15,7 @@ import (
 func newCtx(t *testing.T, cfg ...fiber.Config) fiber.Ctx {
 	t.Helper()
 
-	app := fiber.New(cfg...)
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, fiber.New(cfg...))
 	if len(cfg) > 0 && cfg[0].DisableHeaderNormalizing {
 		c.Request().Header.DisableNormalizing()
 	}

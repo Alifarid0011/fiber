@@ -1709,9 +1709,7 @@ func Benchmark_CORS_NewHandlerPreflightWildcard_Parallel(b *testing.B) {
 func Test_CORS_setSimpleHeaders_NilConfig(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, fiber.New())
 
 	require.NotPanics(t, func() {
 		setSimpleHeaders(c, "https://example.com", nil, nil)
@@ -1728,9 +1726,7 @@ func Test_CORS_setSimpleHeaders_WildcardWithCredentials(t *testing.T) {
 	log.SetOutput(&buf)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, fiber.New())
 
 	setSimpleHeaders(c, "*", &Config{AllowCredentials: true}, nil)
 
@@ -1744,9 +1740,7 @@ func Test_CORS_setSimpleHeaders_WildcardWithCredentials(t *testing.T) {
 func Test_CORS_setPreflightHeaders_NilConfig(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, fiber.New())
 
 	require.NotPanics(t, func() {
 		setPreflightHeaders(c, "https://example.com", "600", nil, nil)

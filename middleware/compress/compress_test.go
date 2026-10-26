@@ -871,10 +871,7 @@ func Test_Compress_ShouldSkip_DoesNotMaterialize_BodyStream(t *testing.T) {
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() {
-		app.ReleaseCtx(c)
-	})
+	c := apptest.CtxFor(t, app, fctx)
 
 	stream := &failOnReadStream{}
 	c.Response().SetStatusCode(fiber.StatusOK)

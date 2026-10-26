@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 // recordingCtx is a custom context whose Locals is observable, so the interface
@@ -28,11 +28,9 @@ func (c *recordingCtx) Locals(key any, value ...any) any {
 func Test_Set_UsesCustomCtxLocals(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+	c := apptest.Ctx(t, fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
 		return &recordingCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
-	})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	}))
 
 	custom, ok := c.(*recordingCtx)
 	require.True(t, ok, "the app must hand out the custom context")
@@ -47,9 +45,7 @@ func Test_Set_UsesCustomCtxLocals(t *testing.T) {
 func Test_Set_UsesDefaultCtxDirectly(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, fiber.New())
 
 	_, isDefault := c.(*fiber.DefaultCtx)
 	require.True(t, isDefault, "the default app must hand out *DefaultCtx")
@@ -63,9 +59,7 @@ func Test_Set_UsesDefaultCtxDirectly(t *testing.T) {
 // Benchmark_Set measures Set on the default context, the path on which the
 // variadic slice must stay in the frame.
 func Benchmark_Set(b *testing.B) {
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(b, fiber.New())
 
 	b.ReportAllocs()
 	for b.Loop() {

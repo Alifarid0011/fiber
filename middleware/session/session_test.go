@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/utils/v2"
@@ -733,8 +734,7 @@ func Test_Session_ExtractorPreservation(t *testing.T) {
 
 		// Second request: the existing ID is provided only via the query string
 		// (an attacker-controllable, read-only source).
-		ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx2)
+		ctx2 := apptest.Ctx(t, app)
 		ctx2.Request().SetRequestURI("/path?session_id=" + id)
 
 		sess2, err := store.Get(ctx2)
@@ -793,8 +793,7 @@ func Test_Session_ExtractorPreservation(t *testing.T) {
 		app.ReleaseCtx(ctx1)
 
 		// Provide the existing ID via the cookie source.
-		ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx2)
+		ctx2 := apptest.Ctx(t, app)
 		ctx2.Request().Header.SetCookie("session_id", id)
 
 		sess2, err := store.Get(ctx2)
@@ -1484,8 +1483,7 @@ func Test_Session_Regenerate(t *testing.T) {
 func Benchmark_Session(b *testing.B) {
 	b.Run("default", func(b *testing.B) {
 		app, store := fiber.New(), NewStore()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
+		c := apptest.Ctx(b, app)
 		c.Request().Header.SetCookie("session_id", "12356789")
 
 		b.ReportAllocs()
@@ -1503,8 +1501,7 @@ func Benchmark_Session(b *testing.B) {
 		store := NewStore(Config{
 			Storage: memory.New(),
 		})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
+		c := apptest.Ctx(b, app)
 		c.Request().Header.SetCookie("session_id", "12356789")
 
 		b.ReportAllocs()
@@ -1534,8 +1531,7 @@ func Benchmark_Session_ChainExtractor(b *testing.B) {
 	})
 
 	fctx := &fasthttp.RequestCtx{}
-	c := app.AcquireCtx(fctx)
-	defer app.ReleaseCtx(c)
+	c := apptest.CtxFor(b, app, fctx)
 	c.Request().Header.SetCookie("session_id", "12356789")
 
 	b.ReportAllocs()
@@ -1600,8 +1596,7 @@ func Benchmark_Session_Parallel(b *testing.B) {
 func Benchmark_Session_Asserted(b *testing.B) {
 	b.Run("default", func(b *testing.B) {
 		app, store := fiber.New(), NewStore()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
+		c := apptest.Ctx(b, app)
 		c.Request().Header.SetCookie("session_id", "12356789")
 
 		b.ReportAllocs()
@@ -1620,8 +1615,7 @@ func Benchmark_Session_Asserted(b *testing.B) {
 		store := NewStore(Config{
 			Storage: memory.New(),
 		})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
+		c := apptest.Ctx(b, app)
 		c.Request().Header.SetCookie("session_id", "12356789")
 
 		b.ReportAllocs()
@@ -1800,8 +1794,7 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	require.NoError(t, err, "Failed to set invalid session data")
 
 	// Create a new request context
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, app)
 
 	// Set the session ID in cookies
 	c.Request().Header.SetCookie("session_id", sessionID)
@@ -1865,7 +1858,7 @@ func Test_Session_Fresh_Flag_Bug(t *testing.T) {
 	app.ReleaseCtx(ctx2)
 
 	// Test Case 4: Expired session - should generate new ID and be fresh
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx3 := apptest.Ctx(t, app)
 	ctx3.Request().Header.SetCookie("session_id", "expired-or-nonexistent-id")
 	sess4, err := store.Get(ctx3)
 	require.NoError(t, err)
@@ -1873,7 +1866,6 @@ func Test_Session_Fresh_Flag_Bug(t *testing.T) {
 	require.NotEqual(t, "expired-or-nonexistent-id", sess4.ID(), "Should have generated a new session ID")
 
 	sess4.Release()
-	app.ReleaseCtx(ctx3)
 }
 
 // go test -run Test_Session_CSRF_Scenario
@@ -1925,7 +1917,7 @@ func Test_Session_CSRF_Scenario(t *testing.T) {
 
 	// Simulate: POST request with expired session
 	// This is the scenario the user reported - session data is gone
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx3 := apptest.Ctx(t, app)
 	ctx3.Request().Header.SetCookie("session_id", firstSessionID)
 	sess3, err := store.Get(ctx3)
 	require.NoError(t, err)
@@ -1934,7 +1926,6 @@ func Test_Session_CSRF_Scenario(t *testing.T) {
 	require.Nil(t, sess3.Get("csrf_token"), "Old session data should be gone")
 
 	sess3.Release()
-	app.ReleaseCtx(ctx3)
 }
 
 // go test -run Test_Session_Multiple_GetSession_Calls
@@ -1959,7 +1950,7 @@ func Test_Session_Multiple_GetSession_Calls(t *testing.T) {
 	app.ReleaseCtx(ctx)
 
 	// New request with existing session
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx2 := apptest.Ctx(t, app)
 	ctx2.Request().Header.SetCookie("session_id", sessionID)
 
 	// First getSession() call - loads from storage
@@ -1986,7 +1977,6 @@ func Test_Session_Multiple_GetSession_Calls(t *testing.T) {
 	sess2.Release()
 	sess3.Release()
 	sess4.Release()
-	app.ReleaseCtx(ctx2)
 }
 
 // go test -run Test_Session_DestroyWithContext
@@ -1996,9 +1986,7 @@ func Test_Session_DestroyWithContext(t *testing.T) {
 	t.Run("destroy with context from cookie", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore()
-		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, fiber.New())
 
 		sess, err := store.Get(ctx)
 		defer sess.Release()
@@ -2064,9 +2052,7 @@ func Test_Session_ResetWithContext(t *testing.T) {
 	t.Run("reset with context clears data and changes id", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore()
-		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, fiber.New())
 
 		sess, err := store.Get(ctx)
 		require.NoError(t, err)
@@ -2157,9 +2143,7 @@ func Test_Session_ResolveContext(t *testing.T) {
 
 	t.Run("resolve context returns fiber context when ctx is not nil", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		fctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(fctx)
+		fctx := apptest.Ctx(t, fiber.New())
 
 		sess := &Session{ctx: fctx}
 		ctx := sess.resolveContext()
@@ -2399,8 +2383,7 @@ func (s *recordingStorage) reset() {
 // seedSession stores a session through the given store and returns its ID.
 func seedSession(t *testing.T, app *fiber.App, store *Store, fill func(*Session)) string {
 	t.Helper()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
@@ -2545,8 +2528,7 @@ func Benchmark_Session_ReadOnly(b *testing.B) {
 	sess.Release()
 	app.ReleaseCtx(seed)
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(b, app)
 	c.Request().Header.SetCookie("session_id", id)
 
 	b.ReportAllocs()

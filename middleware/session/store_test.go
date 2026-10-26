@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -26,8 +27,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		// session store
 		store := NewStore()
 		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 
 		// set cookie
 		ctx.Request().Header.SetCookie(store.Extractor.Key, expectedID)
@@ -45,8 +45,7 @@ func Test_Store_getSessionID(t *testing.T) {
 			Extractor: extractors.FromHeader("session_id"),
 		})
 		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 
 		// set header
 		ctx.Request().Header.Set(store.Extractor.Key, expectedID)
@@ -64,8 +63,7 @@ func Test_Store_getSessionID(t *testing.T) {
 			Extractor: extractors.FromQuery("session_id"),
 		})
 		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 
 		// set url parameter
 		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.Extractor.Key, expectedID))
@@ -91,8 +89,7 @@ func Test_Store_Get(t *testing.T) {
 		// session store
 		store := NewStore()
 		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 
 		// set cookie
 		ctx.Request().Header.SetCookie(store.Extractor.Key, unexpectedID)
@@ -113,8 +110,7 @@ func Test_Store_DeleteSession(t *testing.T) {
 	store := NewStore()
 
 	// fiber context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 
 	// Create a new session
 	session, err := store.Get(ctx)
@@ -248,8 +244,7 @@ func Test_Store_getSessionID_SkipsChildrenWithoutExtract(t *testing.T) {
 		Extractor: extractors.Chain(extractors.Extractor{}, extractors.FromCookie("session_id")),
 	})
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 	ctx.Request().Header.SetCookie("session_id", "abc123")
 
 	from, resolveErr := store.getSessionID(ctx)
@@ -264,9 +259,7 @@ func Test_Store_getSessionID_SkipsChildrenWithoutExtract(t *testing.T) {
 func Test_Store_getSessionID_WithoutExtractor(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, fiber.New())
 	ctx.Request().Header.SetCookie("session_id", "abc123")
 
 	store := &Store{}
@@ -311,8 +304,7 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 		}
 
 		store := NewStore(Config{Extractor: decorated})
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 
 		from, resolveErr := store.getSessionID(ctx)
 		require.NoError(t, resolveErr)
@@ -346,16 +338,14 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 
 		store := NewStore(Config{Extractor: decorated})
 
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 		ctx.Request().Header.Set("X-Session", "attacker-supplied")
 		from, resolveErr := store.getSessionID(ctx)
 		require.NoError(t, resolveErr)
 		id := from.Value
 		require.Empty(t, id, "the validator must be able to refuse an ID")
 
-		ok := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ok)
+		ok := apptest.Ctx(t, app)
 		ok.Request().Header.Set("X-Session", "trusted")
 		acceptedFrom, resolveErr := store.getSessionID(ok)
 		require.NoError(t, resolveErr)
@@ -381,8 +371,7 @@ func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
 	t.Run("cookie wins", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore(Config{Extractor: chain})
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 		ctx.Request().Header.SetCookie("sid_cookie", "from-cookie")
 
 		from, resolveErr := store.getSessionID(ctx)
@@ -396,8 +385,7 @@ func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
 	t.Run("header wins when the cookie is absent", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore(Config{Extractor: chain})
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 		ctx.Request().Header.Set("X-Sid", "from-header")
 
 		from, resolveErr := store.getSessionID(ctx)
@@ -411,8 +399,7 @@ func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
 	t.Run("nothing matches", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore(Config{Extractor: chain})
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 
 		from, resolveErr := store.getSessionID(ctx)
 		require.NoError(t, resolveErr)
@@ -452,8 +439,7 @@ func Test_Store_UnattributableID_IsNotWrittenBack(t *testing.T) {
 	app.ReleaseCtx(seed)
 
 	// The victim's request carries that ID in the query and no cookie.
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 	ctx.Request().SetRequestURI("/p?sid=" + plantedID)
 
 	sess, err := store.Get(ctx)
@@ -479,9 +465,7 @@ func Test_Store_ForeignChainDoesNotSupplyProvenance(t *testing.T) {
 	})
 
 	store := NewStore(Config{Extractor: leaf})
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, fiber.New())
 	ctx.Request().SetRequestURI("/p?sid=planted")
 	ctx.Request().Header.SetCookie("tenant", "acme")
 
@@ -510,9 +494,7 @@ func Test_Store_NestedChainCookieSinkIsWritten(t *testing.T) {
 		),
 	})
 
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, fiber.New())
 
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
@@ -549,8 +531,7 @@ func Test_Store_ExtractorErrorReachesCaller(t *testing.T) {
 
 	t.Run("a refusal is reported", func(t *testing.T) {
 		t.Parallel()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 		ctx.Request().Header.SetCookie("session_id", "forged-value")
 
 		_, err := store.Get(ctx)
@@ -559,8 +540,7 @@ func Test_Store_ExtractorErrorReachesCaller(t *testing.T) {
 
 	t.Run("an absent id is not an error", func(t *testing.T) {
 		t.Parallel()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 
 		sess, err := store.Get(ctx)
 		require.NoError(t, err, "a first-time visitor must not look like a failure")
@@ -618,8 +598,7 @@ func Test_Store_KeylessExtractorStillGuarded(t *testing.T) {
 	require.NoError(t, seeded.Save())
 	app.ReleaseCtx(seed)
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 	ctx.Request().SetRequestURI("/p?sid=" + plantedID)
 
 	sess, err := store.Get(ctx)
@@ -654,8 +633,7 @@ func Test_Store_ProvenanceBoxIsReused(t *testing.T) {
 	savedID := seeded.ID()
 	app.ReleaseCtx(seed)
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 	ctx.Request().Header.SetCookie("session_id", savedID)
 
 	sess, err := store.Get(ctx)
@@ -685,9 +663,7 @@ func Test_Store_CachedIDKeepsProvenance(t *testing.T) {
 	t.Parallel()
 
 	store := NewStore()
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, fiber.New())
 	ctx.Request().Header.SetCookie("session_id", "not-in-storage")
 
 	first, err := store.Get(ctx)
@@ -721,9 +697,7 @@ func Test_ProvenanceBox_PoolHoldsSomethingElse(t *testing.T) {
 	t.Cleanup(func() { provenancePool = shared })
 
 	store := NewStore()
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, fiber.New())
 	ctx.Request().Header.SetCookie("session_id", "an-id")
 
 	_, err := store.Get(ctx)

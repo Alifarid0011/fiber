@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/valyala/fasthttp"
 )
 
@@ -20,9 +21,7 @@ var benchSink struct {
 
 func newBenchCtx(b *testing.B, cfg ...fiber.Config) fiber.Ctx {
 	b.Helper()
-	app := fiber.New(cfg...)
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	b.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(b, fiber.New(cfg...))
 	return c
 }
 

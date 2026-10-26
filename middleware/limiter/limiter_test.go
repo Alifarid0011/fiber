@@ -280,9 +280,7 @@ func Test_Limiter_DefaultConfigNoPanic(t *testing.T) {
 func Test_getEffectiveStatusCode_FiberError(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, fiber.New())
 
 	c.Response().SetStatusCode(fiber.StatusOK)
 
@@ -303,9 +301,7 @@ func Test_getEffectiveStatusCode_FiberError(t *testing.T) {
 func Test_getEffectiveStatusCode_TypedNilFiberError(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, fiber.New())
 
 	c.Response().SetStatusCode(fiber.StatusAccepted)
 
@@ -318,9 +314,7 @@ func Test_getEffectiveStatusCode_TypedNilFiberError(t *testing.T) {
 func Test_getEffectiveStatusCode_TypedNilCustomError(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, fiber.New())
 
 	c.Response().SetStatusCode(fiber.StatusAccepted)
 

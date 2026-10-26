@@ -886,9 +886,7 @@ func Test_Middleware_ResolveContext(t *testing.T) {
 
 	t.Run("resolve context returns fiber ctx when not nil", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		fctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(fctx)
+		fctx := apptest.Ctx(t, fiber.New())
 
 		m := &Middleware{ctx: fctx}
 		ctx := m.resolveContext()
