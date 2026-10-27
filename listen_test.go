@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -243,14 +244,10 @@ func Test_Listen(t *testing.T) {
 }
 
 func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
-	// Grab a free port, then release it so we can bind it via Listen.
-	probe, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := probe.Addr().String()
-	require.NoError(t, probe.Close())
+	addr := fmt.Sprintf("127.0.0.1:%d", rootMiscBFreePort(t))
 
 	app := New()
-	err = app.Listen(addr, ListenConfig{
+	err := app.Listen(addr, ListenConfig{
 		DisableStartupMessage: true,
 		BeforeServeFunc:       func(_ *App) error { return errors.New("stop before serving") },
 	})
@@ -474,21 +471,15 @@ func Test_Listen_TLSMinVersion(t *testing.T) {
 
 	app := New()
 
-	// Invalid TLSMinVersion
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
-	})
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
-	})
-
-	// Prefork
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
-	})
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
-	})
+	// Invalid TLSMinVersion, without and with prefork
+	for _, cfg := range []ListenConfig{
+		{TLSMinVersion: tls.VersionTLS10},
+		{TLSMinVersion: tls.VersionTLS11},
+		{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS10},
+		{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS11},
+	} {
+		require.Panics(t, func() { _ = app.Listen(":0", cfg) }, "%+v", cfg) //nolint:errcheck // ignore error
+	}
 
 	// Valid TLSMinVersion
 	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
@@ -522,7 +513,6 @@ func Test_Listen_TLS(t *testing.T) {
 				CertClientFile: tc.certClientFile,
 			}
 
-			// invalid port
 			require.Error(t, app.Listen(":99999", cfg))
 
 			rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
@@ -580,7 +570,6 @@ func Test_Listener(t *testing.T) {
 }
 
 func Test_App_Listener_TLS_Listener(t *testing.T) {
-	// Create tls certificate
 	config := &tls.Config{Certificates: []tls.Certificate{rootMiscBTestCert(t)}}
 
 	ln, err := tls.Listen(NetworkTCP4, ":0", config)
@@ -613,7 +602,8 @@ func Test_Listen_TLSConfig(t *testing.T) {
 	t.Parallel()
 	cert := rootMiscBTestCert(t)
 
-	run := func(name string, cfg ListenConfig) {
+	// run serves cfg for a second in a parallel subtest, then runs checks on what the Listen call left behind.
+	run := func(name string, cfg ListenConfig, checks ...func(t *testing.T)) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			app := New()
@@ -621,6 +611,9 @@ func Test_Listen_TLSConfig(t *testing.T) {
 			rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
 
 			require.NoError(t, app.Listen(":0", cfg))
+			for _, check := range checks {
+				check(t)
+			}
 		})
 	}
 
@@ -645,43 +638,28 @@ func Test_Listen_TLSConfig(t *testing.T) {
 		CertClientFile:        "./.github/testdata/does-not-exist-ca.pem",
 		AutoCertManager:       &autocert.Manager{Prompt: autocert.AcceptTOS},
 	})
-}
 
-func Test_Listen_TLSCertFiles(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	run("certificate files with a client CA", ListenConfig{
 		DisableStartupMessage: true,
 		CertFile:              "./.github/testdata/ssl.pem",
 		CertKeyFile:           "./.github/testdata/ssl.key",
 		CertClientFile:        "./.github/testdata/ssl.pem",
-	}))
-}
-
-func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
-	t.Parallel()
-	cert := rootMiscBTestCert(t)
+	})
 
 	var calledTLSConfigFunc bool
-	app := New()
-
-	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	run("TLSConfig with TLSConfigFunc", ListenConfig{
 		DisableStartupMessage: true,
 		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
 		TLSConfigFunc:         func(_ *tls.Config) { calledTLSConfigFunc = true },
-	}))
-
-	require.False(t, calledTLSConfigFunc)
+	}, func(t *testing.T) {
+		t.Helper()
+		require.False(t, calledTLSConfigFunc)
+	})
 }
 
 func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 	// Not parallel: it captures the package-level log output, and Go keeps no
-	// parallel test in flight while a serial one runs. Test_Listen_TLSConfig_WithTLSConfigFunc
+	// parallel test in flight while a serial one runs. Test_Listen_TLSConfig/TLSConfig_with_TLSConfigFunc
 	// is parallel and warns, so it would otherwise write into this buffer.
 	cert := rootMiscBTestCert(t)
 
@@ -918,25 +896,17 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	var network string
 	app := New()
 
-	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
+	for _, tc := range []struct{ network, want string }{{NetworkTCP6, "[::]:"}, {NetworkTCP4, "0.0.0.0:"}} {
+		rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
 
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		ListenerNetwork:       NetworkTCP6,
-		ListenerAddrFunc:      func(addr net.Addr) { network = addr.String() },
-	}))
+		require.NoError(t, app.Listen(":0", ListenConfig{
+			DisableStartupMessage: true,
+			ListenerNetwork:       tc.network,
+			ListenerAddrFunc:      func(addr net.Addr) { network = addr.String() },
+		}))
 
-	require.Contains(t, network, "[::]:")
-
-	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		ListenerNetwork:       NetworkTCP4,
-		ListenerAddrFunc:      func(addr net.Addr) { network = addr.String() },
-	}))
-
-	require.Contains(t, network, "0.0.0.0:")
+		require.Contains(t, network, tc.want)
+	}
 }
 
 func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
@@ -952,15 +922,11 @@ func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 		resp   = &fasthttp.Response{}
 	)
 
-	// Create temporary directory for storing socket in
 	tmp, err := os.MkdirTemp(os.TempDir(), "fiber-test")
 	require.NoError(t, err)
 	sock := filepath.Join(tmp, "fiber-test.sock")
-
-	// Make sure temporary directory is cleaned up
 	defer func() { assert.NoError(t, os.RemoveAll(tmp)) }()
 
-	// Send request through socket
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
 
@@ -986,172 +952,136 @@ func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 		},
 	}))
 
-	// Verify that listening and setting permissions works correctly
 	require.Equal(t, sock, network)
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o666), f.Mode().Perm())
 
-	// Verify that request was successful
 	require.NoError(t, reqErr)
 	require.Equal(t, 200, resp.StatusCode())
 	require.Equal(t, "all good", string(resp.Body()))
 }
 
+// Test_Listen_Master_Process_Show_Startup_Message renders the startup message of a master process for a host, an
+// app name and child PIDs, and checks the lines that depend on them.
 func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
-	cfg := ListenConfig{EnablePrefork: true}
-
-	port := rootMiscBFreePort(t)
-
-	childTemplate := []int{11111, 22222, 33333, 44444, 55555, 60000}
-	childPIDs := make([]int, 0, len(childTemplate)*10)
-	for range 10 {
-		childPIDs = append(childPIDs, childTemplate...)
-	}
-
-	app := New()
-	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, &cfg, childPIDs)
-
-	startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
-	colors := Colors{}
-	rootMiscBRequireContains(t, startupMessage,
-		fmt.Sprintf("https://127.0.0.1:%d", port),
-		fmt.Sprintf("(bound on host 0.0.0.0 and port %d)", port),
-		"Child PIDs",
-		"11111, 22222, 33333, 44444, 55555, 60000",
-		fmt.Sprintf("Prefork: \t\t\t%sEnabled%s", colors.Blue, colors.Reset),
-	)
-}
-
-func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	// Not parallel: captureOutput redirects the process-wide stdout.
-	childTemplate := []int{11111, 22222, 33333, 44444, 55555, 60000}
-	childPIDs := make([]int, 0, len(childTemplate)*10)
-	for range 10 {
-		childPIDs = append(childPIDs, childTemplate...)
-	}
-
-	tests := []struct {
+	childPIDs := slices.Repeat([]int{11111, 22222, 33333, 44444, 55555, 60000}, 10)
+	colors := Colors{}
+	for _, tc := range []struct {
+		contains  func(port int) []string // lines besides the app name, given the port of the message
 		name      string
 		appName   string
+		host      string
 		childPIDs []int
+		prefork   bool
 		isTLS     bool
 	}{
-		{name: "with child PIDs", appName: "Test App v3.0.0", isTLS: true, childPIDs: childPIDs},
-		{name: "non-ASCII", appName: "Serveur de vérification des données"},
-	}
-
-	for _, tc := range tests {
+		{name: "prefork with child PIDs", prefork: true, isTLS: true, childPIDs: childPIDs, contains: func(port int) []string {
+			return []string{
+				fmt.Sprintf("https://127.0.0.1:%d", port),
+				fmt.Sprintf("(bound on host 0.0.0.0 and port %d)", port),
+				"Child PIDs",
+				"11111, 22222, 33333, 44444, 55555, 60000",
+				fmt.Sprintf("Prefork: \t\t\t%sEnabled%s", colors.Blue, colors.Reset),
+			}
+		}},
+		{name: "app name with child PIDs", appName: "Test App v3.0.0", prefork: true, isTLS: true, childPIDs: childPIDs},
+		{name: "non-ASCII app name", appName: "Serveur de vérification des données", prefork: true},
+		{
+			name: "disabled prefork and custom endpoint", appName: "Fiber Example Application", host: "server.com",
+			isTLS: true,
+			contains: func(port int) []string {
+				return []string{
+					fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset),
+					fmt.Sprintf("%s%s%s", colors.Blue, "Fiber Example Application", colors.Reset),
+					fmt.Sprintf("%s%s%s", colors.Blue, fmt.Sprintf("https://server.com:%d", port), colors.Reset),
+					fmt.Sprintf("Prefork: \t\t\t%sDisabled%s", colors.Red, colors.Reset),
+				}
+			},
+		},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := ListenConfig{EnablePrefork: true}
-
+			cfg := ListenConfig{EnablePrefork: tc.prefork}
 			app := New(Config{AppName: tc.appName})
 			port := rootMiscBFreePort(t)
-
-			listenData := app.prepareListenData(fmt.Sprintf(":%d", port), tc.isTLS, &cfg, tc.childPIDs)
+			listenData := app.prepareListenData(fmt.Sprintf("%s:%d", tc.host, port), tc.isTLS, &cfg, tc.childPIDs)
 
 			startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
 			require.Equal(t, tc.appName, app.Config().AppName)
 			require.Contains(t, startupMessage, tc.appName)
+			if tc.contains != nil {
+				rootMiscBRequireContains(t, startupMessage, tc.contains(port)...)
+			}
 		})
 	}
 }
 
-func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustomEndpoint(t *testing.T) {
-	cfg := ListenConfig{EnablePrefork: false}
+// Test_Listen_StartupMessage_Hooks prints the startup message with an OnPreStartupMessage hook that customizes or
+// prevents it, or with the message disabled, and checks what the OnPostStartupMessage hook is told.
+func Test_Listen_StartupMessage_Hooks(t *testing.T) {
+	// Not parallel: captureOutput redirects the process-wide stdout.
+	for _, tc := range []struct {
+		pre       func(data *PreStartupMessageData) error // the OnPreStartupMessage hook, if any
+		name      string
+		addr      string
+		contains  []string
+		absent    []string
+		cfg       ListenConfig
+		silent    bool // nothing is printed
+		disabled  bool // PostStartupMessageData.Disabled
+		prevented bool // PostStartupMessageData.Prevented
+	}{
+		{
+			name: "Customization", addr: ":8080",
+			pre: func(data *PreStartupMessageData) error {
+				data.BannerHeader = "FOOBER v98\n-------"
 
-	appName := "Fiber Example Application"
-	app := New(Config{AppName: appName})
-	port := rootMiscBFreePort(t)
+				data.ResetEntries()
+				data.AddInfo("git_hash", "Git hash", "abc123", 3)
+				data.AddInfo("version", "Version", "v98", 2)
 
-	listenData := app.prepareListenData(fmt.Sprintf("server.com:%d", port), true, &cfg, nil)
+				return nil
+			},
+			contains: []string{"FOOBER v98", "Git hash: \tabc123", "Version: \tv98"},
+			absent:   []string{"Server started on:", "Prefork:"},
+		},
+		{name: "DisabledPostHook", addr: ":7070", cfg: ListenConfig{DisableStartupMessage: true}, silent: true, disabled: true},
+		{
+			name: "PreventedByHook", addr: ":9090", silent: true, prevented: true,
+			pre: func(data *PreStartupMessageData) error {
+				data.PreventDefault = true
 
-	startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
-	colors := Colors{}
-	expectedURL := fmt.Sprintf("https://server.com:%d", port)
-	rootMiscBRequireContains(t, startupMessage,
-		fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset),
-		fmt.Sprintf("%s%s%s", colors.Blue, appName, colors.Reset),
-		fmt.Sprintf("%s%s%s", colors.Blue, expectedURL, colors.Reset),
-		fmt.Sprintf("Prefork: \t\t\t%sDisabled%s", colors.Red, colors.Reset),
-	)
-}
+				return nil
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := tc.cfg
+			app := New()
+			listenData := app.prepareListenData(tc.addr, false, &cfg, nil)
 
-func Test_StartupMessageCustomization(t *testing.T) {
-	cfg := ListenConfig{}
-	app := New()
-	listenData := app.prepareListenData(":8080", false, &cfg, nil)
+			if tc.pre != nil {
+				app.Hooks().OnPreStartupMessage(tc.pre)
+			}
+			var post PostStartupMessageData
+			app.Hooks().OnPostStartupMessage(func(data *PostStartupMessageData) error {
+				post = *data
 
-	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
-		data.BannerHeader = "FOOBER v98\n-------"
+				return nil
+			})
 
-		data.ResetEntries()
-		data.AddInfo("git_hash", "Git hash", "abc123", 3)
-		data.AddInfo("version", "Version", "v98", 2)
+			startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
 
-		return nil
-	})
-
-	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data *PostStartupMessageData) error {
-		post = *data
-
-		return nil
-	})
-
-	startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
-
-	rootMiscBRequireContains(t, startupMessage, "FOOBER v98", "Git hash: \tabc123", "Version: \tv98")
-	rootMiscBRequireNotContains(t, startupMessage, "Server started on:", "Prefork:")
-
-	require.False(t, post.Disabled)
-	require.False(t, post.IsChild)
-	require.False(t, post.Prevented)
-}
-
-func Test_StartupMessageDisabledPostHook(t *testing.T) {
-	cfg := ListenConfig{DisableStartupMessage: true}
-	app := New()
-	listenData := app.prepareListenData(":7070", false, &cfg, nil)
-
-	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data *PostStartupMessageData) error {
-		post = *data
-
-		return nil
-	})
-
-	startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
-
-	require.Empty(t, startupMessage)
-	require.True(t, post.Disabled)
-	require.False(t, post.IsChild)
-	require.False(t, post.Prevented)
-}
-
-func Test_StartupMessagePreventedByHook(t *testing.T) {
-	cfg := ListenConfig{}
-	app := New()
-	listenData := app.prepareListenData(":9090", false, &cfg, nil)
-
-	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
-		data.PreventDefault = true
-
-		return nil
-	})
-
-	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data *PostStartupMessageData) error {
-		post = *data
-
-		return nil
-	})
-
-	startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
-
-	require.Empty(t, startupMessage)
-	require.False(t, post.Disabled)
-	require.False(t, post.IsChild)
-	require.True(t, post.Prevented)
+			if tc.silent {
+				require.Empty(t, startupMessage)
+			}
+			rootMiscBRequireContains(t, startupMessage, tc.contains...)
+			rootMiscBRequireNotContains(t, startupMessage, tc.absent...)
+			require.Equal(t, tc.disabled, post.Disabled)
+			require.False(t, post.IsChild)
+			require.Equal(t, tc.prevented, post.Prevented)
+		})
+	}
 }
 
 func Test_Listen_Print_Route(t *testing.T) {

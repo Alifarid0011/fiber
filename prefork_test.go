@@ -7,7 +7,6 @@ package fiber
 import (
 	"context"
 	"crypto/tls"
-	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -39,7 +38,6 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	ipv6Cfg := ListenConfig{ListenerNetwork: NetworkTCP6}
 	require.NoError(t, app.prefork("[::1]:", nil, &ipv6Cfg))
 
-	// Create tls certificate
 	config := &tls.Config{Certificates: []tls.Certificate{rootMiscBTestCert(t)}}
 
 	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
@@ -81,32 +79,18 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	setupIsChild(t)
 
-	rescueStdout := os.Stdout
-	defer func() { os.Stdout = rescueStdout }()
-
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	os.Stdout = w
-
-	cfg := listenConfigDefault()
-	app := New()
-	app.startupProcess()
-	listenData := app.prepareListenData(":0", false, &cfg, nil)
-	app.startupMessage(listenData, &cfg)
-
-	require.NoError(t, w.Close())
-
-	out, err := io.ReadAll(r)
-	require.NoError(t, err)
+	out := captureOutput(func() {
+		cfg := listenConfigDefault()
+		app := New()
+		app.startupProcess()
+		listenData := app.prepareListenData(":0", false, &cfg, nil)
+		app.startupMessage(listenData, &cfg)
+	})
 	require.Empty(t, out)
 }
 
 func Test_IsChild(t *testing.T) {
-	// Without env var, should be false
 	require.False(t, IsChild())
-
-	// With env var, should be true
 	setupIsChild(t)
 	require.True(t, IsChild())
 }

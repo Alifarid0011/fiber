@@ -80,17 +80,238 @@ func domainTestEngine(t *testing.T, dir string) *testTemplateEngine {
 	return engine
 }
 
-func Test_Domain_Basic(t *testing.T) {
+// domainTestCheck is a request sent with the given Host and the response it must get. An empty method is GET, an
+// empty body is not checked, and a header, when named, must have value (empty: must be absent).
+type domainTestCheck struct {
+	method, host, path string
+	body               string
+	header, value      string
+	status             int
+}
+
+// Test_Domain_Routing registers routes through the domain router API on a new
+// app per row and sends the row's requests, each with its Host.
+func Test_Domain_Routing(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	app.Domain("api.example.com").Get("/hello", func(c Ctx) error { return c.SendString("api hello") })
-
-	// Matching domain
-	domainTestExpectBody(t, app, "api.example.com", "/hello", StatusOK, "api hello")
-
-	// Non-matching domain → 404
-	domainTestExpect(t, app, "www.example.com", "/hello", StatusNotFound)
+	for _, tc := range []struct {
+		register func(app *App)
+		name     string
+		checks   []domainTestCheck
+	}{
+		{name: "basic", register: func(app *App) {
+			app.Domain("api.example.com").Get("/hello", func(c Ctx) error { return c.SendString("api hello") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/hello", status: StatusOK, body: "api hello"},
+			{host: "www.example.com", path: "/hello", status: StatusNotFound},
+		}},
+		{name: "multiple domains", register: func(app *App) {
+			app.Domain("api.example.com").Get("/", func(c Ctx) error { return c.SendString("api") })
+			app.Domain("www.example.com").Get("/", func(c Ctx) error { return c.SendString("www") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/", status: StatusOK, body: "api"},
+			{host: "www.example.com", path: "/", status: StatusOK, body: "www"},
+			{host: "other.example.com", path: "/", status: StatusNotFound},
+		}},
+		{name: "group of a domain", register: func(app *App) {
+			app.Domain("api.example.com").Group("/api").Get("/users", func(c Ctx) error {
+				return c.SendString("users list")
+			})
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/api/users", status: StatusOK, body: "users list"},
+			{host: "www.example.com", path: "/api/users", status: StatusNotFound},
+		}},
+		{name: "domain of a group", register: func(app *App) {
+			app.Group("/api").Domain("api.example.com").Get("/users", func(c Ctx) error {
+				return c.SendString("users from group domain")
+			})
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/api/users", status: StatusOK, body: "users from group domain"},
+			{host: "www.example.com", path: "/api/users", status: StatusNotFound},
+		}},
+		{name: "domain of a domain", register: func(app *App) {
+			// replaces the pattern of the domain router it is created from
+			other := app.Domain("api.example.com").Domain("www.example.com")
+			other.Get("/", func(c Ctx) error { return c.SendString("www") })
+		}, checks: []domainTestCheck{{host: "www.example.com", path: "/", status: StatusOK, body: "www"}}},
+		{name: "nested groups", register: func(app *App) {
+			users := app.Domain("api.example.com").Group("/v1").Group("/users")
+			users.Get("/", func(c Ctx) error { return c.SendString("v1 users") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/v1/users/", status: StatusOK, body: "v1 users"},
+		}},
+		{name: "path params", register: func(app *App) {
+			app.Domain(":tenant.example.com").Get("/users/:id", func(c Ctx) error {
+				return c.SendString(DomainParam(c, "tenant") + ":" + c.Params("id"))
+			})
+		}, checks: []domainTestCheck{{host: "acme.example.com", path: "/users/42", status: StatusOK, body: "acme:42"}}},
+		{name: "stale domain params cleared", register: func(app *App) {
+			app.Domain(":tenant.example.com").Use(func(c Ctx) error {
+				c.Set("X-Tenant", DomainParam(c, "tenant"))
+				return c.Next()
+			})
+			// a static domain (no params) must clear the params the parametric one set
+			app.Domain("static.example.com").Get("/check", func(c Ctx) error {
+				return c.SendString("tenant=" + DomainParam(c, "tenant"))
+			})
+		}, checks: []domainTestCheck{{host: "static.example.com", path: "/check", status: StatusOK, body: "tenant="}}},
+		{name: "fallback to a route without domain", register: func(app *App) {
+			// the domain route is registered first
+			app.Domain("api.example.com").Get("/", func(c Ctx) error { return c.SendString("api") })
+			app.Get("/", func(c Ctx) error { return c.SendString("fallback") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/", status: StatusOK, body: "api"},
+			{host: "www.example.com", path: "/", status: StatusOK, body: "fallback"},
+		}},
+		{name: "HEAD route", register: func(app *App) {
+			app.Domain("api.example.com").Head("/test", func(c Ctx) error {
+				c.Set("X-Custom", "head")
+				return c.SendStatus(StatusOK)
+			})
+		}, checks: []domainTestCheck{{method: MethodHead, host: "api.example.com", path: "/test", status: StatusOK}}},
+		{name: "All", register: func(app *App) {
+			app.Domain("api.example.com").All("/test", func(c Ctx) error { return c.SendString("all methods") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/test", status: StatusOK},
+			{method: MethodPost, host: "api.example.com", path: "/test", status: StatusOK},
+			{method: MethodPut, host: "api.example.com", path: "/test", status: StatusOK},
+			{method: MethodDelete, host: "api.example.com", path: "/test", status: StatusOK},
+		}},
+		{name: "Add", register: func(app *App) {
+			app.Domain("api.example.com").Add([]string{MethodGet, MethodPost}, "/test", func(c Ctx) error {
+				return c.SendString("ok")
+			})
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/test", status: StatusOK},
+			{method: MethodPost, host: "api.example.com", path: "/test", status: StatusOK},
+		}},
+		{name: "chained registration", register: func(app *App) {
+			// the methods return the domain router for chaining
+			app.Domain("api.example.com").Get("/a", func(c Ctx) error { return c.SendString("a") }).
+				Post("/b", func(c Ctx) error { return c.SendString("b") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/a", status: StatusOK},
+			{method: MethodPost, host: "api.example.com", path: "/b", status: StatusOK},
+		}},
+		{name: "Route", register: func(app *App) {
+			app.Domain("api.example.com").Route("/api", func(router Router) {
+				router.Get("/users", func(c Ctx) error { return c.SendString("users") })
+				router.Get("/posts", func(c Ctx) error { return c.SendString("posts") })
+			})
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/api/users", status: StatusOK, body: "users"},
+			{host: "api.example.com", path: "/api/posts", status: StatusOK, body: "posts"},
+			{host: "www.example.com", path: "/api/users", status: StatusNotFound},
+		}},
+		{name: "RouteChain", register: func(app *App) {
+			app.Domain("api.example.com").RouteChain("/api/users").
+				Get(func(c Ctx) error { return c.SendString("get users") }).
+				Post(func(c Ctx) error { return c.SendString("create user") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/api/users", status: StatusOK, body: "get users"},
+			{method: MethodPost, host: "api.example.com", path: "/api/users", status: StatusOK, body: "create user"},
+			{host: "www.example.com", path: "/api/users", status: StatusNotFound},
+		}},
+		{name: "nested RouteChain", register: func(app *App) {
+			app.Domain("api.example.com").RouteChain("/api").RouteChain("/v1").
+				Get(func(c Ctx) error { return c.SendString("v1") })
+		}, checks: []domainTestCheck{{host: "api.example.com", path: "/api/v1", status: StatusOK, body: "v1"}}},
+		{name: "mounted sub-app", register: func(app *App) {
+			subApp := New()
+			subApp.Get("/users", func(c Ctx) error { return c.SendString("users list") })
+			subApp.Get("/posts", func(c Ctx) error { return c.SendString("posts list") })
+			app.Domain("api.example.com").Use("/api", subApp)
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/api/users", status: StatusOK, body: "users list"},
+			{host: "api.example.com", path: "/api/posts", status: StatusOK, body: "posts list"},
+			{host: "www.example.com", path: "/api/users", status: StatusNotFound},
+		}},
+		{name: "sub-app mounted at the root", register: func(app *App) {
+			app.Domain("api.example.com").Use(domainTestApp("/users", "users list"))
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/users", status: StatusOK, body: "users list"},
+			{host: "www.example.com", path: "/users", status: StatusNotFound},
+		}},
+		{name: "sub-app mounted through a group", register: func(app *App) {
+			app.Group("/api").Domain("api.example.com").Use("/v1", domainTestApp("/data", "data response"))
+		}, checks: []domainTestCheck{
+			// the group prefix, then the mount prefix
+			{host: "api.example.com", path: "/api/v1/data", status: StatusOK, body: "data response"},
+			{host: "www.example.com", path: "/api/v1/data", status: StatusNotFound},
+		}},
+		{name: "middleware", register: func(app *App) {
+			domain := app.Domain("api.example.com")
+			domain.Use(func(c Ctx) error {
+				c.Set("X-Domain", "api")
+				return c.Next()
+			})
+			domain.Get("/", func(c Ctx) error { return c.SendString("ok") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/", status: StatusOK, header: "X-Domain", value: "api"},
+			{host: "www.example.com", path: "/", status: StatusNotFound, header: "X-Domain"},
+		}},
+		{name: "middleware under a prefix", register: func(app *App) {
+			domain := app.Domain("api.example.com")
+			domain.Use("/api", func(c Ctx) error {
+				c.Set("X-API", "true")
+				return c.Next()
+			})
+			domain.Get("/api/data", func(c Ctx) error { return c.SendString("data") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/api/data", status: StatusOK, header: "X-API", value: "true"},
+		}},
+		{name: "middleware under several prefixes", register: func(app *App) {
+			domain := app.Domain("api.example.com")
+			domain.Use([]string{"/a", "/b"}, func(c Ctx) error {
+				c.Set("X-Domain-MW", "true")
+				return c.Next()
+			})
+			domain.Get("/a/test", func(c Ctx) error { return c.SendString("a") })
+			domain.Get("/b/test", func(c Ctx) error { return c.SendString("b") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/a/test", status: StatusOK, header: "X-Domain-MW", value: "true"},
+			{host: "api.example.com", path: "/b/test", status: StatusOK, header: "X-Domain-MW", value: "true"},
+		}},
+		{name: "group middleware", register: func(app *App) {
+			api := app.Domain("api.example.com").Group("/api", func(c Ctx) error {
+				c.Set("X-Group-MW", "yes")
+				return c.Next()
+			})
+			api.Get("/data", func(c Ctx) error { return c.SendString("data") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/api/data", status: StatusOK, header: "X-Group-MW", value: "yes"},
+			{host: "www.example.com", path: "/api/data", status: StatusNotFound, header: "X-Group-MW"},
+		}},
+		{name: "several handlers", register: func(app *App) {
+			app.Domain("api.example.com").Get("/test", func(c Ctx) error {
+				c.Set("X-First", "true")
+				return c.Next()
+			}, func(c Ctx) error { return c.SendString("final") })
+		}, checks: []domainTestCheck{
+			{host: "api.example.com", path: "/test", status: StatusOK, body: "final", header: "X-First", value: "true"},
+			{host: "www.example.com", path: "/test", status: StatusNotFound, header: "X-First"},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			tc.register(app)
+			for _, check := range tc.checks {
+				method := check.method
+				if method == "" {
+					method = MethodGet
+				}
+				where := check.host + check.path
+				req := apptest.Req(method, check.path, apptest.WithHost(check.host))
+				resp := apptest.Expect(t, app, req, check.status)
+				if check.body != "" {
+					require.Equal(t, check.body, apptest.Body(t, resp), "%s %s", method, where)
+				}
+				if check.header != "" {
+					require.Equal(t, check.value, resp.Header.Get(check.header), "%s %s", method, where)
+				}
+			}
+		})
+	}
 }
 
 // Test_Domain_Params registers one domain route per row, answering with what
@@ -182,74 +403,6 @@ func Test_Domain_HostMatching(t *testing.T) {
 	}
 }
 
-func Test_Domain_MultipleDomains(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Domain("api.example.com").Get("/", func(c Ctx) error { return c.SendString("api") })
-
-	app.Domain("www.example.com").Get("/", func(c Ctx) error { return c.SendString("www") })
-
-	// First domain
-	domainTestExpectBody(t, app, "api.example.com", "/", StatusOK, "api")
-
-	// Second domain
-	domainTestExpectBody(t, app, "www.example.com", "/", StatusOK, "www")
-
-	// Unknown domain
-	domainTestExpect(t, app, "other.example.com", "/", StatusNotFound)
-}
-
-// Test_Domain_Group verifies that a route registered through a group of a domain
-// router, or through a domain router of a group, is served on that domain only.
-func Test_Domain_Group(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		register func(app *App, handler Handler)
-		name     string
-		body     string
-	}{
-		{name: "group of a domain", body: "users list", register: func(app *App, handler Handler) {
-			app.Domain("api.example.com").Group("/api").Get("/users", handler)
-		}},
-		{name: "domain of a group", body: "users from group domain", register: func(app *App, handler Handler) {
-			app.Group("/api").Domain("api.example.com").Get("/users", handler)
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			app := New()
-			tc.register(app, func(c Ctx) error { return c.SendString(tc.body) })
-
-			// Matching domain + path
-			domainTestExpectBody(t, app, "api.example.com", "/api/users", StatusOK, tc.body)
-
-			// Wrong domain
-			domainTestExpect(t, app, "www.example.com", "/api/users", StatusNotFound)
-		})
-	}
-}
-
-func Test_Domain_WithMiddleware(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	domain := app.Domain("api.example.com")
-	domain.Use(func(c Ctx) error {
-		c.Set("X-Domain", "api")
-		return c.Next()
-	})
-	domain.Get("/", func(c Ctx) error { return c.SendString("ok") })
-
-	// Matching domain - middleware should set header
-	resp := domainTestExpect(t, app, "api.example.com", "/", StatusOK)
-	require.Equal(t, "api", resp.Header.Get("X-Domain"))
-
-	// Non-matching domain - middleware should not set header
-	resp = domainTestExpect(t, app, "www.example.com", "/", StatusNotFound)
-	require.Empty(t, resp.Header.Get("X-Domain"))
-}
-
 func Test_Domain_HTTPMethods(t *testing.T) {
 	t.Parallel()
 	methods := []struct {
@@ -280,281 +433,38 @@ func Test_Domain_HTTPMethods(t *testing.T) {
 	}
 }
 
-func Test_Domain_Head(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Domain("api.example.com").Head("/test", func(c Ctx) error {
-		c.Set("X-Custom", "head")
-		return c.SendStatus(StatusOK)
-	})
-
-	apptest.Expect(t, app, apptest.Req(MethodHead, "/test", apptest.WithHost("api.example.com")), StatusOK)
-}
-
-func Test_Domain_All(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Domain("api.example.com").All("/test", func(c Ctx) error { return c.SendString("all methods") })
-
-	for _, method := range []string{MethodGet, MethodPost, MethodPut, MethodDelete} {
-		apptest.Expect(t, app, apptest.Req(method, "/test", apptest.WithHost("api.example.com")), StatusOK)
-	}
-}
-
-func Test_Domain_Add(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Domain("api.example.com").Add([]string{MethodGet, MethodPost}, "/test", func(c Ctx) error {
-		return c.SendString("ok")
-	})
-
-	// GET should work
-	domainTestExpect(t, app, "api.example.com", "/test", StatusOK)
-
-	// POST should work
-	apptest.Expect(t, app, apptest.Req(MethodPost, "/test", apptest.WithHost("api.example.com")), StatusOK)
-}
-
-func Test_Domain_Route(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Domain("api.example.com").Route("/api", func(router Router) {
-		router.Get("/users", func(c Ctx) error { return c.SendString("users") })
-		router.Get("/posts", func(c Ctx) error { return c.SendString("posts") })
-	})
-
-	domainTestExpectBody(t, app, "api.example.com", "/api/users", StatusOK, "users")
-
-	domainTestExpectBody(t, app, "api.example.com", "/api/posts", StatusOK, "posts")
-
-	// Wrong domain
-	domainTestExpect(t, app, "www.example.com", "/api/users", StatusNotFound)
-}
-
 func Test_Domain_Name(t *testing.T) {
 	t.Parallel()
-	app := New()
+	for _, tc := range []struct {
+		register func(app *App)
+		name     string
+		want     string
+	}{
+		{name: "route", want: "api-test", register: func(app *App) {
+			app.Domain("api.example.com").Get("/test", func(c Ctx) error { return c.SendString("ok") }).Name("api-test")
+		}},
+		// When Domain is used with Route(prefix, fn, name), the group Name()
+		// should apply properly via delegation to the underlying group.
+		{name: "group", want: "v1.items-list", register: func(app *App) {
+			app.Domain("api.example.com").Route("/v1", func(r Router) {
+				r.Get("/items", func(c Ctx) error { return c.SendString("items") }).Name("items-list")
+			}, "v1.")
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			tc.register(app)
 
-	app.Domain("api.example.com").Get("/test", func(c Ctx) error { return c.SendString("ok") }).Name("api-test")
-
-	// Verify route was named - by checking routes
-	var found bool
-	for _, routes := range app.Stack() {
-		for _, route := range routes {
-			if route.Name == "api-test" {
-				found = true
-				break
+			var found bool
+			for _, routes := range app.Stack() {
+				for _, route := range routes {
+					found = found || route.Name == tc.want
+				}
 			}
-		}
+			require.True(t, found, "route should be named %q", tc.want)
+		})
 	}
-	require.True(t, found, "route should be named 'api-test'")
-}
-
-func Test_Domain_NameWithGroup(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	// When Domain is used with Route(prefix, fn, name), the group Name()
-	// should apply properly via delegation to the underlying group.
-	api := app.Domain("api.example.com")
-	api.Route("/v1", func(r Router) {
-		r.Get("/items", func(c Ctx) error { return c.SendString("items") }).Name("items-list")
-	}, "v1.")
-
-	var found bool
-	for _, routes := range app.Stack() {
-		for _, route := range routes {
-			if route.Name == "v1.items-list" {
-				found = true
-				break
-			}
-		}
-	}
-	require.True(t, found, "route should be named 'v1.items-list'")
-}
-
-func Test_Domain_RouteChain(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Domain("api.example.com").RouteChain("/api/users").Get(func(c Ctx) error { return c.SendString("get users") }).
-		Post(func(c Ctx) error { return c.SendString("create user") })
-
-	// GET
-	domainTestExpectBody(t, app, "api.example.com", "/api/users", StatusOK, "get users")
-
-	// POST
-	apptest.ExpectBody(t, app, apptest.Req(MethodPost, "/api/users", apptest.WithHost("api.example.com")), StatusOK, "create user")
-
-	// Wrong domain
-	domainTestExpect(t, app, "www.example.com", "/api/users", StatusNotFound)
-}
-
-func Test_Domain_UseWithPrefix(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	domain := app.Domain("api.example.com")
-	domain.Use("/api", func(c Ctx) error {
-		c.Set("X-API", "true")
-		return c.Next()
-	})
-	domain.Get("/api/data", func(c Ctx) error { return c.SendString("data") })
-
-	resp := domainTestExpect(t, app, "api.example.com", "/api/data", StatusOK)
-	require.Equal(t, "true", resp.Header.Get("X-API"))
-}
-
-func Test_Domain_FallbackToNonDomain(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	// Domain-specific route registered first
-	app.Domain("api.example.com").Get("/", func(c Ctx) error { return c.SendString("api") })
-
-	// Fallback non-domain route
-	app.Get("/", func(c Ctx) error { return c.SendString("fallback") })
-
-	// Domain route matches
-	domainTestExpectBody(t, app, "api.example.com", "/", StatusOK, "api")
-
-	// Fallback route matches for other domains
-	domainTestExpectBody(t, app, "www.example.com", "/", StatusOK, "fallback")
-}
-
-func Test_Domain_WithPathParams(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Domain(":tenant.example.com").Get("/users/:id", func(c Ctx) error {
-		tenant := DomainParam(c, "tenant")
-		id := c.Params("id")
-		return c.SendString(tenant + ":" + id)
-	})
-
-	domainTestExpectBody(t, app, "acme.example.com", "/users/42", StatusOK, "acme:42")
-}
-
-func Test_Domain_NestedGroups(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	domain := app.Domain("api.example.com")
-	v1 := domain.Group("/v1")
-	users := v1.Group("/users")
-	users.Get("/", func(c Ctx) error { return c.SendString("v1 users") })
-
-	domainTestExpectBody(t, app, "api.example.com", "/v1/users/", StatusOK, "v1 users")
-}
-
-func Test_Domain_Chaining(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	// Methods should return the domain router for chaining
-	domain := app.Domain("api.example.com")
-	domain.Get("/a", func(c Ctx) error { return c.SendString("a") }).
-		Post("/b", func(c Ctx) error { return c.SendString("b") })
-
-	domainTestExpect(t, app, "api.example.com", "/a", StatusOK)
-
-	apptest.Expect(t, app, apptest.Req(MethodPost, "/b", apptest.WithHost("api.example.com")), StatusOK)
-}
-
-func Test_Domain_MultipleHandlers(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Domain("api.example.com").Get(
-		"/test",
-		func(c Ctx) error {
-			c.Set("X-First", "true")
-			return c.Next()
-		},
-		func(c Ctx) error { return c.SendString("final") },
-	)
-
-	// Matching host — both handlers should run
-	resp := domainTestExpect(t, app, "api.example.com", "/test", StatusOK)
-	require.Equal(t, "true", resp.Header.Get("X-First"))
-	require.Equal(t, "final", apptest.Body(t, resp))
-
-	// Non-matching host — none of the handlers should run
-	resp = domainTestExpect(t, app, "www.example.com", "/test", StatusNotFound)
-	require.Empty(t, resp.Header.Get("X-First"))
-}
-
-func Test_Domain_NetHTTPHandler(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	// Register a net/http handler through domain routing
-	app.Domain("api.example.com").Get("/http", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte("net/http handler"))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}))
-
-	domainTestExpect(t, app, "api.example.com", "/http", StatusOK)
-}
-
-func Test_Domain_DomainOnDomain(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	// Domain created from a domain router (should replace the pattern)
-	base := app.Domain("api.example.com")
-	other := base.Domain("www.example.com")
-
-	other.Get("/", func(c Ctx) error { return c.SendString("www") })
-
-	domainTestExpectBody(t, app, "www.example.com", "/", StatusOK, "www")
-}
-
-func Test_Domain_GroupMiddleware(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	domain := app.Domain("api.example.com")
-	api := domain.Group("/api", func(c Ctx) error {
-		c.Set("X-Group-MW", "yes")
-		return c.Next()
-	})
-	api.Get("/data", func(c Ctx) error { return c.SendString("data") })
-
-	// Matching domain
-	resp := domainTestExpect(t, app, "api.example.com", "/api/data", StatusOK)
-	require.Equal(t, "yes", resp.Header.Get("X-Group-MW"))
-
-	// Non-matching domain
-	resp = domainTestExpect(t, app, "www.example.com", "/api/data", StatusNotFound)
-	require.Empty(t, resp.Header.Get("X-Group-MW"))
-}
-
-func Test_Domain_UseMultiplePrefixes(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	domain := app.Domain("api.example.com")
-	domain.Use([]string{"/a", "/b"}, func(c Ctx) error {
-		c.Set("X-Domain-MW", "true")
-		return c.Next()
-	})
-	domain.Get("/a/test", func(c Ctx) error { return c.SendString("a") })
-	domain.Get("/b/test", func(c Ctx) error { return c.SendString("b") })
-
-	resp := domainTestExpect(t, app, "api.example.com", "/a/test", StatusOK)
-	require.Equal(t, "true", resp.Header.Get("X-Domain-MW"))
-
-	resp = domainTestExpect(t, app, "api.example.com", "/b/test", StatusOK)
-	require.Equal(t, "true", resp.Header.Get("X-Domain-MW"))
 }
 
 func Test_Domain_RoutePanic(t *testing.T) {
@@ -562,93 +472,6 @@ func Test_Domain_RoutePanic(t *testing.T) {
 	app := New()
 
 	require.Panics(t, func() { app.Domain("api.example.com").Route("/test", nil) })
-}
-
-func Test_Domain_UseMount(t *testing.T) {
-	t.Parallel()
-	app := New()
-	subApp := New()
-
-	// Create routes in the sub-app
-	subApp.Get("/users", func(c Ctx) error { return c.SendString("users list") })
-	subApp.Get("/posts", func(c Ctx) error { return c.SendString("posts list") })
-
-	// Mount the sub-app on the domain router
-	app.Domain("api.example.com").Use("/api", subApp)
-
-	// Test that sub-app routes work on the correct domain
-	domainTestExpectBody(t, app, "api.example.com", "/api/users", StatusOK, "users list")
-
-	// Test second route
-	domainTestExpectBody(t, app, "api.example.com", "/api/posts", StatusOK, "posts list")
-
-	// Test that sub-app routes don't work on wrong domain
-	domainTestExpect(t, app, "www.example.com", "/api/users", StatusNotFound)
-}
-
-func Test_Domain_UseMountNoPrefix(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	// Create a route in the sub-app
-	subApp := domainTestApp("/users", "users list")
-
-	// Mount the sub-app at root on the domain router
-	app.Domain("api.example.com").Use(subApp)
-
-	// Test that sub-app routes work
-	domainTestExpectBody(t, app, "api.example.com", "/users", StatusOK, "users list")
-
-	// Wrong domain should 404
-	domainTestExpect(t, app, "www.example.com", "/users", StatusNotFound)
-}
-
-func Test_Domain_UseMountFromGroup(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	// Create a route in the sub-app
-	subApp := domainTestApp("/data", "data response")
-
-	// Mount via a group's domain router
-	api := app.Group("/api")
-	api.Domain("api.example.com").Use("/v1", subApp)
-
-	// Test that sub-app routes work with group prefix + mount prefix
-	domainTestExpectBody(t, app, "api.example.com", "/api/v1/data", StatusOK, "data response")
-
-	// Wrong domain should 404
-	domainTestExpect(t, app, "www.example.com", "/api/v1/data", StatusNotFound)
-}
-
-func Test_Domain_StaleParamsCleared(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	// First: a domain with a parameter
-	app.Domain(":tenant.example.com").Use(func(c Ctx) error {
-		c.Set("X-Tenant", DomainParam(c, "tenant"))
-		return c.Next()
-	})
-
-	// Second: a static domain (no params) — should clear any stale params
-	app.Domain("static.example.com").Get("/check", func(c Ctx) error {
-		// DomainParam should return "" since the static domain has no params
-		val := DomainParam(c, "tenant")
-		return c.SendString("tenant=" + val)
-	})
-
-	domainTestExpectBody(t, app, "static.example.com", "/check", StatusOK, "tenant=")
-}
-
-func Test_Domain_RouteChainNested(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Domain("api.example.com").RouteChain("/api").RouteChain("/v1").
-		Get(func(c Ctx) error { return c.SendString("v1") })
-
-	domainTestExpectBody(t, app, "api.example.com", "/api/v1", StatusOK, "v1")
 }
 
 func Test_Domain_RouteChainAllMethods(t *testing.T) {
@@ -744,7 +567,6 @@ func Test_domainMatcher_match(t *testing.T) {
 // all handler types defined in adapter.go.
 func Test_Domain_HandlerTypes(t *testing.T) {
 	t.Parallel()
-
 	// Handlers that are the only one of their route.
 	for _, tc := range []struct {
 		handler any
@@ -766,6 +588,15 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		{name: "net/http HandlerFunc", handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		})},
+		{name: "net/http HandlerFunc writing a body", body: "net/http handler", handler: http.HandlerFunc(
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, err := w.Write([]byte("net/http handler"))
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+			})},
 		{name: "net/http func handler", handler: func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}},
@@ -850,7 +681,6 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		})
 	}
 
-	// Verify non-matching domain doesn't execute any handler type
 	t.Run("non-matching domain skips all handler types", func(t *testing.T) {
 		t.Parallel()
 		app := New()
@@ -867,7 +697,6 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 	})
 }
 
-// Test_Domain_UseHandlerTypes verifies that Use() is compatible with all handler types.
 func Test_Domain_UseHandlerTypes(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -947,27 +776,23 @@ func Benchmark_Domain_NoImpact(b *testing.B) {
 	}
 }
 
-// Test_Domain_Security_InvalidPatterns tests that malformed domain patterns are
-// rejected when the domain router is created.
-func Test_Domain_Security_InvalidPatterns(t *testing.T) {
+// Test_Domain_Security_Patterns checks which domain patterns are rejected when
+// the domain router is created, and that valid parameter names are accepted.
+func Test_Domain_Security_Patterns(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		pattern string
+		valid   bool
 	}{
-		// Empty domain patterns are rejected
 		{name: "empty", pattern: ""},
 		{name: "blank", pattern: "   "},
-		// Domain patterns with empty labels are rejected
 		{name: "empty label in the middle", pattern: "example..com"},
 		{name: "empty leading label", pattern: ".example.com"},
-		// Empty parameter names are rejected
 		{name: "empty parameter name", pattern: ":.example.com"},
-		// Invalid parameter names are rejected
 		{name: "parameter name with at sign", pattern: ":user@host.example.com"},
 		{name: "parameter name with dollar sign", pattern: ":user$.example.com"},
 		{name: "parameter name with space", pattern: ":user name.example.com"},
-		// Invalid domain characters are rejected
 		{name: "label with dollar sign", pattern: "example$.com"},
 		{name: "label with at sign", pattern: "example@domain.com"},
 		{name: "label with space", pattern: "example domain.com"},
@@ -977,19 +802,24 @@ func Test_Domain_Security_InvalidPatterns(t *testing.T) {
 		// names (DNS names are ASCII-only).
 		{name: "non-ASCII label", pattern: "ünïcödé.example.com"},
 		{name: "non-ASCII parameter name", pattern: ":üser.example.com"},
+		{name: "alphanumeric parameter name", pattern: ":user123.example.com", valid: true},
+		{name: "parameter name with underscore", pattern: ":user_name.example.com", valid: true},
+		{name: "parameter name with hyphen", pattern: ":user-name.example.com", valid: true},
+		{name: "mixed parameter name", pattern: ":user_123-name.example.com", valid: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			if tc.valid {
+				require.NotPanics(t, func() { parseDomainPattern(tc.pattern) })
+				return
+			}
 			require.Panics(t, func() { parseDomainPattern(tc.pattern) })
 		})
 	}
 }
 
-// Test_Domain_Security_InvalidHostnameChars tests that hostnames with invalid characters are rejected
 func Test_Domain_Security_InvalidHostnameChars(t *testing.T) {
 	t.Parallel()
-
-	// Test hostnames with invalid characters that can be tested
 	// Note: Some invalid chars (like spaces) are rejected by httptest.NewRequest itself
 	for _, tc := range []struct {
 		name string
@@ -1016,27 +846,6 @@ func Test_Domain_Security_InvalidHostnameChars(t *testing.T) {
 	}
 }
 
-// Test_Domain_Security_ValidParamNames tests that valid parameter names are accepted
-func Test_Domain_Security_ValidParamNames(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name    string
-		pattern string
-	}{
-		{name: "alphanumeric", pattern: ":user123.example.com"},
-		{name: "underscore", pattern: ":user_name.example.com"},
-		{name: "hyphen", pattern: ":user-name.example.com"},
-		{name: "mixed", pattern: ":user_123-name.example.com"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			require.NotPanics(t, func() { parseDomainPattern(tt.pattern) })
-		})
-	}
-}
-
 // Test_Domain_UseMountReusable verifies that mounting the same sub-app on
 // multiple domain routers does not double-wrap handlers (the original sub-app
 // is not mutated).
@@ -1044,18 +853,11 @@ func Test_Domain_UseMountReusable(t *testing.T) {
 	t.Parallel()
 	app := New()
 	subApp := domainTestApp("/data", "data response")
-
-	// Mount the same sub-app on two different domains
 	app.Domain("api.example.com").Use("/v1", subApp)
 	app.Domain("admin.example.com").Use("/v1", subApp)
 
-	// Test first domain works
 	domainTestExpectBody(t, app, "api.example.com", "/v1/data", StatusOK, "data response")
-
-	// Test second domain works
 	domainTestExpectBody(t, app, "admin.example.com", "/v1/data", StatusOK, "data response")
-
-	// Test wrong domain is rejected for both
 	domainTestExpect(t, app, "www.example.com", "/v1/data", StatusNotFound)
 }
 
@@ -1065,21 +867,14 @@ func Test_Domain_UseMountReusable(t *testing.T) {
 func Test_Domain_UseMountRoutesAfterMount(t *testing.T) {
 	t.Parallel()
 	app := New()
-
-	// Register a route BEFORE mounting
 	subApp := domainTestApp("/before", "before mount")
-
-	// Mount on domain router
 	app.Domain("api.example.com").Use("/api", subApp)
 
 	// Register a route AFTER mounting — this will NOT be domain-filtered
 	// because mount() clones routes at mount time.
 	subApp.Get("/after", func(c Ctx) error { return c.SendString("after mount") })
 
-	// Route registered before mount should be domain-filtered
 	domainTestExpectBody(t, app, "api.example.com", "/api/before", StatusOK, "before mount")
-
-	// Route registered before mount should be rejected on wrong domain
 	domainTestExpect(t, app, "www.example.com", "/api/before", StatusNotFound)
 
 	// Route registered after mount on the original sub-app is NOT included
@@ -1102,13 +897,9 @@ func Test_Domain_UseMountNested(t *testing.T) {
 	app := New()
 	app.Domain("api.example.com").Use("/api", subApp)
 
-	// The nested route is reachable on the matching host
 	domainTestExpectBody(t, app, "api.example.com", "/api/v1/x", StatusOK, "nested x")
-
 	// The sub-app's own routes still work alongside the nested ones
 	domainTestExpectBody(t, app, "api.example.com", "/api/flat", StatusOK, "flat")
-
-	// Both are rejected on a non-matching host
 	domainTestExpect(t, app, "www.example.com", "/api/v1/x", StatusNotFound)
 	domainTestExpect(t, app, "www.example.com", "/api/flat", StatusNotFound)
 }
@@ -1130,7 +921,6 @@ func Test_Domain_UseMountNestedDeep(t *testing.T) {
 	app.Domain(":tenant.example.com").Use("/api", subApp)
 
 	domainTestExpectBody(t, app, "acme.example.com", "/api/v1/v2/deep", StatusOK, "tenant=acme")
-
 	domainTestExpect(t, app, "acme.example.org", "/api/v1/v2/deep", StatusNotFound)
 }
 
@@ -1157,7 +947,6 @@ func Test_Domain_UseMountNestedMiddleware(t *testing.T) {
 
 	domainTestExpectBody(t, app, "www.example.com", "/api/v1/x", StatusOK, "fallback")
 	require.Equal(t, 0, hits, "nested middleware must not run on a non-matching host")
-
 	domainTestExpectBody(t, app, "api.example.com", "/api/v1/x", StatusOK, "nested x")
 	require.Equal(t, 1, hits)
 }
@@ -1175,7 +964,6 @@ func Test_Domain_UseMountNestedAtRoot(t *testing.T) {
 	app.Domain("api.example.com").Use(subApp)
 
 	domainTestExpectBody(t, app, "api.example.com", "/x", StatusOK, "nested x")
-
 	domainTestExpect(t, app, "www.example.com", "/x", StatusNotFound)
 }
 
@@ -1193,7 +981,6 @@ func Test_Domain_UseMountNestedFromGroup(t *testing.T) {
 	api.Domain("api.example.com").Use("/mnt", subApp)
 
 	domainTestExpectBody(t, app, "api.example.com", "/api/mnt/v1/data", StatusOK, "data response")
-
 	domainTestExpect(t, app, "www.example.com", "/api/mnt/v1/data", StatusNotFound)
 }
 
@@ -1213,7 +1000,6 @@ func Test_Domain_UseMountNestedReusable(t *testing.T) {
 
 	domainTestExpectBody(t, app, "api.example.com", "/api/v1/x", StatusOK, "nested x")
 	domainTestExpectBody(t, app, "admin.example.com", "/api/v1/x", StatusOK, "nested x")
-
 	domainTestExpect(t, app, "www.example.com", "/api/v1/x", StatusNotFound)
 
 	// The original sub-app's handlers were never wrapped, so a plain mount of
@@ -1261,7 +1047,6 @@ func Test_Domain_UseMountNestedParams(t *testing.T) {
 	app.Domain("api.example.com").Use("/api", subApp)
 
 	domainTestExpectBody(t, app, "api.example.com", "/api/v1/user/42", StatusOK, "id=42")
-
 	domainTestExpectBody(t, app, "api.example.com", "/api/v1/files/a/b.txt", StatusOK, "file=a/b.txt")
 }
 
@@ -1281,7 +1066,6 @@ func Test_Domain_UseMountNestedDomainMount(t *testing.T) {
 	app.Domain("api.example.com").Use("/api", subApp)
 
 	domainTestExpectBody(t, app, "api.example.com", "/api/v1/x", StatusOK, "nested x")
-
 	domainTestExpect(t, app, "www.example.com", "/api/v1/x", StatusNotFound)
 
 	// Mounted plainly: the sub-app's own domain filter still applies.
@@ -1289,7 +1073,6 @@ func Test_Domain_UseMountNestedDomainMount(t *testing.T) {
 	plain.Use("/api", subApp)
 
 	domainTestExpectBody(t, plain, "api.example.com", "/api/v1/x", StatusOK, "nested x")
-
 	domainTestExpect(t, plain, "www.example.com", "/api/v1/x", StatusNotFound)
 }
 
@@ -1305,7 +1088,6 @@ func Test_Domain_UseMountNestedRestrictedMethods(t *testing.T) {
 	app.Domain("api.example.com").Use("/api", subApp)
 
 	domainTestExpectBody(t, app, "api.example.com", "/api/x", StatusOK, "restricted x")
-
 	domainTestExpect(t, app, "www.example.com", "/api/x", StatusNotFound)
 }
 
@@ -1325,7 +1107,6 @@ func Test_Domain_UseMountNestedExtraMethods(t *testing.T) {
 	app.Domain("api.example.com").Use("/api", subApp)
 
 	domainTestExpectBody(t, app, "api.example.com", "/api/v1/x", StatusOK, "nested x")
-
 	domainTestExpect(t, app, "www.example.com", "/api/v1/x", StatusNotFound)
 }
 
@@ -1334,7 +1115,6 @@ func Test_Domain_UseMountNestedExtraMethods(t *testing.T) {
 // registered with, and that a shorter table does not cut the clone short.
 func Test_Domain_UseMountNestedRequestMethods(t *testing.T) {
 	t.Parallel()
-
 	// Swap GET and POST, so the two apps' stack indexes disagree.
 	methods := append([]string{}, DefaultMethods...)
 	for i, method := range methods {
@@ -1378,7 +1158,6 @@ func Test_Domain_UseMountAutoHead(t *testing.T) {
 	// startup pass a served app performs.
 	for _, path := range []string{"/api/v1/nested", "/api/flat"} {
 		apptest.Expect(t, app, apptest.Req(MethodHead, path, apptest.WithHost("api.example.com")), StatusOK)
-
 		apptest.Expect(t, app, apptest.Req(MethodHead, path, apptest.WithHost("www.example.com")), StatusNotFound)
 	}
 }
@@ -1498,7 +1277,6 @@ func Test_Domain_UseMountLeavesSubAppIntact(t *testing.T) {
 	app.Domain("api.example.com").Use("/api", subApp)
 
 	domainTestExpect(t, app, "api.example.com", "/api/v1/x", StatusOK)
-
 	require.Len(t, subApp.stack[getIndex], routesBefore, "the sub-app's own stack was rewritten")
 	require.True(t, subApp.stack[getIndex][0].mount, "the sub-app's mount was expanded in place")
 
@@ -1556,7 +1334,6 @@ func Test_Domain_UseMountReloadViews(t *testing.T) {
 	app.Domain("api.example.com").Use("/api", subApp)
 
 	require.NoError(t, app.ReloadViews())
-
 	domainTestExpectBody(t, app, "api.example.com", "/api/view", StatusOK, "<h1>I'm Bruh</h1>")
 }
 
@@ -1654,7 +1431,6 @@ func Test_Domain_UseMountAfterOuterMount(t *testing.T) {
 	mid.Domain("api.example.com").Use("/child", child)
 
 	domainTestExpectBody(t, app, "api.example.com", "/mid/child/boom", 596, "child error")
-
 	domainTestExpect(t, app, "www.example.com", "/mid/child/boom", StatusNotFound)
 }
 
@@ -1673,7 +1449,6 @@ func Test_Domain_UseMountParametricPrefix(t *testing.T) {
 	app.Domain("api.example.com").Use("/api", subApp)
 
 	domainTestExpectBody(t, app, "api.example.com", "/api/v1/42/x", StatusOK, "version=42")
-
 	domainTestExpect(t, app, "www.example.com", "/api/v1/42/x", StatusNotFound)
 }
 
@@ -1693,7 +1468,6 @@ func Test_Domain_UseMountCaseInsensitivePath(t *testing.T) {
 	app.Domain("api.example.com").Use("/API", subApp)
 
 	domainTestExpect(t, app, "api.example.com", "/api/boom", 599)
-
 	domainTestExpectBody(t, app, "api.example.com", "/api/view", StatusOK, "<h1>I'm Bruh</h1>")
 
 	// Still host-scoped: another host gets neither the route nor the config.
@@ -1719,7 +1493,6 @@ func Test_Domain_UseMountRecordedOnce(t *testing.T) {
 	}
 
 	apptest.Do(t, app, apptest.Req(MethodGet, "/unrouted", apptest.WithHost("api.example.com")))
-
 	require.Len(t, app.mountFields.domainAppList, 1)
 }
 
@@ -1744,7 +1517,6 @@ func Test_Domain_UseMountReloadViewsBeforeStart(t *testing.T) {
 // a later overlapping mount's engine is not borrowed for it.
 func Test_Domain_UseMountOverlappingViews(t *testing.T) {
 	t.Parallel()
-
 	// Registered first, owns the route, and configures no views of its own.
 	exact := domainTestRenderApp("/view", "index.tmpl", Map{"Title": "exact"})
 
@@ -1907,7 +1679,6 @@ func Test_Domain_UseMountLateOrdinaryDescendant(t *testing.T) {
 // than through a plain mount at its own path, which did not serve the request.
 func Test_Domain_UseMountViewsSkipsPlainSibling(t *testing.T) {
 	t.Parallel()
-
 	// Registered at the same path, and holds no template the domain mount asks
 	// for: borrowing it would fail rather than render the wrong page.
 	plain := domainTestRenderApp("/other", "bruh.tmpl", Map{}, Config{Views: domainTestEngine(t, "testdata2")})
@@ -2380,8 +2151,6 @@ func Test_Domain_UseMountNestedCycle(t *testing.T) {
 // are enforced for domain patterns (253 total, 63 per label).
 func Test_Domain_Security_PatternLengthLimits(t *testing.T) {
 	t.Parallel()
-
-	// Pattern exceeding 253 total characters
 	t.Run("total length exceeds 253", func(t *testing.T) {
 		t.Parallel()
 		// 250 chars of 'a' + ".com" = 254 chars total > 253
@@ -2390,14 +2159,12 @@ func Test_Domain_Security_PatternLengthLimits(t *testing.T) {
 		require.Panics(t, func() { parseDomainPattern(longPattern) })
 	})
 
-	// Single label exceeding 63 characters
 	t.Run("label exceeds 63 chars", func(t *testing.T) {
 		t.Parallel()
 		longLabel := strings.Repeat("a", 64)
 		require.Panics(t, func() { parseDomainPattern(longLabel + ".example.com") })
 	})
 
-	// Pattern at exactly 253 characters should not panic
 	t.Run("253 chars total is valid", func(t *testing.T) {
 		t.Parallel()
 		label63 := strings.Repeat("a", 63)
@@ -2406,7 +2173,6 @@ func Test_Domain_Security_PatternLengthLimits(t *testing.T) {
 		require.NotPanics(t, func() { parseDomainPattern(pattern) })
 	})
 
-	// Label at exactly 63 characters should not panic
 	t.Run("63 char label is valid", func(t *testing.T) {
 		t.Parallel()
 		label63 := strings.Repeat("a", 63)
