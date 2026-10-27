@@ -614,13 +614,11 @@ func Test_Listen_TLSConfigFunc(t *testing.T) {
 
 func Test_Listen_TLSConfig(t *testing.T) {
 	t.Parallel()
-
 	cert := rootMiscBTestCert(t)
 
 	run := func(name string, cfg ListenConfig) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 
 			rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
@@ -654,7 +652,6 @@ func Test_Listen_TLSConfig(t *testing.T) {
 
 func Test_Listen_TLSCertFiles(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
@@ -669,7 +666,6 @@ func Test_Listen_TLSCertFiles(t *testing.T) {
 
 func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
 	t.Parallel()
-
 	cert := rootMiscBTestCert(t)
 
 	var calledTLSConfigFunc bool
@@ -766,7 +762,6 @@ func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
 
 func Test_Listen_AutoCert_Conflicts(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	err := app.Listen(":0", ListenConfig{
@@ -779,7 +774,6 @@ func Test_Listen_AutoCert_Conflicts(t *testing.T) {
 
 func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 	t.Parallel()
-
 	invalidClientCAPath := filepath.Join(t.TempDir(), "client-ca.pem")
 	require.NoError(t, os.WriteFile(invalidClientCAPath, []byte("not a pem"), 0o600))
 
@@ -803,7 +797,6 @@ func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			done := make(chan struct{})
 			defer close(done)
@@ -828,7 +821,6 @@ func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 
 func Test_Listen_ClientCertErrorDoesNotSetTLSHandler(t *testing.T) {
 	t.Parallel()
-
 	invalidClientCAPath := filepath.Join(t.TempDir(), "client-ca.pem")
 	require.NoError(t, os.WriteFile(invalidClientCAPath, []byte("not a pem"), 0o600))
 
@@ -884,7 +876,6 @@ func Test_Listen_BeforeServeFunc(t *testing.T) {
 // Listen serves with the close hook installed.
 func Test_Listen_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Post("/", func(c Ctx) error { return c.SendString("ok") })
 
@@ -1413,7 +1404,6 @@ func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
 
 	t.Run("still rejected where it is read", func(t *testing.T) {
 		t.Parallel()
-
 		cfg := listenConfigDefault(ListenConfig{TLSMinVersion: tls.VersionTLS11})
 		require.PanicsWithValue(t,
 			"unsupported TLS version, please use tls.VersionTLS12 or tls.VersionTLS13",
@@ -1422,7 +1412,6 @@ func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
 
 	t.Run("the default is accepted", func(t *testing.T) {
 		t.Parallel()
-
 		cfg := listenConfigDefault()
 		require.Equal(t, uint16(tls.VersionTLS12), cfg.TLSMinVersion)
 		require.NotPanics(t, func() { validateTLSMinVersion(&cfg) })
@@ -1431,7 +1420,6 @@ func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
 
 func Test_Listen_GracefulShutdown_HooksOnce(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
 
@@ -1473,7 +1461,6 @@ func Test_Listen_GracefulShutdown_HooksOnce(t *testing.T) {
 // Issue #3370: Listen must not hand control back while requests are draining.
 func Test_Listen_GracefulShutdown_DrainsBeforeReturn(t *testing.T) {
 	t.Parallel()
-
 	var handlerDone atomic.Bool
 	inHandler := make(chan struct{}, 1)
 
@@ -1540,7 +1527,6 @@ func Test_Listen_GracefulShutdown_DrainsBeforeReturn(t *testing.T) {
 
 func Test_Listen_GracefulShutdown_NoHooksOnListenError(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	var fired atomic.Int32
@@ -1563,7 +1549,6 @@ func Test_Listen_GracefulShutdown_NoHooksOnListenError(t *testing.T) {
 
 func Test_ListenConfigDefault_ShutdownTimeout(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name string
 		cfg  []ListenConfig
@@ -1582,7 +1567,6 @@ func Test_ListenConfigDefault_ShutdownTimeout(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.Equal(t, tc.want, listenConfigDefault(tc.cfg...).ShutdownTimeout)
 		})
 	}
@@ -1590,7 +1574,6 @@ func Test_ListenConfigDefault_ShutdownTimeout(t *testing.T) {
 
 func Test_GracefulShutdown_NegativeTimeoutWaitsIndefinitely(t *testing.T) {
 	t.Parallel()
-
 	inHandler := make(chan struct{}, 1)
 	app := New()
 	app.Get("/", func(c Ctx) error {
@@ -1789,13 +1772,11 @@ func (e gracefulEntry) requireClosed(t *testing.T, f *gracefulFixture) {
 // whole shutdown before Serve, so none of them relies on timing.
 func Test_GracefulContext_DoneBeforeServe(t *testing.T) {
 	t.Parallel()
-
 	for _, entry := range gracefulEntries {
 		for _, point := range gracefulPoints {
 			for _, state := range gracefulContextStates {
 				t.Run(entry.name+"/"+point.name+"/"+state.name, func(t *testing.T) {
 					t.Parallel()
-
 					f := newGracefulFixture(t)
 					point.wire(f, func() { f.cancelAndAwait() })
 					state.prepare(f)
@@ -1812,11 +1793,9 @@ func Test_GracefulContext_DoneBeforeServe(t *testing.T) {
 // already done. The docs promise "not at all when Listen fails before serving".
 func Test_Listen_GracefulContext_BindFailureRunsNoHooks(t *testing.T) {
 	t.Parallel()
-
 	for _, state := range gracefulContextStates {
 		t.Run(state.name, func(t *testing.T) {
 			t.Parallel()
-
 			f := newGracefulFixture(t)
 			state.prepare(f)
 
@@ -1830,7 +1809,6 @@ func Test_Listen_GracefulContext_BindFailureRunsNoHooks(t *testing.T) {
 // The listener Listen created is closed, not left bound after Listen returned.
 func Test_Listen_GracefulContext_ClosesListener(t *testing.T) {
 	t.Parallel()
-
 	dir, err := os.MkdirTemp("", "fiber-test")
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, os.RemoveAll(dir)) })
@@ -1858,7 +1836,6 @@ func (l *closeSignalListener) Close() error {
 // then closed twice, and the second close, by Shutdown, must not hand OnPostShutdown an error.
 func Test_gracefulRun_Draining_ClosesListenerOnce(t *testing.T) {
 	t.Parallel()
-
 	f := newGracefulFixture(t)
 	ln := &closeSignalListener{Listener: f.ln, closed: make(chan struct{})}
 
@@ -1887,7 +1864,6 @@ func Test_gracefulRun_Draining_ClosesListenerOnce(t *testing.T) {
 // A Shutdown after the early cancel succeeds, although fasthttp still holds the listener Serve refused.
 func Test_GracefulContext_ShutdownAfterEarlyCancel(t *testing.T) {
 	t.Parallel()
-
 	f := newGracefulFixture(t)
 	onListenPoint.wire(f, func() { f.cancelAndAwait() })
 
@@ -1899,7 +1875,6 @@ func Test_GracefulContext_ShutdownAfterEarlyCancel(t *testing.T) {
 // holds the shutdown, whether the cancel came while it served or while it started up.
 func Test_GracefulContext_ServesDuringOnPreShutdown(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		prepare func(f *gracefulFixture)
 		trigger func(t *testing.T, f *gracefulFixture)
@@ -1929,7 +1904,6 @@ func Test_GracefulContext_ServesDuringOnPreShutdown(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			f := newGracefulFixture(t)
 			inHook := make(chan struct{})
 			release := make(chan struct{})
@@ -1980,10 +1954,8 @@ func (*stubListener) Addr() net.Addr { return &net.TCPAddr{} }
 
 func Test_gracefulListener(t *testing.T) {
 	t.Parallel()
-
 	t.Run("forwards Accept until the shutdown is draining", func(t *testing.T) {
 		t.Parallel()
-
 		acceptErr := errors.New("accept failed")
 		stub := &stubListener{acceptErr: acceptErr}
 		ln := &gracefulListener{Listener: stub, draining: new(atomic.Bool)}
@@ -1996,7 +1968,6 @@ func Test_gracefulListener(t *testing.T) {
 
 	t.Run("refuses and closes once the shutdown is draining", func(t *testing.T) {
 		t.Parallel()
-
 		draining := new(atomic.Bool)
 		draining.Store(true)
 		stub := &stubListener{}
@@ -2013,7 +1984,6 @@ func Test_gracefulListener(t *testing.T) {
 
 	t.Run("closes the wrapped listener once and repeats its result", func(t *testing.T) {
 		t.Parallel()
-
 		closeErr := errors.New("close failed")
 		stub := &stubListener{closeErr: closeErr}
 		ln := &gracefulListener{Listener: stub, draining: new(atomic.Bool)}
@@ -2082,10 +2052,8 @@ func Test_gracefulListener_LogsAFailedCloseOnce(t *testing.T) {
 
 func Test_gracefulRun(t *testing.T) {
 	t.Parallel()
-
 	t.Run("without a GracefulContext the watch is inert and hands the listener back as it is", func(t *testing.T) {
 		t.Parallel()
-
 		watch := New().watchGracefulContext(&ListenConfig{})
 		plain := &stubListener{}
 
@@ -2096,7 +2064,6 @@ func Test_gracefulRun(t *testing.T) {
 
 	t.Run("with a GracefulContext the watch is a run, which wraps the listener and follows its own flag", func(t *testing.T) {
 		t.Parallel()
-
 		watch := New().watchGracefulContext(&ListenConfig{GracefulContext: t.Context()})
 		run, ok := watch.(*gracefulRun)
 		require.True(t, ok, "a context needs a run that watches it")
@@ -2114,7 +2081,6 @@ func Test_gracefulRun(t *testing.T) {
 
 	t.Run("runs on one app do not share their drain", func(t *testing.T) {
 		t.Parallel()
-
 		app := New()
 		first := app.newGracefulRun(&ListenConfig{GracefulContext: t.Context()})
 		second := app.newGracefulRun(&ListenConfig{GracefulContext: t.Context()})
@@ -2157,7 +2123,6 @@ func Benchmark_gracefulListener_Accept(b *testing.B) {
 
 func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name string
 		cfg  ListenConfig
@@ -2169,7 +2134,6 @@ func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			cfg := tc.cfg
 			cfg.DisableStartupMessage = true
@@ -2185,7 +2149,6 @@ func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 
 func Test_Listener_TLS_ClientHelloInfo_PerConnection(t *testing.T) {
 	t.Parallel()
-
 	cert := rootMiscBTestCert(t)
 
 	tlsHandler := &TLSHandler{}
@@ -2235,7 +2198,6 @@ func Test_Listener_TLS_ClientHelloInfo_PerConnection(t *testing.T) {
 
 func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
 
@@ -2274,7 +2236,6 @@ func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 
 func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP_NoLeak(t *testing.T) {
 	t.Parallel()
-
 	cert := rootMiscBTestCert(t)
 
 	tlsHandler := &TLSHandler{}
@@ -2318,7 +2279,6 @@ func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP_NoLeak(t *testing.T) {
 
 func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP(t *testing.T) {
 	t.Parallel()
-
 	cert := rootMiscBTestCert(t)
 
 	tlsHandler := &TLSHandler{}

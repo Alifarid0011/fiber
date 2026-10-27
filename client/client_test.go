@@ -113,10 +113,8 @@ func clientTestAClient(t *testing.T, routes func(app *fiber.App)) *Client {
 
 func Test_New_With_Client(t *testing.T) {
 	t.Parallel()
-
 	t.Run("with valid client", func(t *testing.T) {
 		t.Parallel()
-
 		c := &fasthttp.Client{MaxConnsPerHost: 5}
 		client := NewWithClient(c)
 
@@ -125,17 +123,14 @@ func Test_New_With_Client(t *testing.T) {
 
 	t.Run("with nil client", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithValue(t, "fasthttp.Client must not be nil", func() { NewWithClient(nil) })
 	})
 }
 
 func Test_New_With_HostClient(t *testing.T) {
 	t.Parallel()
-
 	t.Run("with valid host client", func(t *testing.T) {
 		t.Parallel()
-
 		hc := &fasthttp.HostClient{Addr: "example.com:80"}
 		client := NewWithHostClient(hc)
 
@@ -146,17 +141,14 @@ func Test_New_With_HostClient(t *testing.T) {
 
 	t.Run("with nil host client", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithValue(t, "fasthttp.HostClient must not be nil", func() { NewWithHostClient(nil) })
 	})
 }
 
 func Test_New_With_LBClient(t *testing.T) {
 	t.Parallel()
-
 	t.Run("with valid lb client", func(t *testing.T) {
 		t.Parallel()
-
 		lb := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{&fasthttp.HostClient{Addr: "example.com:80"}}}
 
 		client := NewWithLBClient(lb)
@@ -169,14 +161,12 @@ func Test_New_With_LBClient(t *testing.T) {
 
 	t.Run("with nil lb client", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithValue(t, "fasthttp.LBClient must not be nil", func() { NewWithLBClient(nil) })
 	})
 }
 
 func TestClientUnderlyingTransports(t *testing.T) {
 	t.Parallel()
-
 	std := New()
 	require.NotNil(t, std.FasthttpClient())
 	require.Nil(t, std.HostClient())
@@ -197,7 +187,6 @@ func TestClientUnderlyingTransports(t *testing.T) {
 
 func TestClientCBORUnmarshalOverride(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	initial := client.CBORUnmarshal()
 	require.NotNil(t, initial)
@@ -221,7 +210,6 @@ func TestClientCBORUnmarshalOverride(t *testing.T) {
 
 func TestClientSetRootCertificateErrors(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	require.Panics(t, func() { client.SetRootCertificate("does-not-exist.pem") })
 
@@ -234,14 +222,12 @@ func TestClientSetRootCertificateErrors(t *testing.T) {
 
 func TestClientSetRootCertificateFromStringError(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	require.Panics(t, func() { client.SetRootCertificateFromString("invalid pem data") })
 }
 
 func TestClientLoggerAccessors(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	_ = client.Logger()
 	contextual := log.WithContext(context.Background())
@@ -256,7 +242,6 @@ func TestClientLoggerAccessors(t *testing.T) {
 // error paths of SetRootCertificate dereferenced it.
 func Test_Client_DefaultLogger(t *testing.T) {
 	t.Parallel()
-
 	clients := map[string]*Client{
 		"New":               New(),
 		"NewWithClient":     NewWithClient(&fasthttp.Client{}),
@@ -266,7 +251,6 @@ func Test_Client_DefaultLogger(t *testing.T) {
 	for name, c := range clients {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			require.NotNil(t, c.Logger())
 			require.Equal(t, log.DefaultLogger[*stdlog.Logger](), c.Logger())
 		})
@@ -288,7 +272,6 @@ func recoverValue(fn func()) any {
 // logger turned it into a nil pointer dereference that named nothing.
 func Test_Client_SetRootCertificate_InvalidInput(t *testing.T) {
 	t.Parallel()
-
 	noCertificate := filepath.Join(t.TempDir(), "invalid.pem")
 	require.NoError(t, os.WriteFile(noCertificate, []byte("not a pem"), 0o600))
 	missing := filepath.Join(t.TempDir(), "missing.pem")
@@ -319,7 +302,6 @@ func Test_Client_SetRootCertificate_InvalidInput(t *testing.T) {
 		} {
 			t.Run(tc.name+"/"+loggerName, func(t *testing.T) {
 				t.Parallel()
-
 				c := New()
 				setup(c)
 
@@ -339,7 +321,6 @@ func Test_Client_SetRootCertificate_InvalidInput(t *testing.T) {
 
 func TestClientResetClearsState(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 
 	jar := AcquireCookieJar()
@@ -380,10 +361,8 @@ func TestClientResetClearsState(t *testing.T) {
 
 func Test_Client_Add_Hook(t *testing.T) {
 	t.Parallel()
-
 	t.Run("add request hooks", func(t *testing.T) {
 		t.Parallel()
-
 		buf := bytebufferpool.Get()
 		defer bytebufferpool.Put(buf)
 
@@ -407,7 +386,6 @@ func Test_Client_Add_Hook(t *testing.T) {
 
 	t.Run("add final request hooks", func(t *testing.T) {
 		t.Parallel()
-
 		client := New().AddFinalRequestHook(func(_ *Client, _ *Request) error { return nil })
 
 		require.Len(t, client.FinalRequestHook(), 1)
@@ -454,7 +432,6 @@ func (tr clientTestATransport) run(t *testing.T) {
 
 	t.Run("do and redirects", func(t *testing.T) {
 		t.Parallel()
-
 		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
 			app.Get("/ok", func(c fiber.Ctx) error { return c.SendString("ok") })
 			app.Get("/redirect", func(c fiber.Ctx) error { return c.Redirect().Status(fiber.StatusFound).To("/ok") })
@@ -472,7 +449,6 @@ func (tr clientTestATransport) run(t *testing.T) {
 
 	t.Run("retries respect dial overrides", func(t *testing.T) {
 		t.Parallel()
-
 		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("retry") })
 		})
@@ -496,7 +472,6 @@ func (tr clientTestATransport) run(t *testing.T) {
 
 	t.Run("tls configuration propagates", func(t *testing.T) {
 		t.Parallel()
-
 		app, addr, clientTLSConf := clientTestAStartTLSServer(t, "tls-"+tr.name)
 
 		client := tr.newClient(addr, true)
@@ -515,7 +490,6 @@ func (tr clientTestATransport) run(t *testing.T) {
 
 	t.Run("proxy overrides and reset", func(t *testing.T) {
 		t.Parallel()
-
 		client := tr.newClient("example.com:80", false)
 
 		require.NoError(t, client.SetProxyURL("http://127.0.0.1:8080"))
@@ -543,7 +517,6 @@ func (tr clientTestATransport) run(t *testing.T) {
 
 func Test_Client_HostClient_Behavior(t *testing.T) {
 	t.Parallel()
-
 	transport := clientTestATransport{
 		name: "host",
 		newClient: func(addr string, isTLS bool) *Client {
@@ -555,7 +528,6 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 
 	t.Run("timeouts and close idle", func(t *testing.T) {
 		t.Parallel()
-
 		client := NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80"})
 
 		var dialCalls atomic.Int32
@@ -587,7 +559,6 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 
 func Test_Client_LBClient_Behavior(t *testing.T) {
 	t.Parallel()
-
 	transport := clientTestATransport{
 		name: "lb",
 		newClient: func(addr string, isTLS bool) *Client {
@@ -601,7 +572,6 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 
 	t.Run("timeouts and close idle", func(t *testing.T) {
 		t.Parallel()
-
 		client := NewWithLBClient(&fasthttp.LBClient{
 			Clients: []fasthttp.BalancingClient{
 				&fasthttp.HostClient{Addr: "example.com:80"},
@@ -642,7 +612,6 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 
 func Test_Client_Add_Hook_CheckOrder(t *testing.T) {
 	t.Parallel()
-
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
@@ -684,7 +653,6 @@ func clientTestAMarshal[F ~func(any) ([]byte, error)](t *testing.T, format strin
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			client := set(New(), func(_ any) ([]byte, error) { return tc.payload, tc.err })
 
 			val, err := get(client)(nil)
@@ -704,7 +672,6 @@ func clientTestAUnmarshal[F ~func([]byte, any) error](t *testing.T, format strin
 	for _, name := range []string{"set " + format + " unmarshal", "set " + format + " unmarshal error"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			client := set(New(), func(_ []byte, _ any) error { return failure })
 
 			require.Equal(t, failure, get(client)(nil, nil))
@@ -714,7 +681,6 @@ func clientTestAUnmarshal[F ~func([]byte, any) error](t *testing.T, format strin
 
 func Test_Client_Marshal(t *testing.T) {
 	t.Parallel()
-
 	clientTestAMarshal(t, "json", (*Client).SetJSONMarshal, (*Client).JSONMarshal, []byte("hello"), errors.New("empty json"))
 	clientTestAMarshal(t, "xml", (*Client).SetXMLMarshal, (*Client).XMLMarshal, []byte("hello"), errors.New("empty xml"))
 	clientTestAMarshal(t, "cbor", (*Client).SetCBORMarshal, (*Client).CBORMarshal, []byte{0xf6}, errors.New("invalid struct"))
@@ -725,7 +691,6 @@ func Test_Client_Marshal(t *testing.T) {
 
 func Test_Client_SetBaseURL(t *testing.T) {
 	t.Parallel()
-
 	client := New().SetBaseURL("http://example.com")
 
 	require.Equal(t, "http://example.com", client.BaseURL())
@@ -733,7 +698,6 @@ func Test_Client_SetBaseURL(t *testing.T) {
 
 func Test_Client_Invalid_URL(t *testing.T) {
 	t.Parallel()
-
 	app, dial, start := createHelperServer(t)
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Hostname()) })
@@ -747,7 +711,6 @@ func Test_Client_Invalid_URL(t *testing.T) {
 
 func Test_Client_Unsupported_Protocol(t *testing.T) {
 	t.Parallel()
-
 	_, err := New().R().Get("ftp://example.com")
 
 	require.ErrorIs(t, err, ErrURLFormat)
@@ -755,7 +718,6 @@ func Test_Client_Unsupported_Protocol(t *testing.T) {
 
 func Test_Client_ConcurrencyRequests(t *testing.T) {
 	t.Parallel()
-
 	app, dial, start := createHelperServer(t)
 	app.All("/", func(c fiber.Ctx) error { return c.SendString(c.Hostname() + " " + c.Method()) })
 	go start()
@@ -782,7 +744,6 @@ func Test_Client_ConcurrencyRequests(t *testing.T) {
 // its own. Each of the two starts a server that only knows the method under test.
 func Test_Client_HTTPMethods(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		global      func(url string, cfg ...Config) (*Response, error)
 		client      func(c *Client, url string, cfg ...Config) (*Response, error)
@@ -900,7 +861,6 @@ func Test_Client_HTTPMethods(t *testing.T) {
 			run := func(variant string, send func(url string, cfg ...Config) (*Response, error), delay time.Duration) {
 				t.Run(variant, func(t *testing.T) {
 					t.Parallel()
-
 					app, addr := startTestServerWithPort(t, func(app *fiber.App) {
 						app.Add([]string{tc.method}, "/", tc.handler)
 					})
@@ -932,7 +892,6 @@ func Test_Client_HTTPMethods(t *testing.T) {
 
 func Test_Client_UserAgent(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		send func(url string) (*Response, error)
 		name string
@@ -947,7 +906,6 @@ func Test_Client_UserAgent(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, addr := startTestServerWithPort(t, func(app *fiber.App) {
 				app.Get("/", func(c fiber.Ctx) error { return c.Send(c.Request().Header.UserAgent()) })
 			})
@@ -979,7 +937,6 @@ func (e clientTestAMultiValue) run(t *testing.T) {
 
 	t.Run("add "+e.noun, func(t *testing.T) {
 		t.Parallel()
-
 		client := New()
 		e.add(e.add(client, "foo", "bar"), "foo", "fiber")
 
@@ -988,7 +945,6 @@ func (e clientTestAMultiValue) run(t *testing.T) {
 
 	t.Run("set "+e.noun, func(t *testing.T) {
 		t.Parallel()
-
 		client := New()
 		e.set(e.add(client, "foo", "bar"), "foo", "fiber")
 
@@ -997,7 +953,6 @@ func (e clientTestAMultiValue) run(t *testing.T) {
 
 	t.Run("add "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-
 		client := New()
 		e.addMany(e.set(client, "foo", "bar"), map[string][]string{"foo": {"fiber", "buaa"}, "bar": {"foo"}})
 
@@ -1007,7 +962,6 @@ func (e clientTestAMultiValue) run(t *testing.T) {
 
 	t.Run("set "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-
 		client := New()
 		e.setMany(e.set(client, "foo", "bar"), map[string]string{"foo": "fiber", "bar": "foo"})
 
@@ -1018,7 +972,6 @@ func (e clientTestAMultiValue) run(t *testing.T) {
 
 func Test_Client_Header(t *testing.T) {
 	t.Parallel()
-
 	headers := clientTestAMultiValue{
 		noun:    "header",
 		add:     (*Client).AddHeader,
@@ -1031,7 +984,6 @@ func Test_Client_Header(t *testing.T) {
 
 	t.Run("set header case-insensitive", func(t *testing.T) {
 		t.Parallel()
-
 		client := New()
 		client.SetHeader("foo", "bar").AddHeader("FOO", "fiber")
 
@@ -1043,7 +995,6 @@ func Test_Client_Header(t *testing.T) {
 // setup and checks what the handler made of it.
 func Test_Client_Settings_With_Server(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		handler fiber.Handler
 		setup   func(c *Client)
@@ -1103,7 +1054,6 @@ func Test_Client_Settings_With_Server(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			testClient(t, tc.handler, tc.setup, tc.want)
 		})
 	}
@@ -1128,7 +1078,6 @@ func (e clientTestASingleValue) run(t *testing.T, structArg any) {
 
 	t.Run("set "+e.noun, func(t *testing.T) {
 		t.Parallel()
-
 		client := e.set(New(), "foo", "bar")
 		require.Equal(t, "bar", e.get(client, "foo"))
 
@@ -1138,7 +1087,6 @@ func (e clientTestASingleValue) run(t *testing.T, structArg any) {
 
 	t.Run("set "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-
 		client := e.setMany(New(), map[string]string{"foo": "bar", "bar": "foo"})
 		require.Equal(t, "bar", e.get(client, "foo"))
 		require.Equal(t, "foo", e.get(client, "bar"))
@@ -1150,7 +1098,6 @@ func (e clientTestASingleValue) run(t *testing.T, structArg any) {
 
 	t.Run("set "+e.noun+"s with struct", func(t *testing.T) {
 		t.Parallel()
-
 		client := e.setStruct(New(), structArg)
 
 		require.Equal(t, "5", e.get(client, "int"))
@@ -1159,7 +1106,6 @@ func (e clientTestASingleValue) run(t *testing.T, structArg any) {
 
 	t.Run("del "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-
 		client := e.setMany(New(), map[string]string{"foo": "bar", "bar": "foo"})
 		require.Equal(t, "bar", e.get(client, "foo"))
 		require.Equal(t, "foo", e.get(client, "bar"))
@@ -1193,7 +1139,6 @@ var (
 
 func Test_Client_Cookie(t *testing.T) {
 	t.Parallel()
-
 	clientTestACookies.run(t, &struct {
 		CookieString string `cookie:"string"`
 		CookieInt    int    `cookie:"int"`
@@ -1227,7 +1172,6 @@ func Test_Client_CookieJar(t *testing.T) {
 
 func Test_Client_CookieJar_Response(t *testing.T) {
 	t.Parallel()
-
 	t.Run("without expiration", func(t *testing.T) {
 		t.Parallel()
 		handler := func(c fiber.Ctx) error {
@@ -1296,7 +1240,6 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 
 func Test_Client_QueryParam(t *testing.T) {
 	t.Parallel()
-
 	params := clientTestAMultiValue{
 		noun:    "param",
 		add:     (*Client).AddParam,
@@ -1309,7 +1252,6 @@ func Test_Client_QueryParam(t *testing.T) {
 
 	t.Run("set params with struct", func(t *testing.T) {
 		t.Parallel()
-
 		type args struct {
 			TString   string
 			TSlice    []string
@@ -1355,7 +1297,6 @@ func Test_Client_QueryParam(t *testing.T) {
 
 func Test_Client_PathParam(t *testing.T) {
 	t.Parallel()
-
 	clientTestAPathParams.run(t, &struct {
 		CookieString string `path:"string"`
 		CookieInt    int    `path:"int"`
@@ -1376,7 +1317,6 @@ func Test_Client_PathParam_With_Server(t *testing.T) {
 
 func Test_Client_TLS(t *testing.T) {
 	t.Parallel()
-
 	_, addr, clientTLSConf := clientTestAStartTLSServer(t, "tls")
 
 	client := New()
@@ -1409,7 +1349,6 @@ func Test_Client_TLS_Error(t *testing.T) {
 
 func Test_Client_TLS_Empty_TLSConfig(t *testing.T) {
 	t.Parallel()
-
 	_, addr, clientTLSConf := clientTestAStartTLSServer(t, "tls")
 
 	client := New()
@@ -1422,7 +1361,6 @@ func Test_Client_TLS_Empty_TLSConfig(t *testing.T) {
 
 func Test_Client_SetCertificates(t *testing.T) {
 	t.Parallel()
-
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
 	require.NoError(t, err)
 
@@ -1432,14 +1370,12 @@ func Test_Client_SetCertificates(t *testing.T) {
 
 func Test_Client_SetRootCertificate(t *testing.T) {
 	t.Parallel()
-
 	client := New().SetRootCertificate("../.github/testdata/ssl.pem")
 	require.NotNil(t, client.TLSConfig().RootCAs)
 }
 
 func Test_Client_SetRootCertificateFromString(t *testing.T) {
 	t.Parallel()
-
 	file, err := os.Open("../.github/testdata/ssl.pem")
 	defer func() { require.NoError(t, file.Close()) }()
 	require.NoError(t, err)
@@ -1453,7 +1389,6 @@ func Test_Client_SetRootCertificateFromString(t *testing.T) {
 
 func Test_Client_R(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	req := client.R()
 
@@ -1526,7 +1461,6 @@ func Test_Replace_ConcurrentAccess(t *testing.T) {
 
 func Test_Set_Config_To_Request(t *testing.T) {
 	t.Parallel()
-
 	type ctxKey struct{}
 	var key ctxKey = struct{}{}
 
@@ -1633,7 +1567,6 @@ func Test_Set_Config_To_Request(t *testing.T) {
 		tc := &tests[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := AcquireRequest()
 
 			setConfigToRequest(req, tc.cfg)
@@ -1645,7 +1578,6 @@ func Test_Set_Config_To_Request(t *testing.T) {
 
 func Test_Client_SetProxyURL(t *testing.T) {
 	t.Parallel()
-
 	app, dial, start := createHelperServer(t)
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Get("isProxy")) })
 
@@ -1697,7 +1629,6 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-
 		client := New()
 		err := client.SetProxyURL(<-addrChan)
 
@@ -1830,7 +1761,6 @@ func Benchmark_Client_Request_Send_ContextCancel(b *testing.B) {
 
 func Test_Client_StreamResponseBody(t *testing.T) {
 	t.Parallel()
-
 	t.Run("default value", func(t *testing.T) {
 		t.Parallel()
 		client := New()
@@ -1876,7 +1806,6 @@ func Test_Client_StreamResponseBody(t *testing.T) {
 
 func Test_Client_UnparsableCookieAttributesIgnored(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Response().Header.Add(fiber.HeaderSetCookie, "a=1; Max-Age=-1")
@@ -1901,7 +1830,6 @@ func Test_Client_UnparsableCookieAttributesIgnored(t *testing.T) {
 
 func Test_Client_ResponseHookError_KeepsCallerRequest(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 	})
@@ -1919,7 +1847,6 @@ func Test_Client_ResponseHookError_KeepsCallerRequest(t *testing.T) {
 
 func Test_Request_Reset_ClearsClient(t *testing.T) {
 	t.Parallel()
-
 	custom := New()
 	req := AcquireRequest()
 	req.SetClient(custom)
@@ -1930,7 +1857,6 @@ func Test_Request_Reset_ClearsClient(t *testing.T) {
 
 func Test_Client_Debug_DoesNotDrainStream(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
@@ -1954,7 +1880,6 @@ func Test_Client_Debug_DoesNotDrainStream(t *testing.T) {
 
 func Test_CookieJar_MaxAge(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/set", func(c fiber.Ctx) error {
 			c.Response().Header.Add(fiber.HeaderSetCookie, "sid=abc; Max-Age=1")
@@ -2015,7 +1940,6 @@ func requireOwnedRequestReleased(t *testing.T, send func() (*Request, error)) {
 
 func Test_Client_PreHookError_ReleasesOwnedRequest(t *testing.T) {
 	t.Parallel()
-
 	var seen *Request
 	client := New()
 	client.AddRequestHook(func(_ *Client, req *Request) error {
@@ -2035,7 +1959,6 @@ func Test_Client_PreHookError_ReleasesOwnedRequest(t *testing.T) {
 
 func Test_Client_DispatchError_ReleasesOwnedRequest(t *testing.T) {
 	t.Parallel()
-
 	var seen *Request
 	client := New().SetDial(func(_ string) (net.Conn, error) { return nil, errors.New("boom") })
 	client.AddRequestHook(func(_ *Client, req *Request) error {
@@ -2054,7 +1977,6 @@ func Test_Client_DispatchError_ReleasesOwnedRequest(t *testing.T) {
 
 func Test_Client_AfterHookError_ReleasesOwnedRequest(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 	})
@@ -2076,7 +1998,6 @@ func Test_Client_AfterHookError_ReleasesOwnedRequest(t *testing.T) {
 
 func Test_CookieJar_MaxAgePrecedence(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name   string
 		maxAge string
@@ -2098,7 +2019,6 @@ func Test_CookieJar_MaxAgePrecedence(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			jar := AcquireCookieJar()
 			t.Cleanup(jar.Release)
 
@@ -2133,7 +2053,6 @@ func Test_CookieJar_MaxAgePrecedence(t *testing.T) {
 // directory that set it.
 func Test_CookieJar_UnparsableAttributeKeepsTheOthers(t *testing.T) {
 	t.Parallel()
-
 	const (
 		receivedPath = "/dir/x" // the request that received the cookie: default path "/dir"
 		otherPath    = "/other" // outside the default path
@@ -2215,7 +2134,6 @@ func Test_CookieJar_UnparsableAttributeKeepsTheOthers(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			jar := AcquireCookieJar()
 			t.Cleanup(jar.Release)
 
@@ -2243,7 +2161,6 @@ func jarGet(t *testing.T, jar *CookieJar, rawURL string) []*fasthttp.Cookie {
 
 func Test_Request_CancelledContext_NoRace(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			// Slow enough that the response never beats the canceled context.
@@ -2270,7 +2187,6 @@ func Test_Request_CancelledContext_NoRace(t *testing.T) {
 
 func Test_Client_RequestHeaderOverridesClientHeader(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Join(c.GetReqHeaders()["X-Level"], "|")) })
 	})
@@ -2292,7 +2208,6 @@ func Test_Client_RequestHeaderOverridesClientHeader(t *testing.T) {
 
 func Test_Request_Params_KeepInsertionOrder(t *testing.T) {
 	t.Parallel()
-
 	req := AcquireRequest()
 	defer ReleaseRequest(req)
 	want := make([]string, 0, 20)
@@ -2309,7 +2224,6 @@ func Test_Request_Params_KeepInsertionOrder(t *testing.T) {
 
 func Test_Response_Header_CopiesValue(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("X-Test", "value")
@@ -2328,7 +2242,6 @@ func Test_Response_Header_CopiesValue(t *testing.T) {
 
 func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString(strconv.Itoa(len(c.GetReqHeaders()["X-A"]))) })
 	})
@@ -2347,7 +2260,6 @@ func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
 
 func Test_Client_UppercaseScheme(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 	})

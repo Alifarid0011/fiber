@@ -222,7 +222,6 @@ func Test_Store_GetByID(t *testing.T) {
 // through, panicking on the nil function.
 func Test_Store_getSessionID_SkipsChildrenWithoutExtract(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	store := NewStore(Config{Extractor: extractors.Chain(extractors.Extractor{}, extractors.FromCookie("session_id"))})
 
@@ -238,7 +237,6 @@ func Test_Store_getSessionID_SkipsChildrenWithoutExtract(t *testing.T) {
 // with the default. There is nothing to run, so there is no session ID.
 func Test_Store_getSessionID_WithoutExtractor(t *testing.T) {
 	t.Parallel()
-
 	ctx := apptest.Ctx(t, fiber.New())
 	ctx.Request().Header.SetCookie("session_id", "abc123")
 
@@ -251,12 +249,10 @@ func Test_Store_getSessionID_WithoutExtractor(t *testing.T) {
 // children directly, so a decorator wrapping a chain was silently skipped.
 func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	t.Run("decoration runs and children do not run twice", func(t *testing.T) {
 		t.Parallel()
-
 		var childCalls, overrideCalls int
 
 		base := extractors.Chain(
@@ -294,7 +290,6 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 
 	t.Run("a rejecting decorator refuses the id", func(t *testing.T) {
 		t.Parallel()
-
 		base := extractors.Chain(extractors.FromHeader("X-Session"))
 
 		// A validator refusing an ID it does not like. Skipping it silently
@@ -332,7 +327,6 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 // back.
 func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	chain := extractors.Chain(extractors.FromCookie("sid_cookie"), extractors.FromHeader("X-Sid"))
 
@@ -412,7 +406,6 @@ func Test_Store_FixationGuard(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			store := NewStore(Config{Extractor: tc.extractor})
 			app := fiber.New()
 
@@ -438,7 +431,6 @@ func Test_Store_FixationGuard(t *testing.T) {
 // the session ID be written into an unrelated application cookie.
 func Test_Store_ForeignChainDoesNotSupplyProvenance(t *testing.T) {
 	t.Parallel()
-
 	tenant := extractors.Chain(extractors.FromHeader("X-Tenant"), extractors.FromCookie("tenant"))
 	leaf := extractors.FromCustom("sid", func(c fiber.Ctx) (string, error) {
 		//nolint:errcheck // the lookup's outcome is irrelevant; it runs only so a foreign chain records a winner
@@ -464,7 +456,6 @@ func Test_Store_ForeignChainDoesNotSupplyProvenance(t *testing.T) {
 // and every request began a session that could never be resumed.
 func Test_Store_NestedChainCookieSinkIsWritten(t *testing.T) {
 	t.Parallel()
-
 	store := NewStore(Config{
 		Extractor: extractors.Chain(
 			extractors.Chain(
@@ -490,7 +481,6 @@ func Test_Store_NestedChainCookieSinkIsWritten(t *testing.T) {
 // a first-time visitor must not look alike.
 func Test_Store_ExtractorErrorReachesCaller(t *testing.T) {
 	t.Parallel()
-
 	errForged := errors.New("forged session id")
 
 	base := extractors.Chain(extractors.FromCookie("session_id"))
@@ -532,7 +522,6 @@ func Test_Store_ExtractorErrorReachesCaller(t *testing.T) {
 // back to the pool on request reset, which is what keeps it off the heap.
 func Test_Store_ProvenanceBoxIsRecycled(t *testing.T) {
 	t.Parallel()
-
 	store := NewStore()
 	app := fiber.New()
 	app.Get("/t", func(c fiber.Ctx) error {
@@ -568,7 +557,6 @@ func Test_Store_ProvenanceBoxIsRecycled(t *testing.T) {
 // storeProvenance at all.
 func Test_Store_ProvenanceBoxIsReused(t *testing.T) {
 	t.Parallel()
-
 	store := NewStore()
 	app := fiber.New()
 
@@ -602,7 +590,6 @@ func Test_Store_ProvenanceBoxIsReused(t *testing.T) {
 // fresh one is generated and cached.
 func Test_Store_CachedIDKeepsProvenance(t *testing.T) {
 	t.Parallel()
-
 	store := NewStore()
 	ctx := apptest.Ctx(t, fiber.New())
 	ctx.Request().Header.SetCookie("session_id", "not-in-storage")

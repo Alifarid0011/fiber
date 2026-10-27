@@ -66,7 +66,6 @@ func (c testUserValueContext) UserValue(key any) any {
 
 func Test_ContextTemplate_ValueTag(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		ctx  any
 		name string
@@ -81,7 +80,6 @@ func Test_ContextTemplate_ValueTag(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			tmpl := buildTestTemplate(t, "[${value:request_id}]", nil)
 			require.Equal(t, "[req-42]", executeContextTemplate(t, tmpl, tt.ctx))
 		})
@@ -90,7 +88,6 @@ func Test_ContextTemplate_ValueTag(t *testing.T) {
 
 func Test_ContextTemplate_ValueTagSanitizesControlChars(t *testing.T) {
 	t.Parallel()
-
 	tmpl := buildTestTemplate(t, "${value:str}|${value:bytes}|${value:struct}", nil)
 
 	type composite struct{ A, B string }
@@ -110,7 +107,6 @@ func Test_ContextTemplate_ValueTagSanitizesControlChars(t *testing.T) {
 
 func Test_ContextTemplate_ValueTagWritesSupportedValues(t *testing.T) {
 	t.Parallel()
-
 	tmpl := buildTestTemplate(t, "${value:bytes}|${value:string}|${value:number}|${value:missing}", nil)
 
 	ctx := testUserValueContext{"bytes": []byte("raw"), "string": "text", "number": 42}
@@ -119,7 +115,6 @@ func Test_ContextTemplate_ValueTagWritesSupportedValues(t *testing.T) {
 
 func Test_ContextTemplate_ValueTagWrapsWriteError(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name string
 		ctx  any
@@ -163,7 +158,6 @@ func Test_ContextTemplate_DefaultTagsRenderEmpty(t *testing.T) {
 
 func Test_ContextTemplate_CustomTag(t *testing.T) {
 	t.Parallel()
-
 	tmpl := buildTestTemplate(t, "[${requestid}]", map[string]ContextTagFunc{
 		"requestid": func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
 			return output.WriteString("req-42")
@@ -249,7 +243,6 @@ func Test_DefaultFormatDisablesContextTemplate(t *testing.T) {
 
 func Test_MustSetContextTemplate_PanicsOnBuildError(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithError(t, `logtemplate: unknown tag: "missing:value"`, func() {
 		MustSetContextTemplate(ContextConfig{Format: "${missing:value}"})
 	})
@@ -257,7 +250,6 @@ func Test_MustSetContextTemplate_PanicsOnBuildError(t *testing.T) {
 
 func Test_SetContextTemplate_ReturnsBuildError(t *testing.T) {
 	t.Parallel()
-
 	err := SetContextTemplate(ContextConfig{Format: "${missing:value}"})
 	require.ErrorIs(t, err, logtemplate.ErrUnknownTag)
 
@@ -269,7 +261,6 @@ func Test_SetContextTemplate_ReturnsBuildError(t *testing.T) {
 
 func Test_RegisterContextTagRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
-
 	require.ErrorIs(t, RegisterContextTag("", func(Buffer, any, *ContextData, string) (int, error) {
 		return 0, nil
 	}), ErrContextTagInvalid)
@@ -281,7 +272,6 @@ func Test_RegisterContextTagRejectsInvalidInput(t *testing.T) {
 
 func Test_MustRegisterContextTag_PanicsOnInvalidInput(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithError(t, ErrContextTagInvalid.Error(), func() {
 		MustRegisterContextTag("", func(Buffer, any, *ContextData, string) (int, error) { return 0, nil })
 	})
@@ -289,7 +279,6 @@ func Test_MustRegisterContextTag_PanicsOnInvalidInput(t *testing.T) {
 
 func Test_ContextValue(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		ctx  any
 		want any
@@ -302,7 +291,6 @@ func Test_ContextValue(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.Equal(t, tt.want, contextValue(tt.ctx, "key"))
 		})
 	}

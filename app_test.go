@@ -214,7 +214,6 @@ func Test_App_QueryMethod_AllowHeader(t *testing.T) {
 
 func Test_App_RegisterNetHTTPHandler(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name       string
 		register   func(app *App, path string, handler any, handlers ...any) Router
@@ -235,7 +234,6 @@ func Test_App_RegisterNetHTTPHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			handler := func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("X-Test", r.Method)
@@ -331,7 +329,6 @@ func Test_App_Errors(t *testing.T) {
 
 func Test_App_BodyLimit(t *testing.T) {
 	t.Parallel()
-
 	const largerLimit = DefaultBodyLimit*2 + 1024 // slightly above double the default
 
 	tests := []struct {
@@ -352,7 +349,6 @@ func Test_App_BodyLimit(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{BodyLimit: tc.limit})
 
 			app.Post("/", func(c Ctx) error { return c.SendStatus(StatusOK) })
@@ -464,7 +460,6 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 
 func Test_DefaultErrorHandler_TypedNilError(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		err  error
 		name string
@@ -476,7 +471,6 @@ func Test_DefaultErrorHandler_TypedNilError(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.CtxAs[*DefaultCtx](t, New())
 
 			require.NotPanics(t, func() { require.NoError(t, DefaultErrorHandler(c, tc.err)) })
@@ -488,7 +482,6 @@ func Test_DefaultErrorHandler_TypedNilError(t *testing.T) {
 
 func Test_DefaultErrorHandler_WrappedFiberErrorUsesWrappedMessage(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.CtxAs[*DefaultCtx](t, New())
 
 	err := fmt.Errorf("auth failed: %w", ErrUnauthorized)
@@ -499,7 +492,6 @@ func Test_DefaultErrorHandler_WrappedFiberErrorUsesWrappedMessage(t *testing.T) 
 
 func Test_App_serverErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		err        error
 		name       string
@@ -535,7 +527,6 @@ func Test_App_serverErrorHandler(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			c := apptest.CtxAs[*DefaultCtx](t, app)
 
@@ -548,7 +539,6 @@ func Test_App_serverErrorHandler(t *testing.T) {
 
 func Test_App_serverErrorHandler_Unsupported_Method_Request(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/bar", func(c Ctx) error { return c.SendString("bar") })
 
@@ -722,7 +712,6 @@ func Test_App_Use_MultiplePrefix(t *testing.T) {
 
 func Test_Group_Use_NoBoundary(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	grp := app.Group("/api")
 
@@ -757,7 +746,6 @@ func Test_App_Use_StrictRouting(t *testing.T) {
 
 func Test_App_Add_Method_Test(t *testing.T) {
 	t.Parallel()
-
 	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
 	app := New(Config{RequestMethods: methods})
 
@@ -775,7 +763,6 @@ func Test_App_Add_Method_Test(t *testing.T) {
 
 func Test_App_All_Method_Test(t *testing.T) {
 	t.Parallel()
-
 	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
 	app := New(Config{RequestMethods: methods})
 
@@ -835,7 +822,6 @@ func Test_App_GETOnly_ErrorHandler_WithoutStatus(t *testing.T) {
 // ErrorHandler rewrites the response.
 func Test_App_GETOnly_Allow(t *testing.T) {
 	t.Parallel()
-
 	for name, config := range map[string]Config{
 		"default error handler": {GETOnly: true},
 		"custom error handler": {
@@ -845,7 +831,6 @@ func Test_App_GETOnly_Allow(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New(config)
 			app.All("/", func(c Ctx) error { return c.SendString("ok") })
 
@@ -925,7 +910,6 @@ func Test_App_Order(t *testing.T) {
 
 func Test_App_AutoHead_Compliance(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		path     string
@@ -940,7 +924,6 @@ func Test_App_AutoHead_Compliance(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var filePath string
 			if tc.sendFile {
 				if runtime.GOOS == "windows" {
@@ -1080,7 +1063,6 @@ func Test_App_Config_DefaultBufferSizes(t *testing.T) {
 
 func Test_App_GetString(t *testing.T) {
 	t.Parallel()
-
 	heap := string([]byte("fiber"))
 	appMutable := New()
 	same := appMutable.GetString(heap)
@@ -1103,7 +1085,6 @@ func Test_App_GetString(t *testing.T) {
 
 func Test_App_GetBytes(t *testing.T) {
 	t.Parallel()
-
 	b := []byte("fiber")
 	appMutable := New()
 	same := appMutable.GetBytes(b)
@@ -1198,7 +1179,6 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 // being allowed to finish within the timeout.
 func Test_App_ShutdownWithTimeout_WaitsForStreamedBody(t *testing.T) {
 	t.Parallel()
-
 	const chunks = 5
 
 	streaming := make(chan struct{})
@@ -1260,7 +1240,6 @@ func Test_App_ShutdownWithTimeout_WaitsForStreamedBody(t *testing.T) {
 // in-flight work during graceful shutdown (unlike RequestCtx.Done()).
 func Test_App_Shutdown_ContextNotCanceled(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	handlerStarted := make(chan struct{})
 	// Results observed inside the handler after shutdown has begun.
@@ -1327,7 +1306,6 @@ func Test_App_Shutdown_ContextNotCanceled(t *testing.T) {
 
 func Test_App_ShutdownWithContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("successful shutdown", func(t *testing.T) {
 		t.Parallel()
 		app := New()
@@ -1454,7 +1432,6 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 
 func Test_App_OptionsAsterisk(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Options("/resource", func(c Ctx) error {
 		c.Set(HeaderAllow, "GET")
@@ -1554,7 +1531,6 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 
 func Test_App_Group_Invalid(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithValue(t, "use: invalid handler int\n", func() { New().Group("/").Use(1) })
 }
 
@@ -1656,7 +1632,6 @@ func Test_App_RouteChain(t *testing.T) {
 
 func Test_App_Route(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Route("/test", func(api Router) {
@@ -1675,7 +1650,6 @@ func Test_App_Route(t *testing.T) {
 
 func Test_App_Route_nilFuncPanics(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	require.PanicsWithValue(t, "route handler 'fn' cannot be nil", func() { app.Route("/panic", nil) })
@@ -1683,7 +1657,6 @@ func Test_App_Route_nilFuncPanics(t *testing.T) {
 
 func Test_Group_Route_nilFuncPanics(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	grp := app.Group("/api")
 
@@ -1692,7 +1665,6 @@ func Test_Group_Route_nilFuncPanics(t *testing.T) {
 
 func Test_Group_RouteChain_All(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	var calls []string
 	grp := app.Group("/api", func(c Ctx) error {
@@ -1766,7 +1738,6 @@ func Test_NewError(t *testing.T) {
 
 func Test_NewErrorf_Format(t *testing.T) {
 	t.Parallel()
-
 	type args []any
 
 	tests := []struct {
@@ -2079,7 +2050,6 @@ func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
 
 func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 	t.Parallel()
-
 	view := &panicLoadView{}
 	app := New(Config{Views: view})
 	app.Get("/", func(c Ctx) error { return c.Render("home", nil) })
@@ -2113,7 +2083,6 @@ func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 
 func Test_App_InitPanicUnlocksRouteRegistration(t *testing.T) {
 	t.Parallel()
-
 	view := &panicLoadView{}
 	app := New(Config{Views: view})
 
@@ -2146,7 +2115,6 @@ func Test_App_InitPanicUnlocksRouteRegistration(t *testing.T) {
 
 func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{Views: &panicRenderView{}})
 	app.Get("/", func(c Ctx) error { return c.Render("home", nil) })
 
@@ -2201,7 +2169,6 @@ func Test_App_ReloadViews_InterfaceNilPointer(t *testing.T) {
 
 func Test_App_Render_WritesConfiguredView(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name    string
 		want    string
@@ -2214,7 +2181,6 @@ func Test_App_Render_WritesConfiguredView(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{Views: &writerView{}, ViewsLayout: "base"})
 			var out bytes.Buffer
 
@@ -2228,10 +2194,8 @@ func Test_App_Render_WritesConfiguredView(t *testing.T) {
 
 func Test_App_Render_ReturnsViewErrors(t *testing.T) {
 	t.Parallel()
-
 	t.Run("no view engine", func(t *testing.T) {
 		t.Parallel()
-
 		app := New()
 
 		err := app.Render(io.Discard, "partial", nil)
@@ -2241,7 +2205,6 @@ func Test_App_Render_ReturnsViewErrors(t *testing.T) {
 
 	t.Run("typed nil view engine", func(t *testing.T) {
 		t.Parallel()
-
 		var view *writerView
 		app := &App{config: Config{Views: view}}
 
@@ -2252,7 +2215,6 @@ func Test_App_Render_ReturnsViewErrors(t *testing.T) {
 
 	t.Run("render failure", func(t *testing.T) {
 		t.Parallel()
-
 		wantErr := errors.New("render failed")
 		app := New(Config{Views: &writerView{renderErr: wantErr}})
 
@@ -2264,7 +2226,6 @@ func Test_App_Render_ReturnsViewErrors(t *testing.T) {
 
 func Test_App_RenderAndReloadViews_ReturnNoViewEngineForNilViews(t *testing.T) {
 	t.Parallel()
-
 	var (
 		pointerView  *writerView
 		mapView      mapViews
@@ -2288,7 +2249,6 @@ func Test_App_RenderAndReloadViews_ReturnNoViewEngineForNilViews(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{Views: testCase.view})
 
 			renderErr := app.Render(io.Discard, "partial", nil)
@@ -2302,7 +2262,6 @@ func Test_App_RenderAndReloadViews_ReturnNoViewEngineForNilViews(t *testing.T) {
 
 func Test_isNilViews_ReturnsTrueForNilUnsafePointer(t *testing.T) {
 	t.Parallel()
-
 	var view unsafe.Pointer
 
 	require.True(t, isNilViews(view))
@@ -2310,7 +2269,6 @@ func Test_isNilViews_ReturnsTrueForNilUnsafePointer(t *testing.T) {
 
 func Test_App_Render_WaitsForReloadViews(t *testing.T) {
 	t.Parallel()
-
 	view := &blockingView{
 		loadStarted:   make(chan struct{}),
 		loadRelease:   make(chan struct{}),
@@ -2427,7 +2385,6 @@ func Test_App_ReloadViews_MountedViews_ConcurrentMount(t *testing.T) {
 
 func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testing.T) {
 	t.Parallel()
-
 	view := &sharedBlockingView{
 		loadStarted:   make(chan struct{}),
 		loadRelease:   make(chan struct{}),
@@ -2460,7 +2417,6 @@ func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testin
 
 func Test_App_ReloadViews_SharedEngineBlocksRenderAfterReusableMount(t *testing.T) {
 	t.Parallel()
-
 	view := &sharedBlockingView{
 		loadStarted:   make(chan struct{}),
 		loadRelease:   make(chan struct{}),
@@ -2568,7 +2524,6 @@ func Test_App_HandlersCount(t *testing.T) {
 
 func Test_App_RefusedRequest(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		config Config
 		name   string
@@ -2589,7 +2544,6 @@ func Test_App_RefusedRequest(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New(tc.config)
 
 			app.Get(tc.route, func(c Ctx) error { return c.SendString("I should not be sent") })
@@ -2770,7 +2724,6 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 
 func Test_App_Test_timeout(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", func(_ Ctx) error {
 		time.Sleep(1 * time.Second)
@@ -2786,7 +2739,6 @@ func Test_App_Test_timeout(t *testing.T) {
 
 func Test_App_Test_timeout_empty_response(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", func(_ Ctx) error {
 		time.Sleep(50 * time.Millisecond)
@@ -2801,7 +2753,6 @@ func Test_App_Test_timeout_empty_response(t *testing.T) {
 
 func Test_App_Test_drop_empty_response(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.Drop() })
 
@@ -3293,7 +3244,6 @@ type groupIDResponse struct {
 // With FailOnTimeout: false, the test should return whatever response is available without error.
 func Test_App_Test_SmallTimeout_WithFailOnTimeoutFalse(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Post("/admin/api/groups", func(c Ctx) error {
 		// Add a small delay to ensure timeout is triggered
@@ -3323,7 +3273,6 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutFalse(t *testing.T) {
 // Test that FailOnTimeout: true still works as expected
 func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Post("/admin/api/groups", func(c Ctx) error {
 		time.Sleep(100 * time.Millisecond)
@@ -3341,7 +3290,6 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
 
 func Test_App_ShutdownWithTimeout_HandlerTakesAppMutex(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	inHandler := make(chan struct{})
 	shutdownStarted := make(chan struct{})
@@ -3377,7 +3325,6 @@ func Test_App_ShutdownWithTimeout_HandlerTakesAppMutex(t *testing.T) {
 
 func Test_App_IsProxyTrusted_CanonicalIPForms(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name   string
 		proxy  string
@@ -3394,7 +3341,6 @@ func Test_App_IsProxyTrusted_CanonicalIPForms(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New(Config{
 				TrustProxy:       true,
 				TrustProxyConfig: TrustProxyConfig{Proxies: []string{tc.proxy}},
@@ -3408,7 +3354,6 @@ func Test_App_IsProxyTrusted_CanonicalIPForms(t *testing.T) {
 
 func Test_App_IP_StripTrustedProxies_CanonicalIPForms(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		proxy    string
@@ -3424,7 +3369,6 @@ func Test_App_IP_StripTrustedProxies_CanonicalIPForms(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{
 				ProxyHeader:        HeaderXForwardedFor,
 				TrustProxy:         true,
@@ -3443,7 +3387,6 @@ func Test_App_IP_StripTrustedProxies_CanonicalIPForms(t *testing.T) {
 
 func Test_App_ErrorHandler_SkipsCommittedTimeoutResponse(t *testing.T) {
 	t.Parallel()
-
 	var calls atomic.Int32
 	app := New(Config{
 		ErrorHandler: func(c Ctx, err error) error {
@@ -3473,7 +3416,6 @@ func Test_App_ErrorHandler_SkipsCommittedTimeoutResponse(t *testing.T) {
 // slices must be snapshotted rather than iterated in place.
 func Test_App_Shutdown_HookRegistrationNoRace(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Hooks().OnPreShutdown(func() error { return nil })
 	app.Hooks().OnPostShutdown(func(error) error { return nil })
@@ -3499,7 +3441,6 @@ func Test_App_Shutdown_HookRegistrationNoRace(t *testing.T) {
 
 func Test_Group_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 	t.Parallel()
-
 	sub := New()
 	sub.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
 
@@ -3515,7 +3456,6 @@ func Test_Group_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 
 func Test_Domain_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 	t.Parallel()
-
 	sub := New()
 	sub.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
 
@@ -3653,7 +3593,6 @@ func rawExchange(t *testing.T, server dialer, raw string, want int) (responses [
 // which wants no content coding, and is not read as an absent one, which accepts any.
 func Test_App_AcceptsEncodings_EmptyField_Request(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.SendString(c.AcceptsEncodings("br", "gzip", "identity")) })
 	ln := startRawServer(t, app)
@@ -3664,7 +3603,6 @@ func Test_App_AcceptsEncodings_EmptyField_Request(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + tc.field + "Connection: close\r\n\r\n"
 			responses, _ := rawExchange(t, ln, raw, 1)
 			require.Equal(t, StatusOK, responses[0].status)
@@ -3676,7 +3614,6 @@ func Test_App_AcceptsEncodings_EmptyField_Request(t *testing.T) {
 // RFC 9112 §6.1: a transfer coding the server does not understand gets a 501.
 func Test_App_TransferEncoding_Request(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Post("/", func(c Ctx) error { return c.SendString("posted") })
 	ln := startRawServer(t, app)
@@ -3722,7 +3659,6 @@ func Test_App_TransferEncoding_Request(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			responses, after := rawExchange(t, ln, tc.raw, 1)
 			require.Equal(t, tc.status, responses[0].status)
 			if tc.status == StatusNotImplemented {
@@ -3742,7 +3678,6 @@ func Test_App_TransferEncoding_Request(t *testing.T) {
 // the same error, which hides the coding: those requests stay 400.
 func Test_App_TransferEncoding_SecureErrorLogMessage(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Server().SecureErrorLogMessage = true
 	app.Post("/", func(c Ctx) error { return c.SendString("posted") })
@@ -3759,7 +3694,6 @@ func Test_App_TransferEncoding_SecureErrorLogMessage(t *testing.T) {
 // framed by Transfer-Encoding, and the connection must close after the response.
 func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Post("/", func(c Ctx) error { return c.SendString("first") })
 	app.Get("/second", func(c Ctx) error { return c.SendString("second") })
@@ -3772,7 +3706,6 @@ func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 
 	t.Run("served by Transfer-Encoding then closed", func(t *testing.T) {
 		t.Parallel()
-
 		for name, headers := range map[string]string{
 			"Content-Length first":    "Content-Length: 4\r\nTransfer-Encoding: chunked\r\n",
 			"Transfer-Encoding first": "Transfer-Encoding: chunked\r\nContent-Length: 4\r\n",
@@ -3780,7 +3713,6 @@ func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 		} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-
 				raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + headers + chunked + second
 				responses, after := rawExchange(t, ln, raw, 1)
 
@@ -3796,7 +3728,6 @@ func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 	// the request is served as one without the field, but it still has both.
 	t.Run("identity is ignored and still closes", func(t *testing.T) {
 		t.Parallel()
-
 		for name, headers := range map[string]string{
 			"Content-Length first":    "Content-Length: 4\r\nTransfer-Encoding: identity\r\n\r\nabcd",
 			"Transfer-Encoding first": "Transfer-Encoding: identity\r\nContent-Length: 4\r\n\r\nabcd",
@@ -3805,7 +3736,6 @@ func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 		} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-
 				raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + headers + second
 				responses, after := rawExchange(t, ln, raw, 1)
 
@@ -3820,14 +3750,12 @@ func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 	// Each header alone is ordinary traffic and keeps the connection alive.
 	t.Run("one header alone keeps the connection", func(t *testing.T) {
 		t.Parallel()
-
 		for name, raw := range map[string]string{
 			"Transfer-Encoding only": "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n" + chunked + second,
 			"Content-Length only":    "POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 0\r\n\r\n" + second,
 		} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-
 				responses, after := rawExchange(t, ln, raw, 2)
 
 				require.Equal(t, "first", responses[0].body)
@@ -3844,7 +3772,6 @@ func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 // whether or not an earlier Test has already installed the hook.
 func Test_App_ContentLengthWithTransferEncoding_KeepsUserHeaderReceived(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name          string
 		inBeforeServe bool
@@ -3856,7 +3783,6 @@ func Test_App_ContentLengthWithTransferEncoding_KeepsUserHeaderReceived(t *testi
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			app.Post("/", func(c Ctx) error { return c.SendString(strconv.Itoa(len(c.Body()))) })
 
@@ -3908,7 +3834,6 @@ func Test_App_ContentLengthWithTransferEncoding_KeepsUserHeaderReceived(t *testi
 // The hook is installed once and a replaced callback is wrapped again.
 func Test_App_HeaderReceivedHook_Reinstalled(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.hookHeaderReceived()
 	installed := app.Server().HeaderReceived
@@ -3929,7 +3854,6 @@ func Test_App_HeaderReceivedHook_Reinstalled(t *testing.T) {
 // for -race.
 func Test_App_HeaderReceivedHook_RaceFreeWithTest(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
 
@@ -3960,7 +3884,6 @@ func Test_App_HeaderReceivedHook_RaceFreeWithTest(t *testing.T) {
 // Test serves the connection itself, so it installs the close hook too.
 func Test_App_Test_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Post("/", func(c Ctx) error { return c.SendString(strconv.Itoa(len(c.Body()))) })
 
@@ -3981,7 +3904,6 @@ func Test_App_Test_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 // writer ended on its own.
 func Test_App_SendStreamWriter_HTTP10_ClientLeaves(t *testing.T) {
 	t.Parallel()
-
 	stop := make(chan struct{})
 	ended := make(chan struct{})
 	app := New()

@@ -59,7 +59,6 @@ func stateTestGetter[T any](t *testing.T, get func(*State, string) (T, bool), va
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			st := newState()
 			st.Set("value", value)
 			st.Set("wrong", wrongType)
@@ -170,7 +169,6 @@ func TestState_MustGet(t *testing.T) {
 
 func TestState_Has(t *testing.T) {
 	t.Parallel()
-
 	st := newState()
 
 	st.Set("key", "value")
@@ -213,7 +211,6 @@ func TestState_Keys(t *testing.T) {
 
 func TestState_Keys_SkipsNonStringKeys(t *testing.T) {
 	t.Parallel()
-
 	st := newState()
 	st.Set("one", "one")
 	st.Set("two", "two")
@@ -226,7 +223,6 @@ func TestState_Keys_SkipsNonStringKeys(t *testing.T) {
 
 func TestState_Keys_SkipsNonStringKeys_WithMixedOrder(t *testing.T) {
 	t.Parallel()
-
 	st := newState()
 	st.Set("before", "value")
 	st.dependencies.Store(42, "value")
@@ -274,7 +270,6 @@ func runGenericTest[T any](t *testing.T, getter func(*State, string) (T, bool), 
 
 func TestState_GetGeneric(t *testing.T) {
 	t.Parallel()
-
 	runGenericTest(t, GetState[int], []testCase[int]{
 		{name: "int correct conversion", key: "num", value: 42, expected: 42, ok: true},
 		{name: "int wrong conversion from string", key: "str", value: "abc", expected: 0, ok: false},
@@ -330,14 +325,12 @@ func Test_GetStateWithDefault(t *testing.T) {
 
 func TestState_Service(t *testing.T) {
 	t.Parallel()
-
 	srv1 := &mockService{name: "test1"}
 	// service 2 is using a very subtle name to check it is not picked up
 	srv2 := &mockService{name: "test1 "}
 
 	t.Run("set/get/ok", func(t *testing.T) {
 		t.Parallel()
-
 		st := newState()
 		st.setService(srv1)
 
@@ -348,7 +341,6 @@ func TestState_Service(t *testing.T) {
 
 	t.Run("set/get/ko", func(t *testing.T) {
 		t.Parallel()
-
 		st := newState()
 		st.setService(srv1)
 
@@ -361,10 +353,8 @@ func TestState_Service(t *testing.T) {
 
 	t.Run("len", func(t *testing.T) {
 		t.Parallel()
-
 		t.Run("empty", func(t *testing.T) {
 			t.Parallel()
-
 			st := newState()
 			require.Equal(t, 0, st.Len())
 			require.Empty(t, st.serviceKeys())
@@ -372,7 +362,6 @@ func TestState_Service(t *testing.T) {
 
 		t.Run("with-services", func(t *testing.T) {
 			t.Parallel()
-
 			st := newState()
 			st.setService(srv1)
 			st.setService(srv2)
@@ -383,7 +372,6 @@ func TestState_Service(t *testing.T) {
 
 		t.Run("with-services/with-keys", func(t *testing.T) {
 			t.Parallel()
-
 			st := newState()
 			st.setService(srv1)
 			st.setService(srv2)
@@ -399,7 +387,6 @@ func TestState_Service(t *testing.T) {
 	t.Run("keys", func(t *testing.T) {
 		t.Run("empty", func(t *testing.T) {
 			t.Parallel()
-
 			st := newState()
 			// adding more keys to check they are not included
 			st.Set("key1", "value1")
@@ -410,7 +397,6 @@ func TestState_Service(t *testing.T) {
 
 		t.Run("with-services", func(t *testing.T) {
 			t.Parallel()
-
 			st := newState()
 			st.setService(srv1)
 			st.setService(srv2)
@@ -423,7 +409,6 @@ func TestState_Service(t *testing.T) {
 
 		t.Run("with-services/with-keys", func(t *testing.T) {
 			t.Parallel()
-
 			st := newState()
 			st.setService(srv1)
 			st.setService(srv2)
@@ -440,7 +425,6 @@ func TestState_Service(t *testing.T) {
 
 		t.Run("with-non-string-key", func(t *testing.T) {
 			t.Parallel()
-
 			st := newState()
 			st.setService(srv1)
 			st.setService(srv2)
@@ -455,7 +439,6 @@ func TestState_Service(t *testing.T) {
 
 		t.Run("with-non-service-keys", func(t *testing.T) {
 			t.Parallel()
-
 			st := newState()
 			st.setService(srv1)
 			st.setService(srv2)
@@ -471,10 +454,8 @@ func TestState_Service(t *testing.T) {
 
 	t.Run("delete", func(t *testing.T) {
 		t.Parallel()
-
 		t.Run("ok", func(t *testing.T) {
 			t.Parallel()
-
 			st := newState()
 
 			st.setService(srv1)
@@ -486,7 +467,6 @@ func TestState_Service(t *testing.T) {
 
 		t.Run("missing", func(t *testing.T) {
 			t.Parallel()
-
 			st := newState()
 			st.setService(srv1)
 
@@ -503,10 +483,8 @@ func TestState_Service(t *testing.T) {
 
 func TestState_GetService(t *testing.T) {
 	t.Parallel()
-
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
-
 		srv1 := &mockService{name: "test1"}
 
 		st := newState()
@@ -519,7 +497,6 @@ func TestState_GetService(t *testing.T) {
 
 	t.Run("ko", func(t *testing.T) {
 		t.Parallel()
-
 		srv1 := &mockService{name: "test1"}
 
 		st := newState()
@@ -532,10 +509,8 @@ func TestState_GetService(t *testing.T) {
 
 func TestState_MustGetService(t *testing.T) {
 	t.Parallel()
-
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
-
 		srv1 := &mockService{name: "test1"}
 
 		st := newState()
@@ -547,7 +522,6 @@ func TestState_MustGetService(t *testing.T) {
 
 	t.Run("panics", func(t *testing.T) {
 		t.Parallel()
-
 		srv1 := &mockService{name: "test1"}
 
 		st := newState()

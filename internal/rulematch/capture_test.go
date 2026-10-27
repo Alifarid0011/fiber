@@ -9,7 +9,6 @@ import (
 
 func Test_CaptureTokens(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name    string
 		pattern string
@@ -56,7 +55,6 @@ func Test_CaptureTokens(t *testing.T) {
 
 func Test_CaptureTokens_NoMatch(t *testing.T) {
 	t.Parallel()
-
 	pattern := regexp.MustCompile(`^/old/(.*)$`)
 	for _, input := range []string{"/other/a", "/prefix/old/a", "/old"} {
 		t.Run(input, func(t *testing.T) {
@@ -68,7 +66,6 @@ func Test_CaptureTokens_NoMatch(t *testing.T) {
 
 func Test_CaptureTokens_Unescaped(t *testing.T) {
 	t.Parallel()
-
 	pattern := regexp.MustCompile(`^/old/(.*)$`)
 	for _, tc := range []struct {
 		input string

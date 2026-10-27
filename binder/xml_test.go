@@ -9,7 +9,6 @@ import (
 
 func Test_XMLBinding_Bind(t *testing.T) {
 	t.Parallel()
-
 	b := &XMLBinding{XMLDecoder: xml.Unmarshal}
 	require.Equal(t, "xml", b.Name())
 

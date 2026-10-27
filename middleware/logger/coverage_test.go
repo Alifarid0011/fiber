@@ -15,7 +15,6 @@ import (
 // the nil-colors short circuit and the default case.
 func Test_methodColor_AllMethods(t *testing.T) {
 	t.Parallel()
-
 	colors := &fiber.DefaultColors
 
 	require.Empty(t, methodColor(fiber.MethodGet, nil))
@@ -40,7 +39,6 @@ func Test_methodColor_AllMethods(t *testing.T) {
 // the nil-colors short circuit and each status range.
 func Test_statusColor_AllRanges(t *testing.T) {
 	t.Parallel()
-
 	colors := &fiber.DefaultColors
 
 	require.Empty(t, statusColor(fiber.StatusOK, nil))
@@ -57,7 +55,6 @@ func Test_statusColor_AllRanges(t *testing.T) {
 // instance is safe and we avoid mutating any shared/global logger state.
 func Test_customLoggerWriter_InvalidLevel(t *testing.T) {
 	t.Parallel()
-
 	cl := &customLoggerWriter[any]{level: fiberlog.LevelFatal}
 
 	n, err := cl.Write([]byte("ignored"))
@@ -69,7 +66,6 @@ func Test_customLoggerWriter_InvalidLevel(t *testing.T) {
 // the atomic value has never been stored.
 func Test_loadTimestamp_Empty(t *testing.T) {
 	t.Parallel()
-
 	var v atomic.Value
 	require.Empty(t, loadTimestamp(&v))
 }
@@ -77,7 +73,6 @@ func Test_loadTimestamp_Empty(t *testing.T) {
 // Test_UnknownTagError_WithHint covers the Hint branch of Error().
 func Test_UnknownTagError_WithHint(t *testing.T) {
 	t.Parallel()
-
 	err := &UnknownTagError{Tag: "method", Hint: "did you mean ${method}?"}
 	require.Contains(t, err.Error(), "did you mean ${method}?")
 	require.Contains(t, err.Error(), `"method"`)
@@ -87,7 +82,6 @@ func Test_UnknownTagError_WithHint(t *testing.T) {
 // public helper renders in a logger format and panics on invalid input.
 func Test_RegisterContextTag(t *testing.T) {
 	t.Parallel()
-
 	const tagName = "cov-ctx-tag"
 	RegisterContextTag(tagName, func(_ any) string { return "rendered-value" })
 
@@ -101,7 +95,6 @@ func Test_RegisterContextTag(t *testing.T) {
 // registered renderer writes nothing.
 func Test_RegisterContextTag_EmptyValue(t *testing.T) {
 	t.Parallel()
-
 	const tagName = "cov-ctx-empty"
 	RegisterContextTag(tagName, func(_ any) string { return "" })
 
@@ -113,7 +106,6 @@ func Test_RegisterContextTag_EmptyValue(t *testing.T) {
 // when the producing middleware has not registered a value.
 func Test_Logger_PreRegisteredMiddlewareTag(t *testing.T) {
 	t.Parallel()
-
 	require.Contains(t, loggerTestLog(t, &Config{Format: "[${" + fiberlog.TagAPIKey + "}]\n"}), "[]")
 }
 
@@ -121,7 +113,6 @@ func Test_Logger_PreRegisteredMiddlewareTag(t *testing.T) {
 // timestamp updater when TimeDone is configured (covers startTimestampUpdater).
 func Test_Logger_New_TimeDoneUpdater(t *testing.T) {
 	t.Parallel()
-
 	done := make(chan struct{})
 	defer close(done)
 

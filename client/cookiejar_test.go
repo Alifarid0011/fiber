@@ -107,7 +107,6 @@ func clientTestCSetByHost(t *testing.T, jar *CookieJar, setCookie string) {
 
 func Test_CookieJarGet(t *testing.T) {
 	t.Parallel()
-
 	cj := &CookieJar{}
 
 	c1 := clientTestCCookie(t, "k", "v")
@@ -154,7 +153,6 @@ func Test_CookieJarGet(t *testing.T) {
 
 func Test_CookieJarGetExpired(t *testing.T) {
 	t.Parallel()
-
 	uri1 := clientTestCURI(t, "http://fasthttp.com/make/")
 
 	c1 := clientTestCCookie(t, "k", "v")
@@ -169,7 +167,6 @@ func Test_CookieJarGetExpired(t *testing.T) {
 
 func Test_CookieJarSet(t *testing.T) {
 	t.Parallel()
-
 	cj := &CookieJar{}
 	cookie := clientTestCCookie(t, "k", "v")
 	uri := clientTestCURI(t, "http://fasthttp.com/hello/world")
@@ -202,7 +199,6 @@ func Test_CookieJarSetRepeatedCookieKeys(t *testing.T) {
 
 func Test_CookieJarSetKeyValue(t *testing.T) {
 	t.Parallel()
-
 	host := "fast.http"
 	cj := &CookieJar{}
 
@@ -231,7 +227,6 @@ func Test_CookieJarSetKeyValue(t *testing.T) {
 
 func Test_CookieJarHostStorageIsBounded(t *testing.T) {
 	t.Parallel()
-
 	cj := &CookieJar{}
 
 	for i := range maxCookieJarHosts + 32 {
@@ -247,7 +242,6 @@ func Test_CookieJarHostStorageIsBounded(t *testing.T) {
 
 func Test_CookieJarHostEvictionIsDeterministic(t *testing.T) {
 	t.Parallel()
-
 	cj := &CookieJar{hostCookies: make(map[string][]storedCookie, maxCookieJarHosts)}
 	for i := range maxCookieJarHosts {
 		host := fmt.Sprintf("host-%04d.example.com", i+1)
@@ -266,7 +260,6 @@ func Test_CookieJarHostEvictionIsDeterministic(t *testing.T) {
 
 func Test_CookieJarHostCapacityPrefersExpiredEntries(t *testing.T) {
 	t.Parallel()
-
 	cj := &CookieJar{hostCookies: make(map[string][]storedCookie, maxCookieJarHosts)}
 	now := time.Now()
 
@@ -295,7 +288,6 @@ func Test_CookieJarHostCapacityPrefersExpiredEntries(t *testing.T) {
 
 func Test_CookieJarGetFromResponse(t *testing.T) {
 	t.Parallel()
-
 	res := fasthttp.AcquireResponse()
 	host := []byte("fast.http")
 	uri := fasthttp.AcquireURI()
@@ -324,7 +316,6 @@ func Test_CookieJarGetFromResponse(t *testing.T) {
 
 func Test_CookieJar_HostPort(t *testing.T) {
 	t.Parallel()
-
 	jar := &CookieJar{}
 	uriSet := clientTestCURI(t, "http://fasthttp.com:80/path")
 
@@ -421,7 +412,6 @@ func (s *clientTestCScope) check(t *testing.T, jar *CookieJar) {
 // requests it sends the cookie to afterwards.
 func Test_CookieJar_ResponseDomainScoping(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []clientTestCScope{
 		{
 			name:   "a host-only cookie is not sent to a subdomain",
@@ -481,7 +471,6 @@ func Test_CookieJar_ResponseDomainScoping(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			jar := &CookieJar{}
 			resp := fasthttp.AcquireResponse()
 			t.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
@@ -497,7 +486,6 @@ func Test_CookieJar_ResponseDomainScoping(t *testing.T) {
 // by the caller instead of arriving in a response.
 func Test_CookieJar_SetDomainScoping(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []clientTestCScope{
 		{
 			name:   "a host-only cookie is not sent to a subdomain",
@@ -528,7 +516,6 @@ func Test_CookieJar_SetDomainScoping(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			jar := &CookieJar{}
 
 			jar.Set(clientTestCURI(t, tc.origin), tc.cookie(t))
@@ -539,7 +526,6 @@ func Test_CookieJar_SetDomainScoping(t *testing.T) {
 
 func Test_CookieJar_SetByHostDoesNotMutateHostOnlyCookieToDomainCookie(t *testing.T) {
 	t.Parallel()
-
 	jar := &CookieJar{}
 	c := clientTestCCookie(t, "sid", "123")
 
@@ -554,7 +540,6 @@ func Test_CookieJar_SetByHostDoesNotMutateHostOnlyCookieToDomainCookie(t *testin
 
 func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name  string
 		order []string
@@ -566,7 +551,6 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-
 			jar := &CookieJar{}
 
 			hostOnlyOrigin := clientTestCURI(t, "http://example.com/")
@@ -598,7 +582,6 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 
 func Test_CookieJar_Secure(t *testing.T) {
 	t.Parallel()
-
 	jar := &CookieJar{}
 
 	uriHTTP := clientTestCURI(t, "http://example.com/")
@@ -621,7 +604,6 @@ func Test_CookieJar_Secure(t *testing.T) {
 
 func Test_CookieJar_PathMatch(t *testing.T) {
 	t.Parallel()
-
 	jar := &CookieJar{}
 
 	setURI := clientTestCURI(t, "http://example.com/api")
@@ -647,10 +629,8 @@ func Test_CookieJar_PathMatch(t *testing.T) {
 // with inputs the higher-level tests do not produce.
 func Test_CookieJar_SamePathAndPathMatchEdges(t *testing.T) {
 	t.Parallel()
-
 	t.Run("samePath", func(t *testing.T) {
 		t.Parallel()
-
 		testCases := []struct {
 			a, b string
 			want bool
@@ -670,7 +650,6 @@ func Test_CookieJar_SamePathAndPathMatchEdges(t *testing.T) {
 
 	t.Run("pathMatch", func(t *testing.T) {
 		t.Parallel()
-
 		testCases := []struct {
 			reqPath, cookiePath string
 			want                bool
@@ -695,7 +674,6 @@ func Test_CookieJar_SamePathAndPathMatchEdges(t *testing.T) {
 // they must be no-ops rather than panicking.
 func Test_CookieJar_NilURI(t *testing.T) {
 	t.Parallel()
-
 	jar := clientTestCJar(t)
 
 	require.Nil(t, jar.Get(nil))
@@ -710,7 +688,6 @@ func Test_CookieJar_NilURI(t *testing.T) {
 // never match, and the comparison is ASCII case-insensitive.
 func Test_CookieJar_DomainMatchBoundary(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		host, domain string
 		want         bool
@@ -740,7 +717,6 @@ func Test_CookieJar_DomainMatchBoundary(t *testing.T) {
 // for a shallower one.
 func Test_CookieJar_DistinctPathsCoexist(t *testing.T) {
 	t.Parallel()
-
 	jar := clientTestCJar(t)
 
 	root := clientTestCCookie(t, "a", "root")
@@ -780,7 +756,6 @@ func Test_CookieJar_DistinctPathsCoexist(t *testing.T) {
 // to case-fold the caller's cookie in place.
 func Test_CookieJar_SetByHost_DoesNotMutateArgument(t *testing.T) {
 	t.Parallel()
-
 	jar := clientTestCJar(t)
 
 	c := clientTestCCookie(t, "a", "1")
@@ -812,7 +787,6 @@ func Test_CookieJar_SetByHost_ReplacesOnNormalizedPath(t *testing.T) {
 	for _, raw := range []string{"/x//y", "/x/%41", "/x/./y", "/x;y"} {
 		t.Run(raw, func(t *testing.T) {
 			t.Parallel()
-
 			jar := clientTestCJar(t)
 
 			const host = "example.com"
@@ -838,10 +812,8 @@ func Test_CookieJar_SetByHost_ReplacesOnNormalizedPath(t *testing.T) {
 // "/", so the two entry points stay distinguishable.
 func Test_CookieJar_SetUsesURIDefaultPath(t *testing.T) {
 	t.Parallel()
-
 	t.Run("Set scopes to the URI default-path", func(t *testing.T) {
 		t.Parallel()
-
 		jar := clientTestCJar(t)
 
 		setURI := clientTestCURI(t, "http://example.com/a/b")
@@ -869,7 +841,6 @@ func Test_CookieJar_SetUsesURIDefaultPath(t *testing.T) {
 
 	t.Run("an explicit Path still wins", func(t *testing.T) {
 		t.Parallel()
-
 		jar := clientTestCJar(t)
 
 		setURI := clientTestCURI(t, "http://example.com/a/b")
@@ -884,7 +855,6 @@ func Test_CookieJar_SetUsesURIDefaultPath(t *testing.T) {
 
 	t.Run("SetByHost still scopes to root", func(t *testing.T) {
 		t.Parallel()
-
 		jar := clientTestCJar(t)
 
 		c := clientTestCCookie(t, "k", "v")
@@ -902,7 +872,6 @@ func Test_CookieJar_SetUsesURIDefaultPath(t *testing.T) {
 // request's default-path.
 func Test_CookieJar_MatchesStdlibJar(t *testing.T) {
 	t.Parallel()
-
 	type setStep struct {
 		url    string
 		cookie string
@@ -978,7 +947,6 @@ func Test_CookieJar_MatchesStdlibJar(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			std, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
 			require.NoError(t, err)
 			jar := clientTestCJar(t)
@@ -1017,10 +985,8 @@ func Test_CookieJar_MatchesStdlibJar(t *testing.T) {
 // longer path first, ties broken by write order.
 func Test_CookieJar_SendsMostSpecificCookie(t *testing.T) {
 	t.Parallel()
-
 	t.Run("longer path wins", func(t *testing.T) {
 		t.Parallel()
-
 		jar := clientTestCJar(t)
 
 		clientTestCReceive(jar, "example.com", "/admin/login", "sess=ADMINVAL")
@@ -1035,7 +1001,6 @@ func Test_CookieJar_SendsMostSpecificCookie(t *testing.T) {
 	// explicit tiebreak. Repeat it: Go randomizes map order per run.
 	t.Run("equal paths across storage keys are deterministic", func(t *testing.T) {
 		t.Parallel()
-
 		for range 50 {
 			jar := AcquireCookieJar()
 
@@ -1071,7 +1036,6 @@ func cookieHeaderFor(jar *CookieJar, rawURL string) string {
 // scoping existed. Broader than the RFC prescribes, but never silently lost.
 func Test_CookieJar_DefaultPathStaysReachable(t *testing.T) {
 	t.Parallel()
-
 	for _, rawURL := range []string{
 		"http://example.com/a%2541b/c",
 		"http://example.com/plain/c",
@@ -1079,7 +1043,6 @@ func Test_CookieJar_DefaultPathStaysReachable(t *testing.T) {
 	} {
 		t.Run(rawURL, func(t *testing.T) {
 			t.Parallel()
-
 			jar := clientTestCJar(t)
 
 			uri := clientTestCURI(t, rawURL)
@@ -1098,7 +1061,6 @@ func Test_CookieJar_DefaultPathStaysReachable(t *testing.T) {
 // directory it serves, so the host cap alone no longer bounds the jar.
 func Test_CookieJar_BoundsCookiesPerHost(t *testing.T) {
 	t.Parallel()
-
 	jar := clientTestCJar(t)
 
 	for i := range 500 {
@@ -1116,7 +1078,6 @@ func Test_CookieJar_BoundsCookiesPerHost(t *testing.T) {
 // the pressure default-path scoping creates.
 func Test_CookieJar_PerHostEvictionPrefersExpired(t *testing.T) {
 	t.Parallel()
-
 	const host = "example.com"
 	jar := clientTestCJar(t)
 	jar.hostCookies = make(map[string][]storedCookie)
@@ -1157,7 +1118,6 @@ func Test_CookieJar_PerHostEvictionPrefersExpired(t *testing.T) {
 // forever and count against the jar's host ceiling.
 func Test_CookieJar_PerHostEvictionDropsEmptyKey(t *testing.T) {
 	t.Parallel()
-
 	const host = "example.com"
 	jar := clientTestCJar(t)
 	jar.hostCookies = make(map[string][]storedCookie)
@@ -1183,7 +1143,6 @@ func Test_CookieJar_PerHostEvictionDropsEmptyKey(t *testing.T) {
 // and re-writing a cookie refreshes its recency.
 func Test_CookieJar_PerHostEvictionDropsLeastRecentlyWritten(t *testing.T) {
 	t.Parallel()
-
 	const host = "example.com"
 	jar := clientTestCJar(t)
 
@@ -1220,11 +1179,9 @@ func Test_CookieJar_PerHostEvictionDropsLeastRecentlyWritten(t *testing.T) {
 // still occupying one of the per-host slots.
 func Test_CookieJar_RelativePathUsesDefaultPath(t *testing.T) {
 	t.Parallel()
-
 	for _, attr := range []string{"admin", "./admin", "../admin"} {
 		t.Run(attr, func(t *testing.T) {
 			t.Parallel()
-
 			jar := clientTestCJar(t)
 
 			clientTestCReceive(jar, "example.com", "/dir/page", "a=1; Path="+attr)
@@ -1240,7 +1197,6 @@ func Test_CookieJar_RelativePathUsesDefaultPath(t *testing.T) {
 // exactly the pressure default-path scoping creates.
 func Test_CookieJar_EvictsLeastRecentlyWritten(t *testing.T) {
 	t.Parallel()
-
 	jar := clientTestCJar(t)
 
 	clientTestCReceive(jar, "example.com", "/login", "session=SECRET; Path=/")
@@ -1262,7 +1218,6 @@ func Test_CookieJar_EvictsLeastRecentlyWritten(t *testing.T) {
 // multiply its allowance by its label count.
 func Test_CookieJar_BoundsCookiesPerRequest(t *testing.T) {
 	t.Parallel()
-
 	jar := clientTestCJar(t)
 
 	const host = "a.b.c.d.example.com"
@@ -1308,7 +1263,6 @@ func Test_CookieJar_BoundsCookiesPerRequest(t *testing.T) {
 // cookies would then ride along on every later request to that origin.
 func Test_CookieJar_AttributesCookiesToRespondingHost(t *testing.T) {
 	t.Parallel()
-
 	routes := func(app *fiber.App) {
 		app.Get("/start", func(c fiber.Ctx) error {
 			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/plant")
@@ -1342,7 +1296,6 @@ func Test_CookieJar_AttributesCookiesToRespondingHost(t *testing.T) {
 
 	t.Run("redirect target cannot plant cookies for the origin", func(t *testing.T) {
 		t.Parallel()
-
 		jar := clientTestCJar(t)
 		client := clientTestAClient(t, routes).SetCookieJar(jar)
 
@@ -1356,7 +1309,6 @@ func Test_CookieJar_AttributesCookiesToRespondingHost(t *testing.T) {
 
 	t.Run("a response with no redirect is still stored", func(t *testing.T) {
 		t.Parallel()
-
 		jar := clientTestCJar(t)
 		client := clientTestAClient(t, routes).SetCookieJar(jar)
 

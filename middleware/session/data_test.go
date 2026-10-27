@@ -174,7 +174,6 @@ func requireDataEmpty(t *testing.T, d *data, msg string) {
 
 func TestData_ResetPreservesAllocation(t *testing.T) {
 	t.Parallel()
-
 	d := sessionTestData(t)
 
 	originalPtr := lockedMapPointer(d)
@@ -194,7 +193,6 @@ func TestData_ResetPreservesAllocation(t *testing.T) {
 
 func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
 	t.Parallel()
-
 	acquired := make([]*data, 0, 6)
 	t.Cleanup(func() {
 		for _, item := range acquired {
@@ -265,7 +263,6 @@ func TestData_Delete(t *testing.T) {
 
 func Test_ValueMayAlias(t *testing.T) {
 	t.Parallel()
-
 	type userID int
 	type name string
 	type scalarStruct struct{ N int }

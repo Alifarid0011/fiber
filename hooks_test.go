@@ -256,7 +256,6 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 
 func Test_Hook_OnListen(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	buf := bytebufferpool.Get()
@@ -280,7 +279,6 @@ func Test_Hook_OnListen(t *testing.T) {
 
 func Test_ListenDataMetadata(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{AppName: "meta"})
 	app.handlersCount = 42
 
@@ -359,10 +357,8 @@ func rootMiscARunPreStartupHook(t *testing.T, hook func(data *PreStartupMessageD
 
 func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 	t.Parallel()
-
 	t.Run("EntryKeys", func(t *testing.T) {
 		t.Parallel()
-
 		rootMiscARunPreStartupHook(t, func(data *PreStartupMessageData) {
 			data.ResetEntries()
 
@@ -378,7 +374,6 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 
 	t.Run("ResetEntries", func(t *testing.T) {
 		t.Parallel()
-
 		rootMiscARunPreStartupHook(t, func(data *PreStartupMessageData) {
 			data.ResetEntries()
 
@@ -404,7 +399,6 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			rootMiscARunPreStartupHook(t, func(data *PreStartupMessageData) {
 				data.ResetEntries()
 
@@ -421,7 +415,6 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 
 	t.Run("AddInfo-UpdateExisting", func(t *testing.T) {
 		t.Parallel()
-
 		rootMiscARunPreStartupHook(t, func(data *PreStartupMessageData) {
 			data.ResetEntries()
 
@@ -438,7 +431,6 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 
 	t.Run("DeleteEntry", func(t *testing.T) {
 		t.Parallel()
-
 		rootMiscARunPreStartupHook(t, func(data *PreStartupMessageData) {
 			data.ResetEntries()
 
@@ -522,7 +514,6 @@ func Test_Hook_OnMount(t *testing.T) {
 // the error a hook returns reaches the caller.
 func Test_executeOnRouteHooks_ErrorWithMount(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		on      func(h *Hooks, handler ...OnRouteHandler)
 		execute func(h *Hooks, route *Route) error
@@ -558,7 +549,6 @@ func Test_executeOnRouteHooks_ErrorWithMount(t *testing.T) {
 // handed the mount path in front of the group prefix.
 func Test_executeOnGroupHooks_ErrorWithMount(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		on      func(h *Hooks, handler ...OnGroupHandler)
 		execute func(h *Hooks, group Group) error
@@ -668,7 +658,6 @@ func Test_executeOnMountHooks_Error(t *testing.T) {
 
 func Test_Hooks_ShutdownSnapshot_WithoutApp(t *testing.T) {
 	t.Parallel()
-
 	var pre, post int
 	h := &Hooks{
 		onPreShutdown:  []OnPreShutdownHandler{func() error { pre++; return nil }},

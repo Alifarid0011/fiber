@@ -36,7 +36,6 @@ func Test_RequestID(t *testing.T) {
 
 func Test_RequestID_InvalidHeaderValue(t *testing.T) {
 	t.Parallel()
-
 	rid := sanitizeRequestID("bad\r\nid", func() string { return "clean-generated-id" })
 
 	require.Equal(t, "clean-generated-id", rid)
@@ -59,7 +58,6 @@ func requestidTestID(t *testing.T, generate func() string) string {
 
 func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
 	t.Parallel()
-
 	rid := requestidTestID(t, func() string { return "bad\r\nid" })
 
 	require.NotEmpty(t, rid)
@@ -70,7 +68,6 @@ func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
 
 func Test_RequestID_GeneratorAlwaysInvalid(t *testing.T) {
 	t.Parallel()
-
 	rid := requestidTestID(t, func() string {
 		return "invalid\x00id" // Always invalid due to null byte
 	})
@@ -81,7 +78,6 @@ func Test_RequestID_GeneratorAlwaysInvalid(t *testing.T) {
 
 func Test_RequestID_CustomGenerator(t *testing.T) {
 	t.Parallel()
-
 	rid := requestidTestID(t, func() string { return "custom-valid-id" })
 
 	require.Equal(t, "custom-valid-id", rid)
@@ -89,22 +85,18 @@ func Test_RequestID_CustomGenerator(t *testing.T) {
 
 func Test_isValidRequestID_VisibleASCII(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, isValidRequestID("request-id-09AZaz ~"))
 }
 
 func Test_isValidRequestID_Boundaries(t *testing.T) {
 	t.Parallel()
-
 	t.Run("allows space and tilde", func(t *testing.T) {
 		t.Parallel()
-
 		require.True(t, isValidRequestID(" ~"))
 	})
 
 	t.Run("rejects out of range", func(t *testing.T) {
 		t.Parallel()
-
 		require.False(t, isValidRequestID(string([]byte{0x1f})))
 		require.False(t, isValidRequestID(string([]byte{0x7f})))
 		require.False(t, isValidRequestID("a\tb"))
@@ -112,14 +104,12 @@ func Test_isValidRequestID_Boundaries(t *testing.T) {
 
 	t.Run("rejects empty", func(t *testing.T) {
 		t.Parallel()
-
 		require.False(t, isValidRequestID(""))
 	})
 }
 
 func Test_isValidRequestID_RejectsObsText(t *testing.T) {
 	t.Parallel()
-
 	require.False(t, isValidRequestID("valid\xff"))
 }
 
@@ -166,7 +156,6 @@ func Test_RequestID_FromContext(t *testing.T) {
 
 func Test_RequestID_LoggerMiddlewareTag(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 	app := fiber.New()
 	app.Use(New(Config{Generator: func() string { return "req-42" }}))
@@ -195,7 +184,6 @@ func Test_RequestID_LogWithContextFormat(t *testing.T) {
 
 func Test_RequestID_FromContext_Empty(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	// No middleware
 
@@ -210,7 +198,6 @@ func Test_RequestID_FromContext_Empty(t *testing.T) {
 
 func Test_RequestID_FromContext_Types(t *testing.T) {
 	t.Parallel()
-
 	reqID := "request-id-123"
 
 	app := fiber.New(fiber.Config{PassLocalsToContext: true})

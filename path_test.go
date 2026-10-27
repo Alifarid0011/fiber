@@ -176,7 +176,6 @@ func Test_Path_matchParams(t *testing.T) {
 
 func Test_Route_OptionalParamDoesNotSwallowSlash(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/api/:day-:month?-:year?", func(c Ctx) error {
 		return c.SendString("day=" + c.Params("day") + " month=" + c.Params("month"))
@@ -192,7 +191,6 @@ func Test_Route_OptionalParamDoesNotSwallowSlash(t *testing.T) {
 // route grammar has to reach the client's copy too (#4635).
 func Test_Path_ParameterEndChars_MatchesRouteGrammar(t *testing.T) {
 	t.Parallel()
-
 	var want [256]bool
 	want[optionalParam] = true
 	want[paramStarterChar] = true
@@ -259,7 +257,6 @@ func pathTestPairs(items []string) []string {
 // shapes nobody thought to add to the fixture.
 func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 	t.Parallel()
-
 	segments := []string{
 		"/api", "/foo/", "/:a", "/:b?", "/*", "/+", "/:a-:b", "/:f.:e?",
 		":tail", "/::c", "/:x:y", "/name\\:verb", "/:p/fixed",
@@ -355,7 +352,6 @@ func Test_RoutePatternMatch(t *testing.T) {
 
 func TestHasPartialMatchBoundary(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name          string
 		path          string
@@ -415,7 +411,6 @@ func Test_Utils_RemoveEscapeChar(t *testing.T) {
 
 func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name       string
 		param      string
@@ -478,7 +473,6 @@ func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 
 func Test_ConstraintCheckConstraint_NilRegexMatcher(t *testing.T) {
 	t.Parallel()
-
 	constraint := *newConstraint(regexConstraintType{}, ConstraintRegex, []string{"("})
 
 	require.NotPanics(t, func() { require.False(t, constraint.CheckConstraint("123")) })
@@ -683,7 +677,6 @@ func paramsRoute(t *testing.T, n int) string {
 // Test_RegexHandler_Default verifies Fiber defaults RegexHandler to regexp.MustCompile.
 func Test_RegexHandler_Default(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	require.NotNil(t, app.config.RegexHandler)
@@ -727,7 +720,6 @@ func mockRegexHandler(lastPattern *string, compileCalled *bool) any {
 // Test_RegexHandler_Custom verifies that a custom regex handler can be used
 func Test_RegexHandler_Custom(t *testing.T) {
 	t.Parallel()
-
 	var lastPattern string
 	var compileCalled bool
 
@@ -751,7 +743,6 @@ func Test_RegexHandler_Custom(t *testing.T) {
 // Test_RegexHandler_MatchOnlyCompiler verifies Fiber accepts compilers that only implement MatchString.
 func Test_RegexHandler_MatchOnlyCompiler(t *testing.T) {
 	t.Parallel()
-
 	var compileCalled bool
 
 	app := New(Config{
@@ -771,7 +762,6 @@ func Test_RegexHandler_MatchOnlyCompiler(t *testing.T) {
 // Test_RegexHandler_DefaultCompilerPreservesConstraintField verifies stdlib handlers still populate the exported regexp field.
 func Test_RegexHandler_DefaultCompilerPreservesConstraintField(t *testing.T) {
 	t.Parallel()
-
 	parser := parseRoute("/api/:id<regex(\\d+)>", regexp.MustCompile)
 	require.Len(t, parser.segs, 2)
 	require.Len(t, parser.segs[1].Constraints, 1)
@@ -782,7 +772,6 @@ func Test_RegexHandler_DefaultCompilerPreservesConstraintField(t *testing.T) {
 
 func Test_RegexHandler_CustomCompilerUsesSegmentMatcher(t *testing.T) {
 	t.Parallel()
-
 	parser := parseRoute("/api/:id<regex(\\d+)>", func(pattern string) *matchOnlyRegexCompiler {
 		return &matchOnlyRegexCompiler{re: regexp.MustCompile(pattern)}
 	})
@@ -799,7 +788,6 @@ func Test_RegexHandler_CustomCompilerUsesSegmentMatcher(t *testing.T) {
 // roots such a request target before matching it.
 func Test_RoutePatternMatch_UnrootedPath(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, RoutePatternMatch("", "/"))
 	require.True(t, RoutePatternMatch("", "/*"))
 	require.True(t, RoutePatternMatch("/", "/"))
@@ -849,7 +837,6 @@ func Test_RegexHandler_NilDefaultsToStdlib(t *testing.T) {
 // Test_RegexHandler_ComplexPattern tests complex regex patterns
 func Test_RegexHandler_ComplexPattern(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// Test date pattern
@@ -865,10 +852,8 @@ func Test_RegexHandler_ComplexPattern(t *testing.T) {
 // Test_RegexHandler_InvalidConfigurationPanics verifies invalid handlers fail fast.
 func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
 	t.Parallel()
-
 	t.Run("typed_nil_function", func(t *testing.T) {
 		t.Parallel()
-
 		var handler func(string) *regexp.Regexp
 		require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
 			New(Config{RegexHandler: handler})
@@ -877,7 +862,6 @@ func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
 
 	t.Run("non_function", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
 			New(Config{RegexHandler: "invalid"})
 		})
@@ -885,7 +869,6 @@ func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
 
 	t.Run("invalid_signature", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithValue(t, "fiber: Config.RegexHandler must have signature func(string) T", func() {
 			New(Config{RegexHandler: func(int) *regexp.Regexp { return nil }})
 		})
@@ -893,7 +876,6 @@ func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
 
 	t.Run("named_string_parameter", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithValue(t, "fiber: Config.RegexHandler must have signature func(string) T", func() {
 			New(Config{RegexHandler: func(regexPattern) *regexp.Regexp { return nil }})
 		})
@@ -901,7 +883,6 @@ func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
 
 	t.Run("invalid_return_type", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithValue(t, "fiber: Config.RegexHandler return type must support MatchString(string) bool", func() {
 			New(Config{RegexHandler: func(string) string { return "" }})
 		})
@@ -911,7 +892,6 @@ func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
 // Test_RegexHandler_NilReturnPanics verifies a nil compiled matcher is rejected.
 func Test_RegexHandler_NilReturnPanics(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{RegexHandler: func(string) *regexp.Regexp { return nil }})
 
 	require.PanicsWithValue(t, "fiber: Config.RegexHandler must not return nil", func() {
@@ -925,7 +905,6 @@ func Test_RegexHandler_NilReturnPanics(t *testing.T) {
 // the forms the router itself registers, so callers do not have to pre-normalize.
 func Test_RoutePatternMatch_NormalizesInputs(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name    string
 		path    string
@@ -951,7 +930,6 @@ func Test_RoutePatternMatch_NormalizesInputs(t *testing.T) {
 
 func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
 		RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>", Config{RegexHandler: "invalid"})
 	})
@@ -963,7 +941,6 @@ func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
 // correctness bug, so both directions are asserted.
 func Test_RouteParser_ConstParamShape(t *testing.T) {
 	t.Parallel()
-
 	specialized := []string{"/user/keys/:key_id", "/api/v1/:param", "/:param", "/a/:b", "/repos/:owner", "/x/:y"}
 	generic := []string{
 		"/", "/const", "/*", "/+", "/api/*", "/api/+",
@@ -1092,7 +1069,6 @@ func Test_ConstProbe_Rejects(t *testing.T) {
 // must tell them apart.
 func Test_ProbeMemo_MatchesProbe(t *testing.T) {
 	t.Parallel()
-
 	var probes []constProbe
 	var heads []scanHead
 	for _, pattern := range []string{
@@ -1178,7 +1154,6 @@ func Test_packConst(t *testing.T) {
 // safety argument for the specialization.
 func Test_RouteParser_ConstParamDifferential(t *testing.T) {
 	t.Parallel()
-
 	prefixes := []string{"/", "/a/", "/user/keys/", "/api/v1/", "/verylongprefix/"}
 	patterns := make([]string, 0, len(prefixes))
 	for _, p := range prefixes {
@@ -1223,7 +1198,6 @@ func Test_RouteParser_ConstParamDifferential(t *testing.T) {
 // generated set above does not reach.
 func Test_RouteParser_ConstParamFixture(t *testing.T) {
 	t.Parallel()
-
 	checked := 0
 	for _, testCollection := range routeTestCases {
 		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
@@ -1254,7 +1228,6 @@ func Test_RouteParser_ConstParamFixture(t *testing.T) {
 // pattern but not from the path.
 func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 	t.Parallel()
-
 	patterns := []string{
 		"/", "/a", "/a/b", "/:id", "/a/:id", "/a/:id?", "/a/*", "/*", "/+",
 		"/a/+", "/:a/:b", "/a-:b", "/a.:b", "/:a?/b", "/api/v1/:id/x",
@@ -1313,7 +1286,6 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 // patterns while preserving the case of parameter names and regex arguments.
 func Test_RoutePatternNormalization_RegistrationMountAndRemoval(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		pattern string
 		path    string
@@ -1374,7 +1346,6 @@ func Test_RoutePatternNormalization_RegistrationMountAndRemoval(t *testing.T) {
 
 func Test_UnescapePath_MalformedEscape(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		in, out string
 	}{
@@ -1396,7 +1367,6 @@ func Test_UnescapePath_MalformedEscape(t *testing.T) {
 
 func Test_UnescapeSafePath(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		in, out string
 	}{
@@ -1457,7 +1427,6 @@ func Test_UnescapeSafePath(t *testing.T) {
 // hex digits do not follow.
 func Test_UnescapeSafePath_NoForgedEscape(t *testing.T) {
 	t.Parallel()
-
 	alphabet := []string{"%", "a", "3", "7", "%37", "%41", "%2F", "%2f", "/"}
 	var walk func(prefix string, depth int)
 	walk = func(prefix string, depth int) {
@@ -1505,7 +1474,6 @@ func Test_UnescapeSafePath_OneCopy(t *testing.T) { //nolint:paralleltest // Allo
 
 func Test_CleanPathSegments(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		in, out string
 	}{
@@ -1545,7 +1513,6 @@ func Test_CleanPathSegments(t *testing.T) {
 
 func Test_NormalizeRequestPath(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		in, out  string
 		unescape bool
@@ -1604,7 +1571,6 @@ func forEachPathSample(fn func(string)) {
 // against a byte-at-a-time definition of what it must find.
 func Test_NeedsPathNormalization_MatchesReference(t *testing.T) {
 	t.Parallel()
-
 	ref := func(s string) bool {
 		if s == "" || s[0] != '/' {
 			return true
@@ -1623,7 +1589,6 @@ func Test_NeedsPathNormalization_MatchesReference(t *testing.T) {
 // cleanPathSegments.
 func Test_HasDotSegment_MatchesReference(t *testing.T) {
 	t.Parallel()
-
 	ref := func(s string) bool {
 		if s != "" && s[0] == '.' {
 			return true
@@ -1662,7 +1627,6 @@ func Test_NeedsPathNormalization(t *testing.T) {
 
 func Test_RouteParser_AdoptConstraints_Mismatch(t *testing.T) {
 	t.Parallel()
-
 	var pretty, raw routeParser
 	pretty.parseRoute("/:id<int>/:name", nil)
 	raw.parseRoute("/:id<int>", nil)
@@ -1681,7 +1645,6 @@ func Test_RouteParser_AdoptConstraints_Mismatch(t *testing.T) {
 
 func Test_RouteParser_AdoptConstraints_FewerRawSegments(t *testing.T) {
 	t.Parallel()
-
 	var pretty, raw routeParser
 	pretty.parseRoute("/a/:id<int>/b/:name<int>", nil)
 	raw.parseRoute("/:id<int>", nil)
@@ -1696,6 +1659,5 @@ func Test_RouteParser_AdoptConstraints_FewerRawSegments(t *testing.T) {
 // addParameterMetaInfo must not index into that empty Const.
 func Test_RouteParser_TrailingBackslash(t *testing.T) {
 	t.Parallel()
-
 	require.NotPanics(t, func() { parseRoute(`/:id\`, nil) })
 }

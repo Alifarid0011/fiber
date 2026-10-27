@@ -11,7 +11,6 @@ import (
 
 func Test_configDefault_KeyValidation(t *testing.T) {
 	t.Parallel()
-
 	t.Run("invalid base64", func(t *testing.T) {
 		t.Parallel()
 		_, decErr := base64.StdEncoding.DecodeString("invalid")

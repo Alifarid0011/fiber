@@ -15,7 +15,6 @@ import (
 // boundary, which is case-sensitive and has to keep matching the body.
 func Test_NormalizeRequestContentType(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name string
 		in   string
@@ -45,7 +44,6 @@ func Test_NormalizeRequestContentType(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var h fasthttp.RequestHeader
 			h.SetContentType(tc.in)
 
@@ -63,7 +61,6 @@ func Test_NormalizeRequestContentType(t *testing.T) {
 
 func Test_IsForm(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		in   string
 		want bool
@@ -95,7 +92,6 @@ func Test_IsForm(t *testing.T) {
 // survive unfolded so it keeps matching the body.
 func Test_NormalizeRequestContentType_KeepsBoundaryUsable(t *testing.T) {
 	t.Parallel()
-
 	var req fasthttp.Request
 	req.Header.SetContentType(`Multipart/Form-Data; BOUNDARY=AbCdEf`)
 	req.SetBody([]byte("--AbCdEf\r\nContent-Disposition: form-data; name=\"who\"\r\n\r\nworld\r\n--AbCdEf--\r\n"))
@@ -117,7 +113,6 @@ func Test_NormalizeRequestContentType_KeepsBoundaryUsable(t *testing.T) {
 // makes it the boundary it picks — and the real one is never reached.
 func Test_NormalizeRequestContentType_QuotedPair(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name string
 		in   string
@@ -141,7 +136,6 @@ func Test_NormalizeRequestContentType_QuotedPair(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var h fasthttp.RequestHeader
 			h.SetContentType(tc.in)
 			require.Equal(t, tc.want, string(NormalizeRequestContentType(&h)))
@@ -154,7 +148,6 @@ func Test_NormalizeRequestContentType_QuotedPair(t *testing.T) {
 // author wrote, not the one hidden in an earlier parameter's value.
 func Test_NormalizeRequestContentType_DecoyBoundaryLosesToReal(t *testing.T) {
 	t.Parallel()
-
 	var h fasthttp.RequestHeader
 	h.SetContentType(`Multipart/Form-Data; X="\"; BOUNDARY=bogus"; BOUNDARY=Real`)
 	NormalizeRequestContentType(&h)
@@ -163,7 +156,6 @@ func Test_NormalizeRequestContentType_DecoyBoundaryLosesToReal(t *testing.T) {
 
 func Test_StripParams(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		in   string
 		want string
@@ -183,7 +175,6 @@ func Test_StripParams(t *testing.T) {
 
 func Test_Params(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name string
 		in   string
@@ -204,7 +195,6 @@ func Test_Params(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var got []string
 			for name, value := range Params([]byte(tc.in)) {
 				got = append(got, string(name), string(value))
@@ -216,7 +206,6 @@ func Test_Params(t *testing.T) {
 
 func Test_Params_Break(t *testing.T) {
 	t.Parallel()
-
 	var names []string
 	for name := range Params([]byte("text/plain; a=1; b=2")) {
 		names = append(names, string(name))
@@ -227,7 +216,6 @@ func Test_Params_Break(t *testing.T) {
 
 func Test_Unescape(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		in   string
 		want string
@@ -254,7 +242,6 @@ func Test_Unescape(t *testing.T) {
 
 func Test_Unescape_AliasesWithoutEscapes(t *testing.T) {
 	t.Parallel()
-
 	for _, in := range []string{"abc", `ab\`} {
 		v := []byte(in)
 		got, _ := Unescape(v)
@@ -307,7 +294,6 @@ func Benchmark_Unescape(b *testing.B) {
 
 func Test_IsToken(t *testing.T) {
 	t.Parallel()
-
 	const tchar = "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	for c := range 256 {
 		require.Equal(t, strings.IndexByte(tchar, byte(c)) >= 0, IsToken([]byte{byte(c)}), "%q", byte(c))

@@ -18,7 +18,6 @@ import (
 
 func TestToFiberHandler_Nil(t *testing.T) {
 	t.Parallel()
-
 	var handler Handler
 	converted, ok := toFiberHandler(handler)
 	require.False(t, ok)
@@ -27,7 +26,6 @@ func TestToFiberHandler_Nil(t *testing.T) {
 
 func TestToFiberHandler_FiberHandler(t *testing.T) {
 	t.Parallel()
-
 	fiberHandler := func(c Ctx) error { return c.SendStatus(http.StatusAccepted) }
 
 	converted, ok := toFiberHandler(fiberHandler)
@@ -38,7 +36,6 @@ func TestToFiberHandler_FiberHandler(t *testing.T) {
 
 func TestToFiberHandler_FiberHandlerNoErrorReturn(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(c Ctx) {
@@ -56,7 +53,6 @@ func TestToFiberHandler_FiberHandlerNoErrorReturn(t *testing.T) {
 
 func TestNewTestCtx_ReturnsDefaultCtx(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 	require.NotNil(t, app)
 	require.NotNil(t, ctx)
@@ -117,7 +113,6 @@ func rootMiscARunChain(t *testing.T, ctx *DefaultCtx, nextErr error, handler any
 
 func TestToFiberHandler_ExpressTwoParamsWithError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res) error {
@@ -134,7 +129,6 @@ func TestToFiberHandler_ExpressTwoParamsWithError(t *testing.T) {
 
 func TestToFiberHandler_ExpressTwoParamsWithoutError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res) {
@@ -151,7 +145,6 @@ func TestToFiberHandler_ExpressTwoParamsWithoutError(t *testing.T) {
 
 func TestToFiberHandler_ExpressThreeParamsWithError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func() error) error {
@@ -167,7 +160,6 @@ func TestToFiberHandler_ExpressThreeParamsWithError(t *testing.T) {
 
 func TestToFiberHandler_ExpressThreeParamsWithError_PrefersHandlerErrorOverNextError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func() error) error {
@@ -183,7 +175,6 @@ func TestToFiberHandler_ExpressThreeParamsWithError_PrefersHandlerErrorOverNextE
 
 func TestToFiberHandler_ExpressThreeParamsWithError_PropagatesNextErrorWhenNoReturnError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	nextErr := errors.New("next error")
@@ -201,7 +192,6 @@ func TestToFiberHandler_ExpressThreeParamsWithError_PropagatesNextErrorWhenNoRet
 
 func TestToFiberHandler_ExpressThreeParamsWithoutError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func() error) {
@@ -218,7 +208,6 @@ func TestToFiberHandler_ExpressThreeParamsWithoutError(t *testing.T) {
 
 func TestToFiberHandler_ExpressNextNoArgWithErrorReturn(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func()) error {
@@ -235,7 +224,6 @@ func TestToFiberHandler_ExpressNextNoArgWithErrorReturn(t *testing.T) {
 
 func TestToFiberHandler_ExpressNextWithErrorContinuesOnNil(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func(error)) {
@@ -250,7 +238,6 @@ func TestToFiberHandler_ExpressNextWithErrorContinuesOnNil(t *testing.T) {
 
 func TestToFiberHandler_ExpressNextWithErrorShortCircuitsOnError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func(error)) {
@@ -265,7 +252,6 @@ func TestToFiberHandler_ExpressNextWithErrorShortCircuitsOnError(t *testing.T) {
 
 func TestToFiberHandler_ExpressNextWithErrorReturn_ShortCircuitsOnNextError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func(error)) error {
@@ -281,7 +267,6 @@ func TestToFiberHandler_ExpressNextWithErrorReturn_ShortCircuitsOnNextError(t *t
 
 func TestToFiberHandler_ExpressNextWithErrorReturnCallback_PropagatesNextError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func(error) error) {
@@ -297,7 +282,6 @@ func TestToFiberHandler_ExpressNextWithErrorReturnCallback_PropagatesNextError(t
 
 func TestToFiberHandler_ExpressNextWithErrorReturnCallback_ShortCircuitsOnNextError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func(error) error) {
@@ -312,7 +296,6 @@ func TestToFiberHandler_ExpressNextWithErrorReturnCallback_ShortCircuitsOnNextEr
 
 func TestToFiberHandler_ExpressNextWithErrorReturn_PrefersHandlerErrorOverNextError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func(error) error) error {
@@ -328,7 +311,6 @@ func TestToFiberHandler_ExpressNextWithErrorReturn_PrefersHandlerErrorOverNextEr
 
 func TestToFiberHandler_ExpressNextWithErrorReturn_PropagatesNextErrorWhenNoReturnError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func(error) error) error {
@@ -343,7 +325,6 @@ func TestToFiberHandler_ExpressNextWithErrorReturn_PropagatesNextErrorWhenNoRetu
 
 func TestToFiberHandler_ExpressNextWithErrorReturnCallback_StopsChainWithoutNextCall(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, _ func(error) error) {
@@ -427,7 +408,6 @@ func TestAdapter_MixedHandlerIntegration(t *testing.T) {
 
 func TestToFiberHandler_ExpressNextNoArgPropagatesError(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, next func()) {
@@ -443,7 +423,6 @@ func TestToFiberHandler_ExpressNextNoArgPropagatesError(t *testing.T) {
 
 func TestToFiberHandler_ExpressNextNoArgStopsChain(t *testing.T) {
 	t.Parallel()
-
 	app, ctx := newTestCtx(t)
 
 	handler := func(req Req, res Res, _ func()) {
@@ -458,7 +437,6 @@ func TestToFiberHandler_ExpressNextNoArgStopsChain(t *testing.T) {
 
 func TestToFiberHandler_ExpressNextNoArgMiddleware(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
 
@@ -483,7 +461,6 @@ func TestToFiberHandler_ExpressNextNoArgMiddleware(t *testing.T) {
 
 func TestCollectHandlers_HTTPHandler(t *testing.T) {
 	t.Parallel()
-
 	var writeErr error
 	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-HTTP", "ok")
@@ -508,7 +485,6 @@ func TestCollectHandlers_HTTPHandler(t *testing.T) {
 
 func TestToFiberHandler_HTTPHandler(t *testing.T) {
 	t.Parallel()
-
 	var writeErr error
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-HTTP", "handler")
@@ -530,7 +506,6 @@ func TestToFiberHandler_HTTPHandler(t *testing.T) {
 
 func TestToFiberHandler_FasthttpHandlerWithError(t *testing.T) {
 	t.Parallel()
-
 	_, ctx := newTestCtx(t)
 
 	fasthttpHandler := func(fctx *fasthttp.RequestCtx) error {
@@ -549,7 +524,6 @@ func TestToFiberHandler_FasthttpHandlerWithError(t *testing.T) {
 
 func TestToFiberHandler_HTTPHandler_Flush(t *testing.T) {
 	t.Parallel()
-
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-HTTP", "handler")
 		_, err := w.Write([]byte("through"))
@@ -573,7 +547,6 @@ func TestToFiberHandler_HTTPHandler_Flush(t *testing.T) {
 
 func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
@@ -597,7 +570,6 @@ func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
 
 func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
@@ -623,7 +595,6 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 
 func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
 	t.Parallel()
-
 	httpFunc := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
 
 	converted, ok := toFiberHandler(httpFunc)
@@ -639,19 +610,16 @@ func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
 
 func TestWrapHTTPHandler_Nil(t *testing.T) {
 	t.Parallel()
-
 	require.Nil(t, wrapHTTPHandler(nil))
 }
 
 func TestCollectHandlers_InvalidType(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithValue(t, "context: invalid handler #0 (int)\n", func() { collectHandlers("context", 42) })
 }
 
 func TestCollectHandlers_TypedNil(t *testing.T) {
 	t.Parallel()
-
 	var (
 		handlerFunc           http.HandlerFunc
 		handler               http.Handler
@@ -675,7 +643,6 @@ func TestCollectHandlers_TypedNil(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			expected := fmt.Sprintf("context: invalid handler #0 (%T)\n", tt.handler)
 
 			require.PanicsWithValue(t, expected, func() { collectHandlers("context", tt.handler) })
@@ -698,7 +665,6 @@ func (handler dummyFuncHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 func TestCollectHandlers_TypedNilPointerHTTPHandler(t *testing.T) {
 	t.Parallel()
-
 	var handler http.Handler = (*dummyHandler)(nil)
 
 	require.PanicsWithValue(t, "context: invalid handler #0 (*fiber.dummyHandler)\n", func() {
@@ -708,7 +674,6 @@ func TestCollectHandlers_TypedNilPointerHTTPHandler(t *testing.T) {
 
 func TestCollectHandlers_FasthttpHandler(t *testing.T) {
 	t.Parallel()
-
 	before := func(c Ctx) error {
 		c.Set("X-Before", "fiber")
 		return nil
@@ -735,7 +700,6 @@ func TestCollectHandlers_FasthttpHandler(t *testing.T) {
 
 func TestCollectHandlers_FiberHandlerNoErrorReturn(t *testing.T) {
 	t.Parallel()
-
 	noError := func(c Ctx) { c.Set("X-Handler", "fiber") }
 
 	handlers := collectHandlers("ctx", noError)
@@ -749,7 +713,6 @@ func TestCollectHandlers_FiberHandlerNoErrorReturn(t *testing.T) {
 
 func TestCollectHandlers_MixedHandlers(t *testing.T) {
 	t.Parallel()
-
 	before := func(c Ctx) error {
 		c.Set("X-Before", "fiber")
 		return nil
@@ -778,6 +741,5 @@ func TestCollectHandlers_MixedHandlers(t *testing.T) {
 
 func TestCollectHandlers_Nil(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithValue(t, "nil: invalid handler #0 (<nil>)\n", func() { collectHandlers("nil", nil) })
 }

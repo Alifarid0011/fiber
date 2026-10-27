@@ -113,7 +113,6 @@ func Test_Static_Disable_Cache(t *testing.T) {
 	}
 
 	t.Parallel()
-
 	app := fiber.New()
 
 	file, err := os.Create("../../.github/test.txt")
@@ -175,7 +174,6 @@ func Test_Static_Download_NonASCII(t *testing.T) {
 	}
 
 	t.Parallel()
-
 	dir := t.TempDir()
 	fname := "файл.txt"
 	path := filepath.Join(dir, fname)
@@ -308,7 +306,6 @@ func Test_Static_Next(t *testing.T) {
 // without browsing.
 func Test_Route_Static_Root(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name       string
 		config     []Config
@@ -321,7 +318,6 @@ func Test_Route_Static_Root(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Get("/*", New(testCSSDir, tc.config...))
 
@@ -337,7 +333,6 @@ func Test_Route_Static_Root(t *testing.T) {
 // with and without browsing.
 func Test_Route_Static_HasPrefix(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name      string
 		route     string
@@ -352,7 +347,6 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Get(tc.route, New(testCSSDir, tc.config...))
 
@@ -368,7 +362,6 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 func Test_Static_FS(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Get("/*", New("", Config{FS: os.DirFS("../../.github/testdata/fs"), Browse: true}))
 
@@ -414,7 +407,6 @@ var fsTestFilesystem embed.FS
 
 func Test_Static_FS_Browse(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Get("/embed*", New("", Config{FS: fsTestFilesystem, Browse: true}))
@@ -456,7 +448,6 @@ func Test_Static_FS_Prefix_Wildcard(t *testing.T) {
 
 func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 	t.Parallel()
-
 	expectedIndexBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/fs/index.html"))
 	require.NoError(t, err)
 
@@ -486,7 +477,6 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 	for _, tc := range successCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			resp := apptest.Expect(t, newApp(), tc.target, tc.wantStatus)
 			require.Equal(t, tc.wantType, resp.Header.Get(fiber.HeaderContentType))
 
@@ -521,7 +511,6 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 	for _, tc := range traversalCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			apptest.ExpectBody(t, newApp(), tc.target, fiber.StatusNotFound, "Not Found")
 		})
 	}
@@ -529,7 +518,6 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 
 func Test_Static_FS_MissingRootDoesNotFallback(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Get("/static*", New("missing", Config{FS: os.DirFS("../../.github/testdata")}))
 
@@ -538,7 +526,6 @@ func Test_Static_FS_MissingRootDoesNotFallback(t *testing.T) {
 
 func Test_Static_FS_RootLeadingSlash(t *testing.T) {
 	t.Parallel()
-
 	expectedIndexBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/fs/index.html"))
 	require.NoError(t, err)
 
@@ -563,7 +550,6 @@ func Test_Static_FS_RootLeadingSlash(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use("/", New(tc.root, Config{FS: os.DirFS("../../.github/testdata/fs")}))
 
@@ -577,7 +563,6 @@ func Test_Static_FS_RootLeadingSlash(t *testing.T) {
 
 func Test_isFile(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
 		filesystem fs.FS
 		gotError   error
@@ -617,7 +602,6 @@ func Test_isFile(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			c := c
 			t.Parallel()
-
 			actual, err := isFile(c.path, c.filesystem)
 			require.ErrorIs(t, err, c.gotError)
 			require.Equal(t, c.expected, actual)
@@ -726,7 +710,6 @@ func Test_Static_Compress_WithFileSuffixes(t *testing.T) {
 
 func Test_Router_Mount_n_Static(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use("/static", New(testCSSDir, Config{Browse: true}))
@@ -968,7 +951,6 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 // that a spelling the router keeps apart from the guarded path names no file.
 func Test_Static_ServesRoutedPath(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
 	require.NoError(t, os.Mkdir(filepath.Join(root, "private area"), 0o750))
@@ -1031,7 +1013,6 @@ func Test_Static_ServesRoutedPath(t *testing.T) {
 		for _, tc := range requests {
 			t.Run(m.name+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
-
 				app := fiber.New(fiber.Config{UnescapePath: tc.unescape})
 				app.Use("/static/private", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
 				app.Use("/static/private area", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
@@ -1100,7 +1081,6 @@ func serveRaw(handler fasthttp.RequestHandler, method, target string) *fasthttp.
 // refused it and not the router that never sent it there.
 func Test_Static_RootMount_EmptyFirstSegment(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "admin"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "admin", "secret.txt"), []byte("SECRET"), 0o600))
@@ -1232,7 +1212,6 @@ func Test_Static_RootMount_EmptyFirstSegment(t *testing.T) {
 		for _, tc := range requests {
 			t.Run(m.name+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
-
 				for j, unescape := range modes {
 					want := tc.wantStatus
 					if unescape && tc.wantUnescaped != 0 {
@@ -1275,7 +1254,6 @@ func Test_Static_RootMount_EmptyFirstSegment(t *testing.T) {
 // only a wildcard route sends them to the file server.
 func Test_Static_RootMount_EmptyFirstSegment_Browse(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "admin"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "admin", "secret.txt"), []byte("SECRET"), 0o600))
@@ -1325,7 +1303,6 @@ func Test_Static_RootMount_EmptyFirstSegment_Browse(t *testing.T) {
 // target, while the same name without it is served.
 func Test_Static_RootMount_EmptyFirstSegment_NotFoundHandler(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "public.txt"), []byte("PUBLIC"), 0o600))
 
@@ -1441,7 +1418,6 @@ func staticTestShell(t *testing.T, mounts []staticTestMount, requests []staticTe
 // can take. Middleware mounted on a prefix still answers the paths it matches.
 func Test_Static_RootFile_EmptyFirstSegment(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "admin"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "admin", "secret.txt"), []byte("SECRET"), 0o600))
@@ -1479,7 +1455,6 @@ func Test_Static_RootFile_EmptyFirstSegment(t *testing.T) {
 // covered by Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment.
 func Test_Static_RootFile_OnAPrefix(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "shell.html"), []byte("SHELL"), 0o600))
 
@@ -1498,7 +1473,6 @@ func Test_Static_RootFile_OnAPrefix(t *testing.T) {
 // so a root that is a file serves its file there as a directory serves its files.
 func Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "shell.html"), []byte("SHELL"), 0o600))
 
@@ -1526,7 +1500,6 @@ func Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment(t *testing.T) {
 // is an ordinary one when asked for.
 func Test_Static_RefusedPathIsNotLookedUp(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	for name, data := range map[string]string{
 		"shell.html":        "SHELL",
@@ -1625,7 +1598,6 @@ func staticTestServeOpaque(t *testing.T, app *fiber.App, target string) (status 
 // server either. httptest would encode it, so the request line is set by hand.
 func Test_Static_RawBackslashIsNotASeparator(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
@@ -1661,7 +1633,6 @@ func Test_Static_RawBackslashIsNotASeparator(t *testing.T) {
 // rejects these spellings, so the request line is set by hand.
 func Test_Static_ForgedEscapeCannotBypassGuard(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
@@ -1699,7 +1670,6 @@ func Test_Static_ForgedEscapeCannotBypassGuard(t *testing.T) {
 // spelling the guard covers stays 403.
 func Test_Static_TrailingDotOrSpaceCannotBypassGuard(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
@@ -1734,7 +1704,6 @@ func Test_Static_TrailingDotOrSpaceCannotBypassGuard(t *testing.T) {
 // request line is set by hand.
 func Test_Static_MalformedEscapeIsNotAName(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "100%zz.txt"), []byte("PERCENT"), 0o600))
 
@@ -1762,7 +1731,6 @@ func Test_Static_MalformedEscapeIsNotAName(t *testing.T) {
 // file server must not decode it again into "a.txt".
 func Test_Static_SharedHandlerAcrossApps(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "a.txt"), []byte("A"), 0o600))
 	handler := New(root, Config{CacheDuration: -1})
@@ -1799,7 +1767,6 @@ func Test_Static_Download_NotFoundLeavesNoAttachment(t *testing.T) {
 
 func Test_Static_Download_KeepsDetectedContentType(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	// fiberpng is a PNG without an extension, so only content detection can type it.
 	app.Get("/docs*", New("../../.github/testdata/fs/img", Config{Download: true}))
@@ -1811,7 +1778,6 @@ func Test_Static_Download_KeepsDetectedContentType(t *testing.T) {
 
 func Test_Static_Download_NoAttachmentOnRangeError(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Get("/docs*", New("../../.github/testdata/fs/img", Config{Download: true, ByteRange: true}))
 
@@ -1857,7 +1823,6 @@ func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
 // in full.
 func Test_Static_ByteRange_RFC9110(t *testing.T) {
 	t.Parallel()
-
 	const (
 		content      = "0123456789abcdefghij"
 		lastModified = "Thu, 02 Jan 2020 03:04:05 GMT"
@@ -1893,7 +1858,6 @@ func Test_Static_ByteRange_RFC9110(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := httptest.NewRequest(fiber.MethodGet, tc.path, http.NoBody)
 			for k, v := range tc.fields {
 				req.Header.Set(k, v)
@@ -1920,7 +1884,6 @@ func Test_Static_ByteRange_RFC9110(t *testing.T) {
 
 func Test_Static_NonGetMethod_PassesThrough(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use("/", New("../../.github"))
 	app.Post("/index.html", func(c fiber.Ctx) error { return c.SendString("posted") })
@@ -1937,7 +1900,6 @@ func Test_Static_NonGetMethod_PassesThrough(t *testing.T) {
 // /static/private cannot be skipped with /staticprivate/secret.txt.
 func Test_Static_PartialWildcard_SegmentBoundary(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "private"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
@@ -1965,7 +1927,6 @@ func Test_Static_PartialWildcard_SegmentBoundary(t *testing.T) {
 // wildcard serve what they matched.
 func Test_Static_NonMountRoutes_Served(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "app.js"), []byte("JS"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "index.html"), []byte("INDEX"), 0o600))

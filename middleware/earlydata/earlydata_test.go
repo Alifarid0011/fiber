@@ -151,7 +151,6 @@ func Test_EarlyData(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := appWithConfig(t, tc.config)
 			executeExpectations(t, app, tc.remoteAddr, expectations(tc.trusted))
 		})

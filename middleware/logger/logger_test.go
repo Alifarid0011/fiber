@@ -119,7 +119,6 @@ func loggerTestLog(t *testing.T, cfg *Config) string {
 // request is a 404.
 func Test_Logger_Output(t *testing.T) {
 	t.Parallel()
-
 	const customTag = "it is a custom tag"
 	templateErr := errors.New("template failure")
 	colors := fiber.DefaultColors
@@ -205,7 +204,6 @@ func Test_Logger_Output(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, buf := loggerTestApp(t, &tc.cfg)
 			if tc.handler != nil {
 				app.Get("/", tc.handler)
@@ -276,7 +274,6 @@ func Test_Logger_Done(t *testing.T) {
 
 func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
 	t.Parallel()
-
 	var timestamp atomic.Value
 	timestamp.Store(time.Now().Format(time.RFC3339Nano))
 
@@ -317,7 +314,6 @@ func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
 
 func Test_Logger_TimestampUpdater_StopsImmediatelyWithoutTimeTag(t *testing.T) {
 	t.Parallel()
-
 	var timestamp atomic.Value
 	timestamp.Store(time.Now().Format(time.RFC3339Nano))
 
@@ -334,7 +330,6 @@ func Test_Logger_TimestampUpdater_StopsImmediatelyWithoutTimeTag(t *testing.T) {
 // It verifies that logs are written or skipped based on the filter condition.
 func Test_Logger_Filter(t *testing.T) {
 	t.Parallel()
-
 	t.Run("Test Not Found", func(t *testing.T) {
 		t.Parallel()
 
@@ -498,7 +493,6 @@ func (o *loggerTestOutput) Write(b []byte) (int, error) {
 // one that takes it is written the line only.
 func Test_Logger_StreamWrites(t *testing.T) {
 	t.Parallel()
-
 	errFakeOutput := errors.New("fake output")
 
 	for _, tc := range []struct {
@@ -513,7 +507,6 @@ func Test_Logger_StreamWrites(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			out := &loggerTestOutput{err: tc.err}
 			app := fiber.New()
 			app.Use(New(Config{Stream: out, DisableColors: tc.disableColors}))
@@ -564,7 +557,6 @@ func Test_Logger_DefaultFormat_WithoutColor(t *testing.T) {
 
 func Test_Logger_UnknownTagPanicsWithTypedError(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		format   string
@@ -578,7 +570,6 @@ func Test_Logger_UnknownTagPanicsWithTypedError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			defer func() {
 				r := recover()
 				require.NotNil(t, r, "New must panic for unknown tag")
@@ -603,7 +594,6 @@ func Test_Logger_UnknownTagPanicsWithTypedError(t *testing.T) {
 // The timestamp is matched, not compared, because it moves with the clock.
 func Test_Logger_NamedFormats(t *testing.T) {
 	t.Parallel()
-
 	const (
 		method    = fiber.MethodGet
 		status    = fiber.StatusNotFound
@@ -644,7 +634,6 @@ func Test_Logger_NamedFormats(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, buf := loggerTestApp(t, &Config{Format: tc.format})
 
 			apptest.Expect(t, app, apptest.Req(method, pathFooBar, tc.opts...), status)
@@ -822,7 +811,6 @@ func Test_Logger_Data_Race(t *testing.T) {
 
 func Test_Logger_TimeUpdatesAfterInterval(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 
 	app := fiber.New()
@@ -851,7 +839,6 @@ func Test_Logger_TimeUpdatesAfterInterval(t *testing.T) {
 
 func Test_Logger_SharedTimestampState(t *testing.T) {
 	t.Parallel()
-
 	loc := time.FixedZone("test/zone", 3600)
 	first := sharedTimestamp(time.RFC3339, loc, 10*time.Millisecond)
 	second := sharedTimestamp(time.RFC3339, loc, 10*time.Millisecond)
@@ -883,7 +870,6 @@ func Test_Response_Header(t *testing.T) {
 
 func Test_Logger_RegisteredTag(t *testing.T) {
 	t.Parallel()
-
 	const tag = "registered-test-tag"
 
 	require.NoError(t, RegisterTag(tag, loggerTestTag("registered")))
@@ -897,7 +883,6 @@ func Test_Logger_RegisteredTag(t *testing.T) {
 
 func Test_Logger_CustomTagOverridesRegisteredTag(t *testing.T) {
 	t.Parallel()
-
 	const tag = "registered-override-test-tag"
 
 	require.NoError(t, RegisterTag(tag, loggerTestTag("registered")))
@@ -914,20 +899,17 @@ func Test_Logger_CustomTagOverridesRegisteredTag(t *testing.T) {
 
 func Test_Logger_RegisterTagRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
-
 	require.ErrorIs(t, RegisterTag("", loggerTestTag("ignored")), ErrTagInvalid)
 	require.ErrorIs(t, RegisterTag("missing", nil), ErrTagInvalid)
 }
 
 func Test_Logger_MustRegisterTagPanicsOnInvalidInput(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithError(t, ErrTagInvalid.Error(), func() { MustRegisterTag("", loggerTestTag("ignored")) })
 }
 
 func Test_Logger_DataLegacyTemplateChains(t *testing.T) {
 	t.Parallel()
-
 	buf := loggerTestBuf(t)
 
 	app := fiber.New()
@@ -1343,7 +1325,6 @@ func loggerTestWriteErrors(t *testing.T, call func(t *testing.T, sink Buffer) (i
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			buf := &failingBuffer{ByteBuffer: loggerTestBuf(t), failAfter: tc.failAfter}
 
 			n, err := call(t, buf)
@@ -1365,7 +1346,6 @@ func loggerTestWriteErrors(t *testing.T, call func(t *testing.T, sink Buffer) (i
 // only what actually reached the sink.
 func Test_writeSanitizedColored_PropagatesWriteErrors(t *testing.T) {
 	t.Parallel()
-
 	const color, value, reset = "<c>", "va\nlue", "<r>"
 
 	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
@@ -1394,7 +1374,6 @@ func Test_writeSanitizedColored_PropagatesWriteErrors(t *testing.T) {
 // spaces, so the padding and the digit can fail independently.
 func Test_appendIntTag_PropagatesWriteErrors(t *testing.T) {
 	t.Parallel()
-
 	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
 		return appendIntTag(sink, 7, 3)
 	}, []loggerTestWriteCase{
@@ -1408,7 +1387,6 @@ func Test_appendIntTag_PropagatesWriteErrors(t *testing.T) {
 // uncolored ${status}, ${bytesSent} and ${bytesReceived} tags write.
 func Test_appendInt_PropagatesWriteErrors(t *testing.T) {
 	t.Parallel()
-
 	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
 		return appendInt(sink, 200)
 	}, []loggerTestWriteCase{
@@ -1421,7 +1399,6 @@ func Test_appendInt_PropagatesWriteErrors(t *testing.T) {
 // stop and report in bytes.
 func Test_appendDurationTag_PropagatesWriteErrors(t *testing.T) {
 	t.Parallel()
-
 	const (
 		width  = 13
 		padded = "        145µs"
@@ -1455,7 +1432,6 @@ func Test_appendDurationTag_PropagatesWriteErrors(t *testing.T) {
 // Test_writeColored_PropagatesWriteErrors covers the colored ${method} tag.
 func Test_writeColored_PropagatesWriteErrors(t *testing.T) {
 	t.Parallel()
-
 	const color, value, reset = "<c>", "GET", "<r>"
 
 	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
@@ -1476,7 +1452,6 @@ func Test_writeColored_PropagatesWriteErrors(t *testing.T) {
 // which wraps the padded integer column in the two color escapes.
 func Test_writeColoredInt_PropagatesWriteErrors(t *testing.T) {
 	t.Parallel()
-
 	const color, reset = "<c>", "<r>"
 
 	loggerTestWriteErrors(t, func(_ *testing.T, sink Buffer) (int, error) {
@@ -1509,7 +1484,6 @@ func Test_writeColoredInt_PropagatesWriteErrors(t *testing.T) {
 // stashing raw request bytes in Locals would reopen the injection this scrubs.
 func Test_Logger_SanitizesLocalsByType(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		value    any
 		name     string
@@ -1524,7 +1498,6 @@ func Test_Logger_SanitizesLocalsByType(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, buf := loggerTestApp(t, &Config{Format: "${locals:demo}"})
 			app.Get("/", func(c fiber.Ctx) error {
 				if tc.value != nil {
@@ -1544,7 +1517,6 @@ func Test_Logger_SanitizesLocalsByType(t *testing.T) {
 // See https://github.com/gofiber/fiber/issues/4341.
 func Test_Logger_SanitizesControlBytes(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		build        func() *http.Request
 		name         string
@@ -1590,7 +1562,6 @@ func Test_Logger_SanitizesControlBytes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, buf := loggerTestApp(t, &Config{Format: tt.format}, fiber.Config{UnescapePath: tt.unescapePath})
 			app.Add([]string{fiber.MethodGet, fiber.MethodPost}, "/", func(c fiber.Ctx) error {
 				return c.SendString("ok")
@@ -1608,11 +1579,9 @@ func Test_Logger_SanitizesControlBytes(t *testing.T) {
 // the most common setup — still lets a request forge extra log lines (#4341).
 func Test_Logger_DefaultFormat_SanitizesControlBytes(t *testing.T) {
 	t.Parallel()
-
 	for _, colors := range []bool{false, true} {
 		t.Run(fmt.Sprintf("colors=%v", colors), func(t *testing.T) {
 			t.Parallel()
-
 			app, buf := loggerTestApp(t, &Config{ForceColors: colors, DisableColors: !colors}, fiber.Config{UnescapePath: true})
 			app.Get("/*", func(_ fiber.Ctx) error { return errors.New("boom\r\nFORGED-ERROR-LINE") })
 
@@ -1632,7 +1601,6 @@ func Test_Logger_DefaultFormat_SanitizesControlBytes(t *testing.T) {
 // the built-in tags apply, or the guidance is wrong.
 func Test_SanitizeValue(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name string
 		in   string
@@ -1665,7 +1633,6 @@ func Test_SanitizeValue(t *testing.T) {
 // X-Forwarded-For field line, whatever case the field name arrived in.
 func Test_Logger_IPs(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		want    string
@@ -1713,7 +1680,6 @@ func Test_Logger_IPs(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, buf := loggerTestApp(t, &Config{Format: "${ips}"}, fiber.Config{
 				TrustProxy:               true,
 				DisableHeaderNormalizing: tc.disable,
@@ -1798,7 +1764,6 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 
 func Test_Logger_ResBody_DoesNotDrainStream(t *testing.T) {
 	t.Parallel()
-
 	var logged bytes.Buffer
 	app := fiber.New()
 	app.Use(New(Config{Format: "[${resBody}]", Stream: &logged}))
@@ -1839,7 +1804,6 @@ func Test_Logger_ResBody_DoesNotDrainStream(t *testing.T) {
 // true) it replaced, so that column is unchanged byte for byte.
 func Test_LatencyColumns_MatchFmt(t *testing.T) {
 	t.Parallel()
-
 	r := rand.New(rand.NewPCG(0x1a7e, 0xc0de))
 	durations := []time.Duration{
 		0, 1, -1, 999, 1000, 1001, 999999, 1000000, 1000001,
@@ -1891,7 +1855,6 @@ func Test_LatencyColumns_MatchFmt(t *testing.T) {
 // sub-millisecond latency ("µs") and a non-ASCII path.
 func Test_Logger_DefaultFormat_WithColor_MatchesFmt(t *testing.T) {
 	t.Parallel()
-
 	fixedStart := time.Unix(0, 0)
 	testCases := []struct {
 		err     error
@@ -1909,7 +1872,6 @@ func Test_Logger_DefaultFormat_WithColor_MatchesFmt(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var want string
 			app, buf := loggerTestApp(t, &Config{
 				ForceColors: true,

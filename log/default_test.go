@@ -119,7 +119,6 @@ func Test_WithContextRenderError(t *testing.T) {
 // as "no context" so tag renderers don't fault on a nil receiver.
 func Test_NewRetainedContext_TypedNil(t *testing.T) {
 	t.Parallel()
-
 	type fakeCtx struct{}
 	var typedNil *fakeCtx
 
@@ -342,7 +341,6 @@ func Test_LogfKeyAndValues(t *testing.T) {
 
 func Test_SetLevel(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name  string
 		want  string
@@ -361,7 +359,6 @@ func Test_SetLevel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			setLogger := &defaultLogger{
 				stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
 				depth:  4,
@@ -433,7 +430,6 @@ func (k stringKey) String() string {
 
 func Test_DefaultLoggerNonStringKeys(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		log  func(l *defaultLogger)
 		name string
@@ -454,7 +450,6 @@ func Test_DefaultLoggerNonStringKeys(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			var buf bytes.Buffer
 			l := &defaultLogger{stdlog: log.New(&buf, "", 0), level: LevelTrace, depth: 4}
 
@@ -574,7 +569,6 @@ func Benchmark_LogfKeyAndValues_Parallel(b *testing.B) {
 
 func Test_DefaultLogger_FatalExitsAboveLevel(t *testing.T) {
 	t.Parallel()
-
 	var exited []int
 	logger := &defaultLogger{
 		stdlog: log.New(io.Discard, "", 0),
@@ -597,7 +591,6 @@ func Test_DefaultLogger_FatalExitsAboveLevel(t *testing.T) {
 
 func Test_DefaultLogger_FatalExitsAfterWrite(t *testing.T) {
 	t.Parallel()
-
 	var exited []int
 	var buf bytes.Buffer
 	logger := &defaultLogger{

@@ -34,7 +34,6 @@ func echoRouted(c fiber.Ctx) error {
 
 func Test_Routed(t *testing.T) {
 	t.Parallel()
-
 	t.Run("default", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
@@ -130,7 +129,6 @@ func Test_Routed(t *testing.T) {
 
 func Test_SegmentsAsRouted(t *testing.T) {
 	t.Parallel()
-
 	const both = AllowSlashes | AllowParameters
 	all := []Allowance{0, AllowSlashes, AllowParameters, both}
 
@@ -208,7 +206,6 @@ func Test_SegmentsAsRouted(t *testing.T) {
 
 func Test_ParsesAsPath(t *testing.T) {
 	t.Parallel()
-
 	host := []byte("example.com")
 	for _, target := range []string{"/", "/a://b", "/a//b://c", "//evil.example/x", "//u:pw@evil.example/a:/b", "/x?u=http://y"} {
 		require.True(t, ParsesAsPath(target, host), target)
@@ -228,7 +225,6 @@ func Test_ParsesAsPath(t *testing.T) {
 // rather than as the absolute URL a request line would read it as.
 func Test_Routed_RootsUnrootedPath(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Get("/go/*", func(c fiber.Ctx) error {
 		c.Path(c.Params("*"))
@@ -240,7 +236,6 @@ func Test_Routed_RootsUnrootedPath(t *testing.T) {
 
 func Test_HasForgedEscape(t *testing.T) {
 	t.Parallel()
-
 	for _, target := range []string{"/public/%2e%2e/admin", "/%2E", "/a%41", "/%7e", "/x%5F?q=%41", "/a%25%41"} {
 		require.True(t, HasForgedEscape(target), target)
 	}
@@ -279,7 +274,6 @@ func Test_SurvivesNormalization(t *testing.T) {
 
 func Test_ParsesAsPath_Unrooted(t *testing.T) {
 	t.Parallel()
-
 	host := []byte("example.com")
 	for _, target := range []string{"", "http://u:pw@evil.example/x", "evil.example/x", "*"} {
 		require.False(t, ParsesAsPath(target, host), target)

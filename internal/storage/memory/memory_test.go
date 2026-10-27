@@ -68,7 +68,6 @@ func Test_Storage_Memory_Set(t *testing.T) {
 // the store as it found it.
 func Test_Storage_Memory_CanceledContext(t *testing.T) {
 	t.Parallel()
-
 	val := []byte("doe")
 
 	tests := []struct {
@@ -109,7 +108,6 @@ func Test_Storage_Memory_CanceledContext(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			testStore := New()
 			for _, key := range tc.seeded {
 				require.NoError(t, testStore.Set(key, val, 0))
@@ -202,7 +200,6 @@ func expiryOf(store *Storage, key string) uint32 {
 
 func Test_Storage_Memory_Set_ExpirationRoundsUp(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name string
 		exp  time.Duration
@@ -219,7 +216,6 @@ func Test_Storage_Memory_Set_ExpirationRoundsUp(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			testStore := New()
 			now := setWithinSecond(t, testStore, "john", []byte("doe"), tc.exp)
 
@@ -240,7 +236,6 @@ func Test_Storage_Memory_Set_ExpirationRoundsUp(t *testing.T) {
 
 func Test_Storage_Memory_GCInterval_SubSecond(t *testing.T) {
 	t.Parallel()
-
 	require.Equal(t, 100*time.Millisecond, configDefault(Config{GCInterval: 100 * time.Millisecond}).GCInterval)
 	require.Equal(t, ConfigDefault.GCInterval, configDefault(Config{}).GCInterval)
 	require.Equal(t, ConfigDefault.GCInterval, configDefault(Config{GCInterval: -time.Second}).GCInterval)
@@ -341,7 +336,6 @@ func Test_Storage_Memory_Close(t *testing.T) {
 // interval). The defer for gcExited must run before any code that can panic.
 func Test_Storage_Memory_Close_GCPanic(t *testing.T) {
 	t.Parallel()
-
 	store := &Storage{
 		db:         make(map[string]Entry),
 		gcInterval: 0, // NewTicker panics on non-positive duration
@@ -371,7 +365,6 @@ func Test_Storage_Memory_Close_GCPanic(t *testing.T) {
 
 func Test_Storage_Memory_Close_Idempotent(t *testing.T) {
 	t.Parallel()
-
 	testStore := New()
 	require.NoError(t, testStore.Close())
 
@@ -579,7 +572,6 @@ func Test_Storage_Memory_CeilSecondsSaturates(t *testing.T) {
 
 func Test_Storage_Memory_MaxExpirationDoesNotWrap(t *testing.T) {
 	t.Parallel()
-
 	store := New()
 	t.Cleanup(func() { require.NoError(t, store.Close()) })
 	require.NoError(t, store.Set("max", []byte("v"), time.Duration(math.MaxInt64)))

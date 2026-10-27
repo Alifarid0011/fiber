@@ -102,7 +102,6 @@ func Test_Ctx_Accepts(t *testing.T) {
 
 func Test_Ctx_AcceptsHelpers(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, New())
 
 	c.Request().Header.Set(HeaderAccept, "text/html,application/json;q=0.9")
@@ -121,7 +120,6 @@ func Test_Ctx_AcceptsHelpers(t *testing.T) {
 
 func Test_Ctx_ContentTypeHelpers(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, New())
 
 	require.Empty(t, c.MediaType())
@@ -155,7 +153,6 @@ func Test_Ctx_ContentTypeHelpers(t *testing.T) {
 
 func Test_Ctx_Charset(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name        string
 		contentType string
@@ -205,7 +202,6 @@ func Test_Ctx_Charset(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 			c.Request().Header.Set(HeaderContentType, testCase.contentType)
 			require.Equal(t, testCase.expected, c.Charset())
@@ -249,7 +245,6 @@ func Benchmark_Ctx_MediaType(b *testing.B) {
 
 func Test_Ctx_HeaderHelpers(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, New())
 
 	c.Request().Header.SetHost("example.com")
@@ -330,7 +325,6 @@ func Test_Ctx_HasHeaderValue(t *testing.T) {
 
 func Test_Ctx_FullURL_DoesNotAliasPooledBuffer(t *testing.T) {
 	t.Parallel()
-
 	const bufferPoolReuseAttempts = 128
 
 	c := apptest.Ctx(t, New())
@@ -353,7 +347,6 @@ func Test_Ctx_FullURL_DoesNotAliasPooledBuffer(t *testing.T) {
 
 func Test_Ctx_TypedParsingDefaults(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/:id", func(c Ctx) error {
 		require.Equal(t, 5, Query[int](c, "count", 1))
@@ -431,7 +424,6 @@ func ctxTestACustomApp(config ...Config) *App {
 
 func Test_Ctx_CustomCtx(t *testing.T) {
 	t.Parallel()
-
 	app := ctxTestACustomApp()
 
 	app.Get("/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
@@ -447,7 +439,6 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 
 func Test_App_AcquireDefaultCtx_CustomCtxFallback(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	ctx, ok := app.prepareDefaultCtx(&customCtx{DefaultCtx: *NewDefaultCtx(app)}, &fasthttp.RequestCtx{})
@@ -457,7 +448,6 @@ func Test_App_AcquireDefaultCtx_CustomCtxFallback(t *testing.T) {
 
 func Test_App_SetHandlerCtxIfNeeded_CustomCtxFallback(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	ctx := &customCtx{DefaultCtx: *NewDefaultCtx(app)}
 
@@ -467,7 +457,6 @@ func Test_App_SetHandlerCtxIfNeeded_CustomCtxFallback(t *testing.T) {
 
 func Test_Ctx_Release_UserContextSetWithoutFastHTTP(t *testing.T) {
 	t.Parallel()
-
 	ctx := NewDefaultCtx(New())
 	ctx.isUserContextSet = true
 
@@ -477,7 +466,6 @@ func Test_Ctx_Release_UserContextSetWithoutFastHTTP(t *testing.T) {
 
 func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
 	t.Parallel()
-
 	app := ctxTestACustomApp()
 
 	app.Use(func(c Ctx) error {
@@ -500,7 +488,6 @@ func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
 
 func Test_Ctx_CustomCtx_JSON_WithMiddleware(t *testing.T) {
 	t.Parallel()
-
 	newCtx := func(app *App) CustomCtx { return &jsonEnvelopeCustomCtx{DefaultCtx: *NewDefaultCtx(app)} }
 
 	for _, tc := range []struct {
@@ -513,7 +500,6 @@ func Test_Ctx_CustomCtx_JSON_WithMiddleware(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := NewWithCustomCtx(newCtx)
 			if tc.middleware {
 				app.Use(func(c Ctx) error { return c.Next() })
@@ -585,7 +571,6 @@ func ctxTestAAccepts(t *testing.T, method func(Ctx, ...string) string, header st
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 			for _, line := range tc.lines {
 				c.Request().Header.Add(header, line)
@@ -597,7 +582,6 @@ func ctxTestAAccepts(t *testing.T, method func(Ctx, ...string) string, header st
 
 func Test_Ctx_Accepts_HeaderForms(t *testing.T) {
 	t.Parallel()
-
 	ctxTestAAccepts(t, Ctx.Accepts, HeaderAccept, []ctxTestAAcceptsCase{
 		{name: "wildcard accepts an extension", lines: []string{"*/*;q=0.9"}, offers: []string{"html"}, want: "html"},
 		{name: "wildcard accepts an unknown extension", lines: []string{"*/*;q=0.9"}, offers: []string{"foo"}, want: "foo"},
@@ -618,7 +602,6 @@ func Test_Ctx_Accepts_HeaderForms(t *testing.T) {
 
 func Test_Ctx_AcceptsCharsets(t *testing.T) {
 	t.Parallel()
-
 	ctxTestAAccepts(t, Ctx.AcceptsCharsets, HeaderAcceptCharset, []ctxTestAAcceptsCase{
 		{name: "weighted list", lines: []string{"utf-8, iso-8859-1;q=0.5"}, offers: []string{"utf-8"}, want: "utf-8"},
 		{name: "repeated field lines", lines: []string{"utf-8;q=0.1", "iso-8859-1"}, offers: []string{"utf-8", "iso-8859-1"}, want: "iso-8859-1"},
@@ -639,7 +622,6 @@ func Benchmark_Ctx_AcceptsCharsets(b *testing.B) {
 
 func Test_Ctx_AcceptsEncodings(t *testing.T) {
 	t.Parallel()
-
 	ctxTestAAccepts(t, Ctx.AcceptsEncodings, HeaderAcceptEncoding, []ctxTestAAcceptsCase{
 		{name: "weighted list", lines: []string{"deflate, gzip;q=1.0, *;q=0.5"}, offers: []string{"gzip"}, want: "gzip"},
 		{name: "wildcard accepts an unlisted coding", lines: []string{"deflate, gzip;q=1.0, *;q=0.5"}, offers: []string{"abc"}, want: "abc"},
@@ -650,7 +632,6 @@ func Test_Ctx_AcceptsEncodings(t *testing.T) {
 // RFC 9110 §12.5.3: "identity" is acceptable unless the field excludes it.
 func Test_Ctx_AcceptsEncodings_Identity(t *testing.T) {
 	t.Parallel()
-
 	ctxTestAAccepts(t, Ctx.AcceptsEncodings, HeaderAcceptEncoding, []ctxTestAAcceptsCase{
 		// Listed codings keep winning on their weights.
 		{name: "listed coding", lines: []string{"gzip"}, offers: []string{"gzip", "br"}, want: "gzip"},
@@ -686,11 +667,9 @@ func Test_Ctx_AcceptsEncodings_Identity(t *testing.T) {
 // An absent field accepts any coding; an empty one only identity.
 func Test_Ctx_AcceptsEncodings_AbsentAndEmpty(t *testing.T) {
 	t.Parallel()
-
 	for _, config := range []Config{{}, {DisableHeaderNormalizing: true}} {
 		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%t", config.DisableHeaderNormalizing), func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New(config))
 
 			// Absent: the first offer, whatever it is.
@@ -726,7 +705,6 @@ func Benchmark_Ctx_AcceptsEncodings(b *testing.B) {
 
 func Test_Ctx_AcceptsLanguages(t *testing.T) {
 	t.Parallel()
-
 	ctxTestAAccepts(t, Ctx.AcceptsLanguages, HeaderAcceptLanguage, []ctxTestAAcceptsCase{
 		{name: "weighted list", lines: []string{"fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5"}, offers: []string{"fr"}, want: "fr"},
 		{name: "repeated field lines", lines: []string{"de;q=0.4", "en"}, offers: []string{"de", "en"}, want: "en"},
@@ -1103,7 +1081,6 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 	for _, immutable := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Immutable=%t", immutable), func(t *testing.T) {
 			t.Parallel()
-
 			for _, testObject := range tests {
 				tCase := testObject // Duplicate object to ensure it will be unique across all runs
 				t.Run(tCase.name, func(t *testing.T) {
@@ -1150,7 +1127,6 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 
 func Test_Ctx_Body_With_Compression_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.CtxAs[*DefaultCtx](t, New(Config{BodyLimit: 8}))
 	c.Request().Header.Set(HeaderContentEncoding, StrGzip)
 
@@ -1455,7 +1431,6 @@ func Test_Ctx_Cookie(t *testing.T) {
 
 func Test_Ctx_Cookie_Attributes(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		cookie *Cookie
 		name   string
@@ -1485,7 +1460,6 @@ func Test_Ctx_Cookie_Attributes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 
 			c.Res().Cookie(tc.cookie)
@@ -1523,7 +1497,6 @@ func Test_Ctx_Cookie_Invalid(t *testing.T) {
 // §4.1.1 allows neither even in quotes), and the quotes are not part of the value read back.
 func Test_Ctx_Cookie_ValueQuoting(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name  string
 		value string
@@ -1545,7 +1518,6 @@ func Test_Ctx_Cookie_ValueQuoting(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 
 			c.Res().Cookie(&Cookie{Name: "n", Value: tc.value})
@@ -1566,7 +1538,6 @@ func Test_Ctx_Cookie_ValueQuoting(t *testing.T) {
 // Values the grammar cannot carry, even in quotes, are refused, not altered.
 func Test_Ctx_Cookie_ValueRejected(t *testing.T) {
 	t.Parallel()
-
 	for name, value := range map[string]string{
 		"semicolon":                 "a;b",
 		"semicolon in quotes":       `"a;b"`,
@@ -1584,7 +1555,6 @@ func Test_Ctx_Cookie_ValueRejected(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 
 			c.Res().Cookie(&Cookie{Name: "n", Value: value})
@@ -1596,7 +1566,6 @@ func Test_Ctx_Cookie_ValueRejected(t *testing.T) {
 // net/http reads back the values that were set.
 func Test_Ctx_Cookie_ValueQuoting_NetHTTP(t *testing.T) {
 	t.Parallel()
-
 	values := []string{"plain", "hello world", "x,y", "a b, c", `"abc"`, `"a b"`}
 
 	app := New()
@@ -1797,7 +1766,6 @@ func Test_Ctx_Format(t *testing.T) {
 
 func Test_Ctx_Format_NilHandler(t *testing.T) {
 	t.Parallel()
-
 	ok := func(_ Ctx) error { return nil }
 
 	for _, tc := range []struct {
@@ -1830,7 +1798,6 @@ func Test_Ctx_Format_NilHandler(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 			if tc.accept != "" {
 				c.Request().Header.Set(HeaderAccept, tc.accept)
@@ -1872,7 +1839,6 @@ func Test_Ctx_Format_NoAcceptDefaultFirst(t *testing.T) {
 
 func Test_Ctx_Format_AcceptEmptyAndMultiLine(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name   string
 		want   string
@@ -1885,7 +1851,6 @@ func Test_Ctx_Format_AcceptEmptyAndMultiLine(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 			for _, line := range tc.accept {
 				c.Request().Header.Add(HeaderAccept, line)
@@ -1984,7 +1949,6 @@ func Test_Ctx_AutoFormat_Vary(t *testing.T) {
 
 func Test_Ctx_AutoFormat(t *testing.T) {
 	t.Parallel()
-
 	type Message struct {
 		Sender     string `xml:"sender,attr"`
 		Recipients []string
@@ -2039,11 +2003,9 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	} {
 		t.Run(accessor.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, tc := range tests {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-
 					c := apptest.Ctx(t, New(Config{
 						MsgPackEncoder: msgpack.Marshal,
 						MsgPackDecoder: msgpack.Unmarshal,
@@ -2121,7 +2083,6 @@ func Test_Ctx_AutoFormat_XSS_Prevention(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			body := autoFormatHTML(t, tc.body)
 			require.Equal(t, tc.want, body)
 			if tc.forbidden != "" {
@@ -2132,7 +2093,6 @@ func Test_Ctx_AutoFormat_XSS_Prevention(t *testing.T) {
 
 	t.Run("struct", func(t *testing.T) {
 		t.Parallel()
-
 		body := autoFormatHTML(t, struct {
 			Value string
 		}{Value: "<script>alert('XSS')</script>"})
@@ -2273,7 +2233,6 @@ func Test_Ctx_FormValue(t *testing.T) {
 
 func Test_Ctx_FormFile_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.CtxAs[*DefaultCtx](t, New(Config{BodyLimit: 64}))
 
 	body := &bytes.Buffer{}
@@ -2307,7 +2266,6 @@ func ctxTestASetMultipartField(t *testing.T, c Ctx, name, value string) {
 
 func Test_Ctx_FormValue_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.CtxAs[*DefaultCtx](t, New(Config{BodyLimit: 64}))
 
 	ctxTestASetMultipartField(t, c, "name", strings.Repeat("a", 256))
@@ -2321,7 +2279,6 @@ func Test_Ctx_FormValue_BodyLimitExceeded(t *testing.T) {
 // for a multipart request, which is checked before the multipart form is parsed.
 func Test_Ctx_FormValue_QueryArgs(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.CtxAs[*DefaultCtx](t, New())
 
 	ctxTestASetMultipartField(t, c, "other", "value")
@@ -2335,7 +2292,6 @@ func Test_Ctx_FormValue_QueryArgs(t *testing.T) {
 // for a multipart request, which is checked before the multipart form is parsed.
 func Test_Ctx_FormValue_PostArgs(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.CtxAs[*DefaultCtx](t, New())
 
 	ctxTestASetMultipartField(t, c, "other", "value")
@@ -2349,7 +2305,6 @@ func Test_Ctx_FormValue_PostArgs(t *testing.T) {
 // from the multipart form: returns "" without a default and the provided default otherwise.
 func Test_Ctx_FormValue_MultipartKeyNotFound(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.CtxAs[*DefaultCtx](t, New())
 
 	ctxTestASetMultipartField(t, c, "other", "value")
@@ -2363,7 +2318,6 @@ func Test_Ctx_FormValue_MultipartKeyNotFound(t *testing.T) {
 // Test_Ctx_FormValue_NonMultipart covers the non-multipart branch (e.g. URL-encoded body).
 func Test_Ctx_FormValue_NonMultipart(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.CtxAs[*DefaultCtx](t, New())
 
 	c.Request().Header.Set(HeaderContentType, MIMEApplicationForm)
@@ -2381,10 +2335,8 @@ func Test_Ctx_FormValue_NonMultipart(t *testing.T) {
 // call Bind first to get its own form back.
 func Test_Ctx_Form_MixedCaseContentType(t *testing.T) {
 	t.Parallel()
-
 	t.Run("urlencoded", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.CtxAs[*DefaultCtx](t, New())
 
 		c.Request().Header.SetMethod(MethodPost)
@@ -2396,7 +2348,6 @@ func Test_Ctx_Form_MixedCaseContentType(t *testing.T) {
 
 	t.Run("multipart", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.CtxAs[*DefaultCtx](t, New())
 
 		// The boundary parameter *name* is folded, its value is not.
@@ -2469,7 +2420,6 @@ func Test_Ctx_Fresh_NoCache(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 
 			c.Request().Header.Set(HeaderIfNoneMatch, "*")
@@ -2488,7 +2438,6 @@ func Test_Ctx_Fresh_NoCache(t *testing.T) {
 // any HTTP-date recipient.
 func Test_Ctx_Fresh_ModifiedSince(t *testing.T) {
 	t.Parallel()
-
 	const (
 		date      = "Wed, 21 Oct 2015 07:28:00 GMT"
 		laterDate = "Wed, 21 Oct 2015 07:29:00 GMT"
@@ -2525,7 +2474,6 @@ func Test_Ctx_Fresh_ModifiedSince(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 			c.Request().Header.Set(HeaderIfModifiedSince, tc.ifModifiedSince)
 			if tc.lastModified != "" {
@@ -2602,7 +2550,6 @@ func Test_Ctx_Fresh_MultiFieldLines(t *testing.T) {
 // Content-Encoding field lines are combined into one list per RFC 9110 §5.2.
 func Test_Ctx_Body_With_Compression_MultiFieldLines(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		payload string
@@ -2614,7 +2561,6 @@ func Test_Ctx_Body_With_Compression_MultiFieldLines(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 			body := []byte(tc.payload)
 			for _, line := range tc.lines {
@@ -2674,7 +2620,6 @@ func Test_Ctx_Binders(t *testing.T) {
 
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, app)
 			testStruct := new(TestStruct)
 
@@ -2720,7 +2665,6 @@ func Test_Ctx_Binders(t *testing.T) {
 
 	t.Run("URI", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.CtxAs[*DefaultCtx](t, app)
 
 		c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
@@ -2832,11 +2776,9 @@ func Test_Ctx_Host_ForwardedHost(t *testing.T) {
 	} {
 		t.Run(accessor.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, tc := range tests {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-
 					c := apptest.Ctx(t, New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: tc.proxies}}))
 					c.Request().SetRequestURI("http://google.com/test")
 					c.Request().Header.Set(HeaderXForwardedHost, tc.forwardedHost)
@@ -2884,7 +2826,6 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New(tc.config))
 			require.Equal(t, tc.want, c.IsProxyTrusted())
 		})
@@ -2933,7 +2874,6 @@ func Test_Ctx_Port(t *testing.T) {
 
 func Test_Ctx_Port_RemoteAddrVariants(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name   string
 		remote net.Addr
@@ -2974,7 +2914,6 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 
 func Test_Ctx_IP(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, New())
 
 	// default behavior will return the remote IP from the stack
@@ -3023,7 +2962,6 @@ func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 
 				t.Run(fmt.Sprintf("%s, EnableIPValidation=%t, %s", proxyHeaderName, enableIPValidation, tc.name), func(t *testing.T) {
 					t.Parallel()
-
 					fastCtx := &fasthttp.RequestCtx{}
 					fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
 					c := apptest.CtxFor(t, app, fastCtx)
@@ -3050,7 +2988,6 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New(Config{
 				TrustProxy:       true,
 				TrustProxyConfig: TrustProxyConfig{Proxies: []string{tc.proxy}},
@@ -3233,7 +3170,6 @@ func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
 
 func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{
 		ProxyHeader:        HeaderXForwardedFor,
 		TrustProxy:         true,
@@ -3255,7 +3191,6 @@ func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines(t *testing.T) {
 // inside it, so a tab there reaches the chain parsers.
 func Test_Ctx_IP_ProxyHeader_Wire(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{
 		ProxyHeader:        HeaderXForwardedFor,
 		TrustProxy:         true,
@@ -3305,7 +3240,6 @@ func Test_Ctx_IP_TrustedProxyIPv6Range(t *testing.T) {
 
 func Test_Ctx_ProxyTrust_UnixRemoteAddr(t *testing.T) {
 	t.Parallel()
-
 	if runtime.GOOS == "windows" {
 		t.Skip("unix sockets are not supported on windows in this test")
 	}
@@ -3381,7 +3315,6 @@ func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, unixSocket bool) string {
 
 func Test_Ctx_IPs(t *testing.T) {
 	t.Parallel()
-
 	local := []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}
 	validLocal := []string{"127.0.0.1", "127.0.0.2"}
 	reordered := []string{"127.0.0.3", "127.0.0.1", "127.0.0.2"}
@@ -3430,7 +3363,6 @@ func Test_Ctx_IPs(t *testing.T) {
 	} {
 		t.Run(mode.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, tc := range tests {
 				if tc.validatedOnly && !mode.validated {
 					continue
@@ -3803,7 +3735,6 @@ func Test_Ctx_SetLocal_NoAllocations(t *testing.T) {
 // override.
 func Test_Ctx_SetLocal_UsesCustomCtxLocals(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, NewWithCustomCtx(func(app *App) CustomCtx {
 		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
 	}))
@@ -3951,7 +3882,6 @@ type contextHelperTestKey struct{}
 
 func Test_Ctx_StoreInContext_Config(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		config    Config
 		inContext any // what the context holds under the key: nil when the config keeps the value out of it
@@ -3963,7 +3893,6 @@ func Test_Ctx_StoreInContext_Config(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New(tc.config))
 
 			StoreInContext(c, contextHelperTestKey{}, tc.stored)
@@ -3978,7 +3907,6 @@ func Test_Ctx_StoreInContext_Config(t *testing.T) {
 
 func Test_Ctx_ValueFromContext_Config(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		app  *App
 		name string
@@ -3991,7 +3919,6 @@ func Test_Ctx_ValueFromContext_Config(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, tc.app)
 
 			c.Locals(contextHelperTestKey{}, "locals")
@@ -4005,7 +3932,6 @@ func Test_Ctx_ValueFromContext_Config(t *testing.T) {
 
 	t.Run("fasthttp request ctx", func(t *testing.T) {
 		t.Parallel()
-
 		raw := &fasthttp.RequestCtx{}
 		raw.SetUserValue(contextHelperTestKey{}, "value")
 
@@ -4016,7 +3942,6 @@ func Test_Ctx_ValueFromContext_Config(t *testing.T) {
 
 	t.Run("context.Context", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := context.WithValue(context.Background(), contextHelperTestKey{}, "value")
 
 		value, ok := ValueFromContext[string](ctx, contextHelperTestKey{})
@@ -4082,7 +4007,6 @@ func Test_Ctx_Locals_Generic(t *testing.T) {
 
 func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
 	t.Parallel()
-
 	type User struct {
 		name string
 		age  int
@@ -4242,7 +4166,6 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 
 func Test_Ctx_MultipartForm_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.CtxAs[*DefaultCtx](t, New(Config{BodyLimit: 64}))
 
 	multipartBody := &bytes.Buffer{}
@@ -4340,7 +4263,6 @@ func Test_Ctx_Params(t *testing.T) {
 
 func Test_Ctx_Params_ErrorHandler_Panic_Issue_2832(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{
 		ErrorHandler: func(c Ctx, _ error) error { return c.SendString(c.Params("user")) },
 		BodyLimit:    1 * 1024,
@@ -4512,7 +4434,6 @@ func Test_Ctx_Scheme(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{tc.proxy}}})
 			newCtx := func(t *testing.T) Ctx {
 				t.Helper()
@@ -4542,7 +4463,6 @@ func Test_Ctx_Scheme(t *testing.T) {
 
 func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}})
 
 	freq := &fasthttp.RequestCtx{}
@@ -4687,7 +4607,6 @@ func Test_Ctx_Range(t *testing.T) {
 
 func Test_Ctx_Range_Errors(t *testing.T) {
 	t.Parallel()
-
 	tooBig := uint64((math.MaxUint64 >> 1) + 1)
 
 	tests := []struct {
@@ -4728,7 +4647,6 @@ func Test_Ctx_Range_Errors(t *testing.T) {
 // 416 with the size of the representation.
 func Test_Ctx_Range_ErrorStatus(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name         string
 		header       string
@@ -4786,7 +4704,6 @@ func Test_Ctx_Range_LargeFile(t *testing.T) {
 
 func Test_Ctx_Range_SuffixNormalization(t *testing.T) {
 	t.Parallel()
-
 	body := bytes.Repeat([]byte("x"), 123)
 
 	newApp := func() *App {
@@ -4864,7 +4781,6 @@ func Test_Ctx_Range_SuffixNormalization(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := newApp()
 			req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
 			if tc.rangeHeader != "" {
@@ -4945,7 +4861,6 @@ func ctxTestBExpectGet(t *testing.T, app *App, target string, status int) {
 
 func Test_Ctx_FullPath(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/test", func(c Ctx) error {
 		require.Equal(t, "/test", c.FullPath())
@@ -4957,7 +4872,6 @@ func Test_Ctx_FullPath(t *testing.T) {
 
 func Test_Ctx_FullPath_Group(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	group := app.Group("/v1")
 	group.Get("/test", func(c Ctx) error {
@@ -4970,7 +4884,6 @@ func Test_Ctx_FullPath_Group(t *testing.T) {
 
 func Test_Ctx_FullPath_Middleware(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	var recorded []string
@@ -4997,7 +4910,6 @@ func Test_Ctx_FullPath_Middleware(t *testing.T) {
 
 func Test_Ctx_Endpoint_Middleware(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	var recorded []string
@@ -5021,7 +4933,6 @@ func Test_Ctx_Endpoint_Middleware(t *testing.T) {
 
 func Test_Ctx_Endpoint_NotFound(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Use(func(c Ctx) error {
@@ -5034,7 +4945,6 @@ func Test_Ctx_Endpoint_NotFound(t *testing.T) {
 
 func Test_Ctx_Endpoint_RepeatedAndSkipped(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	var calls int
@@ -5082,7 +4992,6 @@ func Benchmark_Ctx_Endpoint(b *testing.B) {
 // shouldSkipNonUseRoutes set, and next() then runs no endpoint at all.
 func Test_Ctx_Endpoint_NilWhenNoEndpointCanRun(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{BodyLimit: 8})
 
 	var reported []*Route
@@ -5112,7 +5021,6 @@ func Test_Ctx_Endpoint_NilWhenNoEndpointCanRun(t *testing.T) {
 // warns that hand-written scan copies drift unnoticed; this is that guard.
 func Test_Ctx_Endpoint_MatchesTheRouteThatRuns(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	var predicted, actual *Route
@@ -5162,7 +5070,6 @@ func routeName(r *Route) any {
 
 func Test_Ctx_Endpoint_FollowsMethodOverride(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	var before, after string
@@ -5193,11 +5100,9 @@ func Test_Ctx_Endpoint_FollowsMethodOverride(t *testing.T) {
 // short-circuits resolveSkip before it records one.
 func Test_Ctx_Endpoint_LooksPastTheCurrentRoute(t *testing.T) {
 	t.Parallel()
-
 	for _, skipUnmatched := range []bool{false, true} {
 		t.Run(fmt.Sprintf("SkipUnmatchedRoutes=%v", skipUnmatched), func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{SkipUnmatchedRoutes: skipUnmatched})
 
 			var seen *Route
@@ -5217,7 +5122,6 @@ func Test_Ctx_Endpoint_LooksPastTheCurrentRoute(t *testing.T) {
 
 func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SkipUnmatchedRoutes: true})
 
 	var path string
@@ -5415,7 +5319,6 @@ func Test_Ctx_SaveFileToStorage_LargeUpload(t *testing.T) {
 
 func Test_Ctx_SaveFileToStorage_LimitExceeded(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name        string
 		filename    string
@@ -5431,7 +5334,6 @@ func Test_Ctx_SaveFileToStorage_LimitExceeded(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			ctx := apptest.Ctx(t, New(Config{BodyLimit: tc.bodyLimit}))
 			storage := memory.New()
 
@@ -5524,7 +5426,6 @@ func (s *captureStorage) Close() error {
 
 func Test_Ctx_SaveFileToStorage_BufferNotReused(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	storage := &captureStorage{t: t}
 	ctx := apptest.Ctx(t, app)
@@ -5627,7 +5528,6 @@ func (s *mockContextAwareStorage) Close() error {
 
 func Test_Ctx_SaveFileToStorage_NilFileHeader(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	storage := memory.New()
 
@@ -5641,7 +5541,6 @@ func Test_Ctx_SaveFileToStorage_NilFileHeader(t *testing.T) {
 
 func Test_Ctx_SaveFile_NilFileHeader(t *testing.T) {
 	t.Parallel()
-
 	ctx := apptest.Ctx(t, New())
 
 	err := ctx.SaveFile(nil, "test")
@@ -5652,7 +5551,6 @@ func Test_Ctx_SaveFile_NilFileHeader(t *testing.T) {
 
 func Test_Ctx_SaveFileToStorage_DefaultBodyLimitFallback(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.config.BodyLimit = 0 // bypass app default coercion to exercise the fallback branch
 	storage := memory.New()
@@ -5671,7 +5569,6 @@ func Test_Ctx_SaveFileToStorage_DefaultBodyLimitFallback(t *testing.T) {
 
 func Test_Ctx_SaveFileToStorage_StoreErrorIncludesPath(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	wantErr := errors.New("backend down")
 	storage := &failingStorage{err: wantErr}
@@ -5712,7 +5609,6 @@ func (*failingStorage) ResetWithContext(context.Context) error          { return
 
 func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
 	t.Parallel()
-
 	type ctxKeyType string
 
 	const ctxKey ctxKeyType = "storage-context-key"
@@ -5786,7 +5682,6 @@ func Test_Ctx_Secure(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			freq := &fasthttp.RequestCtx{}
 			if tt.configure != nil {
 				tt.configure(freq)
@@ -6123,7 +6018,6 @@ func Test_Ctx_SendFile_ContentType(t *testing.T) {
 
 func Test_Static_Compress(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/file", func(c Ctx) error {
 		return c.SendFile("ctx.go", SendFile{Compress: true})
@@ -6134,7 +6028,6 @@ func Test_Static_Compress(t *testing.T) {
 	for _, algo := range algorithms {
 		t.Run(algo+"_compression", func(t *testing.T) {
 			t.Parallel()
-
 			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
 			req.Header.Set("Accept-Encoding", algo)
 			resp := apptest.Do(t, app, req, TestConfig{Timeout: 10 * time.Second, FailOnTimeout: true})
@@ -6171,7 +6064,6 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	} {
 		t.Run(tc.encoding, func(t *testing.T) {
 			t.Parallel()
-
 			b, err := sendFileBodyReader(tc.encoding)
 			require.NoError(t, err)
 			body, err := tc.decode(nil, b)
@@ -6216,7 +6108,6 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 // "100%.txt".
 func Test_Ctx_SendFile_NameIsLiteral(t *testing.T) {
 	t.Parallel()
-
 	dir := t.TempDir()
 	names := []string{"100%25.txt", "100%.txt", "hash_sign_#.txt", "sp ace.txt", "café.txt", "plus+sign.txt"}
 	if runtime.GOOS != windowsOS {
@@ -6244,7 +6135,6 @@ func Test_Ctx_SendFile_NameIsLiteral(t *testing.T) {
 // An encoded "?" or "#" likewise stays part of the name.
 func Test_Ctx_SendFile_EncodedSeparatorStaysInDirectory(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	pub := filepath.Join(root, "public")
 	require.NoError(t, os.Mkdir(pub, 0o750))
@@ -6279,7 +6169,6 @@ func Test_Ctx_SendFile_EncodedSeparatorStaysInDirectory(t *testing.T) {
 // would carry the directory's filesystem path in Location.
 func Test_Ctx_SendFile_DirectoryIsNotFound(t *testing.T) {
 	t.Parallel()
-
 	dir := t.TempDir()
 	// fasthttp escapes the name in the redirect it answers with, so a name it
 	// has to escape (a space, a percent, UTF-8) must be caught all the same.
@@ -6308,7 +6197,6 @@ func Test_Ctx_SendFile_DirectoryIsNotFound(t *testing.T) {
 // leaves the directory once decoded.
 func Test_Ctx_SendFile_DecodedParamWithRoot(t *testing.T) {
 	t.Parallel()
-
 	dir := t.TempDir()
 	files := filepath.Join(dir, "files")
 	require.NoError(t, os.Mkdir(files, 0o750))
@@ -6353,7 +6241,6 @@ func Test_Ctx_SendFile_DecodedParamWithRoot(t *testing.T) {
 // left the root path, so the root's index.html was served instead.
 func Test_Ctx_SendFile_ControlByteIsNotFound(t *testing.T) {
 	t.Parallel()
-
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte("INDEX"), 0o600))
 
@@ -6375,7 +6262,6 @@ func Test_Ctx_SendFile_ControlByteIsNotFound(t *testing.T) {
 
 func Test_Ctx_SendFile_Multiple(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/test", func(c Ctx) error {
 		switch c.Query("file") {
@@ -6482,7 +6368,6 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 
 func Test_SendFile_withRoutes(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/file", func(c Ctx) error { return c.SendFile("ctx.go") })
 
@@ -6601,7 +6486,6 @@ func byteRangeFixture(t *testing.T) string {
 // file server; internal/byterange tests them in full.
 func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
 	t.Parallel()
-
 	if runtime.GOOS == windowsOS {
 		t.Skip("SendFile byte-range tests are flaky on Windows")
 	}
@@ -6632,7 +6516,6 @@ func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
 			for k, v := range tc.fields {
 				req.Header.Set(k, v)
@@ -6660,7 +6543,6 @@ func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
 // name holds dot segments that fasthttp's path normalization resolved.
 func Test_SendFile_ByteRange_DotSegments(t *testing.T) {
 	t.Parallel()
-
 	if runtime.GOOS == windowsOS {
 		t.Skip("SendFile byte-range tests are flaky on Windows")
 	}
@@ -6686,7 +6568,6 @@ func Test_SendFile_ByteRange_DotSegments(t *testing.T) {
 // and not the directory's.
 func Test_SendFile_ByteRange_DirectoryIndex(t *testing.T) {
 	t.Parallel()
-
 	if runtime.GOOS == windowsOS {
 		t.Skip("SendFile byte-range tests are flaky on Windows")
 	}
@@ -6723,7 +6604,6 @@ func Test_SendFile_ByteRange_DirectoryIndex(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			resp := apptest.Expect(t, app, apptest.Req(MethodGet, "/"+tc.name, apptest.WithHeader(HeaderRange, "bytes=100-200")), tc.wantStatus)
 			require.Equal(t, tc.wantRange, resp.Header.Get(HeaderContentRange))
 		})
@@ -6734,7 +6614,6 @@ func Test_SendFile_ByteRange_DirectoryIndex(t *testing.T) {
 // which sends none of its own.
 func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
 	t.Parallel()
-
 	if runtime.GOOS == windowsOS {
 		t.Skip("SendFile byte-range tests are flaky on Windows")
 	}
@@ -6753,7 +6632,6 @@ func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
 	} {
 		t.Run(ifRange, func(t *testing.T) {
 			t.Parallel()
-
 			apptest.Expect(t, app, apptest.Req(MethodGet, "/file",
 				apptest.WithHeader(HeaderRange, "bytes=0-4"), apptest.WithHeader(HeaderIfRange, ifRange)), wantStatus)
 		})
@@ -6833,7 +6711,6 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 
 func Test_Ctx_MsgPack(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, New(Config{MsgPackEncoder: msgpack.Marshal, MsgPackDecoder: msgpack.Unmarshal}))
 
 	err := c.MsgPack(complex(1, 1))
@@ -6861,7 +6738,6 @@ func Test_Ctx_MsgPack(t *testing.T) {
 
 	t.Run("error msgpack", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.Ctx(t, New(Config{
 			MsgPackEncoder: func(_ any) ([]byte, error) { return []byte("error"), errors.New("msgpack error") },
 		}))
@@ -7082,7 +6958,6 @@ func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, app)
 
 			require.NoError(t, c.JSONP(Map{"a": 1}, tc.callback))
@@ -7140,7 +7015,6 @@ func ctxTestCEncoder(body string) func(any) ([]byte, error) {
 // Content-Type of its own format.
 func Test_Ctx_CustomEncoder(t *testing.T) {
 	t.Parallel()
-
 	data := Map{"Name": "Grame", "Age": 20}
 	for _, tc := range []struct {
 		send        func(c Ctx) error
@@ -7187,7 +7061,6 @@ func Test_Ctx_CustomEncoder(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New(tc.config))
 
 			require.NoError(t, tc.send(c))
@@ -7296,7 +7169,6 @@ func Test_Ctx_Render(t *testing.T) {
 // engine, whether a file renders as a template or an engine renders it by name.
 func Test_Ctx_Render_Variants(t *testing.T) {
 	t.Parallel()
-
 	const index = "./.github/testdata/index.tmpl"
 
 	// New loads the templates of the engine in a Config, so every row has its own.
@@ -7353,7 +7225,6 @@ func Test_Ctx_Render_Variants(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New(tc.config))
 			if tc.viewBind != nil {
 				require.NoError(t, c.ViewBind(tc.viewBind))
@@ -7547,7 +7418,6 @@ func Test_Ctx_IsWebSocket(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, app)
 			require.NotNil(t, c)
 			for _, header := range tc.headers {
@@ -7573,7 +7443,6 @@ func Test_Ctx_IsPreflight(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			fctx := &fasthttp.RequestCtx{}
 			fctx.Request.Header.SetMethod(MethodOptions)
 			for key, value := range tc.headers {
@@ -7763,7 +7632,6 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 
 func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		config Config
 		params Map
@@ -7786,7 +7654,6 @@ func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New(tc.config)
 			c := apptest.Ctx(t, app)
 			app.Get(tc.route, func(_ Ctx) error { return nil }).Name("Named")
@@ -7874,7 +7741,6 @@ func Test_Ctx_SendStatus(t *testing.T) {
 
 func Test_Ctx_SendStatusNoBodyResponses(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name   string
 		status int
@@ -7891,7 +7757,6 @@ func Test_Ctx_SendStatusNoBodyResponses(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 
 			c.Response().SetBodyString("preset body")
@@ -8060,12 +7925,10 @@ func Test_Ctx_Status(t *testing.T) {
 // Three-digit codes go out as given, 600..999 included (RFC 9112 §4).
 func Test_Ctx_Status_ThreeDigits(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	for _, code := range []int{100, 101, 200, 204, 304, 404, 499, 500, 599, 600, 601, 799, 999} {
 		t.Run(strconv.Itoa(code), func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, app)
 
 			c.Status(code)
@@ -8257,7 +8120,6 @@ func Test_Ctx_Is_And_Accepts_ExtensionWithCharset(t *testing.T) {
 
 func Test_shouldIncludeCharset(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name  string
 		types []string
@@ -8280,7 +8142,6 @@ func Test_shouldIncludeCharset(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, mimeType := range tc.types {
 				require.Equal(t, tc.want, shouldIncludeCharset(mimeType), mimeType)
 			}
@@ -8326,7 +8187,6 @@ func ctxTestCRunVary(t *testing.T, cases []ctxTestCVaryCase) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, app)
 			for _, line := range tc.lines {
 				c.Response().Header.Add(HeaderVary, line)
@@ -8346,7 +8206,6 @@ func ctxTestCRunVary(t *testing.T, cases []ctxTestCVaryCase) {
 
 func Test_Ctx_Vary(t *testing.T) {
 	t.Parallel()
-
 	ctxTestCRunVary(t, []ctxTestCVaryCase{
 		{
 			name:  "fields are listed in order",
@@ -8360,7 +8219,6 @@ func Test_Ctx_Vary(t *testing.T) {
 // meaningful as the sole member of the Vary field value.
 func Test_Ctx_Vary_Wildcard(t *testing.T) {
 	t.Parallel()
-
 	ctxTestCRunVary(t, []ctxTestCVaryCase{
 		// Adding "*" collapses any previously listed fields to a single "*".
 		{name: "wildcard collapses the fields", calls: [][]string{{"Origin"}, {"*"}}, want: []string{"*"}},
@@ -8395,7 +8253,6 @@ func Test_Ctx_Vary_Wildcard(t *testing.T) {
 // names, so they are compared case-insensitively and the first spelling is kept.
 func Test_Ctx_Vary_CaseInsensitive(t *testing.T) {
 	t.Parallel()
-
 	ctxTestCRunVary(t, []ctxTestCVaryCase{
 		{name: "lowercase first", calls: [][]string{{"accept"}, {"Accept"}}, want: []string{"accept"}},
 		{name: "canonical case first", calls: [][]string{{"Accept-Encoding"}, {"accept-encoding"}}, want: []string{"Accept-Encoding"}},
@@ -8407,7 +8264,6 @@ func Test_Ctx_Vary_CaseInsensitive(t *testing.T) {
 	// AutoFormat adds Vary("Accept"); a lowercase listing must not be duplicated.
 	t.Run("AutoFormat", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.Ctx(t, New())
 		c.Request().Header.Set(HeaderAccept, MIMETextPlain)
 		c.Vary("accept")
@@ -8817,7 +8673,6 @@ func Benchmark_Ctx_String(b *testing.B) {
 // makes a request local.
 func Test_Ctx_IsFromLocal_X_Forwarded(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name         string
 		forwardedFor string // left out when empty
@@ -8830,7 +8685,6 @@ func Test_Ctx_IsFromLocal_X_Forwarded(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 			if tc.forwardedFor != "" {
 				c.Request().Header.Set(HeaderXForwardedFor, tc.forwardedFor)
@@ -8846,7 +8700,6 @@ func Test_Ctx_IsFromLocal_X_Forwarded(t *testing.T) {
 
 func Test_Ctx_RemoteAddr(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		addr       net.Addr
 		name       string
@@ -8870,7 +8723,6 @@ func Test_Ctx_RemoteAddr(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			fctx := &fasthttp.RequestCtx{}
 			fctx.SetRemoteAddr(tc.addr)
 			c := apptest.CtxFor(t, New(), fctx)
@@ -8887,11 +8739,9 @@ func Test_Ctx_RemoteAddr(t *testing.T) {
 
 func Test_Ctx_extractIPsFromHeader(t *testing.T) {
 	t.Parallel()
-
 	for _, validate := range []bool{false, true} {
 		t.Run(fmt.Sprintf("EnableIPValidation=%t", validate), func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			app.config.EnableIPValidation = validate
 			c := apptest.Ctx(t, app)
@@ -8966,7 +8816,6 @@ func Test_Ctx_GetReqHeaders(t *testing.T) {
 
 func Test_Ctx_Set_SanitizeHeaderValue(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, New())
 
 	c.Set("X-Test", "foo\r\nbar: bad")
@@ -9009,7 +8858,6 @@ func ctxTestCNoResponse(t *testing.T, app *App, target string, wantErr error) {
 
 func Test_Ctx_Drop(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// Handler that calls Drop
@@ -9030,7 +8878,6 @@ func Test_Ctx_Drop(t *testing.T) {
 
 func Test_Ctx_DropWithMiddleware(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// Middleware that calls Drop
@@ -9201,7 +9048,6 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 
 func Test_Ctx_AbandonSkipsReleaseCtx(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // controlled test setup
 	ctx.route = &Route{}
@@ -9222,7 +9068,6 @@ func Test_Ctx_AbandonSkipsReleaseCtx(t *testing.T) {
 
 func Test_Ctx_ForceReleaseClearsAbandon(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // controlled test setup
 	ctx.route = &Route{}
@@ -9709,7 +9554,6 @@ func Test_Ctx_Cookie_DoesNotMutateArgument(t *testing.T) {
 
 func Test_Ctx_SendFile_UncomparableFS(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	first := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}
 	second := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("other")}}
@@ -9728,7 +9572,6 @@ func Test_Ctx_SendFile_UncomparableFS(t *testing.T) {
 
 func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	files := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}
 	open := funcFS(files.Open)
@@ -9745,7 +9588,6 @@ func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
 
 func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	var seen string
 	app.Use(func(c Ctx) error {
@@ -9762,7 +9604,6 @@ func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
 
 func Test_Ctx_SendFile_CompressedByMiddleware(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	// compress decides on the request's Accept-Encoding after Next, so SendFile must leave it.
 	compressor := fasthttp.CompressHandlerBrotliLevel(func(*fasthttp.RequestCtx) {},
@@ -9782,7 +9623,6 @@ func Test_Ctx_SendFile_CompressedByMiddleware(t *testing.T) {
 
 func Test_Ctx_AutoFormat_NoAcceptHeader(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.AutoFormat("Hello, World!") })
 
@@ -9801,7 +9641,6 @@ func Test_Ctx_AutoFormat_NoAcceptHeader(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 			if tc.accept != "" {
 				req.Header.Set(HeaderAccept, tc.accept)
@@ -9815,7 +9654,6 @@ func Test_Ctx_AutoFormat_NoAcceptHeader(t *testing.T) {
 
 func Test_Ctx_IP_IPv4MappedIPv6InProxyHeader(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{
 		ProxyHeader:        HeaderXForwardedFor,
 		TrustProxy:         true,
@@ -9837,7 +9675,6 @@ func Test_Ctx_IP_IPv4MappedIPv6InProxyHeader(t *testing.T) {
 
 func Test_Ctx_Accepts_MostSpecificRangeSetsQuality(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, New())
 
 	c.Request().Header.Set(HeaderAccept, "text/*;q=1, text/html;q=0.5")
@@ -9863,7 +9700,6 @@ func Test_Ctx_Accepts_MostSpecificRangeSetsQuality(t *testing.T) {
 
 func Test_Ctx_Format_CustomCtx(t *testing.T) {
 	t.Parallel()
-
 	app := NewWithCustomCtx(func(app *App) CustomCtx {
 		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
 	})
@@ -9894,7 +9730,6 @@ func Test_Ctx_Format_CustomCtx(t *testing.T) {
 // The identity step must not re-set the body with a slice aliasing it.
 func Test_Ctx_Body_With_Compression_IdentityChain(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	_, err := gz.Write([]byte("john=doe"))
@@ -9923,7 +9758,6 @@ func (f funcFS) Open(name string) (fs.File, error) { return f(name) }
 
 func Test_SameFS(t *testing.T) {
 	t.Parallel()
-
 	dirA, dirB := os.DirFS("."), os.DirFS("..")
 	mapA := fstest.MapFS{"a": &fstest.MapFile{}}
 	openA := funcFS(func(string) (fs.File, error) { return nil, fs.ErrNotExist })
@@ -9963,7 +9797,6 @@ func ctxTestCTLSPipe(t *testing.T) (raw net.Conn, client *tls.Conn) { //nolint:n
 
 func Test_UnderlyingConn_UnwrapsTLSWrapper(t *testing.T) {
 	t.Parallel()
-
 	raw, tlsConn := ctxTestCTLSPipe(t)
 	require.Equal(t, raw, underlyingConn(tlsConn))
 	require.Equal(t, raw, underlyingConn(perIPConnStub{Conn: tlsConn}))
@@ -9972,7 +9805,6 @@ func Test_UnderlyingConn_UnwrapsTLSWrapper(t *testing.T) {
 
 func Test_TLSHandler_ForgetsRecycledWrapper(t *testing.T) {
 	t.Parallel()
-
 	handler := &TLSHandler{}
 	raw1, tls1 := ctxTestCTLSPipe(t)
 	wrapper := &perIPConnStub{Conn: tls1}
@@ -10001,7 +9833,6 @@ func Test_TLSHandler_ForgetsRecycledWrapper(t *testing.T) {
 
 func Test_TLSHandler_ForgetsHijackedConnection(t *testing.T) {
 	t.Parallel()
-
 	raw, tlsConn := ctxTestCTLSPipe(t)
 
 	app := New()
@@ -10032,7 +9863,6 @@ func (sliceFS) Open(string) (fs.File, error) { return nil, fs.ErrNotExist }
 
 func Test_SameFS_SliceLength(t *testing.T) {
 	t.Parallel()
-
 	backing := sliceFS{"a", "b", "c"}
 	require.False(t, sameFS(backing[:1], backing[:2]))
 	require.True(t, sameFS(backing[:2], backing[:2]))
@@ -10043,7 +9873,6 @@ func Test_SameFS_SliceLength(t *testing.T) {
 // the one fasthttp's own Set stores, with header normalization on and off.
 func Test_Res_Set_MatchesHeaderSet(t *testing.T) {
 	t.Parallel()
-
 	keys := []string{
 		"X-Request-Id", "x-request-id", "X-REQUEST-ID", "Content-Type", "content-type", "Content-Length",
 		"Server", "Connection", "Date", "Set-Cookie", "Transfer-Encoding", "Content-Encoding", "Trailer",
@@ -10082,7 +9911,6 @@ func Test_Res_Set_MatchesHeaderSet(t *testing.T) {
 // normalizes.
 func Test_Res_Get_MatchesHeaderPeek(t *testing.T) {
 	t.Parallel()
-
 	names := []string{"X-Request-Id", "x-request-id", "X-REQUEST-ID", "x-lower", "X-Lower", "Content-Type", "Missing", "", "Bad Key"}
 	for _, storeNormalizes := range []bool{true, false} {
 		app := New()
@@ -10106,7 +9934,6 @@ func Test_Res_Get_MatchesHeaderPeek(t *testing.T) {
 // value only for the call: the stored line must not follow the caller's bytes.
 func Test_Res_Set_CopiesArguments(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, New())
 
 	keyBytes := []byte("X-Request-Id")
@@ -10125,7 +9952,6 @@ func Test_Res_Set_CopiesArguments(t *testing.T) {
 // shapes that path and after trailing slashes are trimmed from it.
 func Test_Ctx_PathSlashCount(t *testing.T) {
 	t.Parallel()
-
 	paths := []string{
 		"/", "//", "///", "/a", "/a/", "/a//", "/A/B/c", "/a/b/c/", "/a/b/c///",
 		"/ab/cd/ef/gh/ij", "/abcdefgh/ijklmnop/", "/x%2Fy/", "/x%41/", "/./a/../b/", "/a/./b//",
@@ -10163,7 +9989,6 @@ func Test_Ctx_PathSlashCount(t *testing.T) {
 // fasthttp adds in front can be canceled by the one a doubled slash loses.
 func Test_PathNeedsNormalization(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		path string
 		norm string

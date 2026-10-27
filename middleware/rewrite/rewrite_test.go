@@ -14,7 +14,6 @@ import (
 
 func Test_New(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name string
 		cfg  []Config
@@ -28,7 +27,6 @@ func Test_New(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.NotNil(t, New(tc.cfg...), "Expected middleware to be returned, got nil")
 		})
 	}
@@ -36,7 +34,6 @@ func Test_New(t *testing.T) {
 
 func Test_Rewrite(t *testing.T) {
 	t.Parallel()
-
 	oldToNew := map[string]string{"/old": "/new"}
 	tokens := map[string]string{"/users/*/orders/*": "/user/$1/order/$2"}
 
@@ -90,7 +87,6 @@ func Test_Rewrite(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(tc.cfg))
 			tc.routes(app)
@@ -101,7 +97,6 @@ func Test_Rewrite(t *testing.T) {
 	// Only the status is pinned here: nothing answers, so the body is Fiber's.
 	t.Run("non-matching request with no default route", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		app.Use(New(Config{Rules: tokens}))
 		orders(app)
@@ -114,7 +109,6 @@ func Test_Rewrite(t *testing.T) {
 // the rule path as a suffix (issue #4476).
 func Test_Rewrite_StartAnchor(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Rules: map[string]string{"/users/*": "/u/$1"}}))
 	app.Get("/u/:id", func(c fiber.Ctx) error { return c.SendString("rewritten:" + c.Params("id")) })
@@ -296,7 +290,6 @@ func rewritten(t *testing.T, cfg Config, path string) string {
 
 func Test_Rewrite_RuleListOrderWins(t *testing.T) {
 	t.Parallel()
-
 	narrowFirst := Config{RuleList: []Rule{{From: "/p/a*", To: "/narrow/$1"}, {From: "/p/*", To: "/broad/$1"}}}
 	broadFirst := Config{RuleList: []Rule{{From: "/p/*", To: "/broad/$1"}, {From: "/p/a*", To: "/narrow/$1"}}}
 
@@ -317,7 +310,6 @@ func Test_Rewrite_DeprecatedRulesOrderIsStable(t *testing.T) {
 
 func Test_Rewrite_PatternIsPathTextNotRegexp(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name string
 		from string
@@ -341,7 +333,6 @@ func Test_Rewrite_PatternIsPathTextNotRegexp(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			cfg := Config{RuleList: []Rule{{From: tc.from, To: "/hit"}}}
 			require.Equal(t, tc.want, rewritten(t, cfg, tc.path))
 		})
@@ -364,7 +355,6 @@ func Test_Rewrite_AlternationNoLongerEscapesTheAnchors(t *testing.T) {
 
 func Test_Rewrite_BothRuleFieldsPanic(t *testing.T) {
 	t.Parallel()
-
 	require.Panics(t, func() {
 		New(Config{Rules: map[string]string{"/old": "/new"}, RuleList: []Rule{{From: "/old", To: "/new"}}})
 	})
@@ -372,7 +362,6 @@ func Test_Rewrite_BothRuleFieldsPanic(t *testing.T) {
 
 func Test_Rewrite_DeprecatedRulesRanking(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name  string
 		rules map[string]string
@@ -408,7 +397,6 @@ func Test_Rewrite_DeprecatedRulesRanking(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			got := make([]string, 0, len(tc.rules))
 			for _, rule := range orderedRules(Config{Rules: tc.rules}) {
 				got = append(got, rule.From)
@@ -432,7 +420,6 @@ func Test_Rewrite_DeprecatedRulesAreQuotedToo(t *testing.T) {
 // Test_Rewrite_TwoDigitCaptures pins that "$10" names the tenth capture rather than "$1" followed by "0".
 func Test_Rewrite_TwoDigitCaptures(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{RuleList: []Rule{{From: "/t/*/*/*/*/*/*/*/*/*/*/*", To: "/r/$11/$10/$1"}}}))
 	app.Get("/r/:a/:b/:c", func(c fiber.Ctx) error {
@@ -487,11 +474,9 @@ func Test_Rewrite_UnescapePathDecodesOnce(t *testing.T) {
 	for _, unescape := range []bool{false, true} {
 		t.Run(fmt.Sprintf("UnescapePath=%v", unescape), func(t *testing.T) {
 			t.Parallel()
-
 			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-
 					app := fiber.New(fiber.Config{UnescapePath: unescape})
 					app.Use(New(Config{RuleList: []Rule{{From: "/files/*", To: "/public/$1"}}}))
 					app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })

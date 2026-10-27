@@ -44,7 +44,6 @@ func (s *ttlStorage) ttl(key string) time.Duration {
 
 func Test_carriesCredential(t *testing.T) {
 	t.Parallel()
-
 	cfg := configDefault(Config{KeyCredentialHeaders: []string{"X-Company-Token"}})
 	for name, want := range map[string]bool{
 		"Authorization":       true,
@@ -98,7 +97,6 @@ func cacheTestCRecords(cfg *Config) *refusalRecords {
 
 func Test_requestCredentials_scope(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		headers          map[string]string
 		name             string
@@ -181,7 +179,6 @@ func Test_requestCredentials_scope(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			cfg := configDefault(tc.cfg)
 			c := requestWith(tc.headers)
 			scope := cfg.credentialsOf(c, tc.vary, tc.hasAuthorization).scope()
@@ -193,7 +190,6 @@ func Test_requestCredentials_scope(t *testing.T) {
 
 func Test_sendsCredential(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		headers map[string]string
 		name    string
@@ -215,10 +211,8 @@ func Test_sendsCredential(t *testing.T) {
 
 func Test_keyLog(t *testing.T) {
 	t.Parallel()
-
 	t.Run("forgets the oldest past its limit, with the second it lapses", func(t *testing.T) {
 		t.Parallel()
-
 		l := &keyLog{limit: 2}
 		require.Empty(t, l.add("a", 10).key)
 		require.Empty(t, l.add("b", 20).key)
@@ -228,7 +222,6 @@ func Test_keyLog(t *testing.T) {
 
 	t.Run("a key seen again is the newest, and lapses at the later second", func(t *testing.T) {
 		t.Parallel()
-
 		l := &keyLog{limit: 2}
 		l.add("a", 10)
 		l.add("b", 20)
@@ -240,7 +233,6 @@ func Test_keyLog(t *testing.T) {
 
 	t.Run("a removed key leaves room", func(t *testing.T) {
 		t.Parallel()
-
 		l := &keyLog{limit: 2}
 		l.add("a", 10)
 		l.add("b", 20)
@@ -252,7 +244,6 @@ func Test_keyLog(t *testing.T) {
 
 	t.Run("no limit forgets nothing, so keeps nothing", func(t *testing.T) {
 		t.Parallel()
-
 		l := &keyLog{}
 		for i := range 100 {
 			require.Empty(t, l.add(strconv.Itoa(i), 10).key)
@@ -262,7 +253,6 @@ func Test_keyLog(t *testing.T) {
 
 	t.Run("a foreign value in the order forgets no key", func(t *testing.T) {
 		t.Parallel()
-
 		l := &keyLog{limit: 1}
 		l.order.PushBack("not a logged key")
 		require.Empty(t, l.add("a", 10).key)
@@ -272,7 +262,6 @@ func Test_keyLog(t *testing.T) {
 
 func Test_refusalLimit(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name string
 		cfg  Config
@@ -293,7 +282,6 @@ func Test_refusalLimit(t *testing.T) {
 // A record can exist for a URL until the last one of its group expires, or, in a Storage, once another instance announces one.
 func Test_refusalRecords_mayHold(t *testing.T) {
 	t.Parallel()
-
 	ctx := context.Background()
 	c := requestAt("/page", nil)
 	elsewhere := requestAt("/dash", nil)
@@ -301,7 +289,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("in memory, from the first record until the last has expired", func(t *testing.T) {
 		t.Parallel()
-
 		records := cacheTestCRecords(&Config{})
 		require.False(t, records.mayHold(ctx, c, "base"))
 
@@ -317,7 +304,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("only for the URLs of the group of the record", func(t *testing.T) {
 		t.Parallel()
-
 		records := cacheTestCRecords(&Config{})
 		records.record(ctx, records.group(c, "base"), "base|refused", 0)
 		require.True(t, records.mayHold(ctx, c, "base"))
@@ -326,7 +312,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("a custom key is grouped by the key", func(t *testing.T) {
 		t.Parallel()
-
 		require.NotEqual(t, groupOf("key-a"), groupOf("key-b"))
 		records := cacheTestCRecords(&Config{KeyGenerator: pathKey})
 		records.record(ctx, records.group(c, "key-a"), "key-a|refused", 0)
@@ -336,7 +321,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("a record is kept for Expiration, or as long as the refused entry had left", func(t *testing.T) {
 		t.Parallel()
-
 		now := time.Unix(1_700_000_000, 0)
 		cfg := Config{Expiration: time.Minute, clock: func() time.Time { return now }}
 		kept := func(entryExp uint64) uint64 {
@@ -359,7 +343,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("in a Storage, when the markers of all URLs and of the group say so", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		require.False(t, records.mayHold(ctx, c, "base"))
@@ -374,7 +357,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("in a Storage, a marker is read at most once per poll", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newRefusalStorage()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		records.poll = time.Hour.Milliseconds()
@@ -386,7 +368,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("in a Storage, a record another instance wrote is noticed within the poll", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		records.poll = 10
@@ -400,7 +381,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("in a Storage that cannot answer, a record is taken to exist", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		storage.errs["get|"+refusalMarker] = errors.New("storage unavailable")
 		storage.errs["get|"+groupMarkers[groupOf("/page")]] = errors.New("storage unavailable")
@@ -409,7 +389,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("a record written to a Storage is announced for the other instances", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		records.record(ctx, records.group(c, "base"), "base|refused|vary|digest", 0)
@@ -421,7 +400,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("a record is kept as long as a credential's entry of the group has been", func(t *testing.T) {
 		t.Parallel()
-
 		records := cacheTestCRecords(&Config{Expiration: time.Minute})
 		group := records.group(c, "base")
 		records.noteLifetime(group, time.Hour)
@@ -436,7 +414,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("an entry's lifetime counts only until it has passed", func(t *testing.T) {
 		t.Parallel()
-
 		now := time.Unix(1_700_000_000, 0)
 		records := cacheTestCRecords(&Config{Expiration: time.Minute, clock: func() time.Time { return now }})
 		group := records.group(c, "base")
@@ -457,7 +434,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("a record is not shortened by a later refusal with less left", func(t *testing.T) {
 		t.Parallel()
-
 		now := time.Unix(1_700_000_000, 0)
 		storage := newTTLStorage()
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute, clock: func() time.Time { return now }})
@@ -473,7 +449,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("a marker announced for later stays", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newTTLStorage()
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
 		later := uint64(utils.Timestamp()) + 3600
@@ -486,7 +461,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("a marker is not announced for a second that has passed", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		records.all.until.Store(uint64(utils.Timestamp()))
@@ -496,7 +470,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("in a Storage, a marker read says until when to look, so it is not polled again", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newRefusalStorage()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		later := uint64(utils.Timestamp()) + 3600
@@ -512,7 +485,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("in a Storage, a clock set back does not put off the poll", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newRefusalStorage()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		require.False(t, records.mayHold(ctx, c, "base"))
@@ -527,7 +499,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("a write that takes a while keeps hits looking past when the store drops the record", func(t *testing.T) {
 		t.Parallel()
-
 		var once sync.Once
 		storage := &hookedStorage{failingCacheStorage: newFailingCacheStorage(), onSet: func(string, time.Duration) {
 			once.Do(func() { clocktest.SleepPast(t, 3*time.Second) })
@@ -541,7 +512,6 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 // The group of a URL is the same on every instance, since each reads the markers of the others.
 func Test_groupOf(t *testing.T) {
 	t.Parallel()
-
 	require.Equal(t, 30, groupOf("/"))
 	require.Equal(t, 37, groupOf("/page"))
 	require.Equal(t, 6, groupOf("/dash"))
@@ -558,10 +528,8 @@ func Test_groupOf(t *testing.T) {
 
 func Test_droppedRecords(t *testing.T) {
 	t.Parallel()
-
 	t.Run("remembers what it is given, and forgets the oldest once full", func(t *testing.T) {
 		t.Parallel()
-
 		d := newDroppedRecords(2)
 		d.add("a", 100)
 		d.add("b", 200)
@@ -581,7 +549,6 @@ func Test_droppedRecords(t *testing.T) {
 
 	t.Run("a record is remembered until the second it would have lapsed", func(t *testing.T) {
 		t.Parallel()
-
 		d := newDroppedRecords(2)
 		d.add("a", 100)
 		require.True(t, d.has("a", 99))
@@ -590,7 +557,6 @@ func Test_droppedRecords(t *testing.T) {
 
 	t.Run("a key seen again keeps the later second", func(t *testing.T) {
 		t.Parallel()
-
 		d := newDroppedRecords(2)
 		d.add("a", 100)
 		d.add("a", 50)
@@ -601,7 +567,6 @@ func Test_droppedRecords(t *testing.T) {
 
 	t.Run("a removed key is forgotten, and its slot is taken over before the oldest", func(t *testing.T) {
 		t.Parallel()
-
 		d := newDroppedRecords(2)
 		d.add("a", 100)
 		d.add("b", 200)
@@ -620,7 +585,6 @@ func Test_droppedRecords(t *testing.T) {
 
 	t.Run("with no room it remembers nothing", func(t *testing.T) {
 		t.Parallel()
-
 		d := newDroppedRecords(0)
 		d.add("a", 100)
 		require.False(t, d.has("a", 10))
@@ -631,14 +595,12 @@ func Test_droppedRecords(t *testing.T) {
 // An in-memory store keeps no more records than its limit; an external Storage expires its own.
 func Test_refusalRecords_bound(t *testing.T) {
 	t.Parallel()
-
 	ctx := context.Background()
 	c := requestAt("/page", nil)
 	keys := []string{"k1", "k2", "k3", "k4"}
 
 	t.Run("an in-memory store forgets the oldest", func(t *testing.T) {
 		t.Parallel()
-
 		records := cacheTestCRecords(&Config{refusalRecordLimit: 2})
 		for _, key := range keys {
 			records.record(ctx, records.group(c, "base"), key, 0)
@@ -655,7 +617,6 @@ func Test_refusalRecords_bound(t *testing.T) {
 
 	t.Run("a record dropped while live is still refused, and nothing else is", func(t *testing.T) {
 		t.Parallel()
-
 		records := cacheTestCRecords(&Config{refusalRecordLimit: 2})
 		for _, key := range keys {
 			records.record(ctx, records.group(c, "base"), key, 0)
@@ -670,7 +631,6 @@ func Test_refusalRecords_bound(t *testing.T) {
 
 	t.Run("forgetting a record forgets it dropped too", func(t *testing.T) {
 		t.Parallel()
-
 		records := cacheTestCRecords(&Config{refusalRecordLimit: 1})
 		records.record(ctx, records.group(c, "base"), "k1", 0)
 		records.record(ctx, records.group(c, "base"), "k2", 0)
@@ -681,7 +641,6 @@ func Test_refusalRecords_bound(t *testing.T) {
 
 	t.Run("past what it can remember, the oldest dropped is forgotten", func(t *testing.T) {
 		t.Parallel()
-
 		records := cacheTestCRecords(&Config{refusalRecordLimit: 1})
 		for i := range 1 + droppedPerRecord {
 			records.record(ctx, records.group(c, "base"), "k"+strconv.Itoa(i), 0)
@@ -700,7 +659,6 @@ func Test_refusalRecords_bound(t *testing.T) {
 
 	t.Run("a record dropped after it lapsed costs nothing", func(t *testing.T) {
 		t.Parallel()
-
 		records := cacheTestCRecords(&Config{refusalRecordLimit: 1})
 		records.keys.add("old", uint64(utils.Timestamp())-10)
 		records.record(ctx, records.group(c, "base"), "new", 0)
@@ -711,7 +669,6 @@ func Test_refusalRecords_bound(t *testing.T) {
 
 	t.Run("an external Storage keeps every record", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		records := cacheTestCRecords(&Config{Storage: storage, refusalRecordLimit: 2})
 		for _, key := range keys {
@@ -727,14 +684,12 @@ func Test_refusalRecords_bound(t *testing.T) {
 // A Storage failing a write or delete of a record does not fail the request; the other bookkeeping still happens.
 func Test_refusalRecords_storageFailures(t *testing.T) {
 	t.Parallel()
-
 	ctx := context.Background()
 	c := requestAt("/page", nil)
 	failure := errors.New("storage unavailable")
 
 	t.Run("a record that cannot be written is remembered here, and the credential's hits fail closed until it would have lapsed", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		storage.errs["set|k"] = failure
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
@@ -754,7 +709,6 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 
 	t.Run("a record or marker that cannot be read before the write is written as if there were none", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		storage.errs["get|k"] = failure
 		storage.errs["get|"+refusalMarker] = failure
@@ -769,7 +723,6 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 
 	t.Run("a marker that cannot be written leaves the record and the other marker", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		storage.errs["set|"+refusalMarker] = failure
 		records := cacheTestCRecords(&Config{Storage: storage})
@@ -782,7 +735,6 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 
 	t.Run("a record is announced in the group it is given, not the group of the path now", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		require.NotEqual(t, groupOf("/page"), groupOf("/dash"))
@@ -793,7 +745,6 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 
 	t.Run("a record that cannot be dropped to make room is still remembered as dropped", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		storage.errs["del|k1"] = failure
 		records := cacheTestCRecords(&Config{Storage: storage})
@@ -807,7 +758,6 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 
 	t.Run("a record that cannot be cleared stays until the Storage expires it", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		storage.errs["del|k"] = failure
 		records := cacheTestCRecords(&Config{Storage: storage})
@@ -819,7 +769,6 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 
 func Test_refusesCredential(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		status int
 		want   bool
@@ -842,7 +791,6 @@ func Test_refusesCredential(t *testing.T) {
 
 func Test_acceptsCredential(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		status int
 		want   bool
@@ -870,7 +818,6 @@ func Test_acceptsCredential(t *testing.T) {
 // so New must. Checked in a process of its own, since here every other test has long started it.
 func Test_New_StartsTheTimestampUpdater(t *testing.T) {
 	t.Parallel()
-
 	const child = "FIBER_CACHE_TEST_TIMESTAMP_CHILD"
 	if os.Getenv(child) == "1" {
 		require.Zero(t, utils.Timestamp(), "something else in this process started the updater")
@@ -917,7 +864,6 @@ func Test_errorRefusesCredential(t *testing.T) {
 
 func Test_varyListsCredential(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		vary     string
 		declared []string
@@ -962,12 +908,10 @@ func Test_varyListsCredential(t *testing.T) {
 
 func Test_refusalRecords_key(t *testing.T) {
 	t.Parallel()
-
 	session := map[string]string{"Cookie": "session=abc"}
 
 	t.Run("there is nothing to record unless the credential is the entry's own", func(t *testing.T) {
 		t.Parallel()
-
 		r := cacheTestCRecords(&Config{KeyCredentialHeaders: []string{"X-Company-Token"}})
 		key := func(vary []string, headers map[string]string) string {
 			return recordKeyOf(r, requestWith(headers), "base", vary, false)
@@ -986,7 +930,6 @@ func Test_refusalRecords_key(t *testing.T) {
 
 	t.Run("a Vary on a credential is recorded under the credential and not the variant", func(t *testing.T) {
 		t.Parallel()
-
 		r := cacheTestCRecords(&Config{})
 		key := func(vary []string, headers map[string]string) string {
 			return recordKeyOf(r, requestWith(headers), "base", vary, false)
@@ -1002,7 +945,6 @@ func Test_refusalRecords_key(t *testing.T) {
 
 	t.Run("a credential the key holds is recorded under the key alone, whatever the variant varies on", func(t *testing.T) {
 		t.Parallel()
-
 		r := cacheTestCRecords(&Config{KeyCookies: []string{"session"}})
 		key := func(vary []string, headers map[string]string) string {
 			return recordKeyOf(r, requestWith(headers), "base", vary, false)
@@ -1016,7 +958,6 @@ func Test_refusalRecords_key(t *testing.T) {
 
 	t.Run("a credential the key holds is recorded without the other dimensions of the key", func(t *testing.T) {
 		t.Parallel()
-
 		withAccept := func(cookie, accept string) map[string]string {
 			return map[string]string{"Cookie": "session=" + cookie, "Accept": accept}
 		}
@@ -1051,7 +992,6 @@ func Test_refusalRecords_key(t *testing.T) {
 
 	t.Run("Authorization is recorded under its digest", func(t *testing.T) {
 		t.Parallel()
-
 		r := cacheTestCRecords(&Config{})
 		key := func(auth string) string {
 			return recordKeyOf(r, requestWith(map[string]string{"Authorization": auth, "Accept": "text/html"}), "base", nil, true)
@@ -1064,7 +1004,6 @@ func Test_refusalRecords_key(t *testing.T) {
 
 	t.Run("a declared header is a credential held by a custom key, or not", func(t *testing.T) {
 		t.Parallel()
-
 		token := map[string]string{"X-Company-Token": "t"}
 		record := func(cfg Config, vary []string, headers map[string]string) string {
 			return recordKeyOf(cacheTestCRecords(&cfg), requestWith(headers), "base", vary, false)
@@ -1088,7 +1027,6 @@ func Test_refusalRecords_key(t *testing.T) {
 
 	t.Run("a custom key holds Authorization too, so the record is under the key it built", func(t *testing.T) {
 		t.Parallel()
-
 		r := cacheTestCRecords(&Config{KeyGenerator: pathKey})
 		bearer := map[string]string{"Authorization": "Bearer one"}
 		want := refusalMarker + "|GET|base"
@@ -1103,7 +1041,6 @@ func Test_refusalRecords_key(t *testing.T) {
 
 	t.Run("a HEAD is recorded as the GET it mirrors", func(t *testing.T) {
 		t.Parallel()
-
 		head := func(headers map[string]string) fiber.Ctx {
 			c := requestWith(headers)
 			c.Method(fiber.MethodHead)

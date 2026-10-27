@@ -44,7 +44,6 @@ func populatedResponse() response {
 // the clear()/reuse branch when unmarshaling into an already-populated value.
 func Test_response_MarshalUnmarshal_Populated(t *testing.T) {
 	t.Parallel()
-
 	v := populatedResponse()
 	bts, err := v.MarshalMsg(nil)
 	require.NoError(t, err)
@@ -64,7 +63,6 @@ func Test_response_MarshalUnmarshal_Populated(t *testing.T) {
 // DecodeMsg paths with non-empty data.
 func Test_response_EncodeDecode_Populated(t *testing.T) {
 	t.Parallel()
-
 	v := populatedResponse()
 
 	var buf bytes.Buffer
@@ -113,7 +111,6 @@ func Test_response_UnmarshalMsg_UnknownField(t *testing.T) {
 // each individual read in the generated code.
 func Test_response_Decode_Truncated(t *testing.T) {
 	t.Parallel()
-
 	v0 := populatedResponse()
 	full, err := v0.MarshalMsg(nil)
 	require.NoError(t, err)
@@ -169,7 +166,6 @@ func Test_response_Decode_LimitExceeded(t *testing.T) {
 // EncodeMsg by failing the underlying writer at every byte offset.
 func Test_response_EncodeMsg_WriterErrors(t *testing.T) {
 	t.Parallel()
-
 	v0 := populatedResponse()
 	full, err := v0.MarshalMsg(nil)
 	require.NoError(t, err)

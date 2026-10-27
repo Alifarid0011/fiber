@@ -82,7 +82,6 @@ func routerTestExpectPath(tb testing.TB, app *App, path string, status int, want
 
 func Test_Route_Handler_Order(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	var order []int
@@ -113,7 +112,6 @@ func Test_Route_Handler_Order(t *testing.T) {
 
 func Test_hasFlashCookieExactMatch(t *testing.T) {
 	t.Parallel()
-
 	buildRequestWithCookie := func(t *testing.T, cookie string) *fasthttp.Request {
 		t.Helper()
 
@@ -141,7 +139,6 @@ func Test_hasFlashCookieExactMatch(t *testing.T) {
 
 func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	var order []string
@@ -175,7 +172,6 @@ func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {
 
 func Test_Route_Group_WithHTTPHandlers(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	var order []string
@@ -203,7 +199,6 @@ func Test_Route_Group_WithHTTPHandlers(t *testing.T) {
 
 func Test_RouteChain_WithHTTPHandlers(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	chain := app.RouteChain("/combo")
@@ -233,7 +228,6 @@ func Test_RouteChain_WithHTTPHandlers(t *testing.T) {
 // the pattern.
 func Test_Route_Match_Param(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		requests map[string]string // path -> body
 		name     string
@@ -253,7 +247,6 @@ func Test_Route_Match_Param(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 
 			handler := func(c Ctx) error { return c.SendString(c.Params(tc.param)) }
@@ -275,7 +268,6 @@ func Test_Route_Match_Param(t *testing.T) {
 // must not filter these routes out end-to-end.
 func Test_Route_Match_SlashInParams(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/api/v1/:param-:param2", func(c Ctx) error {
 		return c.SendString(c.Params("param") + "|" + c.Params("param2"))
@@ -311,7 +303,6 @@ func Test_Route_Match_SlashInParams(t *testing.T) {
 // it so param routes still match.
 func Test_App_HasParamRoutes(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/static/route", testEmptyHandler)
 	app.Get("/*", func(c Ctx) error { return c.SendString(c.Params("*")) })
@@ -355,7 +346,6 @@ func Test_Route_Match_Star(t *testing.T) {
 
 func Test_Route_Match_Root(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Get("/", func(c Ctx) error { return c.SendString("root") })
@@ -365,7 +355,6 @@ func Test_Route_Match_Root(t *testing.T) {
 
 func Test_Route_Match_Parser(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Get("/foo/:ParamName", func(c Ctx) error { return c.SendString(c.Params("ParamName")) })
@@ -535,7 +524,6 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 
 func Test_Route_Match_UnescapedPath(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{UnescapePath: true})
 
 	app.Use("/créer", func(c Ctx) error { return c.SendString("test") })
@@ -562,7 +550,6 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 // under it that name the same resource, and only those.
 func Test_Route_Match_NormalizedPath(t *testing.T) {
 	t.Parallel()
-
 	newApp := func(cfg Config) *App {
 		app := New(cfg)
 		app.Use("/static/private", func(c Ctx) error { return c.SendStatus(StatusForbidden) })
@@ -609,7 +596,6 @@ func Test_Route_Match_NormalizedPath(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := newApp(Config{UnescapePath: tc.unescape})
 			routerTestExpectPath(t, app, tc.target, tc.wantStatus, tc.wantBody)
 		})
@@ -627,7 +613,6 @@ func Test_Route_Match_NormalizedPath(t *testing.T) {
 // "/a" where Fiber keeps the empty segment RFC 3986 leaves in place.
 func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
 	t.Parallel()
-
 	routes := []struct {
 		mux, fiber string
 		params     []string // wildcard names; "rest" reads Fiber's "*"
@@ -729,7 +714,6 @@ func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
 			}
 			t.Run(fmt.Sprintf("unescape=%v/%s", unescape, tc.target), func(t *testing.T) {
 				t.Parallel()
-
 				wantStatus, wantBody := viaMux(mux, tc.target)
 				gotStatus, gotBody := viaFiber(app, tc.target)
 				require.Equal(t, wantStatus, gotStatus, "status for %s", tc.target)
@@ -743,7 +727,6 @@ func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
 
 func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	// static route and escaped part
 	app.Get("/v1/some/resource/name\\:customVerb", func(c Ctx) error { return c.SendString("static") })
@@ -767,7 +750,6 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 // everything below it, but not a sibling that only starts with the same characters.
 func Test_Route_Match_Middleware_Prefix(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name   string
 		prefix string
@@ -781,7 +763,6 @@ func Test_Route_Match_Middleware_Prefix(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 
 			app.Use(tc.prefix, func(c Ctx) error { return c.SendString("middleware") })
@@ -793,12 +774,10 @@ func Test_Route_Match_Middleware_Prefix(t *testing.T) {
 
 func Test_Router_Register_Missing_Handler(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	t.Run("No Handler", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithValue(t, "missing handler/middleware in route: /doe\n", func() {
 			app.register([]string{"USE"}, "/doe", nil)
 		})
@@ -806,7 +785,6 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 
 	t.Run("Nil Handler", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithValue(t, "nil handler in route: /doe\n", func() {
 			app.register([]string{"USE"}, "/doe", nil, nil)
 		})
@@ -815,7 +793,6 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 	t.Parallel()
-
 	var app any = (*App)(nil)
 	_, ok := app.(Router)
 	require.True(t, ok)
@@ -827,7 +804,6 @@ func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 
 func Test_Router_Handler_Catch_Error(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.config.ErrorHandler = func(_ Ctx, _ error) error { return errors.New("fake error") }
 
@@ -842,7 +818,6 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 
 func Test_Router_NotFound(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name string
 		path string
@@ -1026,7 +1001,6 @@ func Test_App_Remove_Route_Non_Existing_Route(t *testing.T) {
 // characters never does, with StrictRouting on or off.
 func Test_Use_StrictRoutingBoundary(t *testing.T) {
 	t.Parallel()
-
 	for _, scope := range []struct {
 		register func(app *App, matched *bool)
 		name     string
@@ -1075,7 +1049,6 @@ func Test_Use_StrictRoutingBoundary(t *testing.T) {
 			for _, tc := range cases {
 				t.Run(fmt.Sprintf("%s/strict=%v/%s", scope.name, strict, tc.name), func(t *testing.T) {
 					t.Parallel()
-
 					app := New(Config{StrictRouting: strict})
 
 					matched := false
@@ -1812,7 +1785,6 @@ func newCustomApp(cfg ...Config) *App {
 
 func Test_Next_SkipNonUseRoutesSkipsFallback(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
 	app.startupProcess()
@@ -1851,7 +1823,6 @@ func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 
 func Test_NextCustom_SkipNonUseRoutesSkipsFallback(t *testing.T) {
 	t.Parallel()
-
 	app := newCustomApp()
 	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
 	app.startupProcess()
@@ -1867,7 +1838,6 @@ func Test_NextCustom_SkipNonUseRoutesSkipsFallback(t *testing.T) {
 
 func Test_NextCustom_NotFound(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		uri     string
@@ -2404,7 +2374,6 @@ func newSkipApp(cfg ...Config) *App {
 // the matched path has no endpoint for (405 listing the methods it does have).
 func Test_App_SkipUnmatchedRoutes_StaticAndParametric(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		register func(app *App)
 		name     string
@@ -2435,7 +2404,6 @@ func Test_App_SkipUnmatchedRoutes_StaticAndParametric(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := newSkipApp()
 			tc.register(app)
 
@@ -2462,7 +2430,6 @@ func Test_App_SkipUnmatchedRoutes_StaticAndParametric(t *testing.T) {
 
 func Test_App_SkipUnmatchedRoutes_CORSPreflight(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SkipUnmatchedRoutes: true})
 	// Minimal CORS-style middleware: answer preflight, pass everything else through.
 	app.Use(func(c Ctx) error {
@@ -2494,7 +2461,6 @@ func Test_App_SkipUnmatchedRoutes_CORSPreflight(t *testing.T) {
 // NOT run for unmatched requests but DOES run for matched ones.
 func Test_App_SkipUnmatchedRoutes_MiddlewareSkipped(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		path    string
@@ -2534,7 +2500,6 @@ func Test_App_SkipUnmatchedRoutes_MiddlewareSkipped(t *testing.T) {
 // feature is enabled but no middleware is registered (the lookahead is gated off).
 func Test_App_SkipUnmatchedRoutes_NoMiddlewareGate(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SkipUnmatchedRoutes: true}) // no Use
 	app.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
 
@@ -2549,7 +2514,6 @@ func Test_App_SkipUnmatchedRoutes_NoMiddlewareGate(t *testing.T) {
 // the configured error handler itself returns an error (-> 500).
 func Test_App_SkipUnmatchedRoutes_CustomErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{
 		SkipUnmatchedRoutes: true,
 		ErrorHandler:        func(_ Ctx, _ error) error { return errors.New("boom") },
@@ -2565,7 +2529,6 @@ func Test_App_SkipUnmatchedRoutes_CustomErrorHandler(t *testing.T) {
 // another, so both Allow entries must be reported.
 func Test_App_SkipUnmatchedRoutes_CrossMethodMixed(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Get("/thing/:id", func(c Ctx) error { return c.SendString("get") })  // parametric
 	app.Post("/thing/fixed", func(c Ctx) error { return c.SendString("p") }) // static
@@ -2580,7 +2543,6 @@ func Test_App_SkipUnmatchedRoutes_CrossMethodMixed(t *testing.T) {
 // the global (bucket 0) candidate list when the request's prefix bucket is absent.
 func Test_App_SkipUnmatchedRoutes_Bucket0Fallback(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Get("/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
 
@@ -2592,7 +2554,6 @@ func Test_App_SkipUnmatchedRoutes_Bucket0Fallback(t *testing.T) {
 // firstMatchIndex > 0 and the endpoints before it are skipped.
 func Test_App_SkipUnmatchedRoutes_SkipBefore(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Get("/key/aaa", func(c Ctx) error { return c.SendString("static") })
 	app.Get("/key/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
@@ -2602,7 +2563,6 @@ func Test_App_SkipUnmatchedRoutes_SkipBefore(t *testing.T) {
 
 func Test_App_SkipUnmatchedRoutes_OptionalParam(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Get("/opt/:v?", func(c Ctx) error { return c.SendString("opt:" + c.Params("v")) })
 
@@ -2615,7 +2575,6 @@ func Test_App_SkipUnmatchedRoutes_OptionalParam(t *testing.T) {
 
 func Test_App_SkipUnmatchedRoutes_Constraint(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Get("/num/:id<int>", func(c Ctx) error { return c.SendString(c.Params("id")) })
 
@@ -2626,7 +2585,6 @@ func Test_App_SkipUnmatchedRoutes_Constraint(t *testing.T) {
 
 func Test_App_SkipUnmatchedRoutes_RootAndStar(t *testing.T) {
 	t.Parallel()
-
 	t.Run("root", func(t *testing.T) {
 		t.Parallel()
 		app := newSkipApp()
@@ -2646,7 +2604,6 @@ func Test_App_SkipUnmatchedRoutes_RootAndStar(t *testing.T) {
 
 func Test_App_SkipUnmatchedRoutes_AutoHead(t *testing.T) {
 	t.Parallel()
-
 	t.Run("static", func(t *testing.T) {
 		t.Parallel()
 		app := newSkipApp()
@@ -2669,7 +2626,6 @@ func Test_App_SkipUnmatchedRoutes_AutoHead(t *testing.T) {
 // the called flag and must run in order, so they are not split into subtests.
 func Test_App_SkipUnmatchedRoutes_GroupMiddleware(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SkipUnmatchedRoutes: true})
 	called := false
 	g := app.Group("/g")
@@ -2685,7 +2641,6 @@ func Test_App_SkipUnmatchedRoutes_GroupMiddleware(t *testing.T) {
 
 func Test_App_SkipUnmatchedRoutes_Mount(t *testing.T) {
 	t.Parallel()
-
 	sub := New()
 	sub.Get("/profile", func(c Ctx) error { return c.SendString("profile") })
 
@@ -2705,7 +2660,6 @@ func Test_App_SkipUnmatchedRoutes_Mount(t *testing.T) {
 
 func Test_App_SkipUnmatchedRoutes_CaseSensitiveAndStrict(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		cfg   Config
 		name  string
@@ -2732,7 +2686,6 @@ func Test_App_SkipUnmatchedRoutes_CaseSensitiveAndStrict(t *testing.T) {
 
 func Test_App_SkipUnmatchedRoutes_RebuildTree(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Get("/first", func(c Ctx) error { return c.SendString("first") })
 
@@ -2748,7 +2701,6 @@ func Test_App_SkipUnmatchedRoutes_RebuildTree(t *testing.T) {
 // the path and restarts routing re-resolves correctly (no stale lookahead index).
 func Test_App_SkipUnmatchedRoutes_RestartRouting(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Get("/old", func(c Ctx) error {
 		c.Path("/new")
@@ -2763,7 +2715,6 @@ func Test_App_SkipUnmatchedRoutes_RestartRouting(t *testing.T) {
 // produces the same status codes and Allow headers as the default behavior.
 func Test_App_SkipUnmatchedRoutes_Parity(t *testing.T) {
 	t.Parallel()
-
 	build := func(skip bool) *App {
 		app := New(Config{SkipUnmatchedRoutes: skip})
 		app.Use(func(c Ctx) error { return c.Next() })
@@ -2805,7 +2756,6 @@ func Test_App_SkipUnmatchedRoutes_Parity(t *testing.T) {
 // Test_App_SkipUnmatchedRoutes_CustomCtx exercises the customRequestHandler path.
 func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
 	t.Parallel()
-
 	app := newCustomApp(Config{SkipUnmatchedRoutes: true})
 	app.Use(func(c Ctx) error {
 		if c.IsPreflight() {
@@ -2845,7 +2795,6 @@ func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
 // before the short-circuit: a skipped 404 must still clear the flash cookie.
 func Test_App_SkipUnmatchedRoutes_FlashCookieCleared(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Get("/set", func(c Ctx) error { return c.Redirect().With("k", "v").To("/target") })
 
@@ -2865,7 +2814,6 @@ func Test_App_SkipUnmatchedRoutes_FlashCookieCleared(t *testing.T) {
 // invalidates the lookahead index even without RestartRouting.
 func Test_App_SkipUnmatchedRoutes_PathOverrideMidChain(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Use(func(c Ctx) error {
 		if c.Path() == "/aaa/zzz" {
@@ -2884,7 +2832,6 @@ func Test_App_SkipUnmatchedRoutes_PathOverrideMidChain(t *testing.T) {
 // mount prefix still resolves the sub-app's custom error handler.
 func Test_App_SkipUnmatchedRoutes_MountedErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error {
 		return c.Status(StatusNotFound).SendString("sub-404")
 	}})
@@ -2900,7 +2847,6 @@ func Test_App_SkipUnmatchedRoutes_MountedErrorHandler(t *testing.T) {
 // error handler on the fast path (users match on them with errors.Is).
 func Test_App_SkipUnmatchedRoutes_ErrorSentinels(t *testing.T) {
 	t.Parallel()
-
 	var got error
 	app := New(Config{
 		SkipUnmatchedRoutes: true,
@@ -2923,7 +2869,6 @@ func Test_App_SkipUnmatchedRoutes_ErrorSentinels(t *testing.T) {
 // of hasParamUse: wildcard middleware writes c.values, so the endpoint re-matches.
 func Test_App_SkipUnmatchedRoutes_StarMiddlewareNoClobber(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Use("/*", func(c Ctx) error { return c.Next() })
 	app.Get("/user/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
@@ -2935,7 +2880,6 @@ func Test_App_SkipUnmatchedRoutes_StarMiddlewareNoClobber(t *testing.T) {
 // decoded detection path.
 func Test_App_SkipUnmatchedRoutes_UnescapePath(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp(Config{UnescapePath: true})
 	app.Get("/some/path", func(c Ctx) error { return c.SendString("ok") })
 
@@ -2946,7 +2890,6 @@ func Test_App_SkipUnmatchedRoutes_UnescapePath(t *testing.T) {
 // fallback in emitSkipCustom.
 func Test_App_SkipUnmatchedRoutes_CustomCtxFailingErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	app := newCustomApp(Config{
 		SkipUnmatchedRoutes: true,
 		ErrorHandler:        func(Ctx, error) error { return errors.New("fail") },
@@ -3063,7 +3006,6 @@ func Benchmark_SkipUnmatchedRoutes_Deep(b *testing.B) {
 // firstMatchIndex would wrongly skip it.
 func Test_App_SkipUnmatchedRoutes_MethodOverride(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SkipUnmatchedRoutes: true})
 	app.Use(func(c Ctx) error {
 		if c.Method() == MethodGet {
@@ -3083,7 +3025,6 @@ func Test_App_SkipUnmatchedRoutes_MethodOverride(t *testing.T) {
 // params (no parametric middleware, so the fast path is taken).
 func Test_App_SkipUnmatchedRoutes_ParamReuse(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SkipUnmatchedRoutes: true})
 	app.Use(func(c Ctx) error { return c.Next() })         // non-param middleware
 	app.Use("/api", func(c Ctx) error { return c.Next() }) // static-prefix middleware
@@ -3100,7 +3041,6 @@ func Test_App_SkipUnmatchedRoutes_ParamReuse(t *testing.T) {
 // If reuse fired incorrectly the endpoint would observe the middleware's value.
 func Test_App_SkipUnmatchedRoutes_ParamMiddlewareNoClobber(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SkipUnmatchedRoutes: true})
 	// Parametric middleware whose match writes param slot 0 as the first segment.
 	app.Use("/:seg", func(c Ctx) error { return c.Next() })
@@ -3115,7 +3055,6 @@ func Test_App_SkipUnmatchedRoutes_ParamMiddlewareNoClobber(t *testing.T) {
 // results via the normal router.
 func Test_App_SkipUnmatchedRoutes_ManyMethods(t *testing.T) {
 	t.Parallel()
-
 	methods := append([]string{}, DefaultMethods...)
 	for i := 0; len(methods) <= 64; i++ {
 		methods = append(methods, "X"+string(rune('A'+i%26))+string(rune('A'+i/26)))
@@ -3176,7 +3115,6 @@ func Benchmark_Router_HandlerCustom_NotFound(b *testing.B) {
 // work, never to change an outcome, so a false reject here is a routing bug.
 func Test_Route_PrefixFilter_Differential(t *testing.T) {
 	t.Parallel()
-
 	segments := []string{
 		"/api", "/foo/", "/:a", "/:b?", "/*", "/+", "/:a-:b", "/:f.:e?",
 		":tail", "/::c", "/:x:y", "/name\\:verb", "/:p/fixed", "/",
@@ -3329,7 +3267,6 @@ func Test_Route_PrefixFilter_Fixture(t *testing.T) {
 // without Route.match ever being consulted.
 func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 	t.Parallel()
-
 	route := func(pattern string) *Route {
 		routes := registerFilterRoutes(t, []string{pattern}, false)
 		require.Len(t, routes, 1)
@@ -3482,7 +3419,6 @@ func referenceEndpoint(app *App, method int, detectionPath, path string) (*Route
 // a golden-file comparison, so it needs no regeneration when routes are added.
 func Test_Router_ScanMatchesReference(t *testing.T) {
 	t.Parallel()
-
 	patterns := []string{
 		"/", "/health", "/health/live", "/api", "/api/v1/status",
 		"/user/keys/:id", "/user/emails", "/user/following/:user",
@@ -3675,7 +3611,6 @@ func routeLabel(r *Route) string {
 // present, tier 2 would rescue a botched tier 1 and hide the bug.
 func Test_ResolveSkip_StaticSlashGate(t *testing.T) {
 	t.Parallel()
-
 	statics := []string{"/health", "/api/status", "/a/b/c/d", "/one/two/three/four/five/six"}
 
 	app := New(Config{SkipUnmatchedRoutes: true})
@@ -3715,7 +3650,6 @@ func Test_ResolveSkip_StaticSlashGate(t *testing.T) {
 // forgets to refresh the filter fails here.
 func Test_Route_PrefixFilter_NotStale(t *testing.T) {
 	t.Parallel()
-
 	assertFresh := func(t *testing.T, app *App, stage string) {
 		t.Helper()
 		checked := 0
@@ -3819,7 +3753,6 @@ func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
 // the backing arrays that an in-flight request may still be scanning.
 func Test_RebuildTree_PreservesPublishedBuckets(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/aa/first", testEmptyHandler)
 	app.Get("/aa/removed", testEmptyHandler)
@@ -3848,7 +3781,6 @@ func Test_RebuildTree_PreservesPublishedBuckets(t *testing.T) {
 // is the cross-bucket write the fresh-arena rule exists to prevent.
 func Test_BuildTree_BucketsAreExactlyFull(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Use("/", testEmptyHandler)
 	app.Get("/aa/first", testEmptyHandler)
@@ -3935,7 +3867,6 @@ func Test_Route_PrefixFilter_UnconstrainedShapes(t *testing.T) {
 // "/ab/..." routes matched.
 func Test_Route_OptionalSlash_SingleCharSegment(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		pattern string
 		path    string
@@ -3968,7 +3899,6 @@ func Test_Route_OptionalSlash_SingleCharSegment(t *testing.T) {
 // composed the wrong thing, one of them an open redirect, so it errors instead.
 func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("//internal", func(c Ctx) error { return c.SendString("internal") }).Name("dbl")
 	app.Get("//*", func(c Ctx) error { return c.SendString("wild") }).Name("dblwild")
@@ -4002,11 +3932,9 @@ func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
 // Constraints must not be lowercased along with the pattern.
 func Test_Router_Constraints_CaseInsensitiveRouting(t *testing.T) {
 	t.Parallel()
-
 	for _, caseSensitive := range []bool{false, true} {
 		t.Run(fmt.Sprintf("CaseSensitive=%v", caseSensitive), func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{CaseSensitive: caseSensitive})
 			app.RegisterCustomConstraint(&evenConstraint{})
 			sub := New(Config{CaseSensitive: caseSensitive})
@@ -4060,7 +3988,6 @@ func (*evenConstraint) Execute(param string, _ ...string) bool {
 
 func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 	t.Parallel()
-
 	build := func(app *App) {
 		app.Get("/a", func(c Ctx) error { return c.SendString("a") })
 		app.Use(func(c Ctx) error {
@@ -4080,7 +4007,6 @@ func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			build(tc.app)
 			apptest.ExpectBody(t, tc.app, "/x", StatusOK, "post x")
 		})
@@ -4089,7 +4015,6 @@ func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 	// SkipUnmatchedRoutes answers 405 before middleware runs, so no override happens.
 	t.Run("skip unmatched routes", func(t *testing.T) {
 		t.Parallel()
-
 		app := New(Config{SkipUnmatchedRoutes: true})
 		build(app)
 		apptest.Expect(t, app, "/x", StatusMethodNotAllowed)
@@ -4098,7 +4023,6 @@ func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 
 func Test_Router_EscapedStar_IsLiteral(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get(`/\*`, func(c Ctx) error { return c.SendString("star") })
 
@@ -4116,7 +4040,6 @@ func Test_Router_EscapedStar_IsLiteral(t *testing.T) {
 
 func Test_Router_StrictRouting_ParamTrailingSlash(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name   string
 		path   string
@@ -4133,7 +4056,6 @@ func Test_Router_StrictRouting_ParamTrailingSlash(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{StrictRouting: tc.strict})
 			app.Get("/a/:id/", func(c Ctx) error { return c.SendString(c.Params("id")) })
 			app.Get("/b/c/", func(c Ctx) error { return c.SendString("c") })
@@ -4163,7 +4085,6 @@ func routerTestExpectRawBody(tb testing.TB, handler fasthttp.RequestHandler, fct
 
 func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{UnescapePath: true})
 	app.Get("/u/:name", func(c Ctx) error { return c.SendString(c.Params("name") + "|" + c.Path()) })
 
@@ -4198,7 +4119,6 @@ func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 // raw handler.
 func Test_Router_StrayPercent(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		path string
 		body string
@@ -4234,7 +4154,6 @@ func Test_Router_StrayPercent(t *testing.T) {
 // normalization. All of them give the parameter "100%".
 func Test_Router_StrayPercentParamIsStable(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/files/:name", func(c Ctx) error { return c.SendString(c.Params("name")) })
 	handler := app.Handler()
@@ -4254,7 +4173,6 @@ func Test_Router_StrayPercentParamIsStable(t *testing.T) {
 // httptest rejects these targets, so the requests go through the raw handler.
 func Test_Router_UnrootedTargetIsRooted(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		method, target, path string
 	}{
@@ -4331,7 +4249,6 @@ func routerTestRouteNames(app *App, path string) []string {
 
 func Test_App_Add_MultipleMethods_Name(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Add([]string{MethodGet, MethodPost}, "/x", func(c Ctx) error { return c.SendString("x") }).Name("x")
 
@@ -4340,7 +4257,6 @@ func Test_App_Add_MultipleMethods_Name(t *testing.T) {
 
 func Test_App_Add_MultipleMethods_NameMergedRoutes(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	h := func(c Ctx) error { return c.SendString("ok") }
 
@@ -4357,7 +4273,6 @@ func Test_App_Add_MultipleMethods_NameMergedRoutes(t *testing.T) {
 // resumes the scan when a handler switches method mid-request.
 func Test_App_Add_MergedRoute_KeepsRegistrationID(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	// Sits ahead of /x in the GET bucket only, so the index the GET match
 	// leaves behind is past the one POST /x holds in its own bucket: carrying
@@ -4381,7 +4296,6 @@ func Test_App_Add_MergedRoute_KeepsRegistrationID(t *testing.T) {
 // registered through.
 func Test_App_Name_MergedRouteUsesLatestGroup(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	h := func(c Ctx) error { return c.SendString("ok") }
 
@@ -4400,7 +4314,6 @@ func Test_App_Name_MergedRouteUsesLatestGroup(t *testing.T) {
 
 func Test_App_Name_OnlyLatestRegistration(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	h := func(c Ctx) error { return c.SendString("ok") }
 
@@ -4421,7 +4334,6 @@ func Test_App_Name_OnlyLatestRegistration(t *testing.T) {
 // allowed to decide whether the older GET route is renamed too.
 func Test_App_Name_OnlyLatestRegistration_ReverseMethodOrder(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	h := func(c Ctx) error { return c.SendString("ok") }
 
@@ -4437,7 +4349,6 @@ func Test_App_Name_OnlyLatestRegistration_ReverseMethodOrder(t *testing.T) {
 
 func Test_App_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	sub := New()
 	sub.Get("/x", func(c Ctx) error { return c.SendString("x") })
@@ -4450,14 +4361,12 @@ func Test_App_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 
 func Test_App_Mount_Self_Panics(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	require.Panics(t, func() { app.Use("/x", app) })
 }
 
 func Test_App_RebuildTree_RegistersAutoHead(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/early", func(c Ctx) error { return c.SendString("early") })
 	handler := app.Handler()
@@ -4474,7 +4383,6 @@ func Test_App_RebuildTree_RegistersAutoHead(t *testing.T) {
 
 func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 	t.Parallel()
-
 	nested := New()
 	nested.Get("/x", func(c Ctx) error { return c.SendString("x") })
 	sub := New()
@@ -4494,7 +4402,6 @@ func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 
 func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/zzz/other", func(c Ctx) error { return c.SendString("other") })
 	app.Use(func(c Ctx) error {
@@ -4525,7 +4432,6 @@ func Test_Router_Constraints_MixedCaseNames(t *testing.T) {
 	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			pattern := "/:id<" + name + ">"
 			app.Get(pattern, func(c Ctx) error { return c.SendString(c.Params("id")) })
@@ -4548,7 +4454,6 @@ func Test_Router_Constraints_MixedCaseNames(t *testing.T) {
 
 func Test_App_AutoHead_PanickingHookLeavesScanIncomplete(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	fail := true
 	// Only the synthesized companion fails, so registration itself succeeds.
@@ -4580,7 +4485,6 @@ func Test_App_AutoHead_PanickingHookLeavesScanIncomplete(t *testing.T) {
 // the matcher it stands in for.
 func Test_Route_Fingerprint_MatchesMatch(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Use("/mw", func(c Ctx) error { return c.Next() })
 	app.Use(func(c Ctx) error { return c.Next() })
@@ -4618,7 +4522,6 @@ func Test_Route_Fingerprint_MatchesMatch(t *testing.T) {
 // hash equal whatever their type, and 0 is reserved for "no fingerprint".
 func Test_PathFingerprint_Contract(t *testing.T) {
 	t.Parallel()
-
 	for _, path := range []string{
 		"", "/", "/a", "/ab", "/abcdefg", "/abcdefgh", "/abcdefghi",
 		"/users/list", "/long/static/path/segment/that/exceeds/one/word",
@@ -4653,7 +4556,6 @@ func routerTestPathHandler(c Ctx) error { return c.SendString(c.Path()) }
 // The heads are held to the same line-up.
 func Test_RouteTree_Fingerprints_LineUp(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	routerTestStatics(app, "/routes/", fingerprintMinBucket*2, func(Ctx) error { return nil })
 	app.Use("/routes", func(c Ctx) error { return c.Next() })
@@ -4677,7 +4579,6 @@ func Test_RouteTree_Fingerprints_LineUp(t *testing.T) {
 // nor hashes its detection paths, and scans its routes directly.
 func Test_RouteTree_Fingerprints_SmallBucketNil(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/hello", func(Ctx) error { return nil })
 	app.RebuildTree()
@@ -4693,7 +4594,6 @@ func Test_RouteTree_Fingerprints_SmallBucketNil(t *testing.T) {
 // hash its path. Its filter still carries heads, which do reject param routes.
 func Test_RouteTree_Fingerprints_CountsStaticRoutes(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	for i := range fingerprintMinBucket * 2 {
 		app.Get("/routes/:id/v"+strconv.Itoa(i), func(Ctx) error { return nil })
@@ -4719,7 +4619,6 @@ func Test_RouteTree_Fingerprints_CountsStaticRoutes(t *testing.T) {
 // static route in the bucket, and once for anything that scans past a route.
 func Test_Router_Fingerprint_HashedOnDemand(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	routerTestStatics(app, "/routes/", fingerprintMinBucket*2, func(Ctx) error { return nil })
 	app.startupProcess()
@@ -4757,7 +4656,6 @@ func Test_Router_Fingerprint_HashedOnDemand(t *testing.T) {
 // fingerprint scan is the thing deciding what runs.
 func Test_Router_LargeBucket_RoutesCorrectly(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	var seen []string
 	app.Use("/routes", func(c Ctx) error {
@@ -4792,7 +4690,6 @@ func Test_Router_LargeBucket_RoutesCorrectly(t *testing.T) {
 // endpoint would turn a match into a 404 only when that config is on.
 func Test_Router_LargeBucket_SkipUnmatchedRoutes(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SkipUnmatchedRoutes: true})
 	ran := 0
 	app.Use("/routes", func(c Ctx) error {
@@ -4822,7 +4719,6 @@ func Test_Router_LargeBucket_SkipUnmatchedRoutes(t *testing.T) {
 // and routes are registered folded, so the two fingerprints have to agree.
 func Test_Router_LargeBucket_CaseInsensitive(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	routerTestStatics(app, "/Routes/Item", fingerprintMinBucket*2, func(c Ctx) error { return c.SendString("hit") })
 
@@ -4837,7 +4733,6 @@ func Test_Router_LargeBucket_CaseInsensitive(t *testing.T) {
 // bound must still match, and a miss is a 404.
 func Test_Router_LargeBucket_LongPath(t *testing.T) {
 	t.Parallel()
-
 	longest := "/routes/" + strings.Repeat("s", 40)
 	app := New()
 	routerTestStatics(app, "/routes/", fingerprintMinBucket*2, routerTestPathHandler)
@@ -4863,7 +4758,6 @@ func Test_Router_LargeBucket_LongPath(t *testing.T) {
 // 404 rather than a match against the last route in the bucket.
 func Test_Router_LargeBucket_StaticOnlyMiss(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	routerTestStatics(app, "/routes/", fingerprintMinBucket*4, routerTestPathHandler)
 
@@ -4879,7 +4773,6 @@ func Test_Router_LargeBucket_StaticOnlyMiss(t *testing.T) {
 // miss that runs the scan off the end of the bucket.
 func Test_Router_LargeBucket_CustomCtx(t *testing.T) {
 	t.Parallel()
-
 	newApp := func() *App {
 		return NewWithCustomCtx(func(app *App) CustomCtx {
 			return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
@@ -4985,7 +4878,6 @@ func Test_ScanHead_SlashMask(t *testing.T) {
 // lanes, leaves the head without a probe, for match to check.
 func Test_ScanHead_Probe(t *testing.T) {
 	t.Parallel()
-
 	word, mask := packConst("/issues")
 	fits := constProbe{word: word, mask: mask, from: 13, skip: 2}
 	// A filtered bucket holds a head per route: what a rebuild allocates
@@ -5039,7 +4931,6 @@ func Test_ScanHead_Probe(t *testing.T) {
 // begin "/api/v1/".
 func Test_ScanHead_PrefixWords(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	handler := func(c Ctx) error { return c.Next() }
 	patterns := []string{
@@ -5093,7 +4984,6 @@ func Test_ScanHead_PrefixWords(t *testing.T) {
 // word one of them located for the other would reject the route it tests.
 func Test_Router_FilteredBucket_SharedProbeFrom(t *testing.T) {
 	t.Parallel()
-
 	apps := map[string]*App{"default": New(), "custom": newCustomApp()}
 	for name, app := range apps {
 		handler := func(c Ctx) error { return c.SendString(c.Route().Path) }
@@ -5132,7 +5022,6 @@ func Test_Router_FilteredBucket_SharedProbeFrom(t *testing.T) {
 // matching endpoint, through a default and a custom context alike.
 func Test_Router_FilteredBucket_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
-
 	register := func(app *App) {
 		handler := func(c Ctx) error { return c.SendString(c.Route().Path) }
 		for i := range filterMinBucket * 2 {
@@ -5179,7 +5068,6 @@ func Test_Router_FilteredBucket_MethodNotAllowed(t *testing.T) {
 // takes, and requires the route and parameters App.next picks for each request.
 func Test_Router_FilteredBucket_CustomCtx(t *testing.T) {
 	t.Parallel()
-
 	defaultApp := New()
 	registerDummyRoutes(defaultApp)
 	defaultApp.startupProcess()
@@ -5228,7 +5116,6 @@ func Test_Router_FilteredBucket_CustomCtx(t *testing.T) {
 // a build.
 func Test_RouteTree_Heads_NotStale(t *testing.T) {
 	t.Parallel()
-
 	assertFresh := func(t *testing.T, app *App, stage string) {
 		t.Helper()
 		checked := 0
@@ -5280,7 +5167,6 @@ func Test_RouteTree_Heads_NotStale(t *testing.T) {
 
 func Test_OptionalParam_ConstraintFailureDoesNotBypassAsEmpty(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Use("/api/:id<int>?", func(c Ctx) error { return c.SendString("matched") })
 
@@ -5293,7 +5179,6 @@ func Test_OptionalParam_ConstraintFailureDoesNotBypassAsEmpty(t *testing.T) {
 
 func Test_RouteParser_BacktrackMaxRetriesBound(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		pattern string
@@ -5319,7 +5204,6 @@ func Test_RouteParser_BacktrackMaxRetriesBound(t *testing.T) {
 
 func Test_RouteParser_GreedyWildcardDoesNotYield(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	// Greedy wildcard * must not yield to plus param +
 	app.Get("/*+:x?", func(c Ctx) error { return c.SendStatus(StatusOK) })

@@ -154,7 +154,6 @@ func Test_defaultKeyGenerator_stableKeys(t *testing.T) {
 // equality with escapeKeyDelimiters.
 func Test_EscapeKeyDelimiters_AppendFormsMatch(t *testing.T) {
 	t.Parallel()
-
 	long := strings.Repeat("a", maxKeyDimensionSegmentLength+1)
 	corpus := []string{
 		"", "a", "|", ":", `\`, `\\`, "::", "||", `a|b:c\d`,
@@ -194,7 +193,6 @@ func Test_EscapeKeyDelimiters_AppendFormsMatch(t *testing.T) {
 // middleware actually used.
 func Test_Cache_KeyFormatIsStable(t *testing.T) {
 	t.Parallel()
-
 	authHash := authDigest("Bearer token")
 
 	tests := []struct {
@@ -290,7 +288,6 @@ func boundKeySegment(segment string) string {
 // cannot borrow the partition it imitates.
 func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing.T) {
 	t.Parallel()
-
 	segment := func(credentials []string, lines ...string) string {
 		var h fasthttp.RequestHeader
 		for _, line := range lines {
@@ -302,7 +299,6 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 
 	t.Run("a credential is hashed and not spelled out", func(t *testing.T) {
 		t.Parallel()
-
 		got := segment(credential, "tok")
 		require.Equal(t, "x-api-key:1sha256:"+authDigest("tok"), got)
 		require.NotContains(t, got, "tok")
@@ -310,14 +306,12 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 
 	t.Run("an absent credential keeps the key of a client that sends none", func(t *testing.T) {
 		t.Parallel()
-
 		require.Equal(t, "x-api-key:0", segment(credential))
 		require.Equal(t, segment(nil), segment(credential))
 	})
 
 	t.Run("a value spelled like the digest is kept, not mistaken for the credential", func(t *testing.T) {
 		t.Parallel()
-
 		lookalike := "sha256:" + authDigest("tok")
 		got := segment(nil, lookalike)
 		require.NotEqual(t, segment(credential, "tok"), got)
@@ -328,7 +322,6 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 
 	t.Run("lines too long to keep hash like a credential of the same lines", func(t *testing.T) {
 		t.Parallel()
-
 		long := strings.Repeat("x", 300)
 		want := "x-api-key:1sha256:" + authDigest(long)
 		require.Equal(t, want, segment(nil, long))
@@ -337,7 +330,6 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 
 	t.Run("a value too long to keep and a value spelled like its digest key apart", func(t *testing.T) {
 		t.Parallel()
-
 		long := strings.Repeat("x", 300)
 		hashed := segment(nil, long)
 		lookalike := segment(nil, "sha256:"+authDigest(long))
@@ -350,7 +342,6 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 
 	t.Run("the split into lines is part of the digest", func(t *testing.T) {
 		t.Parallel()
-
 		require.NotEqual(t, segment(credential, "ab"), segment(credential, "a", "b"))
 		require.NotEqual(t, segment(credential, "a", "bc"), segment(credential, "ab", "c"))
 		require.NotEqual(t, segment(credential, ""), segment(credential), "present but empty differs from absent")
@@ -360,7 +351,6 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 // A cookie's value is most often a session identifier, so it is hashed in the key; a missing or empty one leaves its bare name.
 func Test_appendCanonicalCookieSubset(t *testing.T) {
 	t.Parallel()
-
 	segment := func(cookie string, names ...string) string {
 		c, _ := buildKeygenCtx(&keygenCase{uri: "/", cookie: cookie})
 		return string(appendCanonicalCookieSubset(nil, c, &Config{KeyCookies: names}))
@@ -368,7 +358,6 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 
 	t.Run("a value is hashed and not spelled out", func(t *testing.T) {
 		t.Parallel()
-
 		got := segment("sid=tok", "sid")
 		require.Equal(t, "sid:sha256:"+authDigest("tok"), got)
 		require.NotContains(t, got, "tok")
@@ -376,7 +365,6 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 
 	t.Run("a missing or empty cookie shares one key, a value does not", func(t *testing.T) {
 		t.Parallel()
-
 		require.Equal(t, "sid:", segment("", "sid"))
 		require.Equal(t, "sid:", segment("sid=", "sid"))
 		require.Equal(t, "sid:", segment("other=1", "sid"))
@@ -385,7 +373,6 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 
 	t.Run("a value shaped like the key's structure is hashed like any other", func(t *testing.T) {
 		t.Parallel()
-
 		for _, value := range []string{"a|b:c", "x|c=other:1", "sha256:" + authDigest("tok"), strings.Repeat("x", 300)} {
 			got := segment("sid="+value, "sid")
 			require.Equal(t, "sid:sha256:"+authDigest(value), got)
@@ -397,7 +384,6 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 
 	t.Run("each name keeps its own segment", func(t *testing.T) {
 		t.Parallel()
-
 		require.Equal(t, "a:sha256:"+authDigest("1")+"|b:sha256:"+authDigest("2")+"|c:", segment("a=1; b=2", "a", "b", "c"))
 		require.NotEqual(t, segment("a=1; b=2", "a", "b"), segment("a=2; b=1", "a", "b"))
 	})
@@ -405,7 +391,6 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 
 func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 	t.Parallel()
-
 	const (
 		session = "sess_0123456789abcdefghijklmnopqrstuvwxyz"
 		other   = "sess_other_other_other_other_other_other"
@@ -415,7 +400,6 @@ func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 	for _, kind := range storageKinds {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
-
 			storage := storageOf(kind)
 			app := fiber.New()
 			app.Use(New(Config{Storage: storage, KeyCookies: []string{"session"}}))

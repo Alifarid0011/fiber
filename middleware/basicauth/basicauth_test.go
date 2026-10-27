@@ -78,7 +78,6 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := apptest.Req(fiber.MethodGet, "/testauth", withBasicCredentials(tt.username+":"+tt.password))
 			if tt.statusCode == 200 {
 				apptest.ExpectBody(t, app, req, tt.statusCode, tt.username)
@@ -91,7 +90,6 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 
 func Test_BasicAuthLoggerTagWritesUsername(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 
 	app := fiber.New()
@@ -125,7 +123,6 @@ func Test_BasicAuthLogContextTagWritesUsername(t *testing.T) {
 
 func Test_BasicAuth_UsernameFromContext_Types(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{PassLocalsToContext: true})
 	app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}}))
 
@@ -169,11 +166,9 @@ func Test_BasicAuth_AuthorizerCtx(t *testing.T) {
 // and no Authorizer every request has to be refused, never served or crashed on.
 func Test_BasicAuth_NoConfig(t *testing.T) {
 	t.Parallel()
-
 	for name, handler := range map[string]fiber.Handler{"New()": New(), "New(Config{})": New(Config{})} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(handler)
 			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
@@ -192,7 +187,6 @@ func Test_BasicAuth_NoConfig(t *testing.T) {
 			for _, tc := range tests {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-
 					req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 					if tc.authorization != "" {
 						req.Header.Set(fiber.HeaderAuthorization, tc.authorization)
@@ -212,7 +206,6 @@ func Test_BasicAuth_NoConfig(t *testing.T) {
 // defaulting as the config path, so no handler is left nil.
 func Test_BasicAuth_ConfigDefault_NoConfig(t *testing.T) {
 	t.Parallel()
-
 	cfg := configDefault()
 	require.NotNil(t, cfg.Authorizer)
 	require.NotNil(t, cfg.Unauthorized)
@@ -233,7 +226,6 @@ func Test_BasicAuth_ConfigDefault_NoConfig(t *testing.T) {
 // instead of adding Authorization to it.
 func Test_BasicAuth_Unauthorized_KeepsVary(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(func(c fiber.Ctx) error {
 		if earlier := c.Get("X-Earlier-Vary"); earlier != "" {
@@ -257,7 +249,6 @@ func Test_BasicAuth_Unauthorized_KeepsVary(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 			if tc.earlier != "" {
 				req.Header.Set("X-Earlier-Vary", tc.earlier)
@@ -271,7 +262,6 @@ func Test_BasicAuth_Unauthorized_KeepsVary(t *testing.T) {
 
 func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 	t.Parallel()
-
 	users := map[string]string{"john": sha256Hash("doe")}
 
 	tests := []struct {
@@ -292,7 +282,6 @@ func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(tc.config))
 
@@ -304,7 +293,6 @@ func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 
 func Test_BasicAuth_AuthorizationHeader(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
@@ -339,7 +327,6 @@ func Test_BasicAuth_AuthorizationHeader(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, tc.authorization))
 			resp := apptest.Expect(t, app, req, tc.status)
 			if tc.challenged {
@@ -361,7 +348,6 @@ func Test_BasicAuth_AuthorizationHeader(t *testing.T) {
 // it sent a request with no single meaning.
 func Test_BasicAuth_RepeatedAuthorizationIsRefused(t *testing.T) {
 	t.Parallel()
-
 	creds := "Basic " + base64.StdEncoding.EncodeToString([]byte("john:doe"))
 	newApp := func(config ...fiber.Config) *fiber.App {
 		app := fiber.New(config...)
@@ -425,7 +411,6 @@ func Test_BasicAuth_RepeatedAuthorizationIsRefused(t *testing.T) {
 
 func Test_BasicAuth_CredentialPolicies(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name        string
 		credentials string
@@ -488,7 +473,6 @@ func Test_BasicAuth_InvalidHeaderBytes(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			fctx := &fasthttp.RequestCtx{}
 			fctx.Request.SetRequestURI("/")
 			fctx.Request.Header.SetMethod(fiber.MethodGet)
@@ -529,7 +513,6 @@ func Test_BasicAuth_Charset(t *testing.T) {
 
 func Test_BasicAuth_Options(t *testing.T) {
 	t.Parallel()
-
 	users := map[string]string{"john": sha256Hash("doe")}
 
 	tests := []struct {
@@ -547,7 +530,6 @@ func Test_BasicAuth_Options(t *testing.T) {
 		tc := &tests[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(tc.appConfig)
 			app.Use(New(tc.config))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
@@ -638,10 +620,8 @@ func Test_parseHashedPassword(t *testing.T) {
 
 func Test_buildVerifiers(t *testing.T) {
 	t.Parallel()
-
 	t.Run("each user accepts only its own password", func(t *testing.T) {
 		t.Parallel()
-
 		alphaHash, err := bcrypt.GenerateFromPassword([]byte("alpha-pass"), bcrypt.MinCost+1)
 		require.NoError(t, err)
 		gammaHash, err := bcrypt.GenerateFromPassword([]byte("gamma-pass"), bcrypt.MinCost)
@@ -666,7 +646,6 @@ func Test_buildVerifiers(t *testing.T) {
 
 	t.Run("uses a fixed-work fallback when no users are configured", func(t *testing.T) {
 		t.Parallel()
-
 		verifiers, dummyVerify, err := buildVerifiers(nil)
 		require.NoError(t, err)
 		require.Empty(t, verifiers)
@@ -752,7 +731,6 @@ func Test_BasicAuth_HashVariants(t *testing.T) {
 
 func Test_containsInvalidHeaderChars_WordBoundaries(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		in   string
 		want bool
@@ -800,7 +778,6 @@ func Benchmark_containsInvalidHeaderChars(b *testing.B) {
 
 func Test_containsCTL(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		in   string
 		want bool
@@ -852,7 +829,6 @@ func Benchmark_containsCTL(b *testing.B) {
 // of being accepted as a verifier that can never match.
 func Test_BasicAuth_RejectsWrongDigestLength(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		wantErr error
 		name    string

@@ -196,7 +196,6 @@ func Benchmark_scopedKey(b *testing.B) {
 
 func Test_configDefault_defaults(t *testing.T) {
 	t.Parallel()
-
 	cfg := configDefault()
 	require.NotNil(t, cfg.Lock)
 	require.NotNil(t, cfg.Storage)
@@ -225,7 +224,6 @@ func Test_configDefault_defaults(t *testing.T) {
 
 func Test_configDefault_override(t *testing.T) {
 	t.Parallel()
-
 	l := &stubLock{}
 	s := &stubStorage{}
 
@@ -284,7 +282,6 @@ func Test_New_NextSkip(t *testing.T) {
 // ends the request with a 500 whose body names the step that failed.
 func Test_New_Errors(t *testing.T) {
 	t.Parallel()
-
 	secondPassStorage := &stubStorage{}
 
 	for _, tc := range []struct {
@@ -331,7 +328,6 @@ func Test_New_Errors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(tc.cfg...))
 			app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
@@ -519,7 +515,6 @@ func Test_New_KeepResponseHeaders_NamedCookies(t *testing.T) {
 // configuration names it now.
 func Test_New_ReplayDropsStoredCookies(t *testing.T) {
 	t.Parallel()
-
 	stored := func() *stubStorage {
 		res := response{
 			Headers: map[string][]string{
@@ -653,7 +648,6 @@ func Test_New_KeyScope_NotConsulted(t *testing.T) {
 // length, that no other pair gives, however their bytes run together.
 func Test_scopedKey(t *testing.T) {
 	t.Parallel()
-
 	first := scopedKey("alice", validKey)
 	require.Equal(t, first, scopedKey("alice", validKey))
 	require.Len(t, scopedKey("", ""), 64)

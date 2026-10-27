@@ -113,7 +113,6 @@ func newApp(status int, body string) *fakeApp {
 
 func Test_Req(t *testing.T) {
 	t.Parallel()
-
 	req := apptest.Req(http.MethodPost, "/users?x=1", apptest.WithHeader("X-Test", "a"), apptest.WithHeader("X-Test", "b"), apptest.WithHost("example.com"))
 
 	require.Equal(t, http.MethodPost, req.Method)
@@ -126,7 +125,6 @@ func Test_Req(t *testing.T) {
 
 func Test_Do(t *testing.T) {
 	t.Parallel()
-
 	t.Run("string target is a GET", func(t *testing.T) {
 		t.Parallel()
 		app := newApp(http.StatusTeapot, "")
@@ -177,7 +175,6 @@ func Test_Do(t *testing.T) {
 
 func Test_Expect(t *testing.T) {
 	t.Parallel()
-
 	t.Run("matching status returns the response", func(t *testing.T) {
 		t.Parallel()
 		app := newApp(http.StatusCreated, "made")
@@ -215,7 +212,6 @@ func Test_Expect(t *testing.T) {
 
 func Test_ExpectBody(t *testing.T) {
 	t.Parallel()
-
 	t.Run("matching status and body", func(t *testing.T) {
 		t.Parallel()
 		app := newApp(http.StatusOK, "hello")
@@ -227,7 +223,6 @@ func Test_ExpectBody(t *testing.T) {
 
 	t.Run("empty body", func(t *testing.T) {
 		t.Parallel()
-
 		apptest.ExpectBody(t, newApp(http.StatusNoContent, ""), "/", http.StatusNoContent, "")
 	})
 
@@ -267,7 +262,6 @@ func (failingBody) Close() error             { return nil }
 
 func Test_Body(t *testing.T) {
 	t.Parallel()
-
 	t.Run("reads, closes and can be repeated", func(t *testing.T) {
 		t.Parallel()
 		body := &trackedBody{Reader: strings.NewReader("payload")}
@@ -330,7 +324,6 @@ func (p *otherPool) AcquireCtx(fctx *fasthttp.RequestCtx) fakeCtx {
 
 func Test_Ctx(t *testing.T) {
 	t.Parallel()
-
 	t.Run("released when the test ends", func(t *testing.T) {
 		t.Parallel()
 		pool := &fakePool{}
@@ -380,7 +373,6 @@ func Test_Ctx(t *testing.T) {
 
 func Test_CtxAs(t *testing.T) {
 	t.Parallel()
-
 	t.Run("returns the concrete type", func(t *testing.T) {
 		t.Parallel()
 		pool := &fakePool{}

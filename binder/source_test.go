@@ -167,11 +167,9 @@ func runFormSources[T any](t *testing.T, cases []formCase[T]) {
 	for _, src := range formSources {
 		t.Run(src.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-
 					var got T
 					require.NoError(t, src.bind(t, tc.input, false, &got))
 					require.Equal(t, tc.want, got)

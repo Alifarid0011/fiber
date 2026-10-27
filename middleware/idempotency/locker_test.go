@@ -14,7 +14,6 @@ import (
 
 func Test_MemoryLock(t *testing.T) {
 	t.Parallel()
-
 	l := idempotency.NewMemoryLock()
 
 	// Test that a lock can be acquired
@@ -56,7 +55,6 @@ func Test_MemoryLock(t *testing.T) {
 
 	t.Run("zero value", func(t *testing.T) {
 		t.Parallel()
-
 		var l idempotency.MemoryLock
 
 		require.NoError(t, l.Lock("zero"))

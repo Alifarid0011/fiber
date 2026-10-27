@@ -65,7 +65,6 @@ func extractorsTestRun(t *testing.T, cases []extractorsTestCase) {
 		tc := &cases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var (
 				got string
 				err error
@@ -98,7 +97,6 @@ func extractorsTestRunResolve(t *testing.T, cases []extractorsTestCase) {
 		tc := &cases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			ctx := extractorsTestCtx(t, tc)
 			if tc.want == "" {
 				extractorsTestExpectResolveErr(t, tc.extractor, ctx, tc.source, ErrNotFound)
@@ -127,7 +125,6 @@ func extractorsTestRunAuth(t *testing.T, scheme string, cases []extractorsTestAu
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			ctx := apptest.Ctx(t, fiber.New())
 			if tc.header != "" {
 				ctx.Request().Header.Set(fiber.HeaderAuthorization, tc.header)
@@ -269,7 +266,6 @@ func extractorsTestParam(t *testing.T, app *fiber.App, pattern, target string, e
 
 func Test_Extractors_Missing(t *testing.T) {
 	t.Parallel()
-
 	extractorsTestRun(t, []extractorsTestCase{
 		// The route has no :token segment, so there is nothing to read.
 		{name: "FromParam", extractor: FromParam("token"), route: "/test", uri: "/test"},
@@ -283,7 +279,6 @@ func Test_Extractors_Missing(t *testing.T) {
 
 func Test_Extractors(t *testing.T) {
 	t.Parallel()
-
 	extractorsTestRun(t, []extractorsTestCase{
 		{
 			name:      "FromParam",
@@ -317,7 +312,6 @@ func Test_Extractors(t *testing.T) {
 
 func Test_Extractor_Chain(t *testing.T) {
 	t.Parallel()
-
 	headerThenQuery := Chain(FromHeader("X-Token"), FromQuery("token"))
 
 	extractorsTestRun(t, []extractorsTestCase{
@@ -343,11 +337,9 @@ func Test_Extractor_Chain(t *testing.T) {
 // ambiguous single value.
 func Test_Extractor_FromHeader_CombinesRepeatedLines(t *testing.T) {
 	t.Parallel()
-
 	for _, normalize := range []bool{true, false} {
 		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
 			t.Parallel()
-
 			ctx := extractorsTestHeaderCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
 
 			ctx.Request().Header.Add("Accept", "text/html")
@@ -368,7 +360,6 @@ func Test_Extractor_FromHeader_CombinesRepeatedLines(t *testing.T) {
 // "a=1; b=2" — a value no cookie parser downstream would read back.
 func Test_Extractor_FromHeader_CookieKeepsItsOwnSeparator(t *testing.T) {
 	t.Parallel()
-
 	ctx := apptest.Ctx(t, fiber.New())
 
 	// Read from the wire rather than Set: a request carrying Cookie twice, which
@@ -384,7 +375,6 @@ func Test_Extractor_FromHeader_CookieKeepsItsOwnSeparator(t *testing.T) {
 // above: one line is returned as it arrived, with no separator introduced.
 func Test_Extractor_FromHeader_SingleLineIsUnchanged(t *testing.T) {
 	t.Parallel()
-
 	ctx := apptest.Ctx(t, fiber.New())
 	ctx.Request().Header.Set("X-API-Key", "abc123")
 
@@ -403,7 +393,6 @@ func Test_Extractor_FromHeader_SingleLineIsUnchanged(t *testing.T) {
 // is an answer, so no credential is extracted and the caller refuses.
 func Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential(t *testing.T) {
 	t.Parallel()
-
 	cfg := fiber.Config{DisableHeaderNormalizing: true}
 	extractor := FromAuthHeader("Bearer")
 
@@ -418,7 +407,6 @@ func Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			ctx := extractorsTestHeaderCtx(t, cfg)
 			for _, line := range tc.lines {
 				ctx.Request().Header.Add(line[0], line[1])
@@ -433,7 +421,6 @@ func Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential(t *testing.T) {
 	// refusing everything.
 	t.Run("single_line_is_extracted", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := extractorsTestHeaderCtx(t, cfg)
 		ctx.Request().Header.Set("authorization", "Bearer client")
 
@@ -443,7 +430,6 @@ func Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential(t *testing.T) {
 
 func Test_Extractor_FromAuthHeader_EdgeCases(t *testing.T) {
 	t.Parallel()
-
 	extractorsTestRunAuth(t, "Bearer", []extractorsTestAuthCase{
 		{name: "wrong_scheme", header: "Basic dXNlcjpwYXNz", description: "Basic auth instead of Bearer"},
 		{name: "missing_space_after_scheme", header: "Bearertoken", description: "missing space after Bearer"},
@@ -483,7 +469,6 @@ func Test_Extractor_Chain_Introspection(t *testing.T) {
 
 func Test_Extractor_Contains(t *testing.T) {
 	t.Parallel()
-
 	isCSRFCookie := func(e Extractor) bool { return e.Source == SourceCookie && e.Key == "CSRF" }
 
 	cyclic := FromHeader("X-Token")
@@ -514,7 +499,6 @@ func Test_Extractor_Contains(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.Equal(t, tc.want, tc.extractor.Contains(tc.pred))
 		})
 	}
@@ -522,10 +506,8 @@ func Test_Extractor_Contains(t *testing.T) {
 
 func Test_Extractor_FromCustom(t *testing.T) {
 	t.Parallel()
-
 	t.Run("successful_extraction", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().Header.Set("X-Custom", "custom-value")
 
@@ -547,7 +529,6 @@ func Test_Extractor_FromCustom(t *testing.T) {
 
 	t.Run("extraction_with_error", func(t *testing.T) {
 		t.Parallel()
-
 		errorExtractor := FromCustom("test", func(_ fiber.Ctx) (string, error) {
 			return "", fiber.NewError(fiber.StatusBadRequest, "Custom error")
 		})
@@ -557,7 +538,6 @@ func Test_Extractor_FromCustom(t *testing.T) {
 
 	t.Run("extraction_returning_empty_string", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 
 		emptyExtractor := FromCustom("empty", func(_ fiber.Ctx) (string, error) { return "", nil })
@@ -569,7 +549,6 @@ func Test_Extractor_FromCustom(t *testing.T) {
 
 	t.Run("nil_function", func(t *testing.T) {
 		t.Parallel()
-
 		nilExtractor := FromCustom("nil", nil)
 
 		// Should return ErrNotFound for nil function
@@ -579,7 +558,6 @@ func Test_Extractor_FromCustom(t *testing.T) {
 
 func Test_Extractor_Chain_Error_Propagation(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name  string
 		msg   string
@@ -618,7 +596,6 @@ func Test_Extractor_Chain_Error_Propagation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			extractorsTestExpectFiberError(t, tc.chain, apptest.Ctx(t, fiber.New()), tc.code, tc.msg)
 		})
 	}
@@ -626,7 +603,6 @@ func Test_Extractor_Chain_Error_Propagation(t *testing.T) {
 
 func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	t.Parallel()
-
 	extractorsTestRunAuth(t, "Bearer", []extractorsTestAuthCase{
 		{
 			name:        "tab_after_scheme",
@@ -685,7 +661,6 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 
 func Test_Extractor_FromAuthHeader_Token68_Validation(t *testing.T) {
 	t.Parallel()
-
 	const allToken68Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/="
 
 	extractorsTestRunAuth(t, "Bearer", []extractorsTestAuthCase{
@@ -715,7 +690,6 @@ func Test_Extractor_FromAuthHeader_Token68_Validation(t *testing.T) {
 
 func Test_Extractor_FromAuthHeader_NoScheme(t *testing.T) {
 	t.Parallel()
-
 	extractorsTestRunAuth(t, "", []extractorsTestAuthCase{
 		{name: "returns_header_value", header: "some-token-value", want: "some-token-value", description: "no scheme"},
 		{name: "empty_header_returns_not_found", description: "no Authorization header set"},
@@ -724,7 +698,6 @@ func Test_Extractor_FromAuthHeader_NoScheme(t *testing.T) {
 
 func Test_Extractor_FromAuthHeader_Metadata(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct{ name, scheme string }{
 		{name: "custom_scheme", scheme: "CustomScheme"},
 		{name: "bearer", scheme: "Bearer"},
@@ -732,7 +705,6 @@ func Test_Extractor_FromAuthHeader_Metadata(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			extractor := FromAuthHeader(tc.scheme)
 			require.Equal(t, SourceAuthHeader, extractor.Source)
 			require.Equal(t, fiber.HeaderAuthorization, extractor.Key)
@@ -769,16 +741,13 @@ func Test_Extractor_Chain_MixedScenarios(t *testing.T) {
 
 func Test_Extractor_Chain_Cycle_Prevention(t *testing.T) {
 	t.Parallel()
-
 	t.Run("direct_cycle_returns_err_chain_cycle", func(t *testing.T) {
 		t.Parallel()
-
 		extractorsTestExpectErr(t, extractorsTestCyclic(), apptest.Ctx(t, fiber.New()), ErrChainCycle)
 	})
 
 	t.Run("indirect_cycle_returns_err_chain_cycle", func(t *testing.T) {
 		t.Parallel()
-
 		var chainA, chainB Extractor
 		chainA = Chain(FromCustom("to-b", func(c fiber.Ctx) (string, error) { return chainB.Extract(c) }))
 		chainB = Chain(FromCustom("to-a", func(c fiber.Ctx) (string, error) { return chainA.Extract(c) }))
@@ -788,7 +757,6 @@ func Test_Extractor_Chain_Cycle_Prevention(t *testing.T) {
 
 	t.Run("nested_non_cyclic_chain_still_works", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().Header.Set("X-Token", "token_from_header")
 
@@ -801,7 +769,6 @@ func Test_Extractor_Chain_Cycle_Prevention(t *testing.T) {
 
 func Test_Extractor_Chain_ReusedAcrossMiddleware(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	shared := Chain(FromHeader("X-Token"), FromQuery("token"))
 
@@ -822,7 +789,6 @@ func Test_Extractor_Chain_ReusedAcrossMiddleware(t *testing.T) {
 
 func Test_Extractor_SourceTypes(t *testing.T) {
 	t.Parallel()
-
 	t.Run("individual_extractor_sources", func(t *testing.T) {
 		t.Parallel()
 
@@ -849,7 +815,6 @@ func Test_Extractor_SourceTypes(t *testing.T) {
 
 func Test_Extractor_URL_Encoded(t *testing.T) {
 	t.Parallel()
-
 	extractorsTestRun(t, []extractorsTestCase{
 		// Should be URL-decoded automatically by fasthttp
 		{name: "FromQuery_with_spaces", extractor: FromQuery("token"), uri: "/?token=token%20with%20spaces", want: "token with spaces"},
@@ -869,7 +834,6 @@ func Test_Extractor_URL_Encoded(t *testing.T) {
 
 func Test_isValidToken68(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
 		name  string
 		token string
@@ -943,7 +907,6 @@ func Benchmark_isValidToken68(b *testing.B) {
 // carrying no credential when it carried one.
 func Test_Extractor_IgnoresHeaderNameCase(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name      string
 		value     string
@@ -968,15 +931,12 @@ func Test_Extractor_IgnoresHeaderNameCase(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, normalize := range []bool{true, false} {
 				t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
 					t.Parallel()
-
 					for _, sent := range tc.sent {
 						t.Run(sent, func(t *testing.T) {
 							t.Parallel()
-
 							ctx := extractorsTestHeaderCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
 							ctx.Request().Header.Set(sent, tc.value)
 
@@ -991,7 +951,6 @@ func Test_Extractor_IgnoresHeaderNameCase(t *testing.T) {
 
 func Test_Resolve(t *testing.T) {
 	t.Parallel()
-
 	handRolled := extractorsTestFixed("X-Legacy", "legacy-value", nil)
 	handRolled.Source = SourceHeader
 
@@ -1009,7 +968,6 @@ func Test_Resolve(t *testing.T) {
 
 	t.Run("builtins_report_static_source_via_Resolve", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().Header.Set("X-Token", "h")
 		ctx.Request().Header.SetCookie("token", "c")
@@ -1035,7 +993,6 @@ func Test_Resolve(t *testing.T) {
 
 	t.Run("honors_legacy_Extract_override", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().Header.Set("X-Token", "raw-header")
 
@@ -1055,7 +1012,6 @@ func Test_Resolve(t *testing.T) {
 
 	t.Run("honors_chain_level_Extract_override", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		// Only query is present. An undecorated chain would accept it; a
 		// chain-level Extract override that rejects query-sourced values must
@@ -1087,7 +1043,6 @@ func Test_Resolve(t *testing.T) {
 
 func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 	t.Parallel()
-
 	handRolled := extractorsTestFixed("form-key", "hand-rolled", nil)
 	handRolled.Source = SourceForm
 
@@ -1116,7 +1071,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("reports_winning_child_source", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		// Header missing; query wins. Static chain Source stays SourceHeader,
 		// but ExtractSource must report SourceQuery.
@@ -1130,7 +1084,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("skips_empty_children_preserves_prior_error", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 
 		customErr := errors.New("custom failure")
@@ -1144,7 +1097,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("shared_guard_allows_sequential_Extract_then_Resolve", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().Header.SetCookie("token", "cookie-token")
 
@@ -1158,7 +1110,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("source_path_detects_cycle", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 
 		var chainExtractor Extractor
@@ -1174,7 +1125,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("cross_api_reentry_via_Extract_detects_cycle", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 
 		// Enter via Extract while a nested child hits Resolve.
@@ -1188,7 +1138,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("public_Chain_slice_mutation_does_not_affect_Extract", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().Header.Set("X-Token", "from-header")
 		ctx.Request().SetRequestURI("/?token=from-query")
@@ -1210,7 +1159,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("recursive_public_Chain_metadata_uses_captured_source", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().Header.Set("X-Token", "from-header")
 
@@ -1226,7 +1174,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("replaced_Extract_without_base_uses_static_Source", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().Header.SetCookie("session", "cookie-value")
 		ctx.Request().SetRequestURI("/?token=from-query")
@@ -1242,7 +1189,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("shared_guard_blocks_cross_entry_during_source_path", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().SetRequestURI("/?token=from-query")
 
@@ -1260,7 +1206,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("no_double_extract_of_stateful_custom_child", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 
 		calls := 0
@@ -1281,7 +1226,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("clearing_public_Chain_makes_provenance_unresolved", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().SetRequestURI("/?token=from-query")
 
@@ -1301,7 +1245,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("bare_Extract_does_not_pollute_later_Resolve", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().Header.SetCookie("session", "cookie-value")
 		ctx.Request().SetRequestURI("/?token=from-query")
@@ -1316,7 +1259,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("rejected_nested_chain_does_not_poison_fallback_source", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().Header.SetCookie("session", "cookie-value")
 		ctx.Request().SetRequestURI("/?token=from-query")
@@ -1340,7 +1282,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("chain_override_success_still_reports_winning_source", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().SetRequestURI("/?token=from-query")
 
@@ -1364,7 +1305,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 // space instead of the "%20" the client sent.
 func Test_FromParam_DecodesOnce(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name         string
 		unescapePath bool
@@ -1376,7 +1316,6 @@ func Test_FromParam_DecodesOnce(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(fiber.Config{UnescapePath: tc.unescapePath})
 			token, err := extractorsTestParam(t, app, "/test/:token", "/test/%2520", FromParam("token"))
 			require.NoError(t, err)
@@ -1394,10 +1333,8 @@ func Test_FromParam_DecodesOnce(t *testing.T) {
 // again, and a chain that contains itself is still refused.
 func Test_Resolve_BareChain(t *testing.T) {
 	t.Parallel()
-
 	t.Run("winner reports its own source", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().SetRequestURI("/?token=from-query")
 
@@ -1414,7 +1351,6 @@ func Test_Resolve_BareChain(t *testing.T) {
 
 	t.Run("self-referencing chain is refused", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 
 		bare := Extractor{Chain: make([]Extractor, 1)}
@@ -1448,10 +1384,8 @@ func (r closeRecorder) Close() error {
 // and one handed out afterwards is clean.
 func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 	t.Parallel()
-
 	t.Run("request store closes values on reset", func(t *testing.T) {
 		t.Parallel()
-
 		var closed atomic.Bool
 		fctx := &fasthttp.RequestCtx{}
 		fctx.SetUserValue("recorder", closeRecorder{closed: &closed})
@@ -1463,7 +1397,6 @@ func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 
 	t.Run("chain state lives in the request store and is dropped on reset", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
 		app.Get("/t", func(c fiber.Ctx) error {
@@ -1491,7 +1424,6 @@ func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 
 	t.Run("a state handed out is clean", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := apptest.Ctx(t, fiber.New())
 
 		// Whether this state is new or recycled, it must carry nothing from
@@ -1567,7 +1499,6 @@ func (c *countingCtx) Locals(key any, value ...any) any {
 // allocation but must not change any answer.
 func Test_Chain_CustomCtx(t *testing.T) {
 	t.Parallel()
-
 	ctx := apptest.Ctx(t, fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
 		return &countingCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
 	}))
@@ -1592,7 +1523,6 @@ func Test_Chain_CustomCtx(t *testing.T) {
 // detector sees the pooled state cross goroutines.
 func Test_Chain_Concurrent(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	chain := Chain(FromHeader("X-Token"), FromQuery("token"))
 	cyclic := extractorsTestCyclic()
@@ -1665,10 +1595,8 @@ func isValidToken68Reference(token string) bool {
 // replaced, on every byte in every position that could distinguish them.
 func Test_isValidToken68_MatchesReference(t *testing.T) {
 	t.Parallel()
-
 	t.Run("every byte in every position", func(t *testing.T) {
 		t.Parallel()
-
 		for c := range 256 {
 			// From the byte, not rune(c): the high half must be one invalid
 			// byte, not two UTF-8 ones.
@@ -1688,7 +1616,6 @@ func Test_isValidToken68_MatchesReference(t *testing.T) {
 
 	t.Run("padding shapes", func(t *testing.T) {
 		t.Parallel()
-
 		for _, in := range token68Samples {
 			require.Equal(t, isValidToken68Reference(in), isValidToken68(in), "input %q", in)
 		}
@@ -1699,7 +1626,6 @@ func Test_isValidToken68_MatchesReference(t *testing.T) {
 // back nothing, which is a miss rather than a value.
 func Test_Resolve_EmptyValue(t *testing.T) {
 	t.Parallel()
-
 	ctx := apptest.Ctx(t, fiber.New())
 
 	extractorsTestExpectResolveErr(t, Extractor{
@@ -1714,7 +1640,6 @@ func Test_Resolve_EmptyValue(t *testing.T) {
 // nothing reports ErrNotFound rather than a child's error.
 func Test_Resolve_BareChain_EmptyChildren(t *testing.T) {
 	t.Parallel()
-
 	headers := map[string]string{"X-Token": "from-header"}
 
 	extractorsTestRunResolve(t, []extractorsTestCase{
@@ -1739,7 +1664,6 @@ func Test_Resolve_BareChain_EmptyChildren(t *testing.T) {
 // naming no credential rather than a credential that happens to be empty.
 func Test_Extractor_FromAuthHeader_SchemeWithoutCredential(t *testing.T) {
 	t.Parallel()
-
 	ctx := apptest.Ctx(t, fiber.New())
 	// Set rather than read from the wire: parsing strips the trailing space,
 	// so only a field written in process carries one. Middleware rewriting
@@ -1754,7 +1678,6 @@ func Test_Extractor_FromAuthHeader_SchemeWithoutCredential(t *testing.T) {
 // raw and that percent-decoding cannot make sense of.
 func Test_FromParam_RefusesUndecodableValue(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	extractor := FromParam("id")
 	ran := false
@@ -1808,7 +1731,6 @@ func Test_ChainState_PoolHoldsSomethingElse(t *testing.T) {
 // source instead of the child that supplied it.
 func Test_Resolve_NestedCapturePreservesWinner(t *testing.T) {
 	t.Parallel()
-
 	ctx := apptest.Ctx(t, fiber.New())
 	ctx.Request().SetRequestURI("/?token=from-query")
 	ctx.Request().Header.SetCookie("other", "cookie-value")
@@ -1835,7 +1757,6 @@ func Test_Resolve_NestedCapturePreservesWinner(t *testing.T) {
 // alive for as long as the pool holds the state.
 func Test_ChainState_CloseClearsGuards(t *testing.T) {
 	t.Parallel()
-
 	st := &chainState{active: make([]*byte, 0, 4)}
 	first := Chain(FromHeader("X-One")).Chain
 	second := Chain(FromHeader("X-Two")).Chain
@@ -1860,7 +1781,6 @@ func Test_ChainState_CloseClearsGuards(t *testing.T) {
 // the extractor that supplied the value, which a caller writing it back needs.
 func Test_Resolve_Winner(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	newCtx := func(t *testing.T, build func(*fasthttp.RequestCtx)) fiber.Ctx {
@@ -1974,7 +1894,6 @@ func Test_Resolve_Winner(t *testing.T) {
 // chain order, descent into nested chains, early stop, and cycle safety.
 func Test_Extractor_Walk(t *testing.T) {
 	t.Parallel()
-
 	keys := func(e Extractor) []string {
 		var seen []string
 		e.Walk(func(candidate Extractor) bool {

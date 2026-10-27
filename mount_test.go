@@ -15,7 +15,6 @@ import (
 
 func Test_App_Mount_PreservesSubAppRegexHandler(t *testing.T) {
 	t.Parallel()
-
 	parent := New(Config{
 		CaseSensitive: true,
 		RegexHandler: func(pattern string) *matchOnlyRegexCompiler {
@@ -125,7 +124,6 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 
 func Test_App_Mount_RoutePositions(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	subApp1 := New()
 	subApp2 := New()
@@ -195,7 +193,6 @@ func Test_App_MountPath(t *testing.T) {
 
 func Test_App_Mount_ErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	const (
 		routeErr = "0: GET error"
 		body     = "1: custom error"
@@ -220,7 +217,6 @@ func Test_App_Mount_ErrorHandler(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			errorHandler := func(c Ctx, err error) error {
 				require.Equal(t, routeErr, err.Error())
 				return c.Status(StatusInternalServerError).SendString(body)
@@ -344,7 +340,6 @@ func Test_Mount_Route_Names(t *testing.T) {
 
 func Test_Ctx_Render_Mount(t *testing.T) {
 	t.Parallel()
-
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	require.NoError(t, err)
@@ -363,7 +358,6 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 
 func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	t.Parallel()
-
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	require.NoError(t, err)
@@ -402,7 +396,6 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 
 func Test_Ctx_Render_MountGroup(t *testing.T) {
 	t.Parallel()
-
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	require.NoError(t, err)
@@ -425,7 +418,6 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 // sub-app's routes by method, not by its own stack index.
 func Test_App_Mount_FewerRequestMethods(t *testing.T) {
 	t.Parallel()
-
 	micro := New(Config{RequestMethods: []string{MethodGet}})
 	micro.Get("/doe", func(c Ctx) error { return c.SendString("doe") })
 
@@ -439,7 +431,6 @@ func Test_App_Mount_FewerRequestMethods(t *testing.T) {
 // reached through another mount.
 func Test_App_Mount_FewerRequestMethodsNested(t *testing.T) {
 	t.Parallel()
-
 	micro := New(Config{RequestMethods: []string{MethodGet}})
 	micro.Get("/doe", func(c Ctx) error { return c.SendString("doe") })
 
@@ -564,7 +555,6 @@ func Test_App_Mount_SiblingConstraintNames(t *testing.T) {
 // constraint has to travel with them or it silently stops rejecting anything.
 func Test_App_Mount_PreservesNestedCustomConstraint(t *testing.T) {
 	t.Parallel()
-
 	micro := New()
 	micro.RegisterCustomConstraint(&onlyFooConstraint{})
 	micro.Get("/doe/:name<onlyfoo>", func(c Ctx) error { return c.SendString(c.Params("name")) })
@@ -585,7 +575,6 @@ func Test_App_Mount_PreservesNestedCustomConstraint(t *testing.T) {
 // included.
 func Test_App_Mount_CarriesDomainMount(t *testing.T) {
 	t.Parallel()
-
 	micro := New(Config{ErrorHandler: func(c Ctx, _ error) error { return c.Status(596).SendString("micro error") }})
 	micro.Get("/doe", func(_ Ctx) error { return errors.New("boom") })
 
@@ -607,7 +596,6 @@ func Test_App_Mount_CarriesDomainMount(t *testing.T) {
 // into the parent — they would run without the middleware it registered.
 func Test_App_Mount_AutoHeadKeepsMiddleware(t *testing.T) {
 	t.Parallel()
-
 	micro := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
 	micro.Use(func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
 	micro.Get("/doe", func(c Ctx) error {
@@ -633,7 +621,6 @@ func Test_App_Mount_AutoHeadKeepsMiddleware(t *testing.T) {
 // A mount at "/" covers every path, and the app above keeps its own.
 func Test_App_Mount_RootMountKeepsParentAutoHead(t *testing.T) {
 	t.Parallel()
-
 	micro := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
 	micro.Get("/doe", func(c Ctx) error { return c.SendString("doe") })
 
@@ -653,7 +640,6 @@ func Test_App_Mount_RootMountKeepsParentAutoHead(t *testing.T) {
 // mounted app, so the parameters it introduces have to be rebuilt onto them.
 func Test_App_Mount_ParametricPrefix(t *testing.T) {
 	t.Parallel()
-
 	micro := New()
 	micro.Get("/doe", func(c Ctx) error { return c.SendString("version=" + c.Params("Version")) })
 
@@ -667,7 +653,6 @@ func Test_App_Mount_ParametricPrefix(t *testing.T) {
 // applied a second time, by an outer mount.
 func Test_App_Mount_ParametricPrefixNested(t *testing.T) {
 	t.Parallel()
-
 	micro := New()
 	micro.Get("/doe", func(c Ctx) error { return c.SendString("version=" + c.Params("version")) })
 
@@ -686,7 +671,6 @@ func Test_App_Mount_ParametricPrefixNested(t *testing.T) {
 // error handler has to answer for it too.
 func Test_App_Mount_CaseInsensitivePath(t *testing.T) {
 	t.Parallel()
-
 	micro := New(Config{ErrorHandler: func(c Ctx, _ error) error { return c.Status(599).SendString("micro error") }})
 	micro.Get("/doe", func(_ Ctx) error { return errors.New("boom") })
 
@@ -708,7 +692,6 @@ func Test_App_Mount_CaseInsensitivePath(t *testing.T) {
 // by the request path, not by its mount path appearing anywhere in the URL.
 func Test_App_Mount_ViewsPathOnly(t *testing.T) {
 	t.Parallel()
-
 	subEngine := &testTemplateEngine{path: "testdata2"}
 	require.NoError(t, subEngine.Load())
 
@@ -730,7 +713,6 @@ func Test_App_Mount_ViewsPathOnly(t *testing.T) {
 // so its constraints have to reach the re-parse of the mounted routes.
 func Test_App_Mount_ParametricPrefixConstraint(t *testing.T) {
 	t.Parallel()
-
 	micro := New()
 	micro.Get("/doe", func(c Ctx) error { return c.SendString("name=" + c.Params("name")) })
 
@@ -746,7 +728,6 @@ func Test_App_Mount_ParametricPrefixConstraint(t *testing.T) {
 
 func Test_App_Mount_StrictRouting(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		path   string
 		strict int

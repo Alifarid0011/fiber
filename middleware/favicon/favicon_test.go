@@ -35,7 +35,6 @@ func Test_Middleware_Favicon(t *testing.T) {
 
 func Test_Middleware_Favicon_Panics(t *testing.T) {
 	t.Parallel()
-
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "favicon.ico"), bytes.Repeat([]byte("a"), 11), 0o600))
 
@@ -51,7 +50,6 @@ func Test_Middleware_Favicon_Panics(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.Panics(t, func() { fiber.New().Use(New(tc.config)) }, "should catch panic")
 		})
 	}
@@ -59,7 +57,6 @@ func Test_Middleware_Favicon_Panics(t *testing.T) {
 
 func Test_Middleware_Favicon_Serves(t *testing.T) {
 	t.Parallel()
-
 	data, err := os.ReadFile("../../.github/testdata/favicon.ico")
 	require.NoError(t, err)
 
@@ -143,7 +140,6 @@ func Test_Favicon_Next(t *testing.T) {
 
 func Test_Favicon_MaxBytes_MaxInt64(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{File: "../../.github/testdata/favicon.ico", MaxBytes: math.MaxInt64}))
 

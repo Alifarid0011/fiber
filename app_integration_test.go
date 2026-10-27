@@ -128,7 +128,6 @@ func (tc middlewareCombinationTestCase) handlerOrDefault() func(fiber.Ctx) error
 
 func Test_Integration_RequestID_ContextPropagationFlag(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		config fiber.Config
 		name   string
@@ -143,7 +142,6 @@ func Test_Integration_RequestID_ContextPropagationFlag(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(tc.config)
 			app.Use(requestid.New(requestid.Config{Generator: func() string { return tc.id }}))
 
@@ -536,7 +534,6 @@ func Test_Integration_App_ServerErrorHandler_PreservesHelmetHeadersOnBodyLimit(t
 
 func Test_Integration_App_ServerErrorHandler_CustomMultipartBodyLimit(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{
 		BodyLimit: 128,
 		ErrorHandler: func(c fiber.Ctx, err error) error {
@@ -645,7 +642,6 @@ func Test_Integration_App_ServerErrorHandler_WithCustomCtx(t *testing.T) {
 
 func Test_Integration_Domain_WithMiddleware(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(helmet.New())
 	app.Use(requestid.New())
@@ -667,7 +663,6 @@ func Test_Integration_Domain_WithMiddleware(t *testing.T) {
 
 func Test_Integration_Domain_WithCORS(t *testing.T) {
 	t.Parallel()
-
 	const apiOrigin = "https://api.example.com"
 
 	app := fiber.New()
@@ -683,7 +678,6 @@ func Test_Integration_Domain_WithCORS(t *testing.T) {
 
 func Test_Integration_Domain_WithGroup(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(helmet.New())
 
@@ -708,7 +702,6 @@ func Test_Integration_Domain_WithGroup(t *testing.T) {
 
 func Test_Integration_Domain_WithSubAppMount(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(helmet.New())
 
@@ -736,7 +729,6 @@ func Test_Integration_Domain_WithSubAppMount(t *testing.T) {
 
 func Test_Integration_Domain_WithParams(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(requestid.New())
 
@@ -755,7 +747,6 @@ func Test_Integration_Domain_WithParams(t *testing.T) {
 
 func Test_Integration_Domain_MultipleDomains(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	// Different domains with different responses
@@ -789,7 +780,6 @@ func Test_Integration_Domain_MultipleDomains(t *testing.T) {
 
 func Test_Integration_Domain_WithSession(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(session.New())
 
@@ -808,7 +798,6 @@ func Test_Integration_Domain_WithSession(t *testing.T) {
 
 func Test_Integration_Domain_WithCompress(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(compress.New())
 
@@ -824,7 +813,6 @@ func Test_Integration_Domain_WithCompress(t *testing.T) {
 
 func Test_Integration_Domain_ErrorHandling(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			c.Set("X-Error-Handled", "true")
@@ -846,7 +834,6 @@ func Test_Integration_Domain_ErrorHandling(t *testing.T) {
 
 func Test_Integration_Domain_WithLimiter(t *testing.T) {
 	t.Parallel()
-
 	const maxRequests = 3
 
 	app := fiber.New()
@@ -870,7 +857,6 @@ func Test_Integration_Domain_WithLimiter(t *testing.T) {
 
 func Test_Integration_Domain_WithCSRF(t *testing.T) {
 	t.Parallel()
-
 	const csrfCookie = "domain-csrf"
 
 	app := fiber.New()
@@ -884,7 +870,6 @@ func Test_Integration_Domain_WithCSRF(t *testing.T) {
 
 func Test_Integration_Domain_CaseInsensitiveMatching(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Domain("API.Example.COM").Get("/", func(c fiber.Ctx) error { return c.SendString("matched") })
@@ -902,7 +887,6 @@ func Test_Integration_Domain_CaseInsensitiveMatching(t *testing.T) {
 
 func Test_Integration_Domain_ReusableSubApp(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	// Create a reusable sub-app

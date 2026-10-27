@@ -17,7 +17,6 @@ import (
 // Mutations happen during the origin call, after the stale entry was read.
 func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 	t.Parallel()
-
 	for _, kind := range storageKinds {
 		external := kind == "external"
 		for _, directive := range []string{"private", "no-cache", "no-store", "VaryStar"} {
@@ -30,7 +29,6 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 				}
 				t.Run(kind+"/"+directive+"/"+scenario, func(t *testing.T) {
 					t.Parallel()
-
 					storage := newFailingCacheStorage()
 					clock := newTestClock(time.Now())
 					cfg := Config{MaxBytes: 10, clock: clock.Now}
@@ -140,7 +138,6 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 // no verdict on an entry no credential selected, whatever it says about keeping the response.
 func Test_Cache_UncacheableStatusKeepsEntryAndManifest(t *testing.T) {
 	t.Parallel()
-
 	answers := []struct {
 		name      string
 		directive string
@@ -167,7 +164,6 @@ func Test_Cache_UncacheableStatusKeepsEntryAndManifest(t *testing.T) {
 			for _, answer := range answers {
 				t.Run(kind+"/"+reload+"/"+answer.name, func(t *testing.T) {
 					t.Parallel()
-
 					app := fiber.New()
 					app.Use(New(Config{Storage: storageOf(kind)}))
 					app.Get("/cached", func(c fiber.Ctx) error {
@@ -214,7 +210,6 @@ func Test_Cache_UncacheableStatusKeepsEntryAndManifest(t *testing.T) {
 
 func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 	t.Parallel()
-
 	for _, failBodyRead := range []bool{false, true} {
 		name := "bodyPresent"
 		if failBodyRead {

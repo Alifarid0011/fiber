@@ -152,7 +152,6 @@ func stateTestExpectSharedOpsFail(t *testing.T, state *SharedState, wantErr, wan
 
 func TestSharedState_NotConfigured(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	stateTestExpectSharedOpsFail(t, app.SharedState(), ErrSharedStorageNotConfigured, ErrSharedStorageNotConfigured)
@@ -160,7 +159,6 @@ func TestSharedState_NotConfigured(t *testing.T) {
 
 func TestSharedState_PreforkSafeWithSharedStorage(t *testing.T) {
 	t.Parallel()
-
 	store := newSharedStateMemoryStorage(t)
 	workerA := New(Config{AppName: "prefork-app", SharedStorage: store})
 	workerB := New(Config{AppName: "prefork-app", SharedStorage: store})
@@ -209,7 +207,6 @@ func TestSharedState_PreforkSafeWithSharedStorage(t *testing.T) {
 
 func TestSharedState_ExplicitSerializationError(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SharedStorage: newSharedStateMemoryStorage(t)})
 	err := app.SharedState().SetJSON("invalid", make(chan int), time.Second)
 	require.Error(t, err)
@@ -217,7 +214,6 @@ func TestSharedState_ExplicitSerializationError(t *testing.T) {
 
 func TestSharedState_ContextAwareVariants(t *testing.T) {
 	t.Parallel()
-
 	type testContextKey string
 
 	ctxKey := testContextKey("tenant")
@@ -226,14 +222,12 @@ func TestSharedState_ContextAwareVariants(t *testing.T) {
 
 	t.Run("missing context", func(t *testing.T) {
 		t.Parallel()
-
 		err := app.SharedState().SetJSONWithContext(context.Background(), "key", Map{"ok": true}, time.Second)
 		require.Error(t, err)
 	})
 
 	t.Run("context propagation", func(t *testing.T) {
 		t.Parallel()
-
 		ctx := context.WithValue(context.Background(), ctxKey, "value")
 		err := app.SharedState().SetJSONWithContext(ctx, "key", Map{"ok": true}, time.Second)
 		require.NoError(t, err)
@@ -255,7 +249,6 @@ func TestSharedState_ContextAwareVariants(t *testing.T) {
 
 func TestSharedState_KeyNamespacing(t *testing.T) {
 	t.Parallel()
-
 	store := newSharedStateMemoryStorage(t)
 	appOne := New(Config{AppName: "app-one", SharedStorage: store})
 	appTwo := New(Config{AppName: "app-two", SharedStorage: store})
@@ -280,7 +273,6 @@ func TestSharedState_KeyNamespacing(t *testing.T) {
 
 func TestSharedState_KeyNamespacingWithOverlappingPrefixes(t *testing.T) {
 	t.Parallel()
-
 	store := newSharedStateMemoryStorage(t)
 	shortPrefixApp := New(Config{AppName: "app", SharedStorage: store})
 	longPrefixApp := New(Config{AppName: "app-one", SharedStorage: store})
@@ -299,7 +291,6 @@ func TestSharedState_KeyNamespacingWithOverlappingPrefixes(t *testing.T) {
 
 func TestSharedState_StorageErrorsArePropagated(t *testing.T) {
 	t.Parallel()
-
 	expectedErr := errors.New("storage failed")
 	closeErr := errors.New("close failed")
 	app := New(Config{
@@ -317,7 +308,6 @@ func TestSharedState_StorageErrorsArePropagated(t *testing.T) {
 
 func TestSharedState_NilReceiver(t *testing.T) {
 	t.Parallel()
-
 	var state *SharedState
 
 	stateTestExpectSharedOpsFail(t, state, ErrSharedStorageNotConfigured, ErrSharedStorageNotConfigured)
@@ -325,21 +315,18 @@ func TestSharedState_NilReceiver(t *testing.T) {
 
 func TestSharedState_DefaultPrefixFallback(t *testing.T) {
 	t.Parallel()
-
 	state := newSharedState(&Config{SharedStorage: newSharedStateMemoryStorage(t)})
 	require.Equal(t, defaultSharedStatePrefix, state.prefix)
 }
 
 func TestSharedState_NewAppDefaultPrefixIncludesAppName(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{AppName: "my-app", SharedStorage: newSharedStateMemoryStorage(t)})
 	require.Equal(t, defaultSharedStatePrefix+"my-app-", app.SharedState().prefix)
 }
 
 func TestSharedState_GetJSON_UnmarshalError(t *testing.T) {
 	t.Parallel()
-
 	store := newSharedStateMemoryStorage(t)
 	app := New(Config{SharedStorage: store})
 
@@ -355,7 +342,6 @@ func TestSharedState_GetJSON_UnmarshalError(t *testing.T) {
 
 func TestSharedState_Get_ReturnsCopy(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SharedStorage: newSharedStateMemoryStorage(t)})
 	require.NoError(t, app.SharedState().Set("raw", []byte("value"), time.Minute))
 
@@ -374,7 +360,6 @@ func TestSharedState_Get_ReturnsCopy(t *testing.T) {
 
 func TestSharedState_RawWithContextVariants(t *testing.T) {
 	t.Parallel()
-
 	type testContextKey string
 
 	ctxKey := testContextKey("tenant")
@@ -395,7 +380,6 @@ func TestSharedState_RawWithContextVariants(t *testing.T) {
 
 func TestSharedState_SetGet_RawDataKinds(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SharedStorage: newSharedStateMemoryStorage(t)})
 
 	testCases := []struct {
@@ -410,7 +394,6 @@ func TestSharedState_SetGet_RawDataKinds(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.key, func(t *testing.T) {
 			t.Parallel()
-
 			require.NoError(t, app.SharedState().Set(tc.key, tc.value, time.Minute))
 
 			got, found, err := app.SharedState().Get(tc.key)
@@ -423,7 +406,6 @@ func TestSharedState_SetGet_RawDataKinds(t *testing.T) {
 
 func TestSharedState_SetGet_JSONDataKinds(t *testing.T) {
 	t.Parallel()
-
 	type sample struct {
 		Name  string `json:"name"`
 		Count int    `json:"count"`
@@ -433,7 +415,6 @@ func TestSharedState_SetGet_JSONDataKinds(t *testing.T) {
 
 	t.Run("map", func(t *testing.T) {
 		t.Parallel()
-
 		expected := map[string]any{"name": "fiber", "ok": true}
 		require.NoError(t, app.SharedState().SetJSON("map", expected, time.Minute))
 
@@ -448,7 +429,6 @@ func TestSharedState_SetGet_JSONDataKinds(t *testing.T) {
 
 	t.Run("slice", func(t *testing.T) {
 		t.Parallel()
-
 		expected := []int{1, 2, 3, 4}
 		require.NoError(t, app.SharedState().SetJSON("slice", expected, time.Minute))
 
@@ -461,7 +441,6 @@ func TestSharedState_SetGet_JSONDataKinds(t *testing.T) {
 
 	t.Run("struct", func(t *testing.T) {
 		t.Parallel()
-
 		expected := sample{Name: "shared", Count: 7}
 		require.NoError(t, app.SharedState().SetJSON("struct", expected, time.Minute))
 
@@ -475,7 +454,6 @@ func TestSharedState_SetGet_JSONDataKinds(t *testing.T) {
 
 func TestSharedState_UsesAppJSONCodec(t *testing.T) {
 	t.Parallel()
-
 	encoderCalled := false
 	decoderCalled := false
 
@@ -508,7 +486,6 @@ func TestSharedState_UsesAppJSONCodec(t *testing.T) {
 // because it round-trips a real document.
 func TestSharedState_UsesAppCodec(t *testing.T) {
 	t.Parallel()
-
 	type (
 		encoder = func(any) ([]byte, error)
 		decoder = func([]byte, any) error
@@ -545,7 +522,6 @@ func TestSharedState_UsesAppCodec(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			encoderCalled := false
 			decoderCalled := false
 
@@ -582,7 +558,6 @@ func TestSharedState_UsesAppCodec(t *testing.T) {
 
 func TestSharedState_UnconfiguredCodecsReturnErrorInsteadOfPanic(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SharedStorage: newSharedStateMemoryStorage(t)})
 
 	err := app.SharedState().SetMsgPack("codec", Map{"ignored": true}, time.Minute)
@@ -607,7 +582,6 @@ func TestSharedState_UnconfiguredCodecsReturnErrorInsteadOfPanic(t *testing.T) {
 
 func TestSharedState_EmptyKeyBehavior(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SharedStorage: newSharedStateMemoryStorage(t)})
 
 	require.NoError(t, app.SharedState().Set("", []byte("raw"), time.Minute))

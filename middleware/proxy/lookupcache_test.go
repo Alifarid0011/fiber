@@ -16,7 +16,6 @@ import (
 // the same resolver until the TTL ends, and until another host takes its slot.
 func Test_LookupCache(t *testing.T) {
 	t.Parallel()
-
 	now := time.Unix(1000, 0)
 	cache := newLookupCache(1, time.Second, func() time.Time { return now }) // one slot: every host collides
 	first, second := &net.Resolver{}, &net.Resolver{}
@@ -81,7 +80,6 @@ func Test_Security_ValidateHostForSSRF_RemembersTheLookup(t *testing.T) {
 // lookupCacheMaxAddrs is judged and forgotten, so a name's owner cannot make every slot large.
 func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
 	t.Parallel()
-
 	for name, tc := range map[string]struct {
 		addrs      int
 		remembered bool
@@ -91,7 +89,6 @@ func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			resolver := resolverFor(startManyAnswersDNS(t, tc.addrs))
 			cache := newLookupCache(16, time.Minute, time.Now)
 
@@ -109,7 +106,6 @@ func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
 // request left it, not at the lookup limit.
 func Test_Security_LookupHost_EndsAtTheDeadline(t *testing.T) {
 	t.Parallel()
-
 	_, err := lookupHost(net.DefaultResolver, "deadline.test", nil, time.Now().Add(-time.Second))
 	require.ErrorIs(t, err, ErrUpstreamHostUnresolvable)
 	var dnsErr *net.DNSError

@@ -21,7 +21,6 @@ import (
 // as a placeholder, where one ends, and what happens to a value on the way in.
 func Test_SubstitutePathParams(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		wantErr error
 		params  PathParam
@@ -414,7 +413,6 @@ func Test_SubstitutePathParams(t *testing.T) {
 // what keeps request parameters overriding the client's.
 func Test_SubstitutePathParams_SourceOrder(t *testing.T) {
 	t.Parallel()
-
 	got, err := substitutePathParams(
 		"http://example.com/api/:id/:name",
 		false,
@@ -430,7 +428,6 @@ func Test_SubstitutePathParams_SourceOrder(t *testing.T) {
 // undone by the server's own decoding, not just look right in the URL.
 func Test_PathParam_RoundTrip(t *testing.T) {
 	t.Parallel()
-
 	values := []string{
 		"plain",
 		"a b",
@@ -473,7 +470,6 @@ func Test_PathParam_RoundTrip(t *testing.T) {
 	for _, val := range values {
 		t.Run(val, func(t *testing.T) {
 			t.Parallel()
-
 			resp, err := AcquireRequest().SetClient(client).SetPathParam("id", val).
 				Get("http://example.com/api/:id/end")
 			require.NoError(t, err)
@@ -490,7 +486,6 @@ func Test_PathParam_RoundTrip(t *testing.T) {
 // path normalizing, and "/api/v1/:id/end" went out as "/admin/end".
 func Test_PathParam_Traversal_NeverDials(t *testing.T) {
 	t.Parallel()
-
 	var dialed atomic.Bool
 	client := New().SetDial(func(_ string) (net.Conn, error) {
 		dialed.Store(true)
@@ -603,7 +598,6 @@ var pathClientKinds = []struct {
 // request, so "/a//b/./c%2Fd" went out as "/a/b/c/d" however it was set.
 func Test_Client_DisablePathNormalizing_Wire(t *testing.T) {
 	t.Parallel()
-
 	const (
 		target     = "http://example.com/a//b/./c%2Fd"
 		asWritten  = "/a//b/./c%2Fd"
@@ -638,11 +632,9 @@ func Test_Client_DisablePathNormalizing_Wire(t *testing.T) {
 	for _, kind := range pathClientKinds {
 		t.Run(kind.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-
 					rec := startPathRecorder(t)
 					c := kind.build(rec.dial, tc.wrapped)
 					if tc.setup != nil {
@@ -663,7 +655,6 @@ func Test_Client_DisablePathNormalizing_Wire(t *testing.T) {
 // "/api/users/:id" reached the server as "/api/admin".
 func Test_Client_DisablePathNormalizing_PathParamGuard(t *testing.T) {
 	t.Parallel()
-
 	const (
 		target    = "http://example.com/api/users/:id"
 		traversal = "x/../../admin"
@@ -710,11 +701,9 @@ func Test_Client_DisablePathNormalizing_PathParamGuard(t *testing.T) {
 	for _, kind := range pathClientKinds {
 		t.Run(kind.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-
 					rec := startPathRecorder(t)
 					c := kind.build(rec.dial, tc.wrapped)
 					if tc.setup != nil {
@@ -744,7 +733,6 @@ func Test_Client_DisablePathNormalizing_PathParamGuard(t *testing.T) {
 // "/files/pub/meta".
 func Test_Client_DisablePathNormalizing_ValuesNoSettingLetsThrough(t *testing.T) {
 	t.Parallel()
-
 	const target = "http://example.com/files/pub/:name/meta"
 
 	cases := []struct {
@@ -766,11 +754,9 @@ func Test_Client_DisablePathNormalizing_ValuesNoSettingLetsThrough(t *testing.T)
 	for _, kind := range pathClientKinds {
 		t.Run(kind.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-
 					rec := startPathRecorder(t)
 					// The fasthttp client is created not to normalize, which
 					// lifts the check for every kind.
@@ -793,7 +779,6 @@ func Test_Client_DisablePathNormalizing_ValuesNoSettingLetsThrough(t *testing.T)
 // host already.
 func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 	t.Parallel()
-
 	const target = "http://example.com/files/pub/:name"
 
 	// forName is the config that fills :name in the target with name.
@@ -801,7 +786,6 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 
 	t.Run("a client that served the host already keeps the check on", func(t *testing.T) {
 		t.Parallel()
-
 		rec := startPathRecorder(t)
 		fh := &fasthttp.Client{Dial: rec.dial}
 
@@ -816,7 +800,6 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 
 	t.Run("a client not used yet cannot be told from one that was", func(t *testing.T) {
 		t.Parallel()
-
 		rec := startPathRecorder(t)
 		c := NewWithClient(&fasthttp.Client{Dial: rec.dial}).SetDisablePathNormalizing(true)
 		require.False(t, c.writesPathAsBuilt())
@@ -829,7 +812,6 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 
 	t.Run("a client created with the setting on lifts the check, used or not", func(t *testing.T) {
 		t.Parallel()
-
 		rec := startPathRecorder(t)
 		fh := &fasthttp.Client{Dial: rec.dial, DisablePathNormalizing: true}
 
@@ -843,7 +825,6 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 
 	t.Run("turning the setting off and on again keeps the check on", func(t *testing.T) {
 		t.Parallel()
-
 		rec := startPathRecorder(t)
 		c := NewWithClient(&fasthttp.Client{Dial: rec.dial, DisablePathNormalizing: true})
 		require.True(t, c.writesPathAsBuilt())
@@ -857,7 +838,6 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 
 	t.Run("a client from New is its own", func(t *testing.T) {
 		t.Parallel()
-
 		rec := startPathRecorder(t)
 		c := New().SetDial(rec.dial).SetDisablePathNormalizing(true)
 		require.True(t, c.writesPathAsBuilt())
@@ -874,7 +854,6 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 // would change the path for that host.
 func Test_Client_DisablePathNormalizing_AfterFirstRequest(t *testing.T) {
 	t.Parallel()
-
 	rec := startPathRecorder(t)
 	c := New().SetDial(rec.dial)
 
@@ -900,7 +879,6 @@ func FuzzPathParamTarget(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, val string) {
 		t.Parallel()
-
 		checkPathParamTarget(t, New(), val)
 	})
 }
@@ -915,7 +893,6 @@ func FuzzPathParamTargetAsWritten(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, val string) {
 		t.Parallel()
-
 		checkPathParamTarget(t, New().SetDisablePathNormalizing(true), val)
 	})
 }
@@ -959,7 +936,6 @@ func FuzzPathParamHost(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, val string) {
 		t.Parallel()
-
 		client := New()
 		req := AcquireRequest().SetClient(client).SetURL("http://:tenant.example.com/api").SetPathParam("tenant", val)
 		defer ReleaseRequest(req)
@@ -989,7 +965,6 @@ func FuzzSubstitutePathParams(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, val string) {
 		t.Parallel()
-
 		got, err := substitutePathParams("/a/:p/b", true, PathParam{"p": val})
 		if cannotFillSegment(val) {
 			require.ErrorIs(t, err, ErrPathParamInPath)

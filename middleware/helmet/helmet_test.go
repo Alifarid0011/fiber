@@ -28,7 +28,6 @@ func helmetTestApp(cfg ...Config) *fiber.App {
 // that set some or all of them.
 func Test_Headers(t *testing.T) {
 	t.Parallel()
-
 	const realWorldCSP = "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests"
 
 	for _, tc := range []struct {
@@ -146,7 +145,6 @@ func Test_Headers(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			resp := apptest.Do(t, helmetTestApp(tc.cfg...), "/")
 			for name, want := range tc.want {
 				require.Equal(t, want, resp.Header.Get(name), name)
@@ -157,7 +155,6 @@ func Test_Headers(t *testing.T) {
 
 func Test_Next(t *testing.T) {
 	t.Parallel()
-
 	app := helmetTestApp(Config{
 		Next:           func(ctx fiber.Ctx) bool { return ctx.Path() == "/next" },
 		ReferrerPolicy: "no-referrer",
@@ -173,7 +170,6 @@ func Test_Next(t *testing.T) {
 
 func Test_HSTSHeaders(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		scheme   string
@@ -205,7 +201,6 @@ func Test_HSTSHeaders(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.Equal(t, tt.expected, hstsHeaderForRequest(t, &tt.config, tt.scheme))
 		})
 	}
@@ -213,7 +208,6 @@ func Test_HSTSHeaders(t *testing.T) {
 
 func Test_HSTSHeadersPanicsOnNegativeMaxAge(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithValue(t, "helmet: HSTSMaxAge must be greater than or equal to 0", func() {
 		New(Config{HSTSMaxAge: -1})
 	})
@@ -221,7 +215,6 @@ func Test_HSTSHeadersPanicsOnNegativeMaxAge(t *testing.T) {
 
 func Test_HSTSExcludeSubdomainsAndPreload(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithValue(t, "helmet: HSTSPreloadEnabled requires HSTSExcludeSubdomains to be false", func() {
 		New(Config{HSTSMaxAge: 31536000, HSTSExcludeSubdomains: true, HSTSPreloadEnabled: true})
 	})

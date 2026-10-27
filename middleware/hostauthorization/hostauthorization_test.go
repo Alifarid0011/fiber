@@ -14,7 +14,6 @@ import (
 
 func Test_ConfigDefault(t *testing.T) {
 	t.Parallel()
-
 	cfg := configDefault(Config{AllowedHosts: []string{"example.com"}})
 	require.NotNil(t, cfg.ErrorHandler)
 	require.Equal(t, []string{"example.com"}, cfg.AllowedHosts)
@@ -23,7 +22,6 @@ func Test_ConfigDefault(t *testing.T) {
 // Test_ConfigPanics covers the configurations that must be rejected at startup.
 func Test_ConfigPanics(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		fn   func()
 		name string
@@ -48,14 +46,12 @@ func Test_ConfigPanics(t *testing.T) {
 
 func Test_ConfigAllowedHostsFuncOnly(t *testing.T) {
 	t.Parallel()
-
 	cfg := configDefault(Config{AllowedHostsFunc: func(host string) bool { return host == "example.com" }})
 	require.NotNil(t, cfg.AllowedHostsFunc)
 }
 
 func Test_ConfigCustomErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	custom := func(c fiber.Ctx, _ error) error { return c.Status(fiber.StatusTeapot).SendString("nope") }
 
 	cfg := configDefault(Config{AllowedHosts: []string{"example.com"}, ErrorHandler: custom})
@@ -64,7 +60,6 @@ func Test_ConfigCustomErrorHandler(t *testing.T) {
 
 func Test_NormalizeHost(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		input    string
@@ -96,7 +91,6 @@ func Test_NormalizeHost(t *testing.T) {
 
 func Test_ParseNormalizedAuthority(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		input    string
@@ -139,7 +133,6 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 
 func Test_IsValidHostSyntax(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name  string
 		host  string
@@ -179,7 +172,6 @@ func Test_IsValidHostSyntax(t *testing.T) {
 // are already normalized.
 func Test_MatchHost(t *testing.T) {
 	t.Parallel()
-
 	var (
 		blank       = []string{"", "   ", "example.com"}
 		example     = []string{"example.com"}
@@ -254,7 +246,6 @@ func hostAuthApp(cfg Config, appCfg ...fiber.Config) *fiber.App {
 // row's status.
 func Test_HostAuthorization_Hosts(t *testing.T) {
 	t.Parallel()
-
 	var (
 		example     = []string{"example.com"}
 		examplePort = []string{"example.com:8080"}
@@ -298,7 +289,6 @@ func Test_HostAuthorization_Hosts(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := hostAuthApp(Config{AllowedHosts: tc.allowed, AllowedHostsFunc: tc.fn})
 			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost(tc.host)), tc.status)
 		})
@@ -307,7 +297,6 @@ func Test_HostAuthorization_Hosts(t *testing.T) {
 
 func Test_HostAuthorization_Next(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{
 		AllowedHosts: []string{"example.com"},
@@ -320,7 +309,6 @@ func Test_HostAuthorization_Next(t *testing.T) {
 
 func Test_HostAuthorization_AllowedHostsFunc_EmptyHostRejectedBeforeCallback(t *testing.T) {
 	t.Parallel()
-
 	called := false
 	app := hostAuthApp(Config{
 		AllowedHostsFunc: func(_ string) bool {
@@ -335,7 +323,6 @@ func Test_HostAuthorization_AllowedHostsFunc_EmptyHostRejectedBeforeCallback(t *
 
 func Test_HostAuthorization_CustomErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	var handlerErr error
 	app := hostAuthApp(Config{
 		AllowedHosts: []string{"example.com"},
@@ -353,7 +340,6 @@ func Test_HostAuthorization_CustomErrorHandler(t *testing.T) {
 // the request only when the proxy that sent it is trusted.
 func Test_HostAuthorization_XForwardedHost(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name       string
 		allowed    string
@@ -382,7 +368,6 @@ func Test_HostAuthorization_XForwardedHost(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var appCfg fiber.Config
 			if tc.trustProxy {
 				// app.Test() uses remote address 0.0.0.0; trust that proxy IP.
@@ -408,7 +393,6 @@ func Test_ErrForbiddenHostString(t *testing.T) {
 
 func Test_AllowedHostsFuncFallback(t *testing.T) {
 	t.Parallel()
-
 	called := 0
 	parsed := parseAllowedHosts([]string{"example.com"})
 	fn := func(_ string) bool {

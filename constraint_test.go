@@ -9,7 +9,6 @@ import (
 
 func Test_ConstraintMatchConstraint(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		constraint *Constraint
 		name       string
@@ -61,7 +60,6 @@ func Test_ConstraintMatchConstraint(t *testing.T) {
 
 func Test_ConstraintAnalyze_Errors(t *testing.T) {
 	t.Parallel()
-
 	noArgs := []string{}
 
 	testCases := []struct {
@@ -92,7 +90,6 @@ func Test_ConstraintAnalyze_Errors(t *testing.T) {
 
 func Test_ConstraintExecute(t *testing.T) {
 	t.Parallel()
-
 	re := regexp.MustCompile(`^\d+$`)
 
 	testCases := []struct {
@@ -170,7 +167,6 @@ func Test_ConstraintExecute(t *testing.T) {
 // parameter when its data is missing or unusable instead of panicking.
 func Test_ConstraintExecute_InvalidData(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		handler ConstraintHandler
 		name    string
@@ -199,7 +195,6 @@ func Test_ConstraintExecute_InvalidData(t *testing.T) {
 
 func Test_FindConstraintHandler_CustomPriority(t *testing.T) {
 	t.Parallel()
-
 	custom := &testCustomConstraintForCoverage{allowed: "x"}
 	handler := findConstraintHandler("customTest", nil, []CustomConstraint{custom})
 	require.NotNil(t, handler)
@@ -207,7 +202,6 @@ func Test_FindConstraintHandler_CustomPriority(t *testing.T) {
 
 func Test_FindConstraintHandler_Builtin(t *testing.T) {
 	t.Parallel()
-
 	handler := findConstraintHandler("int", nil, nil)
 	require.NotNil(t, handler)
 	require.Equal(t, "int", handler.Name())
@@ -215,7 +209,6 @@ func Test_FindConstraintHandler_Builtin(t *testing.T) {
 
 func Test_FindConstraintHandler_Unknown(t *testing.T) {
 	t.Parallel()
-
 	handler := findConstraintHandler("nonexistent", nil, nil)
 	require.Nil(t, handler)
 }
@@ -247,7 +240,6 @@ func (t *testCustomConstraintWithAnalyzer) Analyze(args []string) ([]any, error)
 
 func Test_CustomConstraintWrapper_DelegatesAnalyze(t *testing.T) {
 	t.Parallel()
-
 	custom := &testCustomConstraintWithAnalyzer{}
 	handler := findConstraintHandler("customDatetime", nil, []CustomConstraint{custom})
 	require.NotNil(t, handler)
@@ -274,7 +266,6 @@ func (*testCustomConstraintWithTypedAnalyzer) Analyze(args []string) ([]any, err
 
 func Test_CustomConstraintWrapper_ExecuteKeepsLegacyArgsWithAnalyzer(t *testing.T) {
 	t.Parallel()
-
 	custom := &testCustomConstraintWithTypedAnalyzer{}
 	handler := findConstraintHandler("customRole", nil, []CustomConstraint{custom})
 	require.NotNil(t, handler)

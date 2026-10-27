@@ -101,7 +101,6 @@ func populatedItem() item {
 
 func Test_item_MarshalUnmarshal_Populated(t *testing.T) {
 	t.Parallel()
-
 	v := populatedItem()
 	bts, err := v.MarshalMsg(nil)
 	require.NoError(t, err)
@@ -115,7 +114,6 @@ func Test_item_MarshalUnmarshal_Populated(t *testing.T) {
 
 func Test_item_EncodeDecode_Populated(t *testing.T) {
 	t.Parallel()
-
 	v := populatedItem()
 	var buf bytes.Buffer
 	w := msgp.NewWriter(&buf)
@@ -129,7 +127,6 @@ func Test_item_EncodeDecode_Populated(t *testing.T) {
 
 func Test_item_Decode_Truncated(t *testing.T) {
 	t.Parallel()
-
 	v := populatedItem()
 	full, err := v.MarshalMsg(nil)
 	require.NoError(t, err)
@@ -148,7 +145,6 @@ func Test_item_Decode_Truncated(t *testing.T) {
 
 func Test_item_EncodeMsg_WriterErrors(t *testing.T) {
 	t.Parallel()
-
 	v := populatedItem()
 	full, err := v.MarshalMsg(nil)
 	require.NoError(t, err)
@@ -158,7 +154,6 @@ func Test_item_EncodeMsg_WriterErrors(t *testing.T) {
 
 func Test_item_Decode_UnknownField(t *testing.T) {
 	t.Parallel()
-
 	var raw []byte
 	raw = msgp.AppendMapHeader(raw, 2)
 	raw = msgp.AppendString(raw, "unknownField")
@@ -190,7 +185,6 @@ func Test_item_Decode_LimitExceeded(t *testing.T) {
 
 func Test_cachedHeader_Roundtrip_Populated(t *testing.T) {
 	t.Parallel()
-
 	v := cachedHeader{key: []byte("Content-Type"), value: []byte("text/html")}
 	bts, err := v.MarshalMsg(nil)
 	require.NoError(t, err)
@@ -212,7 +206,6 @@ func Test_cachedHeader_Roundtrip_Populated(t *testing.T) {
 
 func Test_cachedHeader_EncodeDecode(t *testing.T) {
 	t.Parallel()
-
 	v := cachedHeader{key: []byte("Content-Type"), value: []byte("text/html")}
 
 	var buf bytes.Buffer
@@ -231,10 +224,8 @@ func Test_cachedHeader_EncodeDecode(t *testing.T) {
 
 func Test_cachedHeader_Decode_UnknownAndLimits(t *testing.T) {
 	t.Parallel()
-
 	t.Run("unknown field is skipped", func(t *testing.T) {
 		t.Parallel()
-
 		var raw []byte
 		raw = msgp.AppendMapHeader(raw, 2)
 		raw = msgp.AppendString(raw, "zz")
@@ -254,13 +245,11 @@ func Test_cachedHeader_Decode_UnknownAndLimits(t *testing.T) {
 
 	t.Run("key over the 512-byte limit", func(t *testing.T) {
 		t.Parallel()
-
 		cacheTestCRequireLimitExceeded[cachedHeader](t, cacheTestCBytesField("key", 513))
 	})
 
 	t.Run("value over the 16384-byte limit", func(t *testing.T) {
 		t.Parallel()
-
 		cacheTestCRequireLimitExceeded[cachedHeader](t, cacheTestCBytesField("value", 16385))
 	})
 }
@@ -269,7 +258,6 @@ func Test_cachedHeader_Decode_UnknownAndLimits(t *testing.T) {
 // of the item byte fields.
 func Test_item_Decode_FieldLimits(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		field string
 		size  int
@@ -282,7 +270,6 @@ func Test_item_Decode_FieldLimits(t *testing.T) {
 	} {
 		t.Run(tc.field, func(t *testing.T) {
 			t.Parallel()
-
 			cacheTestCRequireLimitExceeded[item](t, cacheTestCBytesField(tc.field, tc.size), "field %s", tc.field)
 		})
 	}
@@ -290,7 +277,6 @@ func Test_item_Decode_FieldLimits(t *testing.T) {
 
 func Test_indexedHeap_PushAndOps(t *testing.T) {
 	t.Parallel()
-
 	h := &indexedHeap{}
 
 	// put inserts entries and returns tracking indices.
@@ -318,7 +304,6 @@ func Test_indexedHeap_PushAndOps(t *testing.T) {
 
 func Test_parseUintDirective(t *testing.T) {
 	t.Parallel()
-
 	v, ok := parseUintDirective([]byte("60"))
 	require.True(t, ok)
 	require.Equal(t, uint64(60), v)
@@ -337,7 +322,6 @@ func Test_parseUintDirective(t *testing.T) {
 
 func Test_allowsSharedCacheDirectives(t *testing.T) {
 	t.Parallel()
-
 	require.False(t, allowsSharedCacheDirectives(responseCacheControl{hasPrivate: true}))
 	require.True(t, allowsSharedCacheDirectives(responseCacheControl{hasPublic: true}))
 	require.True(t, allowsSharedCacheDirectives(responseCacheControl{sMaxAgeSet: true}))
@@ -348,7 +332,6 @@ func Test_allowsSharedCacheDirectives(t *testing.T) {
 
 func Test_allowsSharedCacheStorage(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, allowsSharedCacheStorage(responseCacheControl{hasPublic: true}))
 	require.True(t, allowsSharedCacheStorage(responseCacheControl{sMaxAgeSet: true}))
 	require.False(t, allowsSharedCacheStorage(responseCacheControl{}))
@@ -389,7 +372,6 @@ func authDigest(lines ...string) string {
 
 func Test_appendAuthHash(t *testing.T) {
 	t.Parallel()
-
 	got := authDigest("Bearer token")
 	require.Len(t, got, hexLen)
 	// Stable for the same input, and reuses the pooled framing buffer on the
@@ -416,7 +398,6 @@ func Test_appendAuthHash(t *testing.T) {
 // the digest is the same either way.
 func Test_appendAuthHash_FramingSizes(t *testing.T) {
 	t.Parallel()
-
 	reference := func(lines ...string) string {
 		var framed []byte
 		for _, line := range lines {
@@ -529,7 +510,6 @@ func Test_manager_getRaw_Paths(t *testing.T) {
 
 func Test_manager_set_StorageError(t *testing.T) {
 	t.Parallel()
-
 	storage := newFailingCacheStorage()
 	storage.errs["set|k"] = errors.New("boom")
 	m := newManager(storage, false)
@@ -545,7 +525,6 @@ func Test_manager_set_StorageError(t *testing.T) {
 
 func Test_manager_get_StorageRoundTrip(t *testing.T) {
 	t.Parallel()
-
 	storage := newFailingCacheStorage()
 	m := newManager(storage, false)
 
@@ -562,7 +541,6 @@ func Test_manager_get_StorageRoundTrip(t *testing.T) {
 
 func Test_varyManifest_StoreLoad(t *testing.T) {
 	t.Parallel()
-
 	m := newManager(newFailingCacheStorage(), false)
 	ctx := context.Background()
 
@@ -599,7 +577,6 @@ func Test_varyManifest_StoreLoad(t *testing.T) {
 
 func Test_appendVaryKey(t *testing.T) {
 	t.Parallel()
-
 	fn := func(names []string, hdr *fasthttp.RequestHeader, normalized bool) string {
 		return string(appendVaryKey(nil, names, hdr, normalized))
 	}
@@ -626,7 +603,6 @@ func Test_appendVaryKey(t *testing.T) {
 // Vary exists to prevent.
 func Test_appendVaryKey_RepeatedFieldLines(t *testing.T) {
 	t.Parallel()
-
 	fn := func(names []string, hdr *fasthttp.RequestHeader, normalized bool) string {
 		return string(appendVaryKey(nil, names, hdr, normalized))
 	}
@@ -663,7 +639,6 @@ func Test_appendVaryKey_RepeatedFieldLines(t *testing.T) {
 // sent two.
 func Test_Cache_VaryRepeatedFieldLines(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: time.Minute}))
 	app.Get("/", func(c fiber.Ctx) error {

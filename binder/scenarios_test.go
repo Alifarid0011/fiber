@@ -20,11 +20,9 @@ type pairUser struct {
 // when splitting is on.
 func Test_PairSources_Bind(t *testing.T) {
 	t.Parallel()
-
 	for _, src := range pairSources {
 		t.Run(src.name, func(t *testing.T) {
 			t.Parallel()
-
 			var user pairUser
 			err := src.bind(t, "name=john&names=john,doe&age=42&posts=post1,post2,post3", true, &user)
 
@@ -42,11 +40,9 @@ func Test_PairSources_Bind(t *testing.T) {
 // an error from every binder that reads name/value pairs.
 func Test_PairSources_ParseError(t *testing.T) {
 	t.Parallel()
-
 	for _, src := range pairSources {
 		t.Run(src.name, func(t *testing.T) {
 			t.Parallel()
-
 			var user pairUser
 			require.Error(t, src.bind(t, "age=invalid", false, &user))
 		})
@@ -55,7 +51,6 @@ func Test_PairSources_ParseError(t *testing.T) {
 
 func Test_FormSources_Bind(t *testing.T) {
 	t.Parallel()
-
 	type Post struct {
 		Title string `form:"title" query:"title"`
 	}
@@ -70,7 +65,6 @@ func Test_FormSources_Bind(t *testing.T) {
 	for _, src := range formSources {
 		t.Run(src.name, func(t *testing.T) {
 			t.Parallel()
-
 			var user User
 			err := src.bind(t, "name=john&names=john,doe&age=42&posts[0][title]=post1&posts[1][title]=post2&posts[2][title]=post3", true, &user)
 
@@ -89,7 +83,6 @@ func Test_FormSources_Bind(t *testing.T) {
 
 func Test_FormSources_PointerScalars(t *testing.T) {
 	t.Parallel()
-
 	type Scalars struct {
 		ID     *int64   `form:"id" query:"id"`
 		Name   *string  `form:"name" query:"name"`

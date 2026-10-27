@@ -25,7 +25,6 @@ type notationTarget struct {
 // the same table: a divergence between them is a bug in one of them.
 func Test_Notation_FormAndQuery(t *testing.T) {
 	t.Parallel()
-
 	runFormSources(t, []formCase[notationTarget]{
 		{
 			name:  "repeated key",

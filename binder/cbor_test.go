@@ -9,7 +9,6 @@ import (
 
 func Test_CBORBinder_Bind(t *testing.T) {
 	t.Parallel()
-
 	b := &CBORBinding{CBORDecoder: cbor.Unmarshal}
 	require.Equal(t, "cbor", b.Name())
 
@@ -78,14 +77,12 @@ func Benchmark_CBORBinder_Bind(b *testing.B) {
 
 func Test_UnimplementedCborMarshal_ReturnsError(t *testing.T) {
 	t.Parallel()
-
 	_, err := UnimplementedCborMarshal(struct{ Name string }{Name: "test"})
 	require.ErrorIs(t, err, ErrUnimplementedCBOR)
 }
 
 func Test_UnimplementedCborUnmarshal_ReturnsError(t *testing.T) {
 	t.Parallel()
-
 	var out any
 	err := UnimplementedCborUnmarshal([]byte{0xa0}, &out)
 	require.ErrorIs(t, err, ErrUnimplementedCBOR)

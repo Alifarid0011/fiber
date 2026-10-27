@@ -14,7 +14,6 @@ import (
 
 func Test_BoundKey_ShortKeyUnchanged(t *testing.T) {
 	t.Parallel()
-
 	require.Equal(t, "1.2.3.4", boundKey("1.2.3.4"))
 	require.Empty(t, boundKey(""))
 	require.Equal(t, strings.Repeat("a", maxKeyLength), boundKey(strings.Repeat("a", maxKeyLength)))
@@ -22,7 +21,6 @@ func Test_BoundKey_ShortKeyUnchanged(t *testing.T) {
 
 func Test_BoundKey_OversizedKeyIsHashed(t *testing.T) {
 	t.Parallel()
-
 	key := strings.Repeat("a", maxKeyLength+1)
 	got := boundKey(key)
 
@@ -32,7 +30,6 @@ func Test_BoundKey_OversizedKeyIsHashed(t *testing.T) {
 
 func Test_BoundKey_Deterministic(t *testing.T) {
 	t.Parallel()
-
 	key := strings.Repeat("x", maxKeyLength*3)
 	first := boundKey(key)
 	second := boundKey(key)
@@ -41,7 +38,6 @@ func Test_BoundKey_Deterministic(t *testing.T) {
 
 func Test_BoundKey_DistinctOversizedKeysStayDistinct(t *testing.T) {
 	t.Parallel()
-
 	a := boundKey(strings.Repeat("a", maxKeyLength+10))
 	b := boundKey(strings.Repeat("b", maxKeyLength+10))
 	require.NotEqual(t, a, b, "two different oversized clients must not collapse into one shared bucket")
@@ -53,7 +49,6 @@ func Test_BoundKey_DistinctOversizedKeysStayDistinct(t *testing.T) {
 // confused for — the bucket a genuinely oversized key hashes to.
 func Test_BoundKey_ReservedPrefixCannotBeForged(t *testing.T) {
 	t.Parallel()
-
 	forged := hashPrefix + "not-actually-a-hash"
 	got := boundKey(forged)
 	require.NotEqual(t, forged, got, "a short key claiming the reserved prefix must be re-hashed, not passed through")
@@ -82,7 +77,6 @@ func (w *limiterErrWriter) Write(p []byte) (int, error) {
 
 func Test_manager_get_UnmarshalError(t *testing.T) {
 	t.Parallel()
-
 	storage := newFakeLimiterStorage()
 	storage.data["k"] = []byte{0xff, 0xff, 0xff} // not a valid msgp item
 
@@ -94,7 +88,6 @@ func Test_manager_get_UnmarshalError(t *testing.T) {
 
 func Test_manager_get_RoundTripWithStorage(t *testing.T) {
 	t.Parallel()
-
 	storage := newFakeLimiterStorage()
 	m := newManager(storage, false)
 
@@ -113,7 +106,6 @@ func Test_manager_get_RoundTripWithStorage(t *testing.T) {
 
 func Test_manager_get_MemoryUnexpectedType(t *testing.T) {
 	t.Parallel()
-
 	m := newManager(nil, false) // memory-backed
 	m.memory.Set("k", "not-an-item", time.Minute)
 
@@ -124,7 +116,6 @@ func Test_manager_get_MemoryUnexpectedType(t *testing.T) {
 
 func Test_item_Decode_Truncated(t *testing.T) {
 	t.Parallel()
-
 	full, err := item{currHits: 3, prevHits: 5, exp: 99}.MarshalMsg(nil)
 	require.NoError(t, err)
 
@@ -142,7 +133,6 @@ func Test_item_Decode_Truncated(t *testing.T) {
 
 func Test_item_Decode_UnknownField(t *testing.T) {
 	t.Parallel()
-
 	var raw []byte
 	raw = msgp.AppendMapHeader(raw, 2)
 	raw = msgp.AppendString(raw, "zz")
@@ -162,7 +152,6 @@ func Test_item_Decode_UnknownField(t *testing.T) {
 
 func Test_item_EncodeMsg_WriterErrors(t *testing.T) {
 	t.Parallel()
-
 	full, err := item{currHits: 3, prevHits: 5, exp: 99}.MarshalMsg(nil)
 	require.NoError(t, err)
 

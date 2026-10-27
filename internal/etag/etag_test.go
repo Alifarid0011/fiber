@@ -8,7 +8,6 @@ import (
 
 func Test_Parse(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name  string
 		tag   string
@@ -41,7 +40,6 @@ func Test_Parse(t *testing.T) {
 
 func Test_Match(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, Match(`"a"`, `"a"`))
 	require.True(t, Match(`W/"a"`, `"a"`))
 	require.True(t, Match(`"a"`, `W/"a"`))
@@ -56,7 +54,6 @@ func Test_Match(t *testing.T) {
 
 func Test_MatchStrong(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, MatchStrong(`"a"`, `"a"`))
 	require.False(t, MatchStrong(`W/"a"`, `"a"`))
 	require.False(t, MatchStrong(`"a"`, `W/"a"`))
@@ -68,7 +65,6 @@ func Test_MatchStrong(t *testing.T) {
 
 func Test_AnyMatch(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name   string
 		header string
@@ -110,7 +106,6 @@ func Test_AnyMatch(t *testing.T) {
 
 func Test_Split(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name   string
 		header string
@@ -144,7 +139,6 @@ func Test_Split(t *testing.T) {
 
 func Test_AnyMatch_IgnoresEmptyElements(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, AnyMatch(`"a",`, `"a"`))
 	require.True(t, AnyMatch(`,"a"`, `"a"`))
 	require.True(t, AnyMatch(`"a",,"b"`, `"b"`))

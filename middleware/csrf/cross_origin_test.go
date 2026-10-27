@@ -57,7 +57,6 @@ func crossOriginAllowed(t *testing.T, cfg CrossOriginConfig, r *crossOriginReque
 
 func Test_CSRF_CrossOriginProtection(t *testing.T) {
 	t.Parallel()
-
 	trusted := []string{"https://trusted.example", "https://*.example.net"}
 
 	tests := []struct {
@@ -112,7 +111,6 @@ func Test_CSRF_CrossOriginProtection(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-
 			allowed, captured := crossOriginAllowed(t, CrossOriginConfig{
 				TrustedOrigins: test.trustedOrigins,
 				Next:           func(fiber.Ctx) bool { return test.bypass },
@@ -130,7 +128,6 @@ func Test_CSRF_CrossOriginProtection(t *testing.T) {
 
 func Test_CSRF_CrossOriginProtection_MatchesNetHTTPCheck(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name          string
 		method        string
@@ -170,7 +167,6 @@ func Test_CSRF_CrossOriginProtection_MatchesNetHTTPCheck(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-
 			protection := http.NewCrossOriginProtection()
 			var cfg CrossOriginConfig
 			if test.trustedOrigin != "" {
@@ -203,7 +199,6 @@ func Test_CSRF_CrossOriginProtection_MatchesNetHTTPCheck(t *testing.T) {
 // net/http allows this request: "null" parses to an empty host, which equals an empty Host.
 func Test_CSRF_CrossOriginProtection_EmptyHost(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(NewCrossOriginProtection())
 	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
@@ -221,7 +216,6 @@ func Test_CSRF_CrossOriginProtection_EmptyHost(t *testing.T) {
 // c.Host() honors X-Forwarded-Host behind a trusted proxy; rule 4 must not.
 func Test_CSRF_CrossOriginProtection_IgnoresForwardedHost(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name          string
 		host          string
@@ -237,7 +231,6 @@ func Test_CSRF_CrossOriginProtection_IgnoresForwardedHost(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := newTrustedApp()
 			// Without this the test passes vacuously when proxy trust is off.
 			var seenHost string
@@ -264,11 +257,9 @@ func Test_CSRF_CrossOriginProtection_IgnoresForwardedHost(t *testing.T) {
 
 func Test_CSRF_CrossOriginProtection_InvalidTrustedOrigin(t *testing.T) {
 	t.Parallel()
-
 	for _, origin := range []string{"trusted.example", "https://trusted.example/path", "capacitor://localhost"} {
 		t.Run(origin, func(t *testing.T) {
 			t.Parallel()
-
 			require.PanicsWithValue(t, "[CSRF] Invalid origin format in configuration:"+redactedKey, func() {
 				NewCrossOriginProtection(CrossOriginConfig{TrustedOrigins: []string{origin}})
 			})
@@ -279,7 +270,6 @@ func Test_CSRF_CrossOriginProtection_InvalidTrustedOrigin(t *testing.T) {
 // A header the lookup missed would read as absent, which this check allows.
 func Test_CSRF_CrossOriginProtection_DisableHeaderNormalizing(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 	app.Use(NewCrossOriginProtection())
 	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
@@ -293,7 +283,6 @@ func Test_CSRF_CrossOriginProtection_DisableHeaderNormalizing(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.header, func(t *testing.T) {
 			t.Parallel()
-
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.Header.DisableNormalizing()
 			ctx.Request.Header.SetMethod(fiber.MethodPost)

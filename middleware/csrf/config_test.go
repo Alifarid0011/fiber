@@ -109,7 +109,6 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			cfg := Config{CookieName: tc.cookieName, Extractor: tc.extractor}
 			if tc.wantPanic {
 				require.Panics(t, func() { configDefault(cfg) }, tc.message)
@@ -123,7 +122,6 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 // Test extractor metadata
 func Test_CSRF_Extractor_Metadata(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name           string
 		expectedKey    string
@@ -169,7 +167,6 @@ func Test_CSRF_Extractor_Metadata(t *testing.T) {
 // Test chain extractor metadata
 func Test_CSRF_Chain_Extractor_Metadata(t *testing.T) {
 	t.Parallel()
-
 	t.Run("EmptyChain", func(t *testing.T) {
 		t.Parallel()
 		chained := extractors.Chain()
@@ -205,7 +202,6 @@ func Test_CSRF_Chain_Extractor_Metadata(t *testing.T) {
 // Test error types for different extractors
 func Test_CSRF_Extractor_Error_Types(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		setupRequest func(*fasthttp.RequestCtx)
 		name         string
@@ -287,7 +283,6 @@ func Test_CSRF_Extractor_Error_Types(t *testing.T) {
 // Test isInsecureCookieExtractor function directly
 func Test_isInsecureCookieExtractor(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name       string
 		cookieName string
@@ -331,6 +326,5 @@ func Test_isInsecureCookieExtractor(t *testing.T) {
 
 func Test_CSRF_validateExtractorSecurity_NilConfig(t *testing.T) {
 	t.Parallel()
-
 	require.NotPanics(t, func() { validateExtractorSecurity(nil) })
 }

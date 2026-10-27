@@ -13,7 +13,6 @@ import (
 // original type through the alias.
 func Test_ErrorAliases(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		err    error
 		target any // the pointer errors.As is given: it names the original type

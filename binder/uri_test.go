@@ -8,7 +8,6 @@ import (
 
 func Test_URIBinding_Bind(t *testing.T) {
 	t.Parallel()
-
 	b := &URIBinding{}
 	require.Equal(t, "uri", b.Name())
 

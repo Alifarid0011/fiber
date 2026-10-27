@@ -32,17 +32,14 @@ func readRequest(t *testing.T, c fiber.Ctx, raw string) {
 
 func Test_Canonical(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, Canonical(newCtx(t)))
 	require.False(t, Canonical(newCtx(t, fiber.Config{DisableHeaderNormalizing: true})))
 }
 
 func Test_Value(t *testing.T) {
 	t.Parallel()
-
 	t.Run("single line", func(t *testing.T) {
 		t.Parallel()
-
 		c := newCtx(t)
 		c.Request().Header.Set(fiber.HeaderAuthorization, "Bearer abc")
 		v, ok := Value(c, fiber.HeaderAuthorization)
@@ -52,7 +49,6 @@ func Test_Value(t *testing.T) {
 
 	t.Run("absent is present-and-empty, not a refusal", func(t *testing.T) {
 		t.Parallel()
-
 		v, ok := Value(newCtx(t), fiber.HeaderAuthorization)
 		require.True(t, ok, "absent must not read as malformed")
 		require.Empty(t, v)
@@ -60,7 +56,6 @@ func Test_Value(t *testing.T) {
 
 	t.Run("a line that is present and empty", func(t *testing.T) {
 		t.Parallel()
-
 		c := newCtx(t)
 		c.Request().Header.Set("X-Token", "")
 		v, ok := Value(c, "X-Token")
@@ -70,7 +65,6 @@ func Test_Value(t *testing.T) {
 
 	t.Run("repeated lines are refused", func(t *testing.T) {
 		t.Parallel()
-
 		c := newCtx(t)
 		readRequest(t, c, "GET / HTTP/1.1\r\nHost: e.com\r\nAuthorization: Bearer a\r\nAuthorization: Bearer b\r\n\r\n")
 		v, ok := Value(c, fiber.HeaderAuthorization)
@@ -91,7 +85,6 @@ func Test_Value(t *testing.T) {
 
 	t.Run("repeated lines are refused whatever they are spelled like", func(t *testing.T) {
 		t.Parallel()
-
 		c := newCtx(t, fiber.Config{DisableHeaderNormalizing: true})
 		readRequest(t, c, "GET / HTTP/1.1\r\nHost: e.com\r\nAuthorization: Bearer a\r\nauthorization: Bearer b\r\n\r\n")
 		_, ok := Value(c, fiber.HeaderAuthorization)
@@ -100,7 +93,6 @@ func Test_Value(t *testing.T) {
 
 	t.Run("Immutable hands back a copy", func(t *testing.T) {
 		t.Parallel()
-
 		c := newCtx(t, fiber.Config{Immutable: true})
 		c.Request().Header.Set("X-Token", "abc")
 		v, ok := Value(c, "X-Token")
@@ -115,10 +107,8 @@ func Test_Value(t *testing.T) {
 
 func Test_Combined(t *testing.T) {
 	t.Parallel()
-
 	t.Run("single line is unchanged", func(t *testing.T) {
 		t.Parallel()
-
 		c := newCtx(t)
 		c.Request().Header.Set("X-API-Key", "abc123")
 		require.Equal(t, "abc123", Combined(c, "X-API-Key"))
@@ -126,7 +116,6 @@ func Test_Combined(t *testing.T) {
 
 	t.Run("absent and empty both read as nothing", func(t *testing.T) {
 		t.Parallel()
-
 		for _, normalize := range []bool{true, false} {
 			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
 			require.Empty(t, Combined(c, "X-API-Key"), "normalize=%v", normalize)
@@ -155,7 +144,6 @@ func Test_Combined(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, normalize := range []bool{true, false} {
 				c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
 				readRequest(t, c, tc.raw)
@@ -166,7 +154,6 @@ func Test_Combined(t *testing.T) {
 
 	t.Run("Cookie keeps its own separator", func(t *testing.T) {
 		t.Parallel()
-
 		c := newCtx(t)
 		readRequest(t, c, "GET / HTTP/1.1\r\nHost: e.com\r\nCookie: a=1\r\nCookie: b=2\r\n\r\n")
 		require.Equal(t, "a=1; b=2", Combined(c, fiber.HeaderCookie))
@@ -174,7 +161,6 @@ func Test_Combined(t *testing.T) {
 
 	t.Run("Immutable hands back a copy", func(t *testing.T) {
 		t.Parallel()
-
 		c := newCtx(t, fiber.Config{Immutable: true})
 		c.Request().Header.Set("X-Token", "abc")
 		v := Combined(c, "X-Token")

@@ -15,7 +15,6 @@ type testData struct {
 
 func Test_Template_Execute(t *testing.T) {
 	t.Parallel()
-
 	tmpl, err := Build[string, testData]("a ${tag} ${param:name} z", map[string]Func[string, testData]{
 		"tag": func(output Buffer, ctx string, data *testData, _ string) (int, error) {
 			return output.WriteString(ctx + data.value)
@@ -36,7 +35,6 @@ func Test_Template_Execute(t *testing.T) {
 
 func Test_Template_NilTemplateExecuteIsNoop(t *testing.T) {
 	t.Parallel()
-
 	var tmpl *Template[string, testData]
 
 	buf := bytebufferpool.Get()
@@ -68,7 +66,6 @@ func Test_Template_UnterminatedTagPreserved(t *testing.T) {
 
 func Test_Template_BuildCopiesFormat(t *testing.T) {
 	t.Parallel()
-
 	mutable := []byte("prefix ${tag} suffix")
 	format := unsafe.String(&mutable[0], len(mutable))
 
@@ -90,7 +87,6 @@ func Test_Template_BuildCopiesFormat(t *testing.T) {
 
 func Test_Template_UnknownParametricTag(t *testing.T) {
 	t.Parallel()
-
 	_, err := Build[string, testData]("${missing:name}", nil)
 	require.ErrorIs(t, err, ErrUnknownTag)
 
@@ -103,7 +99,6 @@ func Test_Template_UnknownParametricTag(t *testing.T) {
 
 func Test_Template_UnknownBareTag(t *testing.T) {
 	t.Parallel()
-
 	_, err := Build[string, testData]("${missing}", nil)
 	require.ErrorIs(t, err, ErrUnknownTag)
 
@@ -115,7 +110,6 @@ func Test_Template_UnknownBareTag(t *testing.T) {
 
 func Test_Template_UnknownBareTagHintsParametric(t *testing.T) {
 	t.Parallel()
-
 	_, err := Build[string, testData]("${reqHeader}", map[string]Func[string, testData]{
 		"reqHeader:": func(_ Buffer, _ string, _ *testData, _ string) (int, error) { return 0, nil },
 	})
@@ -130,7 +124,6 @@ func Test_Template_UnknownBareTagHintsParametric(t *testing.T) {
 
 func Test_Template_FuncReturnsError(t *testing.T) {
 	t.Parallel()
-
 	tagErr := errors.New("tag failure")
 	tmpl, err := Build[string, testData]("${fail}", map[string]Func[string, testData]{
 		"fail": func(_ Buffer, _ string, _ *testData, _ string) (int, error) { return 0, tagErr },
@@ -145,7 +138,6 @@ func Test_Template_FuncReturnsError(t *testing.T) {
 
 func Test_ExecuteChainsRejectsMismatchedLengths(t *testing.T) {
 	t.Parallel()
-
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 

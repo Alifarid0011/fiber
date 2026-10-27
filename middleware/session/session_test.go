@@ -321,7 +321,6 @@ func Test_Session_KeyTypes(t *testing.T) {
 // (query, form) is never written.
 func Test_Session_Save(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		header    string // the response header that has to carry the ID; empty if none does
 		name      string
@@ -389,7 +388,6 @@ func Test_Session_Save(t *testing.T) {
 // promoted into cookies/headers for an existing session (session fixation).
 func Test_Session_ExtractorPreservation(t *testing.T) {
 	t.Parallel()
-
 	t.Run("read-only winner is not promoted for existing session", func(t *testing.T) {
 		t.Parallel()
 		// Chain prefers the cookie, but also accepts a read-only query source.
@@ -482,7 +480,6 @@ func Test_Session_ExtractorPreservation(t *testing.T) {
 // configured extractors.
 func Test_Session_getExtractorInfo(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		sess *Session
 		name string
@@ -522,10 +519,8 @@ func Test_Session_getExtractorInfo(t *testing.T) {
 
 func Test_Session_Save_IdleTimeout(t *testing.T) {
 	t.Parallel()
-
 	t.Run("save to cookie", func(t *testing.T) {
 		t.Parallel()
-
 		const sessionDuration = 5 * time.Second
 		// session store
 		store := NewStore()
@@ -585,10 +580,8 @@ func Test_Session_Save_IdleTimeout(t *testing.T) {
 
 func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 	t.Parallel()
-
 	t.Run("save to cookie", func(t *testing.T) {
 		t.Parallel()
-
 		const absoluteTimeout = 2 * time.Second // extra headroom to avoid flakiness under -race
 		// session store
 		store := NewStore(Config{IdleTimeout: absoluteTimeout, AbsoluteTimeout: absoluteTimeout})
@@ -666,7 +659,6 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 
 func Test_Session_Destroy(t *testing.T) {
 	t.Parallel()
-
 	t.Run("destroy from cookie", func(t *testing.T) {
 		t.Parallel()
 		// get session
@@ -703,7 +695,6 @@ func Test_Session_Destroy(t *testing.T) {
 
 func Test_Session_Custom_Config(t *testing.T) {
 	t.Parallel()
-
 	store := NewStore(Config{IdleTimeout: time.Hour, KeyGenerator: func() string { return "very random" }})
 	require.Equal(t, time.Hour, store.IdleTimeout)
 	require.Equal(t, "very random", store.KeyGenerator())
@@ -728,7 +719,6 @@ func Test_Session_Cookie(t *testing.T) {
 // attribute and interaction with the Secure flag.
 func Test_Session_Cookie_SameSite(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name             string
 		sameSite         string
@@ -916,7 +906,6 @@ func Test_Session_Reset(t *testing.T) {
 
 func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
 	t.Parallel()
-
 	const absoluteTimeout = time.Second
 
 	// newSessionStore keeps the storage TTL out of the way; only the absolute timeout expires the session.
@@ -937,7 +926,6 @@ func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			store := newSessionStore()
 			app := fiber.New()
 
@@ -1332,7 +1320,6 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 // when the ID was found in context locals.
 func Test_Session_Fresh_Flag_Bug(t *testing.T) {
 	t.Parallel()
-
 	store := NewStore()
 	app := fiber.New()
 
@@ -1376,7 +1363,6 @@ func Test_Session_Fresh_Flag_Bug(t *testing.T) {
 // where a POST without CSRF token would result in a new session_id cookie
 func Test_Session_CSRF_Scenario(t *testing.T) {
 	t.Parallel()
-
 	const idleTimeout = 2 * time.Second // Longer timeout to ensure session persists
 
 	store := NewStore(Config{IdleTimeout: idleTimeout})
@@ -1434,7 +1420,6 @@ func Test_Session_CSRF_Scenario(t *testing.T) {
 // session ID being stored in context locals
 func Test_Session_Multiple_GetSession_Calls(t *testing.T) {
 	t.Parallel()
-
 	store := NewStore()
 	app := fiber.New()
 
@@ -1477,7 +1462,6 @@ func Test_Session_Multiple_GetSession_Calls(t *testing.T) {
 
 func Test_Session_DestroyWithContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("destroy with context from cookie", func(t *testing.T) {
 		t.Parallel()
 		sess, _ := sessionTestFresh(t, NewStore())
@@ -1497,7 +1481,6 @@ func Test_Session_DestroyWithContext(t *testing.T) {
 
 func Test_Session_RegenerateWithContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("regenerate with context preserves data pattern", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore()
@@ -1518,7 +1501,6 @@ func Test_Session_RegenerateWithContext(t *testing.T) {
 
 func Test_Session_ResetWithContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("reset with context clears data and changes id", func(t *testing.T) {
 		t.Parallel()
 		sess, _ := sessionTestFresh(t, NewStore())
@@ -1542,7 +1524,6 @@ func Test_Session_ResetWithContext(t *testing.T) {
 
 func Test_Session_SaveWithContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("save with context persists data", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore()
@@ -1582,7 +1563,6 @@ func Test_Session_SaveWithContext(t *testing.T) {
 
 func Test_Session_ResolveContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("resolve context returns background when ctx is nil", func(t *testing.T) {
 		t.Parallel()
 		sess := &Session{ctx: nil}
@@ -1630,7 +1610,6 @@ func newSessionWithStorage(t *testing.T, storage fiber.Storage) *Session {
 // context.
 func Test_Session_WithContext(t *testing.T) {
 	t.Parallel()
-
 	storageErr := errors.New("storage unavailable")
 
 	operations := []struct {
@@ -1806,7 +1785,6 @@ func sessionTestStored(t *testing.T, store *Store, id string) *Session {
 // timeout is the entire safety argument for reusing the decoded snapshot.
 func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 	t.Parallel()
-
 	const idleTimeout = 2 * time.Hour
 
 	app := fiber.New()
@@ -1843,7 +1821,6 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 // save after it was handed out must re-encode rather than reuse the snapshot.
 func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 	t.Parallel()
-
 	newStore := func() (*fiber.App, *Store) {
 		app := fiber.New()
 		store := NewStore(Config{Storage: memory.New()})
@@ -1853,7 +1830,6 @@ func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 
 	t.Run("mutated through Get", func(t *testing.T) {
 		t.Parallel()
-
 		app, store := newStore()
 		id := seedSession(t, app, store, func(sess *Session) { sess.Set("prefs", map[string]string{"theme": "dark"}) })
 
@@ -1869,7 +1845,6 @@ func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 
 	t.Run("mutated after Set on a decoded session", func(t *testing.T) {
 		t.Parallel()
-
 		app, store := newStore()
 		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
@@ -1944,7 +1919,6 @@ func (s *scribbleStorage) scribble() {
 // the lifetime of the slice its Get returns.
 func Test_Session_RetainedSnapshotSurvivesStorageBufferReuse(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	scribbler := &scribbleStorage{Storage: memory.New()}
 	store := NewStore(Config{Storage: scribbler})
@@ -1963,10 +1937,8 @@ func Test_Session_RetainedSnapshotSurvivesStorageBufferReuse(t *testing.T) {
 // outlive the ones that do.
 func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 	t.Parallel()
-
 	t.Run("Regenerate writes the snapshot under the new ID", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		store := NewStore(Config{Storage: memory.New()})
 		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
@@ -1987,7 +1959,6 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 
 	t.Run("Reset drops the snapshot", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		store := NewStore(Config{Storage: memory.New()})
 		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
@@ -2003,7 +1974,6 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 
 	t.Run("Destroy drops the snapshot", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		store := NewStore(Config{Storage: memory.New()})
 		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
@@ -2019,7 +1989,6 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 
 	t.Run("a session loaded by ID can take the fast path", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		rec := newRecordingStorage()
 		store := NewStore(Config{Storage: rec})
@@ -2043,7 +2012,6 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 // read must neither dirty the session nor move the deadline.
 func Test_Session_CleanSave_KeepsAbsoluteExpiration(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	store := NewStore(Config{Storage: memory.New(), AbsoluteTimeout: time.Hour})
 
@@ -2065,7 +2033,6 @@ func Test_Session_CleanSave_KeepsAbsoluteExpiration(t *testing.T) {
 // stay race-free when a save runs next to a read.
 func Test_Session_ConcurrentAliasedReadAndSave(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	store := NewStore(Config{Storage: memory.New()})
 	store.RegisterType(map[string]string{})

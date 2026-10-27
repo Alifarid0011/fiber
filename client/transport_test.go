@@ -93,7 +93,6 @@ func clientTestCRedirectStub(status int, location string) *stubRedirectClient {
 
 func TestStandardClientTransportCoverage(t *testing.T) {
 	t.Parallel()
-
 	var dialCount atomic.Int32
 	client := &fasthttp.Client{}
 	client.Dial = func(addr string) (net.Conn, error) {
@@ -136,7 +135,6 @@ func TestStandardClientTransportCoverage(t *testing.T) {
 
 func TestHostClientTransportClientAccessor(t *testing.T) {
 	t.Parallel()
-
 	host := &fasthttp.HostClient{Addr: "example.com:80"}
 	transport := newHostClientTransport(host)
 
@@ -157,7 +155,6 @@ func TestHostClientTransportClientAccessor(t *testing.T) {
 
 func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	t.Parallel()
-
 	hostWithoutOverrides := &fasthttp.HostClient{Addr: "example.com:80"}
 	nestedDialHost := &fasthttp.HostClient{Addr: "example.org:80"}
 	nestedTLSHost := &fasthttp.HostClient{Addr: "example.net:80", TLSConfig: &tls.Config{ServerName: "example", MinVersion: tls.VersionTLS12}}
@@ -219,7 +216,6 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 
 func TestExtractTLSConfigVariations(t *testing.T) {
 	t.Parallel()
-
 	require.Nil(t, extractTLSConfig(nil))
 	require.Nil(t, extractTLSConfig([]fasthttp.BalancingClient{stubBalancingClient{}}))
 
@@ -236,7 +232,6 @@ func TestExtractTLSConfigVariations(t *testing.T) {
 
 func TestWalkBalancingClientWithBreak(t *testing.T) {
 	t.Parallel()
-
 	host := &fasthttp.HostClient{}
 	require.True(t, walkBalancingClientWithBreak(host, func(*fasthttp.HostClient) bool { return true }))
 
@@ -268,12 +263,10 @@ func TestWalkBalancingClientWithBreak(t *testing.T) {
 // which may be a different host than the caller addressed.
 func TestDoRedirectsWithClient_DropsBodyForAnyMethod(t *testing.T) {
 	t.Parallel()
-
 	for _, status := range []int{fasthttp.StatusMovedPermanently, fasthttp.StatusFound, fasthttp.StatusSeeOther} {
 		for _, method := range []string{fasthttp.MethodPost, fasthttp.MethodPut, fasthttp.MethodPatch, fasthttp.MethodDelete, "QUERY"} {
 			t.Run(strconv.Itoa(status)+"/"+method, func(t *testing.T) {
 				t.Parallel()
-
 				req, resp := clientTestCReqResp(t)
 
 				req.SetRequestURI("http://example.com/start")
@@ -300,7 +293,6 @@ func TestDoRedirectsWithClient_DropsBodyForAnyMethod(t *testing.T) {
 	for _, status := range []int{fasthttp.StatusTemporaryRedirect, fasthttp.StatusPermanentRedirect} {
 		t.Run(strconv.Itoa(status)+"/preserved", func(t *testing.T) {
 			t.Parallel()
-
 			req, resp := clientTestCReqResp(t)
 
 			req.SetRequestURI("http://example.com/start")
@@ -321,7 +313,6 @@ func TestDoRedirectsWithClient_DropsBodyForAnyMethod(t *testing.T) {
 	for _, method := range []string{fasthttp.MethodGet, fasthttp.MethodHead} {
 		t.Run(method+" keeps its method but not its body", func(t *testing.T) {
 			t.Parallel()
-
 			req, resp := clientTestCReqResp(t)
 
 			req.SetRequestURI("http://example.com/start")
@@ -341,7 +332,6 @@ func TestDoRedirectsWithClient_DropsBodyForAnyMethod(t *testing.T) {
 
 func TestDoRedirectsWithClientBranches(t *testing.T) {
 	t.Parallel()
-
 	req, resp := clientTestCReqResp(t)
 
 	req.SetRequestURI("http://example.com/start")
@@ -432,10 +422,8 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 // and credentials never leave the TLS boundary.
 func TestComposeRedirectURL_RejectsHTTPSDowngrade(t *testing.T) {
 	t.Parallel()
-
 	t.Run("HTTPS to HTTP is refused", func(t *testing.T) {
 		t.Parallel()
-
 		_, _, err := composeRedirectURL("https://example.com/login", []byte("http://example.com/after"), false)
 		require.ErrorIs(t, err, ErrRedirectDowngrade)
 	})
@@ -468,7 +456,6 @@ func TestComposeRedirectURL_RejectsHTTPSDowngrade(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			out, host, err := composeRedirectURL(tc.from, []byte(tc.location), false)
 			require.NoError(t, err)
 			require.Equal(t, tc.wantURL, out)
@@ -483,7 +470,6 @@ func TestComposeRedirectURL_RejectsHTTPSDowngrade(t *testing.T) {
 // to be skipped entirely rather than letting a trailing dot pass for one.
 func TestTrustedRedirectTarget_NoInitialHostname(t *testing.T) {
 	t.Parallel()
-
 	require.False(t, trustedRedirectTarget("evil.com.", ""))
 	require.False(t, trustedRedirectTarget("evil.com", ""))
 	require.False(t, trustedRedirectTarget(".", ""))
@@ -498,7 +484,6 @@ func TestTrustedRedirectTarget_NoInitialHostname(t *testing.T) {
 // every bracket off both ends.
 func TestHostnameWithoutPort(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct{ in, want string }{
 		{"example.com", "example.com"},
 		{"example.com:8080", "example.com"},
@@ -549,7 +534,6 @@ func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req, resp := newReq(t)
 
 			client := clientTestCRedirectStub(fasthttp.StatusFound, tc.location)
@@ -562,7 +546,6 @@ func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
 
 	t.Run("cross host drops credentials", func(t *testing.T) {
 		t.Parallel()
-
 		req, resp := newReq(t)
 
 		client := clientTestCRedirectStub(fasthttp.StatusFound, "http://attacker.example/collect")
@@ -578,7 +561,6 @@ func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
 // every transport now shares through doRedirectsWithClient.
 func TestDoRedirectsWithClient_ValidatesTargets(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
 		wantErr  error
 		name     string
@@ -593,7 +575,6 @@ func TestDoRedirectsWithClient_ValidatesTargets(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req, resp := clientTestCReqResp(t)
 
 			req.SetRequestURI(tc.base)
@@ -614,7 +595,6 @@ func TestDoRedirectsWithClient_ValidatesTargets(t *testing.T) {
 // rather than ErrRedirectDowngrade, so the assertion cannot pass vacuously.
 func TestClient_DoRedirects_RejectsHTTPSDowngrade(t *testing.T) {
 	t.Parallel()
-
 	cert, err := tls.LoadX509KeyPair("../.github/testdata/ssl.pem", "../.github/testdata/ssl.key")
 	require.NoError(t, err)
 
@@ -658,7 +638,6 @@ func TestClient_DoRedirects_RejectsHTTPSDowngrade(t *testing.T) {
 // callers actually get from New(), not only to the load-balanced transport.
 func TestClient_DoRedirects_StripsCredentialsCrossHost(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/start", func(c fiber.Ctx) error {
 			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/collect")
@@ -694,7 +673,6 @@ func TestClient_DoRedirects_StripsCredentialsCrossHost(t *testing.T) {
 
 func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {
 	t.Parallel()
-
 	req, resp := clientTestCReqResp(t)
 
 	req.SetRequestURI("http://example.com/start")
@@ -745,7 +723,6 @@ func clientTestCRunStreamResponseBody(t *testing.T, build func() (httpClientTran
 
 func Test_StandardClientTransport_StreamResponseBody(t *testing.T) {
 	t.Parallel()
-
 	clientTestCRunStreamResponseBody(t, func() (httpClientTransport, func() bool) {
 		client := &fasthttp.Client{}
 		return newStandardClientTransport(client), func() bool { return client.StreamResponseBody }
@@ -754,7 +731,6 @@ func Test_StandardClientTransport_StreamResponseBody(t *testing.T) {
 
 func Test_HostClientTransport_StreamResponseBody(t *testing.T) {
 	t.Parallel()
-
 	clientTestCRunStreamResponseBody(t, func() (httpClientTransport, func() bool) {
 		hostClient := &fasthttp.HostClient{}
 		return newHostClientTransport(hostClient), func() bool { return hostClient.StreamResponseBody }
@@ -763,7 +739,6 @@ func Test_HostClientTransport_StreamResponseBody(t *testing.T) {
 
 func Test_LBClientTransport_StreamResponseBody(t *testing.T) {
 	t.Parallel()
-
 	t.Run("empty clients", func(t *testing.T) {
 		t.Parallel()
 		lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{}}
@@ -814,7 +789,6 @@ func Test_LBClientTransport_StreamResponseBody(t *testing.T) {
 
 func Test_httpClientTransport_Interface(t *testing.T) {
 	t.Parallel()
-
 	transports := []struct {
 		transport httpClientTransport
 		name      string
@@ -832,7 +806,6 @@ func Test_httpClientTransport_Interface(t *testing.T) {
 	for _, tt := range transports {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			transport := tt.transport
 			require.NotNil(t, transport.Client())
 			initialStream := transport.StreamResponseBody()
@@ -849,10 +822,8 @@ func Test_httpClientTransport_Interface(t *testing.T) {
 // transport.
 func Test_Transport_PathNormalizing(t *testing.T) {
 	t.Parallel()
-
 	t.Run("fasthttp.Client the Fiber client made", func(t *testing.T) {
 		t.Parallel()
-
 		tr := newOwnedStandardClientTransport()
 		fc := tr.client
 		require.False(t, tr.DisablePathNormalizing())
@@ -868,7 +839,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("fasthttp.Client handed over normalizing", func(t *testing.T) {
 		t.Parallel()
-
 		fc := &fasthttp.Client{}
 		tr := newStandardClientTransport(fc)
 		require.False(t, tr.DisablePathNormalizing())
@@ -886,7 +856,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("fasthttp.Client handed over with the setting on", func(t *testing.T) {
 		t.Parallel()
-
 		fc := &fasthttp.Client{DisablePathNormalizing: true}
 		tr := newStandardClientTransport(fc)
 		require.True(t, tr.DisablePathNormalizing())
@@ -902,7 +871,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("fasthttp.HostClient", func(t *testing.T) {
 		t.Parallel()
-
 		hc := &fasthttp.HostClient{}
 		tr := newHostClientTransport(hc)
 		require.False(t, tr.DisablePathNormalizing())
@@ -917,7 +885,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("fasthttp.LBClient writes every host client, nested ones included", func(t *testing.T) {
 		t.Parallel()
-
 		direct := &fasthttp.HostClient{Addr: "a.example:80"}
 		inner := &fasthttp.HostClient{Addr: "b.example:80"}
 		deeper := &fasthttp.HostClient{Addr: "c.example:80"}
@@ -941,7 +908,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("fasthttp.LBClient reports false while any client normalizes", func(t *testing.T) {
 		t.Parallel()
-
 		quiet := &fasthttp.HostClient{Addr: "a.example:80", DisablePathNormalizing: true}
 		normalizing := &fasthttp.HostClient{Addr: "b.example:80"}
 
@@ -977,7 +943,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("setting an empty balancer is harmless", func(t *testing.T) {
 		t.Parallel()
-
 		tr := newLBClientTransport(&fasthttp.LBClient{})
 		tr.SetDisablePathNormalizing(true)
 		require.False(t, tr.DisablePathNormalizing(), "nothing behind it can be told")
@@ -989,7 +954,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 // returns to a default client that normalizes.
 func Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient(t *testing.T) {
 	t.Parallel()
-
 	host := &fasthttp.HostClient{Addr: "example.com:80"}
 	lbHost := &fasthttp.HostClient{Addr: "example.com:80"}
 	std := &fasthttp.Client{}
@@ -1017,7 +981,6 @@ func Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient(t *testing.
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := tc.client
 			field := tc.field
 			if field == nil { // New: the client creates its own fasthttp client
@@ -1039,7 +1002,6 @@ func Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient(t *testing.
 
 	t.Run("NewWithClient created with the setting on", func(t *testing.T) {
 		t.Parallel()
-
 		std := &fasthttp.Client{DisablePathNormalizing: true}
 		c := NewWithClient(std)
 		require.True(t, c.writesPathAsBuilt())
@@ -1052,7 +1014,6 @@ func Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient(t *testing.
 
 	t.Run("Reset", func(t *testing.T) {
 		t.Parallel()
-
 		c := New().SetDisablePathNormalizing(true)
 		require.True(t, c.writesPathAsBuilt())
 
@@ -1068,7 +1029,6 @@ func Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient(t *testing.
 // the flag does nothing to it and the path parameter check stays on.
 func Test_Client_PathNormalizing_UnknownTransport(t *testing.T) {
 	t.Parallel()
-
 	c := newClient(newBlockingErrTransport(nil))
 	require.NotPanics(t, func() { c.SetDisablePathNormalizing(true) })
 	require.True(t, c.DisablePathNormalizing())
@@ -1090,7 +1050,6 @@ func Test_Client_PathNormalizing_UnknownTransport(t *testing.T) {
 // path the caller asked for.
 func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name     string
 		wantPath string
@@ -1101,7 +1060,6 @@ func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			seen := make(chan string, 4)
 			dial := clientTestCServe(t, func(ctx *fasthttp.RequestCtx) {
 				seen <- string(ctx.Request.URI().PathOriginal())
@@ -1128,7 +1086,6 @@ func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 // bodyless follow-up, a strict target answers 417 instead of serving it.
 func Test_DropRequestBody_RemovesExpect(t *testing.T) {
 	t.Parallel()
-
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	req.Header.SetMethod(fasthttp.MethodPost)
@@ -1148,7 +1105,6 @@ func Test_DropRequestBody_RemovesExpect(t *testing.T) {
 // the redirected GET.
 func Test_DropRequestBody_ClearsTheParsedForm(t *testing.T) {
 	t.Parallel()
-
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	req.SetRequestURI("http://example.com/y")
@@ -1179,7 +1135,6 @@ func Test_DropRequestBody_ClearsTheParsedForm(t *testing.T) {
 // answers a reused PostArgs with the previous body's values.
 func Test_DropRequestBody_ReusedRequestSendsTheNewBody(t *testing.T) {
 	t.Parallel()
-
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	req.SetRequestURI("http://example.com/y")
@@ -1211,7 +1166,6 @@ func Test_DropRequestBody_ReusedRequestSendsTheNewBody(t *testing.T) {
 // is kept out of the pool rather than carried by every later response.
 func Test_Response_ResetDropsOversizedOriginBuffers(t *testing.T) {
 	t.Parallel()
-
 	resp := &Response{RawResponse: fasthttp.AcquireResponse()}
 	defer fasthttp.ReleaseResponse(resp.RawResponse)
 
@@ -1238,7 +1192,6 @@ func Test_Response_ResetDropsOversizedOriginBuffers(t *testing.T) {
 // resp.Header regardless and panics on it; this one acquires its own instead.
 func Test_DoRedirects_NilResponse(t *testing.T) {
 	t.Parallel()
-
 	hops := 0
 	dial := clientTestCServe(t, func(ctx *fasthttp.RequestCtx) {
 		hops++
@@ -1271,7 +1224,6 @@ func Test_DoRedirects_NilResponse(t *testing.T) {
 // error-returning parser after every SetRequestURI; this one now does too.
 func Test_Transport_DoRedirects_RefusesUnparsableInitialURI(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		uri     string
@@ -1283,7 +1235,6 @@ func Test_Transport_DoRedirects_RefusesUnparsableInitialURI(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			stub := &stubRedirectClient{}
 			req, resp := clientTestCReqResp(t)
 			req.SetRequestURI(tc.uri)
@@ -1308,7 +1259,6 @@ func Test_Transport_DoRedirects_RefusesUnparsableInitialURI(t *testing.T) {
 // returns the error instead, so this one does too.
 func Test_Transport_DoRedirects_RefusesUnparsableTarget(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name     string
 		location string
@@ -1321,7 +1271,6 @@ func Test_Transport_DoRedirects_RefusesUnparsableTarget(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var hops atomic.Int64
 			dial := clientTestCServe(t, func(ctx *fasthttp.RequestCtx) {
 				if hops.Add(1) == 1 {

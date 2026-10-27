@@ -125,7 +125,6 @@ func (r *cacheTestCReloads) requireSettled(t *testing.T) {
 // heap generation it originally read is no longer current.
 func Test_Cache_ConcurrentReloadsReplaceSameKeyHeapNode(t *testing.T) {
 	t.Parallel()
-
 	r := cacheTestCStartReloads(t, nil, "")
 
 	r.first.finish(t)
@@ -138,7 +137,6 @@ func Test_Cache_ConcurrentReloadsReplaceSameKeyHeapNode(t *testing.T) {
 // request's completed store. The final heap insertion must replace that node.
 func Test_Cache_ConcurrentReloadAfterReservationReplacesHeapNode(t *testing.T) {
 	t.Parallel()
-
 	storage := newBlockingManifestStorage()
 	r := cacheTestCStartReloads(t, storage, fiber.HeaderAcceptLanguage)
 
@@ -155,7 +153,6 @@ func Test_Cache_ConcurrentReloadAfterReservationReplacesHeapNode(t *testing.T) {
 
 func Test_Cache_ConcurrentReloadStoreFailureRestoresLatestHeapNode(t *testing.T) {
 	t.Parallel()
-
 	storage := newBlockingManifestStorage()
 	r := cacheTestCStartReloads(t, storage, fiber.HeaderAcceptLanguage)
 

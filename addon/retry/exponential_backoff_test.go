@@ -61,10 +61,8 @@ func Test_ExponentialBackoff_Retry(t *testing.T) {
 // that never ran. Every field left at zero takes the default instead.
 func Test_ExponentialBackoff_Retry_ZeroValue(t *testing.T) {
 	t.Parallel()
-
 	t.Run("the zero value calls f", func(t *testing.T) {
 		t.Parallel()
-
 		var backoff ExponentialBackoff
 		calls := 0
 		require.NoError(t, backoff.Retry(func() error {
@@ -92,7 +90,6 @@ func Test_ExponentialBackoff_Retry_ZeroValue(t *testing.T) {
 
 	t.Run("a negative attempt count is unset too", func(t *testing.T) {
 		t.Parallel()
-
 		backoff := &ExponentialBackoff{
 			InitialInterval: time.Microsecond,
 			MaxBackoffTime:  time.Millisecond,
@@ -109,7 +106,6 @@ func Test_ExponentialBackoff_Retry_ZeroValue(t *testing.T) {
 
 	t.Run("a zero max backoff does not turn the retries into a busy loop", func(t *testing.T) {
 		t.Parallel()
-
 		backoff := &ExponentialBackoff{InitialInterval: 10 * time.Millisecond, MaxRetryCount: 3}
 		start := time.Now()
 		calls := 0
@@ -126,7 +122,6 @@ func Test_ExponentialBackoff_Retry_ZeroValue(t *testing.T) {
 
 func Test_ExponentialBackoff_withDefaults(t *testing.T) {
 	t.Parallel()
-
 	defaults := ExponentialBackoff{
 		InitialInterval: DefaultConfig.InitialInterval,
 		MaxBackoffTime:  DefaultConfig.MaxBackoffTime,
@@ -182,7 +177,6 @@ func Test_ExponentialBackoff_withDefaults(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			in := tc.in
 			require.Equal(t, tc.want, in.withDefaults())
 			require.Equal(t, tc.in, in, "the receiver must not change")
@@ -192,7 +186,6 @@ func Test_ExponentialBackoff_withDefaults(t *testing.T) {
 
 func Test_ExponentialBackoff_Retry_NoSleepAfterLastAttempt(t *testing.T) {
 	t.Parallel()
-
 	const (
 		largeInterval = 5 * time.Second // would be used for sleep if bug existed
 		maxAcceptable = 2 * time.Second // Retry must return well before largeInterval
@@ -304,7 +297,6 @@ func (failingReader) Read(_ []byte) (int, error) { return 0, errors.New("fail") 
 
 func Test_ExponentialBackoff_Retry_StartsFromInitialInterval(t *testing.T) {
 	t.Parallel()
-
 	backoff := NewExponentialBackoff(Config{
 		InitialInterval: time.Millisecond,
 		MaxBackoffTime:  50 * time.Millisecond,
@@ -332,7 +324,6 @@ func Test_ExponentialBackoff_Retry_StartsFromInitialInterval(t *testing.T) {
 
 func Test_ExponentialBackoff_Retry_Concurrent(t *testing.T) {
 	t.Parallel()
-
 	backoff := NewExponentialBackoff(Config{
 		InitialInterval: time.Millisecond,
 		MaxBackoffTime:  2 * time.Millisecond,
@@ -358,7 +349,6 @@ func Test_ExponentialBackoff_Retry_Concurrent(t *testing.T) {
 
 func Test_ExponentialBackoff_Retry_UnsetInitialInterval(t *testing.T) {
 	t.Parallel()
-
 	backoff := &ExponentialBackoff{
 		MaxBackoffTime:  time.Millisecond,
 		Multiplier:      2,

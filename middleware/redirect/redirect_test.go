@@ -85,7 +85,6 @@ func redirectTestRun(t *testing.T, unescape bool, pattern string, cases []redire
 	for _, tc := range cases {
 		t.Run(cmp.Or(tc.name, tc.target+" "+tc.request), func(t *testing.T) {
 			t.Parallel()
-
 			requireRule(t, unescape, cmp.Or(tc.pattern, pattern), tc.target, tc.request, tc.want)
 		})
 	}
@@ -173,7 +172,6 @@ func Test_Redirect(t *testing.T) {
 // Test_Redirect_StartAnchor verifies a rule only matches from the start of the path (issue #4476).
 func Test_Redirect_StartAnchor(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{RuleList: []Rule{{From: "/old", To: "/new"}}, StatusCode: fiber.StatusMovedPermanently}))
 	app.Get("/very/old", func(c fiber.Ctx) error { return c.SendString("not redirected") })
@@ -192,7 +190,6 @@ func Test_Redirect_StartAnchor(t *testing.T) {
 // Test_Redirect_SameOriginTargets verifies a captured path segment cannot take a path-only target off this origin.
 func Test_Redirect_SameOriginTargets(t *testing.T) {
 	t.Parallel()
-
 	redirectTestRun(t, false, "", []redirectTestCase{
 		{"protocol relative", "/api/*", "/$1", "/api//evil.com", "/evil.com"},
 		{"long slash run", "/redirect/*", "$1", "/redirect///evil.com", "/evil.com"},
@@ -213,7 +210,6 @@ func Test_Redirect_SameOriginTargets(t *testing.T) {
 // Test_Redirect_SameOriginTargets_Unescaped covers the same guard once UnescapePath decodes the capture.
 func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 	t.Parallel()
-
 	redirectTestRun(t, true, "", []redirectTestCase{
 		{"leading space", "/r/*", "$1", "/r/%20//evil.com", "/evil.com"},
 		{"leading tab", "/r/*", "$1", "/r/%09//evil.com", "/evil.com"},
@@ -229,7 +225,6 @@ func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 // Test_Redirect_TenthCaptureInAuthority pins the guard on a two-digit "$N" token inside the authority.
 func Test_Redirect_TenthCaptureInAuthority(t *testing.T) {
 	t.Parallel()
-
 	requireRule(t, false, "/t/*/*/*/*/*/*/*/*/*/*", "https://$10.cdn.example.com/",
 		"/t/evil.com/x/b/c/d/e/f/g/h/i/tenant", "")
 }
@@ -237,14 +232,12 @@ func Test_Redirect_TenthCaptureInAuthority(t *testing.T) {
 // Test_Redirect_TwoDigitCaptures pins that "$10" names the tenth capture rather than "$1" followed by "0".
 func Test_Redirect_TwoDigitCaptures(t *testing.T) {
 	t.Parallel()
-
 	requireRule(t, false, "/t/*/*/*/*/*/*/*/*/*/*/*", "/r/$11/$10/$1", "/t/a/b/c/d/e/f/g/h/i/j/k", "/r/k/j/a")
 }
 
 // Test_Redirect_ExtraSlashesBeforeTheCapture covers a target opening its authority with more than two slashes.
 func Test_Redirect_ExtraSlashesBeforeTheCapture(t *testing.T) {
 	t.Parallel()
-
 	redirectTestRun(t, false, "/go/*", []redirectTestCase{
 		{name: "three slashes", target: "///$1", request: "/go/evil.com"},
 		{name: "four slashes", target: "////$1", request: "/go/evil.com"},
@@ -260,7 +253,6 @@ func Test_Redirect_ExtraSlashesBeforeTheCapture(t *testing.T) {
 // Test_Redirect_OverlappingRulesAreDeterministic pins that two patterns matching one path resolve the same every run.
 func Test_Redirect_OverlappingRulesAreDeterministic(t *testing.T) {
 	t.Parallel()
-
 	build := func() *fiber.App {
 		return testApp(Config{RuleList: []Rule{
 			{From: "/cdn/*", To: "/first/$1"},
@@ -281,7 +273,6 @@ func Test_Redirect_OverlappingRulesAreDeterministic(t *testing.T) {
 
 func Test_AuthoritySpan(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		in         string
 		start, end int
@@ -307,7 +298,6 @@ func Test_AuthoritySpan(t *testing.T) {
 
 func Test_AsBrowserReads(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct{ in, want string }{
 		{" //evil.com", "//evil.com"},
 		{"/\t/evil.com", "//evil.com"},
@@ -332,7 +322,6 @@ func Test_Redirect_SameOriginTargets_QueryPreserved(t *testing.T) {
 
 func Test_SchemeEnd(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		in   string
 		want int
@@ -358,7 +347,6 @@ func Test_SchemeEnd(t *testing.T) {
 // an empty or a valid rule list.
 func Test_Redirect_ConfigOutcomes(t *testing.T) {
 	t.Parallel()
-
 	rule := []Rule{{From: "/default", To: "google.com"}}
 
 	for _, tc := range []struct {
@@ -409,7 +397,6 @@ func Test_Redirect_ConfigOutcomes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(tc.cfg...))
 			if tc.route {
@@ -425,7 +412,6 @@ func Test_Redirect_ConfigOutcomes(t *testing.T) {
 
 func Test_RegexRules_InvalidRegexPanics(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	require.Panics(t, func() {
 		app.Use(New(Config{
@@ -438,7 +424,6 @@ func Test_RegexRules_InvalidRegexPanics(t *testing.T) {
 // Test_Redirect_TargetIsReadAsTheClientWillRead pins the guard on the target the parser sees, tabs, LFs and CRs gone.
 func Test_Redirect_TargetIsReadAsTheClientWillRead(t *testing.T) {
 	t.Parallel()
-
 	redirectTestRun(t, true, "/r/*", []redirectTestCase{
 		{name: "tab before the host", target: "https://\t$1", request: "/r/%2Fevil.com"},
 		{name: "newline before the host", target: "https://\n$1", request: "/r/%2Fevil.com"},
@@ -453,11 +438,9 @@ func Test_Redirect_TargetIsReadAsTheClientWillRead(t *testing.T) {
 // Test_Redirect_HostTextTheParserDeletes pins that the code points UTS #46 deletes cannot make a target look host-pinned.
 func Test_Redirect_HostTextTheParserDeletes(t *testing.T) {
 	t.Parallel()
-
 	for _, suffix := range []string{"\u00ad", "\ufeff", "\u200b", "\u2060", "\ufe0f", "\u3002", "\uff0e", "\uff61"} {
 		t.Run(strconv.QuoteToASCII(suffix), func(t *testing.T) {
 			t.Parallel()
-
 			requireRule(t, false, "/r/*", "https://$1"+suffix, "/r/evil.com", "")
 		})
 	}
@@ -466,11 +449,9 @@ func Test_Redirect_HostTextTheParserDeletes(t *testing.T) {
 // Test_Redirect_ControlCharacterPinsNoHost covers the leading or trailing run of controls and spaces a client removes.
 func Test_Redirect_ControlCharacterPinsNoHost(t *testing.T) {
 	t.Parallel()
-
 	for _, sep := range []string{"\x00", "\x01", "\x1f", "\x7f"} {
 		t.Run(strconv.QuoteToASCII(sep), func(t *testing.T) {
 			t.Parallel()
-
 			requireRule(t, false, "/r/*x*", "https://$1"+sep+"$2", "/r/evil.comx", "")
 		})
 	}
@@ -479,7 +460,6 @@ func Test_Redirect_ControlCharacterPinsNoHost(t *testing.T) {
 // Test_Redirect_NumericSuffixPinsNoHost covers the IPv4 reading, where "https://$1.1" composed loopback from "127.0.0".
 func Test_Redirect_NumericSuffixPinsNoHost(t *testing.T) {
 	t.Parallel()
-
 	redirectTestRun(t, false, "/r/*", []redirectTestCase{
 		{target: "https://$1.1", request: "/r/127.0.0"},
 		{target: "https://$1.0x1", request: "/r/127.0.0"},
@@ -491,7 +471,6 @@ func Test_Redirect_NumericSuffixPinsNoHost(t *testing.T) {
 // Test_Redirect_DotlessTailPinsNoHost covers a literal with no dot, only the tail of a label the capture opens.
 func Test_Redirect_DotlessTailPinsNoHost(t *testing.T) {
 	t.Parallel()
-
 	redirectTestRun(t, false, "/r/*", []redirectTestCase{
 		{target: "https://$1x", request: "/r/127.0.0"},
 		{target: "https://$1x", request: "/r/10.0.0"},
@@ -516,7 +495,6 @@ func Test_Redirect_DotlessTailPinsNoHost(t *testing.T) {
 // Test_Redirect_CarriesQueryOntoTargetsOwnQuery pins how the request's query joins a target's own query or fragment.
 func Test_Redirect_CarriesQueryOntoTargetsOwnQuery(t *testing.T) {
 	t.Parallel()
-
 	redirectTestRun(t, false, "/old", []redirectTestCase{
 		{target: "/new?from=old", request: "/old?bar=2", want: "/new?from=old&bar=2"},
 		{target: "/new#frag", request: "/old?bar=2", want: "/new?bar=2#frag"},
@@ -538,7 +516,6 @@ func Test_Redirect_CarriesQueryOntoTargetsOwnQuery(t *testing.T) {
 // the author says which comes first and nothing has to be inferred.
 func Test_Redirect_DeprecatedMapHeuristicIsNotExact(t *testing.T) {
 	t.Parallel()
-
 	const narrow, broad = `/p/*[ab]`, `/p/*[a-z]`
 
 	// The map hands "/p/za" to the broader rule, which is not what the author
@@ -554,7 +531,6 @@ func Test_Redirect_DeprecatedMapHeuristicIsNotExact(t *testing.T) {
 // every path the narrower one leaves.
 func Test_Redirect_FirstMatchWins(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name   string
 		narrow Rule
@@ -589,7 +565,6 @@ func Test_Redirect_FirstMatchWins(t *testing.T) {
 // Test_Redirect_DeprecatedMapOrderIsBySpecificity pins the heuristic that orders the deprecated Rules map.
 func Test_Redirect_DeprecatedMapOrderIsBySpecificity(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name  string
 		rules map[string]string
@@ -646,7 +621,6 @@ func Test_Redirect_DeprecatedMapOrderIsBySpecificity(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			requireWinMap(t, tc.rules, tc.path, tc.want)
 		})
 	}
@@ -655,7 +629,6 @@ func Test_Redirect_DeprecatedMapOrderIsBySpecificity(t *testing.T) {
 // Test_Redirect_ThirdSlashUnderNonSpecialScheme covers an authority the author left empty with a third slash.
 func Test_Redirect_ThirdSlashUnderNonSpecialScheme(t *testing.T) {
 	t.Parallel()
-
 	redirectTestRun(t, true, "/p/*", []redirectTestCase{
 		{name: "empty authority leaves the capture in the path", target: "myapp:///$1", request: "/p/evil.com", want: "myapp:///evil.com"},
 		{name: "deeper path under an empty authority", target: "myapp:///x/$1", request: "/p/evil.com", want: "myapp:///x/evil.com"},
@@ -669,7 +642,6 @@ func Test_Redirect_ThirdSlashUnderNonSpecialScheme(t *testing.T) {
 // Test_Redirect_FileAuthorityOpensOnBackslashes covers "file:/$1", where a captured "\evil.com/share" names a host.
 func Test_Redirect_FileAuthorityOpensOnBackslashes(t *testing.T) {
 	t.Parallel()
-
 	requireRule(t, true, "/r/*", "file:/$1", "/r/%5Cevil.com/share", "")
 
 	// A value that stays a path still redirects, as does a third slash, which closes the authority empty like "file:///tmp".
@@ -694,7 +666,6 @@ func Test_Redirect_FileAuthorityOpensOnBackslashes(t *testing.T) {
 // Test_Redirect_AnchorsBindEveryBranch covers a top-level "|", where concatenated anchors made "^/a|/b$".
 func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 	t.Parallel()
-
 	app := testApp(Config{RuleList: []Rule{{From: "/a|/b", To: "/moved"}}}, false)
 	for _, tc := range []struct {
 		request string
@@ -713,27 +684,23 @@ func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 // Test_Redirect_NestedAlternationLosesTheTieBreak covers two rules that tie on both specificity measures.
 func Test_Redirect_FiniteRepetitionIsCounted(t *testing.T) {
 	t.Parallel()
-
 	requireWin(t, []Rule{{From: `/p/[a][ab]?`, To: "/narrow"}, {From: `/p/[ab]{1,2}`, To: "/broad"}}, "/p/a", "/narrow")
 }
 
 // Test_Redirect_UnboundedRulesKeepTheirBreadth covers two rules that both run on: "/p/[z]+" and "/p/[a-z]+".
 func Test_Redirect_UnboundedRulesKeepTheirBreadth(t *testing.T) {
 	t.Parallel()
-
 	requireWin(t, []Rule{{From: `/p/[z]+`, To: "/narrow"}, {From: `/p/[a-z]+`, To: "/broad"}}, "/p/z", "/narrow")
 }
 
 // Test_Redirect_EscapedByteIsOneMember covers the class escape spelling one byte: "[\.]" lists the dot alone.
 func Test_Redirect_UnterminatedQuoteRuleIsRejected(t *testing.T) {
 	t.Parallel()
-
 	require.Panics(t, func() { New(Config{RuleList: []Rule{{From: `/p/*\Qab*`, To: "/safe"}}}) })
 }
 
 func Test_Redirect_HexEscapeOutranksAClass(t *testing.T) {
 	t.Parallel()
-
 	rules := []Rule{{From: `/p/\x{61}`, To: "/exact"}, {From: "/p/[a-z]", To: "/class"}}
 	for _, tc := range []struct{ request, want string }{{"/p/a", "/exact"}, {"/p/b", "/class"}} {
 		requireWin(t, rules, tc.request, tc.want)
@@ -743,7 +710,6 @@ func Test_Redirect_HexEscapeOutranksAClass(t *testing.T) {
 // Test_Redirect_BareFileSchemeIsAPath covers a "file:" target with no slashes, which names no authority.
 func Test_Redirect_BareFileSchemeIsAPath(t *testing.T) {
 	t.Parallel()
-
 	requireRule(t, false, "/r/*", "file:tmp$1", "/r/report", "file:tmpreport")
 
 	// A bare "file:" target holds no authority span, so it is opaque-path and the composed location is what gets checked.
@@ -757,7 +723,6 @@ func Test_Redirect_BareFileSchemeIsAPath(t *testing.T) {
 // Test_Redirect_FileSchemeEmptyAuthority covers "file", whose "file:///$1" is the empty authority of a local path.
 func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
 	t.Parallel()
-
 	redirectTestRun(t, true, "/p/*", []redirectTestCase{
 		{name: "local path composes", target: "file:///$1", request: "/p/tmp/report", want: "file:///tmp/report"},
 		{name: "deeper local path", target: "file:///var/$1", request: "/p/log", want: "file:///var/log"},
@@ -769,7 +734,6 @@ func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
 // Test_Redirect_LiteralBracesHideNoRun covers "{x*}", whose braces bound no repetition and hide no run.
 func Test_Redirect_DeepNestingIsBounded(t *testing.T) {
 	t.Parallel()
-
 	deep := "/p/" + strings.Repeat("(?:", 16000) + "a" + strings.Repeat(")", 16000)
 	require.NotPanics(t, func() { New(Config{RuleList: []Rule{{From: deep, To: "/x"}, {From: "/p/a", To: "/y"}}}) })
 }
@@ -779,7 +743,6 @@ func Test_Redirect_DeepNestingIsBounded(t *testing.T) {
 // decides precedence, and picking one silently is the bug this API replaced.
 func Test_Redirect_BothRuleFieldsPanic(t *testing.T) {
 	t.Parallel()
-
 	require.Panics(t, func() {
 		New(Config{Rules: map[string]string{"/old": "/new"}, RuleList: []Rule{{From: "/old", To: "/new"}}})
 	})
@@ -793,7 +756,6 @@ func Test_Redirect_BothRuleFieldsPanic(t *testing.T) {
 // on working, since it has to for the whole of v3.
 func Test_Redirect_DeprecatedMapStillRedirects(t *testing.T) {
 	t.Parallel()
-
 	requireWinMap(t, map[string]string{"/api/*": "/$1"}, "/api/users", "/users")
 	requireWinMap(t, map[string]string{"/old": "/new"}, "/old", "/new")
 }
@@ -802,7 +764,6 @@ func Test_Redirect_DeprecatedMapStillRedirects(t *testing.T) {
 // than reordered: the order is the author's, so the answer is to tell them.
 func Test_ShadowedRules(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		rules   []Rule
@@ -821,7 +782,6 @@ func Test_ShadowedRules(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			compiled := make([]compiledRule, 0, len(tc.rules))
 			for _, rule := range tc.rules {
 				compiled = append(compiled, compiledRule{
@@ -838,10 +798,8 @@ func Test_ShadowedRules(t *testing.T) {
 // RuleList is handed back in the order the author wrote it.
 func Test_RuleList(t *testing.T) {
 	t.Parallel()
-
 	t.Run("a rule list keeps the author's order", func(t *testing.T) {
 		t.Parallel()
-
 		list := []Rule{{From: "/*", To: "/broad"}, {From: "/api/users", To: "/exact"}}
 		require.Equal(t, list, orderedRules(Config{RuleList: list}))
 	})
@@ -876,7 +834,6 @@ func Test_RuleList(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			rules := orderedRules(Config{Rules: tc.rules})
 			got := make([]string, 0, len(rules))
 			for _, rule := range rules {
@@ -892,7 +849,6 @@ func Test_RuleList(t *testing.T) {
 // every pair of a rule list long enough for the cost to show.
 func Test_ShadowedRulesIsBounded(t *testing.T) {
 	t.Parallel()
-
 	shadowing := func(n int) []compiledRule {
 		rules := make([]compiledRule, 0, n)
 		rules = append(rules, compiledRule{from: "/*", pattern: regexp.MustCompile(`^(?:(.*))$`)})
@@ -990,7 +946,6 @@ func Benchmark_Redirect_Handler(b *testing.B) {
 // now answered by the same line.
 func Test_Redirect_CaptureInAuthorityIsRefused(t *testing.T) {
 	t.Parallel()
-
 	targets := []string{
 		// The whole host, in every shape it was written.
 		"https://$1", "//$1", "https://$1$2", "https://$1:$2", "https://$1.$2",
@@ -1020,7 +975,6 @@ func Test_Redirect_CaptureInAuthorityIsRefused(t *testing.T) {
 	for _, target := range targets {
 		t.Run(target, func(t *testing.T) {
 			t.Parallel()
-
 			requireRule(t, false, "/r/*", target, "/r/evil.com", "")
 		})
 	}
@@ -1031,7 +985,6 @@ func Test_Redirect_CaptureInAuthorityIsRefused(t *testing.T) {
 // fragment of an absolute target is untouched.
 func Test_Redirect_CaptureOutsideAuthorityStillRedirects(t *testing.T) {
 	t.Parallel()
-
 	redirectTestRun(t, false, "/r/*", []redirectTestCase{
 		{name: "path", target: "https://cdn.example.com/$1", request: "/r/a/b", want: "https://cdn.example.com/a/b"},
 		{name: "path under a port", target: "https://cdn.example.com:8080/$1", request: "/r/x", want: "https://cdn.example.com:8080/x"},

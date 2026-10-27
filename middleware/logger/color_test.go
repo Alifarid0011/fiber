@@ -21,7 +21,6 @@ import (
 // fmt.Fprintf branch of defaultLoggerInstance is only touched by benchmarks.
 func Test_Logger_DefaultFormat_StatusColors(t *testing.T) {
 	t.Parallel()
-
 	colors := fiber.DefaultColors
 
 	cases := []struct {
@@ -37,7 +36,6 @@ func Test_Logger_DefaultFormat_StatusColors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
 			t.Parallel()
-
 			app, buf := loggerTestApp(t, &Config{ForceColors: true})
 			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(tc.status) })
 
@@ -49,7 +47,6 @@ func Test_Logger_DefaultFormat_StatusColors(t *testing.T) {
 
 func Test_Logger_DefaultFormat_MethodColors(t *testing.T) {
 	t.Parallel()
-
 	colors := fiber.DefaultColors
 
 	cases := []struct {
@@ -68,7 +65,6 @@ func Test_Logger_DefaultFormat_MethodColors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.method, func(t *testing.T) {
 			t.Parallel()
-
 			app, buf := loggerTestApp(t, &Config{ForceColors: true})
 			app.All("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
@@ -83,7 +79,6 @@ func Test_Logger_DefaultFormat_MethodColors(t *testing.T) {
 // in the error would otherwise forge a second access-log line (#4341).
 func Test_Logger_DefaultFormat_ColoredError(t *testing.T) {
 	t.Parallel()
-
 	colors := fiber.DefaultColors
 	app, buf := loggerTestApp(t, &Config{ForceColors: true})
 	app.Get("/", func(fiber.Ctx) error { return errors.New("boom\r\n200 | forged") })

@@ -76,7 +76,6 @@ func sseTestOnClose(t *testing.T, handler func(fiber.Ctx, *Stream) error) error 
 // Test_SSE_EventFrames covers the frame writeEvent writes for an event.
 func Test_SSE_EventFrames(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name  string
 		want  string
@@ -98,7 +97,6 @@ func Test_SSE_EventFrames(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.Equal(t, tc.want, sseTestFrame(t, tc.event))
 		})
 	}
@@ -106,7 +104,6 @@ func Test_SSE_EventFrames(t *testing.T) {
 
 func Test_SSE_EventRejectsFieldInjection(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
 
@@ -115,7 +112,6 @@ func Test_SSE_EventRejectsFieldInjection(t *testing.T) {
 
 func Test_SSE_EventJSONEncodesData(t *testing.T) {
 	t.Parallel()
-
 	frame := sseTestFrame(t, Event{Name: "message", Data: map[string]string{"hello": "world"}})
 
 	require.JSONEq(t, `{"hello":"world"}`, stringsTrimData(frame))
@@ -123,7 +119,6 @@ func Test_SSE_EventJSONEncodesData(t *testing.T) {
 
 func Test_SSE_NewUsesAppJSONEncoder(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{
 		JSONEncoder: func(any) ([]byte, error) { return []byte(`{"encoded":"custom"}`), nil },
 	})
@@ -139,7 +134,6 @@ func Test_SSE_NewUsesAppJSONEncoder(t *testing.T) {
 
 func Test_SSE_EventDoesNotWritePartialFrameWhenDataMarshalFails(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
 
@@ -151,7 +145,6 @@ func Test_SSE_EventDoesNotWritePartialFrameWhenDataMarshalFails(t *testing.T) {
 
 func Test_SSE_EventReturnsWriterError(t *testing.T) {
 	t.Parallel()
-
 	writeErr := errors.New("write failed")
 	w := bufio.NewWriterSize(errWriter{err: writeErr}, 1)
 
@@ -160,7 +153,6 @@ func Test_SSE_EventReturnsWriterError(t *testing.T) {
 
 func Test_SSE_CommentSanitizesLines(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
 
@@ -172,7 +164,6 @@ func Test_SSE_CommentSanitizesLines(t *testing.T) {
 
 func Test_SSE_CommentReturnsWriterError(t *testing.T) {
 	t.Parallel()
-
 	writeErr := errors.New("write failed")
 	w := bufio.NewWriterSize(errWriter{err: writeErr}, 1)
 
@@ -181,7 +172,6 @@ func Test_SSE_CommentReturnsWriterError(t *testing.T) {
 
 func Test_SSE_NewWritesHeadersAndEvents(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	var capturedLastEventID string
 	app.Get("/events", New(Config{
@@ -208,7 +198,6 @@ func Test_SSE_NewWritesHeadersAndEvents(t *testing.T) {
 
 func Test_SSE_NewWritesHeartbeat(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Get("/events", New(Config{
 		HeartbeatInterval: 5 * time.Millisecond,
@@ -229,7 +218,6 @@ func Test_SSE_NewWritesHeartbeat(t *testing.T) {
 
 func Test_SSE_OnCloseReceivesNilAfterNormalClose(t *testing.T) {
 	t.Parallel()
-
 	err := sseTestOnClose(t, func(_ fiber.Ctx, stream *Stream) error { return stream.Event(Event{Data: "ok"}) })
 
 	require.NoError(t, err)
@@ -237,7 +225,6 @@ func Test_SSE_OnCloseReceivesNilAfterNormalClose(t *testing.T) {
 
 func Test_SSE_StreamComment(t *testing.T) {
 	t.Parallel()
-
 	stream, buf := sseTestStream(t)
 
 	require.NoError(t, stream.Comment("hello"))
@@ -246,7 +233,6 @@ func Test_SSE_StreamComment(t *testing.T) {
 
 func Test_SSE_StreamCommentReturnsWriterError(t *testing.T) {
 	t.Parallel()
-
 	writeErr := errors.New("write failed")
 	stream := newStream(context.Background(), bufio.NewWriterSize(errWriter{err: writeErr}, 1), "")
 
@@ -256,7 +242,6 @@ func Test_SSE_StreamCommentReturnsWriterError(t *testing.T) {
 
 func Test_SSE_StreamRetryIgnoresNonPositiveDuration(t *testing.T) {
 	t.Parallel()
-
 	stream, buf := sseTestStream(t)
 
 	require.NoError(t, stream.Retry(0))
@@ -266,7 +251,6 @@ func Test_SSE_StreamRetryIgnoresNonPositiveDuration(t *testing.T) {
 
 func Test_SSE_StreamRetryReturnsWriterError(t *testing.T) {
 	t.Parallel()
-
 	writeErr := errors.New("write failed")
 	stream := newStream(context.Background(), bufio.NewWriterSize(errWriter{err: writeErr}, 1), "")
 
@@ -276,7 +260,6 @@ func Test_SSE_StreamRetryReturnsWriterError(t *testing.T) {
 
 func Test_SSE_StreamConcurrentWrites(t *testing.T) {
 	t.Parallel()
-
 	stream, buf := sseTestStream(t)
 
 	const writers = 16
@@ -298,7 +281,6 @@ func Test_SSE_StreamConcurrentWrites(t *testing.T) {
 
 func Test_SSE_StreamContextCanceledOnClose(t *testing.T) {
 	t.Parallel()
-
 	stream, _ := sseTestStream(t)
 	stream.closeStream()
 
@@ -311,7 +293,6 @@ func Test_SSE_StreamContextCanceledOnClose(t *testing.T) {
 
 func Test_SSE_NewStreamUsesBackgroundContextWhenNil(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 	stream := newStream(nil, bufio.NewWriter(&buf), "") //nolint:staticcheck // Covers the nil fallback branch in newStream.
 	defer stream.closeStream()
@@ -322,7 +303,6 @@ func Test_SSE_NewStreamUsesBackgroundContextWhenNil(t *testing.T) {
 
 func Test_SSE_StreamErrAfterNormalClose(t *testing.T) {
 	t.Parallel()
-
 	stream, _ := sseTestStream(t)
 	stream.closeStream()
 
@@ -332,7 +312,6 @@ func Test_SSE_StreamErrAfterNormalClose(t *testing.T) {
 
 func Test_SSE_StreamReturnsLatchedError(t *testing.T) {
 	t.Parallel()
-
 	writeErr := errors.New("write failed")
 	stream := newStream(context.Background(), bufio.NewWriter(errWriter{err: writeErr}), "")
 
@@ -342,7 +321,6 @@ func Test_SSE_StreamReturnsLatchedError(t *testing.T) {
 
 func Test_SSE_StreamWriteError(t *testing.T) {
 	t.Parallel()
-
 	writeErr := errors.New("write failed")
 	stream := newStream(context.Background(), bufio.NewWriter(errWriter{err: writeErr}), "")
 
@@ -357,7 +335,6 @@ func Test_SSE_StreamWriteError(t *testing.T) {
 
 func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	t.Parallel()
-
 	const (
 		testTimeout                  = time.Second
 		disconnectObservationTimeout = 2 * time.Second
@@ -407,7 +384,6 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 
 func Test_SSE_HandlerErrorCallsOnClose(t *testing.T) {
 	t.Parallel()
-
 	handlerErr := errors.New("boom")
 	err := sseTestOnClose(t, func(fiber.Ctx, *Stream) error { return handlerErr })
 
@@ -416,7 +392,6 @@ func Test_SSE_HandlerErrorCallsOnClose(t *testing.T) {
 
 func Test_SSE_HandlerPanicCallsOnClose(t *testing.T) {
 	t.Parallel()
-
 	err := sseTestOnClose(t, func(fiber.Ctx, *Stream) error { panic("boom") })
 
 	require.EqualError(t, err, "sse: handler panic: boom")
@@ -424,13 +399,11 @@ func Test_SSE_HandlerPanicCallsOnClose(t *testing.T) {
 
 func Test_SSE_NewPanicsWithoutHandler(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithValue(t, "sse: Handler must not be nil", func() { New() })
 }
 
 func Test_SSE_StopHeartbeatIsIdempotent(t *testing.T) {
 	t.Parallel()
-
 	stream, _ := sseTestStream(t)
 
 	stop := stream.startHeartbeat(time.Hour)
@@ -441,7 +414,6 @@ func Test_SSE_StopHeartbeatIsIdempotent(t *testing.T) {
 
 func Test_SSE_StartHeartbeatReturnsNilForNonPositiveInterval(t *testing.T) {
 	t.Parallel()
-
 	stream, _ := sseTestStream(t)
 
 	require.Nil(t, stream.startHeartbeat(0))
@@ -481,7 +453,6 @@ func Benchmark_sanitizeField(b *testing.B) {
 
 func Test_SSE_Retry_SubMillisecondRoundsUp(t *testing.T) {
 	t.Parallel()
-
 	require.Contains(t, sseTestFrame(t, Event{Data: "x", Retry: 500 * time.Microsecond}), "retry: 1\n")
 }
 

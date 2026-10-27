@@ -86,7 +86,6 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(tc.app)
 			app.Use(New(Config{Expiration: 1 * time.Hour}))
 
@@ -122,7 +121,6 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 // handler, and so stored under an entry of its own.
 func Test_Cache_Security_KeyValuesStayDistinct(t *testing.T) {
 	t.Parallel()
-
 	header := headerPartition("X-Custom-Header", func(cfg *Config) { cfg.KeyHeaders = []string{"X-Custom-Header"} })
 
 	for _, tc := range []struct {
@@ -165,7 +163,6 @@ func Test_Cache_Security_KeyValuesStayDistinct(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			cfg := Config{Expiration: 1 * time.Hour}
 			tc.dimension.configure(&cfg)
 			app := fiber.New()
@@ -195,7 +192,6 @@ func Test_Cache_Security_KeyValuesStayDistinct(t *testing.T) {
 // Test_Cache_Security_Concurrent_QueryParamDoS tests concurrent requests with excessive params
 func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: 1 * time.Hour}))
 
@@ -240,7 +236,6 @@ func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 // Test_Cache_Security_MultiDimensionInjection tests injection with multiple headers and cookies
 func Test_Cache_Security_MultiDimensionInjection(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{
 		Expiration: 1 * time.Hour,
@@ -307,7 +302,6 @@ func Test_Cache_Security_MultiDimensionInjection(t *testing.T) {
 // to one sending just that first value — and got served its cached response.
 func Test_Cache_Security_KeyHeaderRepeatedFieldLines(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: 1 * time.Hour, KeyHeaders: []string{"X-Tenant"}}))
 	app.Get("/", cacheTestCEchoTenants)
@@ -354,7 +348,6 @@ func Test_Cache_Security_MultiLineResponseHeaders(t *testing.T) {
 
 	t.Run("vary on a later line still partitions", func(t *testing.T) {
 		t.Parallel()
-
 		wire := cacheTestCWire{t: t, app: newApp(fiber.HeaderVary, fiber.HeaderAcceptEncoding, "X-Tenant")}
 
 		cacheTestCRequireReply(t, wire.field("X-Tenant", "acme"), cacheMiss, "tenant:acme")
@@ -375,7 +368,6 @@ func Test_Cache_Security_MultiLineResponseHeaders(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			wire := cacheTestCWire{t: t, app: newApp(tc.header, tc.lines...)}
 
 			require.Equal(t, cacheUnreachable, wire.field("X-Tenant", "acme").cache)
@@ -390,7 +382,6 @@ func Test_Cache_Security_MultiLineResponseHeaders(t *testing.T) {
 // the value bytes it points at.
 func Test_JoinedHeader(t *testing.T) {
 	t.Parallel()
-
 	var h fasthttp.ResponseHeader
 	require.Nil(t, joinedHeader(&h, fiber.HeaderVary, true), "absent header")
 
@@ -425,7 +416,6 @@ func Test_JoinedHeader(t *testing.T) {
 // one's page.
 func Test_Cache_Security_CookieKeyedOnEveryFieldLine(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: time.Hour, KeyHeaders: []string{"Cookie"}}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("page-for:" + c.Cookies("session")) })
@@ -446,7 +436,6 @@ func Test_Cache_Security_CookieKeyedOnEveryFieldLine(t *testing.T) {
 // Test_Cache_Security_DelimiterCollisionPrevention verifies that escaped delimiters don't collide
 func Test_Cache_Security_DelimiterCollisionPrevention(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: 1 * time.Hour, KeyHeaders: []string{"X-Header"}, KeyCookies: []string{"session"}}))
 
@@ -494,7 +483,6 @@ func Test_Cache_Security_DelimiterCollisionPrevention(t *testing.T) {
 // between e.g. a literal "a\pb" and the escaped form of "a|b" → "a\pb".
 func Test_Cache_Security_EscapeKeyDelimiters_Unit(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		input    string
 		expected string
@@ -552,7 +540,6 @@ func Test_Cache_Security_EscapeKeyDelimiters_Unit(t *testing.T) {
 // through verbatim so the fast path is preserved.
 func Test_Cache_BoundKeySegment_ReservedPrefixHashed(t *testing.T) {
 	t.Parallel()
-
 	hashed := func(s string) string {
 		sum := sha256.Sum256([]byte(s))
 		return hashPrefix + hex.EncodeToString(sum[:])
@@ -586,7 +573,6 @@ func Test_Cache_BoundKeySegment_ReservedPrefixHashed(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.Equal(t, tc.input, boundKeySegment(tc.input))
 			require.Equal(t, tc.input, string(appendBoundKeySegment(nil, tc.input)))
 		})
@@ -600,7 +586,6 @@ func Test_Cache_BoundKeySegment_ReservedPrefixHashed(t *testing.T) {
 // contains the literal bytes "a\p" repeated.
 func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: 1 * time.Hour, Methods: []string{fiber.MethodQuery}}))
 
@@ -633,7 +618,6 @@ func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
 
 func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: 1 * time.Hour, Methods: []string{fiber.MethodQuery}}))
 
@@ -676,7 +660,6 @@ func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T)
 // entry.
 func Test_VaryCookie_KeyIsStableAcrossCookieCollection(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: time.Hour}))
 	app.Get("/", func(c fiber.Ctx) error {
@@ -701,7 +684,6 @@ func Test_VaryCookie_KeyIsStableAcrossCookieCollection(t *testing.T) {
 // acts on is seen wherever it sits among its field lines.
 func Test_RequestHeader_SecondFieldLine(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name   string
 		header string
@@ -735,7 +717,6 @@ func Test_RequestHeader_SecondFieldLine(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{Expiration: time.Hour}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
@@ -756,7 +737,6 @@ func Test_RequestHeader_SecondFieldLine(t *testing.T) {
 // other's response.
 func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: time.Hour}))
 	app.Get("/", func(c fiber.Ctx) error {
@@ -788,7 +768,6 @@ func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
 // that only the connection it came from ever sent.
 func Test_StoreResponseHeaders_DropsTrailer(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: time.Hour, StoreResponseHeaders: true}))
 	app.Get("/", func(c fiber.Ctx) error {
@@ -811,7 +790,6 @@ func Test_StoreResponseHeaders_DropsTrailer(t *testing.T) {
 // not see it and the response would have been stored and shared.
 func Test_SetCookie2ResponseIsNotStored(t *testing.T) {
 	t.Parallel()
-
 	var calls atomic.Int32
 	app := fiber.New()
 	app.Use(New(Config{Expiration: time.Hour}))
@@ -838,7 +816,6 @@ func Test_SetCookie2ResponseIsNotStored(t *testing.T) {
 // an entry each time.
 func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 	t.Parallel()
-
 	for _, spelling := range []string{
 		"Application/X-WWW-Form-Urlencoded",
 		"application/x-www-form-urlencoded",
@@ -846,7 +823,6 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 	} {
 		t.Run(spelling, func(t *testing.T) {
 			t.Parallel()
-
 			var calls atomic.Int32
 			app := fiber.New()
 			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}}))
@@ -882,11 +858,9 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 // served the entry stored for a form.
 func Test_Vary_PartitionsWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
-
 	for _, disable := range []bool{false, true} {
 		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%v", disable), func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
 			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}}))
 			app.Post("/", func(c fiber.Ctx) error {
@@ -912,11 +886,9 @@ func Test_Vary_PartitionsWithoutHeaderNormalizing(t *testing.T) {
 // dimension named by KeyHeaders rather than by the response's Vary.
 func Test_KeyHeaders_PartitionWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
-
 	for _, disable := range []bool{false, true} {
 		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%v", disable), func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
 			app.Use(New(Config{Expiration: time.Hour, KeyHeaders: []string{"X-Tenant"}}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body-for:" + c.Get("X-Tenant")) })
@@ -940,7 +912,6 @@ func Test_KeyHeaders_PartitionWithoutHeaderNormalizing(t *testing.T) {
 // every client after it a bare 301 it could not follow.
 func Test_CachedRedirectKeepsItsLocation(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: time.Hour}))
 	app.Get("/old", func(c fiber.Ctx) error {
@@ -971,7 +942,6 @@ func Test_CachedRedirectKeepsItsLocation(t *testing.T) {
 // and all.
 func Test_Authorization_DetectedWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 	app.Use(New(Config{Expiration: time.Hour}))
 	app.Get("/", func(c fiber.Ctx) error {
@@ -994,7 +964,6 @@ func Test_Authorization_DetectedWithoutHeaderNormalizing(t *testing.T) {
 // "cache-control: no-store" was ignored outright.
 func Test_RequestDirectives_HonoredWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 	app.Use(New(Config{Expiration: time.Hour}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
@@ -1017,7 +986,6 @@ func Test_RequestDirectives_HonoredWithoutHeaderNormalizing(t *testing.T) {
 // in the anonymous partition.
 func Test_Authorization_MixedCaseFieldLines(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 	app.Use(New(Config{Expiration: time.Hour}))
 	app.Get("/", func(c fiber.Ctx) error {
@@ -1072,7 +1040,6 @@ func Test_Cache_NonCanonicalResponseNamesAreNotDuplicated(t *testing.T) {
 	for _, normalize := range []bool{true, false} {
 		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
 			app.Use(New(Config{StoreResponseHeaders: true, Expiration: time.Minute}))
 			app.Get("/", func(c fiber.Ctx) error {
@@ -1152,7 +1119,6 @@ func Test_Cache_NonCanonicalResponseNamesAreHonored(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, normalize := range []bool{true, false} {
 				app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
 				app.Use(New(Config{StoreResponseHeaders: true, Expiration: time.Minute}))
@@ -1180,11 +1146,9 @@ func Test_Cache_NonCanonicalResponseNamesAreHonored(t *testing.T) {
 // one a recipient should read.
 func Test_Cache_OuterMiddlewareHeaderNamesAreNotDuplicated(t *testing.T) {
 	t.Parallel()
-
 	for _, normalize := range []bool{true, false} {
 		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
 			app.Use(func(c fiber.Ctx) error {
 				c.Response().Header.Set("cache-control", "max-age=5")
@@ -1214,11 +1178,9 @@ func Test_Cache_OuterMiddlewareHeaderNamesAreNotDuplicated(t *testing.T) {
 // every later client whose request matched the key.
 func Test_Cache_SetCookie2IsSeenWhateverItsCase(t *testing.T) {
 	t.Parallel()
-
 	for _, name := range []string{"Set-Cookie2", "set-cookie2"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 			app.Use(New(Config{Expiration: time.Minute}))
 
@@ -1250,7 +1212,6 @@ func Test_Cache_SetCookie2IsSeenWhateverItsCase(t *testing.T) {
 // a comma inside one does not end the directive.
 func Test_Cache_QuotedDirective(t *testing.T) {
 	t.Parallel()
-
 	const noSharing = "a token inside a quoted extension value does not authorize sharing"
 	uncacheable := []string{cacheUnreachable, cacheUnreachable}
 
@@ -1275,7 +1236,6 @@ func Test_Cache_QuotedDirective(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{Expiration: time.Minute}))
 
@@ -1309,7 +1269,6 @@ func Test_Cache_QuotedDirective(t *testing.T) {
 // already been touched twice before the cache saw it.
 func Test_Cache_EveryStaleSpellingIsReplaced(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 	// Two middlewares ahead of the cache, each choosing its own spelling.
 	// Three spellings of each field: the canonical one SetBytesV replaces on its
@@ -1356,12 +1315,10 @@ func Test_Cache_EveryStaleSpellingIsReplaced(t *testing.T) {
 // one client's private response served to another.
 func Test_Cache_CookieKeyedEntriesStayPerSession(t *testing.T) {
 	t.Parallel()
-
 	for _, mode := range []string{"KeyHeaders", "Vary"} {
 		for _, normalize := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s/normalize=%v", mode, normalize), func(t *testing.T) {
 				t.Parallel()
-
 				cfg := Config{Expiration: time.Minute}
 				if mode == "KeyHeaders" {
 					cfg.KeyHeaders = []string{fiber.HeaderCookie}
@@ -1414,7 +1371,6 @@ func Test_Cache_CookieKeyedEntriesStayPerSession(t *testing.T) {
 // one of them and must be stored and replayed like any other.
 func Test_Cache_LongHeaderNameIsNotIgnored(t *testing.T) {
 	t.Parallel()
-
 	long := "X-" + strings.Repeat("a", maxIgnoredHeaderLen)
 	require.Greater(t, len(long), maxIgnoredHeaderLen)
 
@@ -1474,7 +1430,6 @@ func Test_Cache_ReplayClearsEveryStoredSpelling(t *testing.T) {
 // request's body.
 func Test_Cache_AuthorizationFieldLinesFramed(t *testing.T) {
 	t.Parallel()
-
 	var handlerRuns atomic.Int64
 	app := fiber.New()
 	app.Use(New(Config{Expiration: time.Minute}))
@@ -1505,7 +1460,6 @@ func Test_Cache_AuthorizationFieldLinesFramed(t *testing.T) {
 // the key. The entry is dropped instead.
 func Test_Cache_LegacyStoredSetCookieIsUnsafe(t *testing.T) {
 	t.Parallel()
-
 	store := memory.New()
 	var handlerRuns atomic.Int64
 	app := fiber.New()
@@ -1550,7 +1504,6 @@ func Test_Cache_LegacyStoredSetCookieIsUnsafe(t *testing.T) {
 // the next under a synthesized "public, max-age".
 func Test_Cache_ProxiedResponseCasingIsRead(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name      string
 		directive string
@@ -1561,7 +1514,6 @@ func Test_Cache_ProxiedResponseCasingIsRead(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var handlerRuns atomic.Int64
 			app := fiber.New()
 			app.Use(New(Config{StoreResponseHeaders: true, Expiration: time.Minute}))
@@ -1595,7 +1547,6 @@ func Test_Cache_ProxiedResponseCasingIsRead(t *testing.T) {
 // body. The key namespace is versioned so no such entry is ever read.
 func Test_Cache_LegacyAnonymousEntryIsNotRead(t *testing.T) {
 	t.Parallel()
-
 	storage := memory.New()
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 	app.Use(New(Config{
@@ -1652,10 +1603,8 @@ func getFromHost(t *testing.T, app *fiber.App, host, target string) reply {
 // was served for the other.
 func Test_Cache_Security_KeyIncludesAuthority(t *testing.T) {
 	t.Parallel()
-
 	t.Run("domain routed pages stay with their host", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		app.Use(New(Config{Expiration: time.Hour}))
 		app.Domain(tenantAHost).Get("/dash", func(c fiber.Ctx) error { return c.SendString("tenant-a") })
@@ -1672,7 +1621,6 @@ func Test_Cache_Security_KeyIncludesAuthority(t *testing.T) {
 
 	t.Run("a redirect built from the authority is not served for another host", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		app.Use(New(Config{Expiration: time.Hour}))
 		app.Get("/canonical", func(c fiber.Ctx) error {
@@ -1692,7 +1640,6 @@ func Test_Cache_Security_KeyIncludesAuthority(t *testing.T) {
 
 	t.Run("the port is part of the authority", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		app.Use(New(Config{Expiration: time.Hour}))
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Host()) })
@@ -1704,7 +1651,6 @@ func Test_Cache_Security_KeyIncludesAuthority(t *testing.T) {
 
 	t.Run("vary manifests are partitioned by host as well", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		app.Use(New(Config{Expiration: time.Hour}))
 		app.Get("/", func(c fiber.Ctx) error {
@@ -1754,7 +1700,6 @@ func Test_Cache_Security_KeyIncludesAuthority(t *testing.T) {
 // either.
 func Test_Cache_Security_KeyAuthorityFollowsTrustedProxy(t *testing.T) {
 	t.Parallel()
-
 	do := func(t *testing.T, app *fiber.App, forwardedHost, forwardedProto string) reply {
 		t.Helper()
 		return doRequest(t, app, apptest.Req(fiber.MethodGet, "http://backend.internal/",
@@ -1784,7 +1729,6 @@ func Test_Cache_Security_KeyAuthorityFollowsTrustedProxy(t *testing.T) {
 
 	t.Run("untrusted peer", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		app.Use(New(Config{Expiration: time.Hour}))
 		app.Get("/", baseURL)

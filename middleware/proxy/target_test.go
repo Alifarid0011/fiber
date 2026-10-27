@@ -239,7 +239,6 @@ func Test_Proxy_Balancer_RestoresRequestLine(t *testing.T) {
 
 func Test_Proxy_Balancer_RejectsHostUserinfo(t *testing.T) {
 	t.Parallel()
-
 	var hits atomic.Int32
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		hits.Add(1)
@@ -261,7 +260,6 @@ func Test_Proxy_Balancer_RejectsHostUserinfo(t *testing.T) {
 
 func Test_Proxy_Balancer_RejectsNonOriginServer(t *testing.T) {
 	t.Parallel()
-
 	for _, server := range []string{
 		"http://127.0.0.1:1/api",
 		"http://127.0.0.1:1/api/",
@@ -339,7 +337,6 @@ func Test_Proxy_RejectsEncodedSeparator(t *testing.T) {
 // "/admin/secret" there, although no middleware on "/admin" ran for them.
 func Test_Proxy_RejectsPathParameters(t *testing.T) {
 	t.Parallel()
-
 	for _, h := range forwardingHandlers() {
 		t.Run(h.name, func(t *testing.T) {
 			t.Parallel()
@@ -443,7 +440,6 @@ func Test_Proxy_Do_UserClientForwardsTargetAsGiven(t *testing.T) {
 // application pinned.
 func Test_Proxy_Balancer_RejectsAuthorityTarget(t *testing.T) {
 	t.Parallel()
-
 	var hits atomic.Int32
 	target := fiber.New()
 	target.Use(func(c fiber.Ctx) error {
@@ -519,7 +515,6 @@ func pinIdentity(c fiber.Ctx) error {
 // segment, as "/http://u:pw@evil.example/x" does.
 func Test_Proxy_Balancer_RootsUnrootedPath(t *testing.T) {
 	t.Parallel()
-
 	addr := echoIdentity(t)
 	balancer := Balancer(Config{Servers: []string{addr}, ModifyRequest: pinIdentity})
 	app := fiber.New()
@@ -541,7 +536,6 @@ func Test_Proxy_Balancer_RootsUnrootedPath(t *testing.T) {
 // upstream would see a path no middleware had matched.
 func Test_Proxy_Balancer_CustomClientKeepsTarget(t *testing.T) {
 	t.Parallel()
-
 	addr := echoTarget(t)
 	hc := &fasthttp.HostClient{Addr: addr, NoDefaultUserAgentHeader: true}
 	app := fiber.New()
@@ -578,7 +572,6 @@ func (o *opaqueClient) PendingRequests() int {
 // bytes, is forwarded.
 func Test_Proxy_Balancer_OpaqueClientFailsClosed(t *testing.T) {
 	t.Parallel()
-
 	addr := echoTarget(t)
 	app := fiber.New()
 	app.Use(Balancer(Config{Client: &fasthttp.LBClient{

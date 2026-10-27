@@ -153,7 +153,6 @@ func (e *typedNilBindError) Error() string {
 
 func Test_returnErr(t *testing.T) {
 	t.Parallel()
-
 	var nilFiberErr *Error
 	var nilCustomErr *typedNilBindError
 
@@ -171,7 +170,6 @@ func Test_returnErr(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 
 			var err error
@@ -209,7 +207,6 @@ func Test_BindError_Unwrap(t *testing.T) {
 
 func Test_BindError_ErrorFormat(t *testing.T) {
 	t.Parallel()
-
 	t.Run("with field", func(t *testing.T) {
 		t.Parallel()
 		be := &BindError{Source: BindSourceQuery, Field: "id", Err: errors.New("conversion failed")}
@@ -227,7 +224,6 @@ func Test_BindError_ErrorFormat(t *testing.T) {
 
 func Test_BindError_FieldExtraction(t *testing.T) {
 	t.Parallel()
-
 	t.Run("QueryConversionError", func(t *testing.T) {
 		t.Parallel()
 		type Q struct {
@@ -298,7 +294,6 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 
 func Test_BindError_Sources(t *testing.T) {
 	t.Parallel()
-
 	t.Run("URI", func(t *testing.T) {
 		t.Parallel()
 		type U struct {
@@ -345,7 +340,6 @@ func Test_BindError_Sources(t *testing.T) {
 
 func Test_BindError_All(t *testing.T) {
 	t.Parallel()
-
 	type Req struct {
 		Name string `json:"name"`
 		ID   int    `uri:"id" json:"id"`
@@ -444,7 +438,6 @@ func Test_Bind_Query(t *testing.T) {
 
 func Test_Bind_Query_Map(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, New(Config{EnableSplittingOnParsers: true}))
 
 	c.Request().SetBody([]byte(``))
@@ -481,7 +474,6 @@ func Test_Bind_Query_Map(t *testing.T) {
 
 func Test_Bind_Query_MapField(t *testing.T) {
 	t.Parallel()
-
 	type Filter struct {
 		Attributes map[string]string   `query:"attributes"`
 		Tags       map[string][]string `query:"tags"`
@@ -531,7 +523,6 @@ func Test_Bind_Query_MapField(t *testing.T) {
 
 func Test_Bind_Body_MapField(t *testing.T) {
 	t.Parallel()
-
 	type Filter struct {
 		Attributes map[string]string   `form:"attributes"`
 		Tags       map[string][]string `form:"tags"`
@@ -689,7 +680,6 @@ func Test_Bind_Query_Schema(t *testing.T) {
 // response header and the cookies. The query has its own scenarios in Test_Bind_Query.
 func Test_Bind_Sources(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		src bindTestSource
 		// splitting is EnableSplittingOnParsers: a value with commas then binds as several elements.
@@ -775,7 +765,6 @@ func Test_Bind_Sources(t *testing.T) {
 // Test_Bind_Sources_Map binds maps from the same sources as Test_Bind_Sources.
 func Test_Bind_Sources_Map(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		src bindTestSource
 		// splitting is EnableSplittingOnParsers: a value with commas then binds as several elements.
@@ -822,7 +811,6 @@ func Test_Bind_Sources_Map(t *testing.T) {
 // Test_Bind_Sources_Schema binds nested, required and recursive fields from the request header and the cookies.
 func Test_Bind_Sources_Schema(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		src bindTestSource
 		// nestedAge is the name of the required Fields2.Nested.Age as the source's tag spells it.
@@ -1589,7 +1577,6 @@ func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 
 func Test_Bind_URI(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/test1/userId/role/:roleId", func(c Ctx) error {
 		type Demo struct {
@@ -1610,7 +1597,6 @@ func Test_Bind_URI(t *testing.T) {
 
 func Test_Bind_URI_Map(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/test1/userId/role/:roleId", func(c Ctx) error {
 		d := make(map[string]string)
@@ -1782,7 +1768,6 @@ func Test_Bind_CustomBinder(t *testing.T) {
 
 func Test_Bind_CustomBinder_Source(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	c := apptest.Ctx(t, app)
 
@@ -1803,7 +1788,6 @@ func Test_Bind_CustomBinder_Source(t *testing.T) {
 
 func Test_Bind_CustomBinder_Validation(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{StructValidator: &structValidator{}})
 	app.RegisterCustomBinder(&customBinder{})
 
@@ -1825,7 +1809,6 @@ func Test_Bind_CustomBinder_Validation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, app)
 			(&RequestConfig{ContentType: tc.contentType, Body: []byte(tc.body)}).ApplyTo(c)
 
@@ -1887,12 +1870,10 @@ func (v *countingStructValidator) Validate(_ any) error {
 
 func Test_Bind_Form_Map_SkipsStructValidator(t *testing.T) {
 	t.Parallel()
-
 	form := &RequestConfig{ContentType: MIMEApplicationForm, Body: []byte("name=john")}
 
 	t.Run("without validator", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.Ctx(t, New())
 
 		form.ApplyTo(c)
@@ -1903,7 +1884,6 @@ func Test_Bind_Form_Map_SkipsStructValidator(t *testing.T) {
 
 	t.Run("with struct validator configured", func(t *testing.T) {
 		t.Parallel()
-
 		validator := &countingStructValidator{}
 		c := apptest.Ctx(t, New(Config{StructValidator: validator}))
 
@@ -1917,12 +1897,10 @@ func Test_Bind_Form_Map_SkipsStructValidator(t *testing.T) {
 
 func Test_Bind_SkipValidation(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{StructValidator: &structValidator{}})
 
 	t.Run("validation enabled", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.Ctx(t, app)
 
 		rq := new(simpleQuery)
@@ -1932,7 +1910,6 @@ func Test_Bind_SkipValidation(t *testing.T) {
 
 	t.Run("validation skipped", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.Ctx(t, app)
 
 		rq := new(simpleQuery)
@@ -1944,14 +1921,12 @@ func Test_Bind_SkipValidation(t *testing.T) {
 
 func Test_Bind_SkipValidation_Usage(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{StructValidator: &structValidator{}})
 	// The validator rejects every name but john.
 	efe := &RequestConfig{ContentType: MIMEApplicationJSON, Body: []byte(`{"name":"efe"}`)}
 
 	t.Run("skip validation for json", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.Ctx(t, app)
 		efe.ApplyTo(c)
 
@@ -1962,7 +1937,6 @@ func Test_Bind_SkipValidation_Usage(t *testing.T) {
 
 	t.Run("re-enable validation explicitly", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.Ctx(t, app)
 		efe.ApplyTo(c)
 
@@ -1972,7 +1946,6 @@ func Test_Bind_SkipValidation_Usage(t *testing.T) {
 
 	t.Run("toggle on same bind instance", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.Ctx(t, app)
 		efe.ApplyTo(c)
 
@@ -1987,7 +1960,6 @@ func Test_Bind_SkipValidation_Usage(t *testing.T) {
 
 func Test_Bind_ValidateStruct_NilTarget(t *testing.T) {
 	t.Parallel()
-
 	validator := &countingStructValidator{}
 	c := apptest.Ctx(t, New(Config{StructValidator: validator}))
 
@@ -2351,7 +2323,6 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 
 func Test_Bind_All_CustomPrecedence_InvalidTags(t *testing.T) {
 	t.Parallel()
-
 	type InvalidPrecedenceReq struct {
 		BindingSource struct{} `binding_source:"query,invalid,cookie"`
 		Name          string   `query:"name"`
@@ -2490,7 +2461,6 @@ func BenchmarkBind_All_CustomPrecedence(b *testing.B) {
 // would no longer parse the body it forwarded.
 func Test_Bind_Body_ContentTypeNormalization(t *testing.T) {
 	t.Parallel()
-
 	bindBody := func(c Ctx, out any) error { return c.Bind().Body(out) }
 
 	// Both the media type and the parameter names are case-insensitive
@@ -2505,7 +2475,6 @@ func Test_Bind_Body_ContentTypeNormalization(t *testing.T) {
 	} {
 		t.Run("case-insensitive "+ctype, func(t *testing.T) {
 			t.Parallel()
-
 			body := bindTestMultipart(t, "AbCdEfMixed12345", [2]string{"name", "john"}).Body
 			bindTestPostName(t, bindBody, ctype, body, func(c Ctx) {
 				// The boundary value keeps its case so the request can be replayed.
@@ -2516,13 +2485,11 @@ func Test_Bind_Body_ContentTypeNormalization(t *testing.T) {
 
 	t.Run("mixed-case urlencoded still binds", func(t *testing.T) {
 		t.Parallel()
-
 		bindTestPostName(t, bindBody, "APPLICATION/X-WWW-FORM-URLENCODED", []byte("name=john"), nil)
 	})
 
 	t.Run("boundary case is preserved", func(t *testing.T) {
 		t.Parallel()
-
 		raw := bindTestMultipart(t, "AbCdEfMixedCase12345", [2]string{"name", "john"}).Body
 
 		const wantCType = "multipart/form-data; boundary=AbCdEfMixedCase12345"
@@ -2552,19 +2519,16 @@ func Test_Bind_Body_ContentTypeNormalization(t *testing.T) {
 // mixed-case media type bound nothing here and reported no error.
 func Test_Bind_Form_ContentTypeNormalization(t *testing.T) {
 	t.Parallel()
-
 	bindForm := func(c Ctx, out any) error { return c.Bind().Form(out) }
 
 	t.Run("multipart", func(t *testing.T) {
 		t.Parallel()
-
 		body := bindTestMultipart(t, "AbCdEfMixed12345", [2]string{"name", "john"}).Body
 		bindTestPostName(t, bindForm, "Multipart/Form-Data; BOUNDARY=AbCdEfMixed12345", body, nil)
 	})
 
 	t.Run("urlencoded", func(t *testing.T) {
 		t.Parallel()
-
 		bindTestPostName(t, bindForm, "APPLICATION/X-WWW-FORM-URLENCODED", []byte("name=john"), nil)
 	})
 }
@@ -2593,7 +2557,6 @@ func (b *ctxTypeBinder) Parse(c Ctx, _ any) error {
 
 func Test_Bind_CustomBinder_CustomCtx(t *testing.T) {
 	t.Parallel()
-
 	app := NewWithCustomCtx(func(app *App) CustomCtx {
 		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
 	})

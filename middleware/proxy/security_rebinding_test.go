@@ -400,14 +400,12 @@ func Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent(t *testing.T) {
 // goroutines is race-free (run under -race) and leaves one working hook.
 func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 	t.Parallel()
-
 	for name, withHook := range map[string]bool{
 		"nil ConfigureClient":          false,
 		"pre-existing ConfigureClient": true,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			var hookCalls atomic.Int32
 			cli := &fasthttp.Client{}
 			if withHook {
@@ -485,10 +483,8 @@ func Test_Security_ClientDialer_DelegatesWhenPrivateAllowed(t *testing.T) {
 // Test_Security_InstallHostClientGuard_DialTimeout pins which HostClients get a guarded DialTimeout.
 func Test_Security_InstallHostClientGuard_DialTimeout(t *testing.T) {
 	t.Parallel()
-
 	t.Run("no dialer of its own", func(t *testing.T) {
 		t.Parallel()
-
 		hc := &fasthttp.HostClient{}
 		installHostClientGuard(hc)
 		require.NotNil(t, hc.DialTimeout)
@@ -510,7 +506,6 @@ func Test_Security_InstallHostClientGuard_DialTimeout(t *testing.T) {
 // the request's timeout, or fasthttp's default when it left none, where DialTimeout would fail at once.
 func Test_Security_DefaultDialTimeout_ConnectsThroughFasthttp(t *testing.T) {
 	t.Parallel()
-
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { ln.Close() }) //nolint:errcheck // best-effort close in cleanup
@@ -637,7 +632,6 @@ func Test_Security_DialWithin_SharesTheTimeout(t *testing.T) {
 // Test_Security_DialWithin_NoTimeout pins that a dial the request gave no time hands none on.
 func Test_Security_DialWithin_NoTimeout(t *testing.T) {
 	t.Parallel()
-
 	got := time.Hour
 	_, err := newDialGuard(false).dialWithin("198.51.100.7:80", 0, func(_ string, timeout time.Duration) (net.Conn, error) {
 		got = timeout
@@ -765,7 +759,6 @@ func Test_Security_ClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
 // composed hook surfaces an error from the user's existing ConfigureClient.
 func Test_Security_EnsureClientGuarded_ComposePropagatesError(t *testing.T) {
 	t.Parallel()
-
 	wantErr := errors.New("configure boom")
 	cli := &fasthttp.Client{ConfigureClient: func(_ *fasthttp.HostClient) error { return wantErr }}
 	ensureClientGuarded(cli)

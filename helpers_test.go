@@ -145,7 +145,6 @@ func Test_Utils_GetOffer(t *testing.T) {
 
 func Test_ReadContentReturnsBytes(t *testing.T) {
 	t.Parallel()
-
 	content := []byte("fiber read content test")
 	tempFile, err := os.CreateTemp("", "fiber-read-content-*.txt")
 	require.NoError(t, err)
@@ -192,7 +191,6 @@ func (nonStructListener) Addr() net.Addr            { return &net.TCPAddr{} }
 
 func Test_GetTLSConfig(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		// wrap builds the listener under test on top of base. Closing it must
 		// close base, so the subtest cleans up through it.
@@ -245,7 +243,6 @@ func Test_GetTLSConfig(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			cfg := &tls.Config{MinVersion: tc.minVersion}
 			ln := tc.wrap(newLocalListener(t), cfg)
 			t.Cleanup(func() { require.NoError(t, ln.Close()) })
@@ -260,7 +257,6 @@ func Test_GetTLSConfig(t *testing.T) {
 
 	t.Run("non-struct listener", func(t *testing.T) {
 		t.Parallel()
-
 		ln := nonStructListener(7)
 		require.NotPanics(t, func() {
 			require.Nil(t, getTLSConfig(ln), "non-struct listeners should not panic and should not report TLS config")
@@ -574,7 +570,6 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name, prefix, path, want string
 	}{
@@ -622,7 +617,6 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 
 func Test_Utils_Parse_Address(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		addr, host, port string
 	}{
@@ -813,7 +807,6 @@ func Test_GenericParseTypeUints(t *testing.T) {
 
 func Test_GenericParseTypeFloats(t *testing.T) {
 	t.Parallel()
-
 	floats := []struct {
 		str   string
 		value float64
@@ -847,7 +840,6 @@ func Test_GenericParseTypeFloats(t *testing.T) {
 
 func Test_GenericParseTypeBytes(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
 		str   string
 		err   error
@@ -875,7 +867,6 @@ func Test_GenericParseTypeBytes(t *testing.T) {
 
 func Test_GenericParseTypeString(t *testing.T) {
 	t.Parallel()
-
 	tests := []string{"john", "doe", "hello", "fiber"}
 
 	for _, test := range tests {
@@ -890,7 +881,6 @@ func Test_GenericParseTypeString(t *testing.T) {
 
 func Test_GenericParseTypeBoolean(t *testing.T) {
 	t.Parallel()
-
 	bools := []struct {
 		str   string
 		value bool
@@ -1205,7 +1195,6 @@ func Test_IsEtagStale(t *testing.T) {
 
 func TestStoreInContext(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{PassLocalsToContext: true})
 	raw := &fasthttp.RequestCtx{}
 	c := apptest.CtxFor(t, app, raw)
@@ -1236,7 +1225,6 @@ func TestValueFromContext(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := tc.newApp()
 			raw := &fasthttp.RequestCtx{}
 			c := apptest.CtxFor(t, app, raw)
@@ -1250,7 +1238,6 @@ func TestValueFromContext(t *testing.T) {
 
 		t.Run("released "+tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := tc.newApp()
 			raw := &fasthttp.RequestCtx{}
 			c := app.AcquireCtx(raw)
@@ -1273,7 +1260,6 @@ func TestValueFromContext(t *testing.T) {
 
 	t.Run("fasthttp request ctx", func(t *testing.T) {
 		t.Parallel()
-
 		raw := &fasthttp.RequestCtx{}
 		raw.SetUserValue("key", "value")
 
@@ -1284,7 +1270,6 @@ func TestValueFromContext(t *testing.T) {
 
 	t.Run("context.Context", func(t *testing.T) {
 		t.Parallel()
-
 		type testContextKey struct{}
 
 		ctx := context.WithValue(context.Background(), testContextKey{}, "value")
@@ -1296,7 +1281,6 @@ func TestValueFromContext(t *testing.T) {
 
 	t.Run("unsupported ctx", func(t *testing.T) {
 		t.Parallel()
-
 		value, ok := ValueFromContext[string](42, "key")
 		require.False(t, ok)
 		require.Empty(t, value)
@@ -1305,7 +1289,6 @@ func TestValueFromContext(t *testing.T) {
 
 func Test_IsMethodSafe(t *testing.T) {
 	t.Parallel()
-
 	safeMethods := []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery}
 	unsafeMethods := []string{MethodPost, MethodPut, MethodPatch, MethodDelete, MethodConnect}
 
@@ -1319,7 +1302,6 @@ func Test_IsMethodSafe(t *testing.T) {
 
 func Test_IsMethodIdempotent(t *testing.T) {
 	t.Parallel()
-
 	idempotent := []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery, MethodPut, MethodDelete}
 	notIdempotent := []string{MethodPost, MethodPatch, MethodConnect}
 
@@ -1351,7 +1333,6 @@ func (c *localsRecordingCtx) Locals(key any, value ...any) any {
 // embedding DefaultCtx is entitled to override.
 func Test_setLocal_UsesCustomCtxLocals(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, NewWithCustomCtx(func(app *App) CustomCtx {
 		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
 	}))
@@ -1368,7 +1349,6 @@ func Test_setLocal_UsesCustomCtxLocals(t *testing.T) {
 // takes the concrete path, and the value is stored and returned unchanged.
 func Test_setLocal_UsesDefaultCtxDirectly(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, New())
 
 	_, isDefault := c.(*DefaultCtx)
@@ -1383,7 +1363,6 @@ func Test_setLocal_UsesDefaultCtxDirectly(t *testing.T) {
 // boundaries, on fresh and on reused destinations.
 func Test_appendCopyLowerASCII(t *testing.T) {
 	t.Parallel()
-
 	cases := []string{
 		"", "/", "A", "/abc", "/AbC", "/ABCDEFG", "/ABCDEFGH/XYZ",
 		"/API/V1/UsersAndGroups", "/a1-B2_c3{~}", "/CAF\xC3\xA9/\xC3\x89",
@@ -1427,7 +1406,6 @@ func Test_appendCopyLowerASCII(t *testing.T) {
 
 func Test_appendCopyLowerASCII_AliasedSubstring(t *testing.T) {
 	t.Parallel()
-
 	path := []byte("/api/bar/fooX")
 	src := utils.UnsafeString(path[4:])
 	gotPath, gotLower, gotSlashes := appendCopyLowerASCII(path[:0], nil, src)
@@ -1439,7 +1417,6 @@ func Test_appendCopyLowerASCII_AliasedSubstring(t *testing.T) {
 
 func Test_appendLowerASCII(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
 		name string
 		in   string
@@ -1476,7 +1453,6 @@ func Test_appendLowerASCII(t *testing.T) {
 // resolve, and parameters are dropped, with and without the fast path.
 func Test_bindMediaType(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		ct, want string
 	}{
@@ -1530,7 +1506,6 @@ func Benchmark_bindMediaType(b *testing.B) {
 
 func Test_sameFunc(t *testing.T) {
 	t.Parallel()
-
 	newCallback := func(limit int) func(*fasthttp.RequestHeader) fasthttp.RequestConfig {
 		return func(*fasthttp.RequestHeader) fasthttp.RequestConfig {
 			return fasthttp.RequestConfig{MaxRequestBodySize: limit}
@@ -1547,7 +1522,6 @@ func Test_sameFunc(t *testing.T) {
 
 func Test_hasHeaderField(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name  string
 		raw   string
@@ -1580,7 +1554,6 @@ func Test_hasHeaderField(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			field := tc.field
 			if field == "" {
 				field = HeaderContentLength
@@ -1595,7 +1568,6 @@ func Test_hasHeaderField(t *testing.T) {
 // that is not reflected in that is looked up in the header block.
 func Test_bothFramingFields(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name string
 		raw  string
@@ -1615,7 +1587,6 @@ func Test_bothFramingFields(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var h fasthttp.RequestHeader
 			require.NoError(t, h.Read(bufio.NewReader(strings.NewReader(tc.raw))))
 			require.Equal(t, tc.want, bothFramingFields(&h))

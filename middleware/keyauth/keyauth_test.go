@@ -430,7 +430,6 @@ func Test_TokenFromContext(t *testing.T) {
 
 func Test_LogTagsRedactToken(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 
 	app := fiber.New()
@@ -466,7 +465,6 @@ func Test_LogContextTagRedactsToken(t *testing.T) {
 
 func Test_TokenFromContext_Types(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{PassLocalsToContext: true})
 	app.Use(New(Config{Extractor: extractors.FromAuthHeader("Basic"), Validator: validateCorrectKey}))
 
@@ -485,7 +483,6 @@ func Test_TokenFromContext_Types(t *testing.T) {
 
 func Test_AuthScheme(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name          string
 		scheme        string
@@ -501,7 +498,6 @@ func Test_AuthScheme(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{Extractor: extractors.FromAuthHeader(tc.scheme), Validator: validateCorrectKey}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("API key is valid") })
@@ -519,7 +515,6 @@ func Test_AuthScheme(t *testing.T) {
 // and the key, with the default Bearer extractor.
 func Test_HeaderScheme(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		validator     func(fiber.Ctx, string) (bool, error)
 		name          string
@@ -549,7 +544,6 @@ func Test_HeaderScheme(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{Validator: tc.validator}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
@@ -567,7 +561,6 @@ func Test_HeaderScheme(t *testing.T) {
 // refused request is answered with.
 func Test_Challenge(t *testing.T) {
 	t.Parallel()
-
 	failing := func(fiber.Ctx, string) (bool, error) { return false, errors.New("validation failed") }
 	invalid := func(fiber.Ctx, string) (bool, error) { return false, errors.New("invalid") }
 	valid := func(fiber.Ctx, string) (bool, error) { return true, nil }
@@ -719,7 +712,6 @@ func Test_Challenge(t *testing.T) {
 		tc := &tests[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(tc.config))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
@@ -741,10 +733,8 @@ func Test_Challenge(t *testing.T) {
 // challenges use HTTP quoted-string escaping rather than Go syntax.
 func Test_ChallengeQuotedStringEscaping(t *testing.T) {
 	t.Parallel()
-
 	t.Run("default ApiKey challenge", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		app.Use(New(Config{
 			Extractor: extractors.FromQuery("key"),
@@ -758,7 +748,6 @@ func Test_ChallengeQuotedStringEscaping(t *testing.T) {
 
 	t.Run("Bearer parameters", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		app.Use(New(Config{
 			Realm:            "area \"A\"\\\x01",
@@ -780,7 +769,6 @@ func Test_ChallengeQuotedStringEscaping(t *testing.T) {
 // Test_New_InvalidConfig covers the configurations New refuses with a panic.
 func Test_New_InvalidConfig(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name      string
 		wantPanic string
@@ -800,7 +788,6 @@ func Test_New_InvalidConfig(t *testing.T) {
 		tc := &tests[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			cfg := tc.config
 			cfg.Validator = func(fiber.Ctx, string) (bool, error) { return true, nil }
 			if tc.wantPanic == "" {

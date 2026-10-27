@@ -19,7 +19,6 @@ import (
 // — so the binder has to fold them before handing the request over.
 func Test_FormBinder_Bind_MixedCaseContentType(t *testing.T) {
 	t.Parallel()
-
 	type User struct {
 		Name string `form:"name"`
 	}
@@ -41,7 +40,6 @@ func Test_FormBinder_Bind_MixedCaseContentType(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := acquireRequest(t)
 			req.Header.SetMethod("POST")
 			req.Header.SetContentType(tc.contentType)
@@ -56,7 +54,6 @@ func Test_FormBinder_Bind_MixedCaseContentType(t *testing.T) {
 
 func Test_ReleaseBindData(t *testing.T) {
 	t.Parallel()
-
 	small := acquireBindDataMode(bindMap)
 	small.add("name", "john")
 	releaseBindData(small)
@@ -100,7 +97,6 @@ func Test_ReleaseBindData(t *testing.T) {
 // and that a bind into a map, which keeps no pairs, gets none.
 func Test_AcquireBindData_ReservesPairs(t *testing.T) {
 	t.Parallel()
-
 	type Demo struct {
 		Name string `form:"name"`
 	}
@@ -150,7 +146,6 @@ func Benchmark_FormBinder_Bind(b *testing.B) {
 
 func Test_FormBinder_BindMultipart(t *testing.T) {
 	t.Parallel()
-
 	b := &FormBinding{EnableSplitting: true}
 	require.Equal(t, "form", b.Name())
 
@@ -220,7 +215,6 @@ func requireFile(t *testing.T, fh *multipart.FileHeader, filename, content strin
 
 func Test_FormBinder_BindMultipart_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
-
 	b := &FormBinding{MaxBodySize: 64}
 
 	type User struct {
@@ -268,7 +262,6 @@ func Test_FormBinder_BindMultipart_FileError(t *testing.T) {
 
 func Test_FormBinder_Bind_MapClearedBetweenRequests(t *testing.T) {
 	t.Parallel()
-
 	b := &FormBinding{}
 
 	type payload struct {
@@ -289,7 +282,6 @@ func Test_FormBinder_Bind_MapClearedBetweenRequests(t *testing.T) {
 
 func Test_FormBinder_BindMultipart_MapsClearedBetweenRequests(t *testing.T) {
 	t.Parallel()
-
 	b := &FormBinding{}
 
 	type payload struct { // betteralign:ignore - test payload prioritizes readability over alignment

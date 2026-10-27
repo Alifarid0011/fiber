@@ -56,7 +56,6 @@ func (e clientTestBMultiValue) run(t *testing.T) {
 
 	t.Run("add "+e.noun, func(t *testing.T) {
 		t.Parallel()
-
 		req := clientTestBRequest(t)
 		e.add(e.add(req, "foo", "bar"), "foo", "fiber")
 
@@ -65,7 +64,6 @@ func (e clientTestBMultiValue) run(t *testing.T) {
 
 	t.Run("set "+e.noun, func(t *testing.T) {
 		t.Parallel()
-
 		req := clientTestBRequest(t)
 		e.set(e.add(req, "foo", "bar"), "foo", "fiber")
 
@@ -74,7 +72,6 @@ func (e clientTestBMultiValue) run(t *testing.T) {
 
 	t.Run("add "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-
 		req := clientTestBRequest(t)
 		e.addMany(e.set(req, "foo", "bar"), map[string][]string{"foo": {"fiber", "buaa"}, "bar": {"foo"}})
 
@@ -84,7 +81,6 @@ func (e clientTestBMultiValue) run(t *testing.T) {
 
 	t.Run("set "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-
 		req := clientTestBRequest(t)
 		e.setMany(e.set(req, "foo", "bar"), map[string]string{"foo": "fiber", "bar": "foo"})
 
@@ -109,7 +105,6 @@ func (e clientTestBMultiValue) runStruct(t *testing.T) {
 
 	t.Run("set "+e.noun+"s with struct", func(t *testing.T) {
 		t.Parallel()
-
 		req := clientTestBRequest(t)
 		e.setStruct(req, &args{
 			TInt:      5,
@@ -136,7 +131,6 @@ func (e clientTestBMultiValue) runDel(t *testing.T) {
 
 	t.Run("del "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-
 		req := clientTestBRequest(t)
 		e.del(e.setMany(e.set(req, "foo", "bar"), map[string]string{"foo": "fiber", "bar": "foo"}), "foo", "bar")
 
@@ -152,7 +146,6 @@ func (e clientTestBMultiValue) runIter(t *testing.T, all func(r *Request) iter.S
 
 	t.Run("empty iterator", func(t *testing.T) {
 		t.Parallel()
-
 		called := false
 		all(clientTestBRequest(t))(func(_ string, _ []string) bool {
 			called = true
@@ -164,7 +157,6 @@ func (e clientTestBMultiValue) runIter(t *testing.T, all func(r *Request) iter.S
 
 	t.Run("populated iterator", func(t *testing.T) {
 		t.Parallel()
-
 		req := clientTestBRequest(t)
 		e.addMany(req, map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
 
@@ -202,7 +194,6 @@ func (e clientTestBSingleValue) run(t *testing.T) {
 
 	t.Run("set "+e.noun, func(t *testing.T) {
 		t.Parallel()
-
 		req := e.set(clientTestBRequest(t), "foo", "bar")
 		require.Equal(t, "bar", e.get(req, "foo"))
 
@@ -212,7 +203,6 @@ func (e clientTestBSingleValue) run(t *testing.T) {
 
 	t.Run("set "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-
 		req := e.setMany(clientTestBRequest(t), map[string]string{"foo": "bar", "bar": "foo"})
 		require.Equal(t, "bar", e.get(req, "foo"))
 		require.Equal(t, "foo", e.get(req, "bar"))
@@ -224,7 +214,6 @@ func (e clientTestBSingleValue) run(t *testing.T) {
 
 	t.Run("set "+e.noun+"s with struct", func(t *testing.T) {
 		t.Parallel()
-
 		req := e.setStruct(clientTestBRequest(t), &args{Int: 5, String: "foo"})
 
 		require.Equal(t, "5", e.get(req, "int"))
@@ -233,7 +222,6 @@ func (e clientTestBSingleValue) run(t *testing.T) {
 
 	t.Run("del "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-
 		req := e.setMany(clientTestBRequest(t), map[string]string{"foo": "bar", "bar": "foo"})
 		require.Equal(t, "bar", e.get(req, "foo"))
 		require.Equal(t, "foo", e.get(req, "bar"))
@@ -300,7 +288,6 @@ var (
 // every call must replace the value the previous one set.
 func Test_Request_Setters(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		set    func(r *Request, value string) *Request
 		get    func(r *Request) string
@@ -314,7 +301,6 @@ func Test_Request_Setters(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := clientTestBRequest(t)
 			for _, value := range tc.values {
 				req = tc.set(req, value)
@@ -326,7 +312,6 @@ func Test_Request_Setters(t *testing.T) {
 
 func Test_Request_Client(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	req := AcquireRequest()
 
@@ -336,7 +321,6 @@ func Test_Request_Client(t *testing.T) {
 
 func Test_Request_Context(t *testing.T) {
 	t.Parallel()
-
 	req := AcquireRequest()
 	ctx := req.Context()
 	type ctxKey struct{}
@@ -355,13 +339,11 @@ func Test_Request_Context(t *testing.T) {
 
 func Test_Request_Header(t *testing.T) {
 	t.Parallel()
-
 	clientTestBHeaders.run(t)
 }
 
 func Test_Request_Headers(t *testing.T) {
 	t.Parallel()
-
 	req := AcquireRequest()
 	req.AddHeaders(map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
 
@@ -392,7 +374,6 @@ func Benchmark_Request_Headers(b *testing.B) {
 
 func Test_Request_QueryParam(t *testing.T) {
 	t.Parallel()
-
 	clientTestBParams.run(t)
 	clientTestBParams.runStruct(t)
 	clientTestBParams.runDel(t)
@@ -420,7 +401,6 @@ type clientTestBKeyed interface {
 
 func Test_QueryParam_And_FormData_Keys(t *testing.T) {
 	t.Parallel()
-
 	for _, kind := range []struct {
 		wrap func(args *fasthttp.Args) clientTestBKeyed
 		name string
@@ -430,11 +410,9 @@ func Test_QueryParam_And_FormData_Keys(t *testing.T) {
 	} {
 		t.Run(kind.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, tc := range keysTestCases {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-
 					args := fasthttp.AcquireArgs()
 					defer fasthttp.ReleaseArgs(args)
 					p := kind.wrap(args)
@@ -467,7 +445,6 @@ func Benchmark_QueryParam_Keys(b *testing.B) {
 
 func Test_Request_Params(t *testing.T) {
 	t.Parallel()
-
 	clientTestBParams.runIter(t, (*Request).Params)
 }
 
@@ -487,13 +464,11 @@ func Benchmark_Request_Params(b *testing.B) {
 
 func Test_Request_Cookie(t *testing.T) {
 	t.Parallel()
-
 	clientTestBCookies.run(t)
 }
 
 func Test_Request_Cookies(t *testing.T) {
 	t.Parallel()
-
 	req := AcquireRequest()
 	req.SetCookies(map[string]string{"foo": "bar", "bar": "foo"})
 
@@ -529,12 +504,10 @@ func Benchmark_Request_Cookies(b *testing.B) {
 
 func Test_Request_PathParam(t *testing.T) {
 	t.Parallel()
-
 	clientTestBPathParams.run(t)
 
 	t.Run("clear path params", func(t *testing.T) {
 		t.Parallel()
-
 		req := clientTestBRequest(t).SetPathParams(map[string]string{"foo": "bar", "bar": "foo"})
 		require.Equal(t, "bar", req.PathParam("foo"))
 		require.Equal(t, "foo", req.PathParam("bar"))
@@ -547,7 +520,6 @@ func Test_Request_PathParam(t *testing.T) {
 
 func Test_Request_PathParams(t *testing.T) {
 	t.Parallel()
-
 	req := AcquireRequest()
 	req.SetPathParams(map[string]string{"foo": "bar", "bar": "foo"})
 
@@ -583,7 +555,6 @@ func Benchmark_Request_PathParams(b *testing.B) {
 
 func Test_Request_FormData(t *testing.T) {
 	t.Parallel()
-
 	clientTestBFormData.run(t)
 	clientTestBFormData.runStruct(t)
 	clientTestBFormData.runDel(t)
@@ -591,7 +562,6 @@ func Test_Request_FormData(t *testing.T) {
 
 func Test_Request_File(t *testing.T) {
 	t.Parallel()
-
 	t.Run("add file", func(t *testing.T) {
 		t.Parallel()
 		req := AcquireRequest().AddFile("../.github/index.html").AddFiles(AcquireFile(SetFileName("tmp.txt")))
@@ -625,7 +595,6 @@ func Test_Request_File(t *testing.T) {
 
 func Test_Request_Files(t *testing.T) {
 	t.Parallel()
-
 	req := AcquireRequest()
 	req.AddFile("../.github/index.html")
 	req.AddFiles(AcquireFile(SetFileName("tmp.txt")))
@@ -658,7 +627,6 @@ func Benchmark_Request_Files(b *testing.B) {
 
 func Test_Request_Timeout(t *testing.T) {
 	t.Parallel()
-
 	req := AcquireRequest().SetTimeout(5 * time.Second)
 
 	require.Equal(t, 5*time.Second, req.Timeout())
@@ -666,7 +634,6 @@ func Test_Request_Timeout(t *testing.T) {
 
 func Test_Request_Invalid_URL(t *testing.T) {
 	t.Parallel()
-
 	resp, err := AcquireRequest().Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
 	require.Equal(t, ErrURLFormat, err)
@@ -675,7 +642,6 @@ func Test_Request_Invalid_URL(t *testing.T) {
 
 func Test_Request_Unsupported_Protocol(t *testing.T) {
 	t.Parallel()
-
 	resp, err := AcquireRequest().Get("ftp://example.com")
 	require.Equal(t, ErrURLFormat, err)
 	require.Equal(t, (*Response)(nil), resp)
@@ -687,7 +653,6 @@ func Test_Request_Unsupported_Protocol(t *testing.T) {
 // body of every response.
 func Test_Request_Methods_With_Server(t *testing.T) {
 	t.Parallel()
-
 	const target = "http://example.com"
 
 	// What the routes answer with.
@@ -733,7 +698,6 @@ func Test_Request_Methods_With_Server(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			client := clientTestAClient(t, func(app *fiber.App) { tc.register(app, "/", tc.handler) })
 
 			for range 5 {
@@ -777,7 +741,6 @@ func Test_Request_Header_With_Server(t *testing.T) {
 
 func Test_Request_UserAgent_With_Server(t *testing.T) {
 	t.Parallel()
-
 	handler := func(c fiber.Ctx) error { return c.Send(c.Request().Header.UserAgent()) }
 
 	t.Run("default", func(t *testing.T) {
@@ -889,7 +852,6 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 	t.Run("multipart form", func(t *testing.T) {
 		t.Parallel()
-
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Post("/", func(c fiber.Ctx) error {
 				require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
@@ -923,7 +885,6 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 	t.Run("multipart form send file", func(t *testing.T) {
 		t.Parallel()
-
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Post("/", func(c fiber.Ctx) error {
 				require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
@@ -974,7 +935,6 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 	t.Run("multipart random boundary", func(t *testing.T) {
 		t.Parallel()
-
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Post("/", func(c fiber.Ctx) error {
 				reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{33}`)
@@ -1009,7 +969,6 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 func Test_Request_AllFormData(t *testing.T) {
 	t.Parallel()
-
 	clientTestBFormData.runIter(t, (*Request).AllFormData)
 }
 
@@ -1029,7 +988,6 @@ func Benchmark_Request_AllFormData(b *testing.B) {
 
 func Test_Request_Error_Body_With_Server(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		set  func(r *Request)
 		want error
@@ -1046,7 +1004,6 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 
 	t.Run("form body with invalid boundary", func(t *testing.T) {
 		t.Parallel()
-
 		_, err := AcquireRequest().SetBoundary("*").
 			AddFileWithReader("t.txt", io.NopCloser(strings.NewReader("world"))).
 			Get("http://example.com")
@@ -1055,7 +1012,6 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 
 	t.Run("open non exist file", func(t *testing.T) {
 		t.Parallel()
-
 		_, err := AcquireRequest().AddFile("non-exist-file!").Get("http://example.com")
 		require.Contains(t, err.Error(), "open non-exist-file!")
 	})
@@ -1063,7 +1019,6 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 
 func Test_Request_Timeout_With_Server(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			time.Sleep(time.Millisecond * 200)
@@ -1078,7 +1033,6 @@ func Test_Request_Timeout_With_Server(t *testing.T) {
 
 func Test_Request_MaxRedirects(t *testing.T) {
 	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := fiber.New()
@@ -1095,7 +1049,6 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-
 		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
 		resp, err := AcquireRequest().SetClient(client).SetMaxRedirects(1).Get("http://example.com?foo")
@@ -1111,7 +1064,6 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
-
 		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
 		resp, err := AcquireRequest().SetClient(client).SetMaxRedirects(1).Get("http://example.com")
@@ -1122,7 +1074,6 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 	t.Run("MaxRedirects", func(t *testing.T) {
 		t.Parallel()
-
 		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
 		req := AcquireRequest().SetClient(client).SetMaxRedirects(3)
@@ -1133,7 +1084,6 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 func Test_Request_Query_Redirect(t *testing.T) {
 	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := fiber.New()

@@ -34,7 +34,6 @@ func Test_manager_get(t *testing.T) {
 
 func Test_manager_logKey(t *testing.T) {
 	t.Parallel()
-
 	redactedManager := newManager(nil, true)
 	assert.Equal(t, redactedKey, redactedManager.logKey("secret"))
 
@@ -47,7 +46,6 @@ func Test_manager_logKey(t *testing.T) {
 // whatever entry the pooled item is reused for next.
 func Test_manager_release_ResetsEveryField(t *testing.T) {
 	t.Parallel()
-
 	m := newManager(memory.New(), true)
 	e := m.acquire()
 	*e = populatedItem()

@@ -61,7 +61,6 @@ func clientTestBClientGet(t *testing.T, client *Client, url string) *Response {
 // and of a failing response. Every check has its own server.
 func Test_Response_Status(t *testing.T) {
 	t.Parallel()
-
 	routes := func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString("foo") })
 		app.Get("/fail", func(c fiber.Ctx) error { return c.SendStatus(407) })
@@ -78,17 +77,14 @@ func Test_Response_Status(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			t.Run("status", func(t *testing.T) {
 				t.Parallel()
-
 				resp := clientTestBGet(t, routes, tc.url)
 				require.Equal(t, tc.status, resp.Status())
 			})
 
 			t.Run("status code", func(t *testing.T) {
 				t.Parallel()
-
 				resp := clientTestBGet(t, routes, tc.url)
 				require.Equal(t, tc.code, resp.StatusCode())
 			})
@@ -98,7 +94,6 @@ func Test_Response_Status(t *testing.T) {
 
 func Test_Response_CloseUsesSnapshottedRequestOwnership(t *testing.T) {
 	t.Parallel()
-
 	req := AcquireRequest()
 	resp := AcquireResponse()
 	resp.setRequest(req, false)
@@ -114,10 +109,8 @@ func Test_Response_CloseUsesSnapshottedRequestOwnership(t *testing.T) {
 
 func Test_Response_Protocol(t *testing.T) {
 	t.Parallel()
-
 	t.Run("http", func(t *testing.T) {
 		t.Parallel()
-
 		resp := clientTestBGet(t, func(app *fiber.App) {
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("foo") })
 		}, "http://example")
@@ -127,7 +120,6 @@ func Test_Response_Protocol(t *testing.T) {
 
 	t.Run("https", func(t *testing.T) {
 		t.Parallel()
-
 		serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
 		require.NoError(t, err)
 
@@ -158,7 +150,6 @@ func Test_Response_Protocol(t *testing.T) {
 
 func Test_Response_Header(t *testing.T) {
 	t.Parallel()
-
 	resp := clientTestBGet(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Response().Header.Add("foo", "bar")
@@ -171,7 +162,6 @@ func Test_Response_Header(t *testing.T) {
 
 func Test_Response_Headers(t *testing.T) {
 	t.Parallel()
-
 	resp := clientTestBGet(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Response().Header.Add("foo", "bar")
@@ -197,7 +187,6 @@ func Test_Response_Headers(t *testing.T) {
 
 func Test_Response_Headers_RepeatedKey(t *testing.T) {
 	t.Parallel()
-
 	values := []string{"1", "2", "3", "4", "5", "6", "7", "8"}
 	resp := clientTestBGet(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
@@ -263,7 +252,6 @@ func Benchmark_Headers(b *testing.B) {
 
 func Test_Response_Cookie(t *testing.T) {
 	t.Parallel()
-
 	resp := clientTestBGet(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Cookie(&fiber.Cookie{Name: "foo", Value: "bar"})
@@ -276,7 +264,6 @@ func Test_Response_Cookie(t *testing.T) {
 
 func Test_Response_Body(t *testing.T) {
 	t.Parallel()
-
 	routes := func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString("hello world") })
 
@@ -296,7 +283,6 @@ func Test_Response_Body(t *testing.T) {
 
 	t.Run("raw body", func(t *testing.T) {
 		t.Parallel()
-
 		resp := clientTestBGet(t, routes, "http://example.com")
 
 		require.Equal(t, []byte("hello world"), resp.Body())
@@ -304,7 +290,6 @@ func Test_Response_Body(t *testing.T) {
 
 	t.Run("string body", func(t *testing.T) {
 		t.Parallel()
-
 		resp := clientTestBGet(t, routes, "http://example.com")
 
 		require.Equal(t, "hello world", resp.String())
@@ -359,7 +344,6 @@ func Test_Response_Body(t *testing.T) {
 
 func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 	t.Parallel()
-
 	type payload struct {
 		Status string `json:"status" xml:"status" cbor:"status"`
 	}
@@ -383,7 +367,6 @@ func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 		for _, tc := range []decoder{jsonDecoder, xmlDecoder, cborDecoder} {
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
-
 				resp := clientTestBResponse(t)
 				resp.RawResponse.SetBodyString(tc.body)
 
@@ -398,11 +381,9 @@ func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 
 	t.Run("decode helpers still work with client", func(t *testing.T) {
 		t.Parallel()
-
 		for _, tc := range []decoder{jsonDecoder, xmlDecoder} {
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
-
 				resp := clientTestBResponse(t)
 				resp.setClient(New())
 				resp.RawResponse.SetBodyString(tc.body)
@@ -416,7 +397,6 @@ func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 
 		t.Run("cbor", func(t *testing.T) {
 			t.Parallel()
-
 			client := New()
 			resp := clientTestBResponse(t)
 			resp.setClient(client)
@@ -435,14 +415,12 @@ func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 
 func Test_Response_Save(t *testing.T) {
 	t.Parallel()
-
 	routes := func(app *fiber.App) {
 		app.Get("/json", func(c fiber.Ctx) error { return c.SendString("{\"status\":\"success\"}") })
 	}
 
 	t.Run("file path", func(t *testing.T) {
 		t.Parallel()
-
 		resp := clientTestBGet(t, routes, "http://example.com/json")
 
 		err := resp.Save("./test/tmp.json")
@@ -469,7 +447,6 @@ func Test_Response_Save(t *testing.T) {
 
 	t.Run("io.Writer", func(t *testing.T) {
 		t.Parallel()
-
 		resp := clientTestBGet(t, routes, "http://example.com/json")
 
 		buf := &bytes.Buffer{}
@@ -481,7 +458,6 @@ func Test_Response_Save(t *testing.T) {
 
 	t.Run("io.Copy error when saving to file is surfaced", func(t *testing.T) {
 		t.Parallel()
-
 		resp := clientTestBResponse(t)
 
 		resp.RawResponse.SetBodyStream(&errorReader{err: errors.New("copy failure")}, -1)
@@ -493,7 +469,6 @@ func Test_Response_Save(t *testing.T) {
 
 	t.Run("io.Copy error when saving to writer is surfaced", func(t *testing.T) {
 		t.Parallel()
-
 		resp := clientTestBResponse(t)
 
 		resp.RawResponse.SetBodyStream(bytes.NewBufferString("data"), len("data"))
@@ -504,7 +479,6 @@ func Test_Response_Save(t *testing.T) {
 
 	t.Run("error type", func(t *testing.T) {
 		t.Parallel()
-
 		resp := clientTestBGet(t, routes, "http://example.com/json")
 
 		err := resp.Save(nil)
@@ -514,10 +488,8 @@ func Test_Response_Save(t *testing.T) {
 
 func Test_Response_BodyStream(t *testing.T) {
 	t.Parallel()
-
 	t.Run("basic streaming", func(t *testing.T) {
 		t.Parallel()
-
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Get("/stream", func(c fiber.Ctx) error {
 				return c.SendStream(bytes.NewReader([]byte("streaming data")))
@@ -534,7 +506,6 @@ func Test_Response_BodyStream(t *testing.T) {
 
 	t.Run("large response streaming", func(t *testing.T) {
 		t.Parallel()
-
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Get("/large", func(c fiber.Ctx) error {
 				data := make([]byte, 1024)
@@ -583,10 +554,8 @@ func Test_Response_BodyStream_Fallback(t *testing.T) {
 
 func Test_Response_IsStreaming(t *testing.T) {
 	t.Parallel()
-
 	t.Run("streaming disabled", func(t *testing.T) {
 		t.Parallel()
-
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Get("/regular", func(c fiber.Ctx) error { return c.SendString("regular content") })
 		})
@@ -596,7 +565,6 @@ func Test_Response_IsStreaming(t *testing.T) {
 
 	t.Run("bodystream always works regardless of streaming state", func(t *testing.T) {
 		t.Parallel()
-
 		server := startTestServer(t, func(app *fiber.App) {
 			app.Get("/test", func(c fiber.Ctx) error { return c.SendString("test content") })
 		})
@@ -629,10 +597,8 @@ func Test_Response_IsStreaming(t *testing.T) {
 
 func Test_Response_Save_Streaming(t *testing.T) {
 	t.Parallel()
-
 	t.Run("save streaming response to file", func(t *testing.T) {
 		t.Parallel()
-
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Get("/stream", func(c fiber.Ctx) error {
 				return c.SendStream(bytes.NewReader([]byte("streaming file content")))
@@ -652,7 +618,6 @@ func Test_Response_Save_Streaming(t *testing.T) {
 
 	t.Run("save streaming response to io.Writer", func(t *testing.T) {
 		t.Parallel()
-
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Get("/stream", func(c fiber.Ctx) error {
 				return c.SendStream(bytes.NewReader([]byte("streaming writer content")))
@@ -669,7 +634,6 @@ func Test_Response_Save_Streaming(t *testing.T) {
 
 	t.Run("save non-streaming response to file using BodyStream", func(t *testing.T) {
 		t.Parallel()
-
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Get("/regular", func(c fiber.Ctx) error { return c.SendString("regular file content") })
 		})
@@ -687,7 +651,6 @@ func Test_Response_Save_Streaming(t *testing.T) {
 
 	t.Run("save to io.WriteCloser closes writer", func(t *testing.T) {
 		t.Parallel()
-
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Get("/test", func(c fiber.Ctx) error { return c.SendString("test content") })
 		})
@@ -755,7 +718,6 @@ func Test_Response_RespondedOrigin(t *testing.T) {
 
 	t.Run("nothing recorded falls back", func(t *testing.T) {
 		t.Parallel()
-
 		resp := clientTestBResponse(t)
 
 		host, path := resp.respondedOrigin(askedURI(t))
@@ -765,7 +727,6 @@ func Test_Response_RespondedOrigin(t *testing.T) {
 
 	t.Run("a nil URI records nothing", func(t *testing.T) {
 		t.Parallel()
-
 		resp := clientTestBResponse(t)
 
 		resp.setRespondedURI(nil)
@@ -777,7 +738,6 @@ func Test_Response_RespondedOrigin(t *testing.T) {
 
 	t.Run("what was recorded wins", func(t *testing.T) {
 		t.Parallel()
-
 		served := fasthttp.AcquireURI()
 		t.Cleanup(func() { fasthttp.ReleaseURI(served) })
 		require.NoError(t, served.Parse(nil, []byte("http://served.example/served")))
@@ -806,7 +766,6 @@ func Test_Response_RespondedOrigin(t *testing.T) {
 // pays nothing to record it, and the fallback answers with the requested URI.
 func Test_Response_RespondedOriginOnlyRecordedForAJar(t *testing.T) {
 	t.Parallel()
-
 	server := startTestServer(t, func(app *fiber.App) {
 		app.Get("/x", func(c fiber.Ctx) error {
 			c.Cookie(&fiber.Cookie{Name: "a", Value: "1"})
@@ -817,7 +776,6 @@ func Test_Response_RespondedOriginOnlyRecordedForAJar(t *testing.T) {
 
 	t.Run("no jar records nothing", func(t *testing.T) {
 		t.Parallel()
-
 		resp, err := New().SetDial(server.dial()).Get("http://example.com/x")
 		require.NoError(t, err)
 		defer resp.Close()
@@ -827,7 +785,6 @@ func Test_Response_RespondedOriginOnlyRecordedForAJar(t *testing.T) {
 
 	t.Run("a jar gets the origin", func(t *testing.T) {
 		t.Parallel()
-
 		jar := AcquireCookieJar()
 		defer jar.Release()
 		resp, err := New().SetDial(server.dial()).SetCookieJar(jar).Get("http://example.com/x")

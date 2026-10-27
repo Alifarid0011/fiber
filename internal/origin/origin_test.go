@@ -8,7 +8,6 @@ import (
 
 func Test_Normalize_AnyScheme(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		origin         string
 		expectedOrigin string
@@ -100,7 +99,6 @@ func Benchmark_MatchSubdomainOrigin(b *testing.B) {
 
 func Test_SubdomainMatch(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		sub      Subdomain
@@ -203,7 +201,6 @@ func Test_SubdomainMatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			got := MatchAny([]Subdomain{tt.sub}, tt.origin, AnyScheme)
 			assert.Equal(t, tt.expected, got, "MatchAny()")
 		})
@@ -212,7 +209,6 @@ func Test_SubdomainMatch(t *testing.T) {
 
 func Test_MatchSubdomainOrigin(t *testing.T) {
 	t.Parallel()
-
 	defaultSubs := []Subdomain{
 		{Prefix: "https://", Suffix: "example.net"},
 		{Prefix: "https://", Suffix: "example.org"},
@@ -272,7 +268,6 @@ func Test_MatchSubdomainOrigin(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			got := MatchAny(tt.subdomains, tt.origin, AnyScheme)
 			assert.Equal(t, tt.expected, got)
 		})

@@ -53,7 +53,6 @@ func Test_Redirect_To(t *testing.T) {
 // cookie carries them to the next request.
 func Test_Redirect_WithFlashMessages(t *testing.T) {
 	t.Parallel()
-
 	flash := redirectionMsgs{{key: "success", value: "1"}, {key: "message", value: "test"}}
 	flashWithInput := redirectionMsgs{
 		{key: "success", value: "1"},
@@ -133,7 +132,6 @@ func Test_Redirect_WithFlashMessages(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			app.Add([]string{cmp.Or(tc.method, MethodGet)}, "/user", func(c Ctx) error {
 				return c.SendString("user")
@@ -165,7 +163,6 @@ func Test_Redirect_WithFlashMessages(t *testing.T) {
 
 func Test_Redirect_Route_Location(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name    string
 		pattern string
@@ -196,7 +193,6 @@ func Test_Redirect_Route_Location(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			app.Get(tc.pattern, emptyHandler).Name("user")
 			c := apptest.Ctx(t, app)
@@ -210,7 +206,6 @@ func Test_Redirect_Route_Location(t *testing.T) {
 
 func Test_Redirect_Route_WithQueries(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		queries map[string]string
 		want    url.Values
@@ -233,7 +228,6 @@ func Test_Redirect_Route_WithQueries(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			app.Get("/user/:name", emptyHandler).Name("user")
 			c := apptest.Ctx(t, app)
@@ -253,7 +247,6 @@ func Test_Redirect_Route_WithQueries(t *testing.T) {
 
 func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name  string
 		param string
@@ -294,7 +287,6 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 
 func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name  string
 		param string
@@ -425,14 +417,12 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			rootMiscBExpectBackTo(t, tc.referer, "/", tc.want)
 		})
 	}
 
 	t.Run("cross-origin referer with no fallback is an error", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.Ctx(t, New())
 		c.Request().Header.Set(HeaderReferer, "https://evil.com/phishing")
 		c.Request().URI().SetHost("example.com")
@@ -453,7 +443,6 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 // rather than going anywhere. Fall back instead of emitting a dead redirect.
 func Test_Redirect_Back_RejectsEmptyAuthorityReferer(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		referer string
 		want    string
@@ -470,7 +459,6 @@ func Test_Redirect_Back_RejectsEmptyAuthorityReferer(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.referer, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			app.Get("/back", func(c Ctx) error { return c.Redirect().Back("/fallback") })
 
@@ -504,7 +492,6 @@ func Test_Redirect_Back_RejectsBrowserNormalizedReferer(t *testing.T) {
 	for _, referer := range crossOrigin {
 		t.Run(referer, func(t *testing.T) {
 			t.Parallel()
-
 			rootMiscBExpectBackTo(t, referer, "/fallback", "/fallback")
 		})
 	}
@@ -539,7 +526,6 @@ func Test_Redirect_Back_NormalizesSameOriginReferer(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.referer, func(t *testing.T) {
 			t.Parallel()
-
 			rootMiscBExpectBackTo(t, tc.referer, "/fallback", tc.expected)
 		})
 	}
@@ -547,7 +533,6 @@ func Test_Redirect_Back_NormalizesSameOriginReferer(t *testing.T) {
 
 func Test_Redirect_WithInput_ReusesClearedMap(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.CtxAs[*DefaultCtx](t, New())
 
 	c.Request().URI().SetQueryString("first=1")
@@ -566,7 +551,6 @@ func Test_Redirect_WithInput_ReusesClearedMap(t *testing.T) {
 
 func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
 
@@ -619,7 +603,6 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 // reachable from the backing array for the life of the process.
 func Test_Redirect_release_ZeroesMessages(t *testing.T) {
 	t.Parallel()
-
 	r := AcquireRedirect()
 	r.With("password", "hunter2")
 	r.With("token", "s3cr3t")
@@ -635,7 +618,6 @@ func Test_Redirect_release_ZeroesMessages(t *testing.T) {
 
 func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.CtxAs[*DefaultCtx](t, New())
 
 	val, err := testredirectionMsgs.MarshalMsg(nil)
@@ -657,7 +639,6 @@ func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {
 
 func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		flash  map[string]string
 		name   string
@@ -691,7 +672,6 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 
 			// The source handler sets the flash messages and redirects to the target.
@@ -818,7 +798,6 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 // neither read nor expired, and the accessors report nothing.
 func Test_Redirect_DisableFlashMessages(t *testing.T) {
 	t.Parallel()
-
 	payload, err := testredirectionMsgs.MarshalMsg(nil)
 	require.NoError(t, err)
 	incoming := FlashCookieName + "=" + hex.EncodeToString(payload)
@@ -838,7 +817,6 @@ func Test_Redirect_DisableFlashMessages(t *testing.T) {
 		for _, disabled := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/disabled=%v", tc.name, disabled), func(t *testing.T) {
 				t.Parallel()
-
 				app := tc.newApp(Config{DisableFlashMessages: disabled})
 				app.Get("/source", func(c Ctx) error {
 					return c.Redirect().With("status", "ok").WithInput().To("/target")
@@ -1105,7 +1083,6 @@ func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
 
 	t.Run("plain http", func(t *testing.T) {
 		t.Parallel()
-
 		cookie := post(t, newApp(), "")
 		require.Contains(t, cookie, "HttpOnly")
 		// Secure would make the browser drop the cookie on a plaintext request.
@@ -1114,7 +1091,6 @@ func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
 
 	t.Run("forwarded https", func(t *testing.T) {
 		t.Parallel()
-
 		cookie := post(t, newApp(), "https")
 		require.Contains(t, cookie, "HttpOnly")
 		require.Contains(t, cookie, "secure")
@@ -1188,11 +1164,9 @@ func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
 // referer at all, and Back went to the fallback instead of back.
 func Test_Redirect_Back_IgnoresHeaderNameCase(t *testing.T) {
 	t.Parallel()
-
 	for _, normalize := range []bool{true, false} {
 		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
 			t.Parallel()
-
 			for _, sent := range []string{"Referer", "referer", "REFERER"} {
 				app := New(Config{DisableHeaderNormalizing: !normalize})
 				c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1215,7 +1189,6 @@ func Test_Redirect_Back_IgnoresHeaderNameCase(t *testing.T) {
 // and one the URL parser refuses.
 func Test_Redirect_Back_RejectsAnUnusableReferer(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name    string
 		referer string
@@ -1235,7 +1208,6 @@ func Test_Redirect_Back_RejectsAnUnusableReferer(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 
 			if tc.referer != "" {
@@ -1263,7 +1235,6 @@ func Test_Redirect_Back_RejectsAnUnusableReferer(t *testing.T) {
 
 	t.Run("no referer and no fallback is an error", func(t *testing.T) {
 		t.Parallel()
-
 		c := apptest.Ctx(t, New())
 
 		require.ErrorIs(t, c.Redirect().Back(), ErrRedirectBackNoFallback)
@@ -1281,7 +1252,6 @@ func Test_Redirect_Back_RejectsAnUnusableReferer(t *testing.T) {
 // payload claimed.
 func Test_Redirect_parseAndClearFlashMessages_UndecodablePayload(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name   string
 		cookie string
@@ -1303,7 +1273,6 @@ func Test_Redirect_parseAndClearFlashMessages_UndecodablePayload(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.CtxAs[*DefaultCtx](t, New())
 
 			r := AcquireRedirect()
@@ -1323,7 +1292,6 @@ func Test_Redirect_parseAndClearFlashMessages_UndecodablePayload(t *testing.T) {
 
 func Test_Redirect_Messages_ProgrammaticCookieHeader(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", func(c Ctx) error {
 		return c.SendString(c.Redirect().Message("success").Value + "," + c.Redirect().OldInput("id").Value)

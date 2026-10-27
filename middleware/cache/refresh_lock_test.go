@@ -52,7 +52,6 @@ func cacheTestCEvict(app *fiber.App) <-chan error {
 
 func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	t.Parallel()
-
 	const oldKey = cacheKeyVersion + "|GET|/old"
 	started := make(chan struct{})
 	resume := make(chan struct{})
@@ -123,7 +122,6 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 
 func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 	t.Parallel()
-
 	storage := &blockingFailedEvictionStorage{
 		failingCacheStorage: newFailingCacheStorage(),
 		key:                 cacheKeyVersion + "|GET|/old",

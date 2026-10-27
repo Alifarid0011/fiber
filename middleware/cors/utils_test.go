@@ -8,7 +8,6 @@ import (
 
 func Test_isOriginSerializedOrNull(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name               string
 		origin             string
@@ -56,7 +55,6 @@ func Test_isOriginSerializedOrNull(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			isSerialized, isNull := isOriginSerializedOrNull(tt.origin)
 			assert.Equal(t, tt.expectedSerialized, isSerialized, "isSerialized mismatch for origin %q", tt.origin)
 			assert.Equal(t, tt.expectedNull, isNull, "isNull mismatch for origin %q", tt.origin)

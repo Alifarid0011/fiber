@@ -216,7 +216,6 @@ func Test_HasConfiguredServices(t *testing.T) {
 
 func Test_InitServices(t *testing.T) {
 	t.Parallel()
-
 	t.Run("no-services", func(t *testing.T) {
 		app := &App{configured: Config{}}
 		require.NotPanics(t, app.initServices)
@@ -283,7 +282,6 @@ func Test_InitServices(t *testing.T) {
 
 	t.Run("shutdown-hooks/close-shared-state", func(t *testing.T) {
 		t.Parallel()
-
 		storage := &shutdownHookStorage{}
 		app := New(Config{Services: []Service{&mockService{name: "dep1"}}, SharedStorage: storage})
 
@@ -300,7 +298,6 @@ func Test_InitServices(t *testing.T) {
 
 	t.Run("shutdown-hooks/close-shared-state-after-service-error", func(t *testing.T) {
 		t.Parallel()
-
 		storage := &shutdownHookStorage{closeErr: errors.New("close error")}
 		app := New(Config{
 			Services: []Service{
@@ -486,7 +483,6 @@ func Test_LogServices(t *testing.T) {
 
 func Test_NewConfiguredServicesNil(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithError(t, "fiber: service at index 0 is nil", func() {
 		New(Config{Services: []Service{nil}})
 	})
@@ -738,7 +734,6 @@ func (s *orderedService) Terminate(ctx context.Context) error {
 
 func Test_ShutdownServices_ReverseStartOrder(t *testing.T) {
 	t.Parallel()
-
 	const count = 8
 	var terminated []string
 	services := make([]Service, 0, count)
@@ -776,7 +771,6 @@ func (uncomparableService) Terminate(context.Context) error { return nil }
 
 func Test_ShutdownServices_UncomparableService(t *testing.T) {
 	t.Parallel()
-
 	services := []Service{
 		uncomparableService{name: "first", tags: []string{"a"}},
 		uncomparableService{name: "second", tags: []string{"b"}},
@@ -813,10 +807,8 @@ func Test_ShutdownServices_StartedTwiceTerminatesOnce(t *testing.T) {
 
 func Test_StartServices_DuplicateNames(t *testing.T) {
 	t.Parallel()
-
 	t.Run("startServices fails before starting anything", func(t *testing.T) {
 		t.Parallel()
-
 		first := &mockService{name: "dup"}
 		second := &mockService{name: "dup"}
 		app := rootMiscAServicesApp(first, &mockService{name: "other"}, second)
@@ -831,7 +823,6 @@ func Test_StartServices_DuplicateNames(t *testing.T) {
 
 	t.Run("New panics", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithError(t, `fiber: duplicate service name "dup": services at index 0 and 2 share it, but service names must be unique`, func() {
 			New(Config{Services: []Service{&mockService{name: "dup"}, &mockService{name: "other"}, &mockService{name: "dup"}}})
 		})
@@ -851,7 +842,6 @@ func (s *countingService) Terminate(ctx context.Context) error {
 
 func Test_ShutdownServices_ConcurrentCallersTerminateOnce(t *testing.T) {
 	t.Parallel()
-
 	const (
 		count   = 3
 		callers = 4

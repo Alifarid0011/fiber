@@ -17,7 +17,6 @@ import (
 
 func Test_Middleware_Panics(t *testing.T) {
 	t.Parallel()
-
 	t.Run("Empty Key", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
@@ -93,7 +92,6 @@ func Test_Middleware_InvalidBase64(t *testing.T) {
 
 func Test_DecryptCookie_InvalidEncryptedValue(t *testing.T) {
 	t.Parallel()
-
 	key := GenerateKey(32)
 	// the decoded value is shorter than the GCM nonce size, so decryption should fail immediately
 	shortValue := base64.StdEncoding.EncodeToString([]byte("short"))
@@ -104,7 +102,6 @@ func Test_DecryptCookie_InvalidEncryptedValue(t *testing.T) {
 
 func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
 	t.Parallel()
-
 	testKey := GenerateKey(32)
 	expected := errors.New("encrypt failed")
 
@@ -139,7 +136,6 @@ func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
 
 func Test_Middleware_EncryptionErrorDoesNotMaskNextError(t *testing.T) {
 	t.Parallel()
-
 	testKey := GenerateKey(32)
 	encryptErr := errors.New("encrypt failed")
 	downstreamErr := errors.New("downstream failed")
@@ -340,7 +336,6 @@ func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 
 func Test_GenerateKey(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		length int
 	}{

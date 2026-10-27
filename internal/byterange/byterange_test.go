@@ -12,7 +12,6 @@ import (
 
 func Test_classify(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name      string
 		field     string
@@ -56,7 +55,6 @@ func Test_classify(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var buf [64]byte
 			got := classify(buf[:0], []byte(tc.field))
 			require.Equal(t, tc.verdict, got.verdict)
@@ -71,7 +69,6 @@ func Test_classify(t *testing.T) {
 
 func Test_ifRangeMatches(t *testing.T) {
 	t.Parallel()
-
 	const modified = "Thu, 02 Jan 2020 03:04:05 GMT"
 	modifiedAt := time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)
 
@@ -102,7 +99,6 @@ func Test_ifRangeMatches(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var resp fasthttp.Response
 			if tc.lastModified != "" {
 				resp.Header.Set(fasthttp.HeaderLastModified, tc.lastModified)
@@ -117,7 +113,6 @@ func Test_ifRangeMatches(t *testing.T) {
 	// A date is a strong validator only when it is old enough (§8.8.2.2).
 	t.Run("a date is strong once strongAfter old", func(t *testing.T) {
 		t.Parallel()
-
 		var resp fasthttp.Response
 		resp.Header.Set(fasthttp.HeaderLastModified, modified)
 		for age, want := range map[time.Duration]bool{
@@ -199,7 +194,6 @@ func requestAt(t *testing.T, now func() time.Time, handler fasthttp.RequestHandl
 
 func Test_Wrap_RangeRules(t *testing.T) {
 	t.Parallel()
-
 	handler := newFileServer(t)
 
 	tests := []struct {
@@ -239,7 +233,6 @@ func Test_Wrap_RangeRules(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			fields := map[string]string{}
 			if tc.rangeField != "" {
 				fields[fasthttp.HeaderRange] = tc.rangeField
@@ -264,7 +257,6 @@ func Test_Wrap_RangeRules(t *testing.T) {
 
 func Test_Wrap_IfRange(t *testing.T) {
 	t.Parallel()
-
 	handler := newFileServer(t)
 
 	const stale = "Wed, 01 Jan 2020 03:04:05 GMT"
@@ -302,7 +294,6 @@ func Test_Wrap_IfRange(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			fields := map[string]string{fasthttp.HeaderIfRange: tc.ifRange}
 			if tc.rangeField != "" {
 				fields[fasthttp.HeaderRange] = tc.rangeField
@@ -328,7 +319,6 @@ func Test_Wrap_IfRange(t *testing.T) {
 // If-Range date matches it (§8.8.2.2).
 func Test_Wrap_IfRange_Strength(t *testing.T) {
 	t.Parallel()
-
 	handler := newFileServer(t)
 	modifiedAt := time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)
 
@@ -341,7 +331,6 @@ func Test_Wrap_IfRange_Strength(t *testing.T) {
 	} {
 		t.Run(age.String(), func(t *testing.T) {
 			t.Parallel()
-
 			now := func() time.Time { return modifiedAt.Add(age) }
 			fields := map[string]string{fasthttp.HeaderRange: "bytes=0-4", fasthttp.HeaderIfRange: fileModified}
 			require.Equal(t, wantStatus, requestAt(t, now, handler, fasthttp.MethodGet, fields).status())
@@ -353,7 +342,6 @@ func Test_Wrap_IfRange_Strength(t *testing.T) {
 // partial response do not.
 func Test_Wrap_KeepsCallerHeaders(t *testing.T) {
 	t.Parallel()
-
 	handler := newFileServer(t)
 	prepare := func(ctx *fasthttp.RequestCtx) { ctx.Response.Header.Set("X-Request", "kept") }
 
@@ -366,7 +354,6 @@ func Test_Wrap_KeepsCallerHeaders(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			got := request(t, handler, fasthttp.MethodGet, fields, prepare)
 			require.Equal(t, "kept", got.header("X-Request"))
 			if got.status() == 200 {
@@ -413,7 +400,6 @@ func Benchmark_Wrap_SingleRange(b *testing.B) {
 // The Range field is put back even when the handler panics.
 func Test_Wrap_RestoresRangeAfterPanic(t *testing.T) {
 	t.Parallel()
-
 	handler := Wrap(func(*fasthttp.RequestCtx) { panic("handler broke") })
 
 	for _, tc := range []struct{ method, field string }{

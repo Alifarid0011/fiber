@@ -114,7 +114,6 @@ func Test_IsChild(t *testing.T) {
 
 func Test_Prefork_Logger(t *testing.T) {
 	t.Parallel()
-
 	l := preforkLogger{}
 	// Should not panic
 	l.Printf("test %s", "message")
@@ -126,11 +125,9 @@ func Test_Prefork_Logger(t *testing.T) {
 // the table come from listen_test.go.
 func Test_preforkServe_GracefulContext_DoneBeforeServe(t *testing.T) {
 	t.Parallel()
-
 	for _, state := range gracefulContextStates {
 		t.Run(state.name, func(t *testing.T) {
 			t.Parallel()
-
 			f := newGracefulFixture(t)
 			// The child calls this right before it serves.
 			f.cfg.ListenerAddrFunc = func(net.Addr) { f.cancelAndAwait() }
@@ -148,7 +145,6 @@ func Test_preforkServe_GracefulContext_DoneBeforeServe(t *testing.T) {
 // subprocess of this test binary that reports how often its shutdown hooks ran.
 func Test_Prefork_Child_GracefulContext_WatchedOnce(t *testing.T) {
 	t.Parallel()
-
 	exe, err := os.Executable()
 	require.NoError(t, err)
 
@@ -168,7 +164,6 @@ func Test_Prefork_Child_GracefulContext_WatchedOnce(t *testing.T) {
 // context right before it serves, as the table of Test_preforkServe_GracefulContext_DoneBeforeServe does.
 func Test_Prefork_Child_GracefulContext_Helper(t *testing.T) {
 	t.Parallel()
-
 	if os.Getenv(preforkChildHelperEnv) != "1" {
 		return
 	}

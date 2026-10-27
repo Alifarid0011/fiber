@@ -20,7 +20,6 @@ import (
 
 func Test_ConfigDefault(t *testing.T) {
 	t.Parallel()
-
 	cfg := configDefault()
 	require.Equal(t, "page", cfg.PageKey)
 	require.Equal(t, 1, cfg.DefaultPage)
@@ -31,7 +30,6 @@ func Test_ConfigDefault(t *testing.T) {
 
 func Test_ConfigOverride(t *testing.T) {
 	t.Parallel()
-
 	cfg := configDefault(Config{PageKey: "p", LimitKey: "l", DefaultPage: 5, DefaultLimit: 50})
 	require.Equal(t, "p", cfg.PageKey)
 	require.Equal(t, "l", cfg.LimitKey)
@@ -41,14 +39,12 @@ func Test_ConfigOverride(t *testing.T) {
 
 func Test_ConfigDefaultCursorKey(t *testing.T) {
 	t.Parallel()
-
 	cfg := configDefault()
 	require.Equal(t, "cursor", cfg.CursorKey)
 }
 
 func Test_ConfigOverrideCursorKey(t *testing.T) {
 	t.Parallel()
-
 	cfg := configDefault(Config{CursorKey: "after", CursorParam: "starting_after"})
 	require.Equal(t, "after", cfg.CursorKey)
 	require.Equal(t, "starting_after", cfg.CursorParam)
@@ -56,7 +52,6 @@ func Test_ConfigOverrideCursorKey(t *testing.T) {
 
 func Test_ConfigNegativeDefaults(t *testing.T) {
 	t.Parallel()
-
 	cfg := configDefault(Config{DefaultPage: -1, DefaultLimit: -1})
 	require.Equal(t, 1, cfg.DefaultPage)
 	require.Equal(t, 10, cfg.DefaultLimit)
@@ -66,7 +61,6 @@ func Test_ConfigNegativeDefaults(t *testing.T) {
 
 func Test_SortOrderFromString(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		input    string
 		expected SortOrder
@@ -89,7 +83,6 @@ func Test_SortOrderFromString(t *testing.T) {
 
 func Test_PageInfoStart(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		pageInfo PageInfo
@@ -115,7 +108,6 @@ func Test_PageInfoStart(t *testing.T) {
 
 func Test_PageInfoSortBy(t *testing.T) {
 	t.Parallel()
-
 	p := NewPageInfo(1, 10, 0, nil)
 	p.SortBy("name", ASC).SortBy("date", DESC)
 
@@ -129,7 +121,6 @@ func Test_PageInfoSortBy(t *testing.T) {
 // Test_PageInfoPageURLs covers PageInfo.NextPageURL and PageInfo.PreviousPageURL.
 func Test_PageInfoPageURLs(t *testing.T) {
 	t.Parallel()
-
 	const baseURL = "https://example.com/users"
 
 	for _, tc := range []struct {
@@ -145,7 +136,6 @@ func Test_PageInfoPageURLs(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.Equal(t, tc.expected, tc.pageURL(&tc.pageInfo, baseURL))
 		})
 	}
@@ -161,7 +151,6 @@ func Test_PageInfoStartCursorMode(t *testing.T) {
 
 func Test_PageInfoNextPageURLWithExistingQueryParams(t *testing.T) {
 	t.Parallel()
-
 	p := PageInfo{Page: 2, Limit: 10}
 	result := p.NextPageURL("https://example.com/users?filter=active")
 	require.Contains(t, result, "filter=active")
@@ -171,7 +160,6 @@ func Test_PageInfoNextPageURLWithExistingQueryParams(t *testing.T) {
 
 func Test_encodeQueryValues(t *testing.T) {
 	t.Parallel()
-
 	cases := []url.Values{
 		{},
 		{"a": {"1"}},
@@ -187,7 +175,6 @@ func Test_encodeQueryValues(t *testing.T) {
 
 func Test_PageInfoPreviousPageURLWithExistingQueryParams(t *testing.T) {
 	t.Parallel()
-
 	p := PageInfo{Page: 3, Limit: 10}
 	result := p.PreviousPageURL("https://example.com/users?filter=active")
 	require.Contains(t, result, "filter=active")
@@ -197,7 +184,6 @@ func Test_PageInfoPreviousPageURLWithExistingQueryParams(t *testing.T) {
 
 func Test_PageInfoCursorFields(t *testing.T) {
 	t.Parallel()
-
 	p := &PageInfo{Cursor: "abc123", HasMore: true, NextCursor: "def456"}
 
 	require.Equal(t, "abc123", p.Cursor)
@@ -207,7 +193,6 @@ func Test_PageInfoCursorFields(t *testing.T) {
 
 func Test_CursorValuesRoundTrip(t *testing.T) {
 	t.Parallel()
-
 	original := map[string]any{"id": float64(42), "created_at": "2026-01-01T00:00:00Z"}
 
 	p := &PageInfo{}
@@ -227,7 +212,6 @@ func Test_CursorValuesRoundTrip(t *testing.T) {
 // Test_CursorValuesUndecodable covers the cursors CursorValues cannot decode.
 func Test_CursorValuesUndecodable(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name   string
 		cursor string
@@ -238,7 +222,6 @@ func Test_CursorValuesUndecodable(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			p := &PageInfo{Cursor: tc.cursor}
 			require.Nil(t, p.CursorValues())
 		})
@@ -247,7 +230,6 @@ func Test_CursorValuesUndecodable(t *testing.T) {
 
 func Test_NextCursorURL(t *testing.T) {
 	t.Parallel()
-
 	t.Run("with HasMore", func(t *testing.T) {
 		t.Parallel()
 		p := &PageInfo{Limit: 20}
@@ -267,7 +249,6 @@ func Test_NextCursorURL(t *testing.T) {
 
 func Test_SetNextCursorSetsFields(t *testing.T) {
 	t.Parallel()
-
 	p := &PageInfo{Limit: 10}
 	require.NoError(t, p.SetNextCursor(map[string]any{"id": float64(1)}))
 	require.True(t, p.HasMore)
@@ -360,7 +341,6 @@ func Test_PaginateWithQueries(t *testing.T) {
 // parameters and the PageInfo a handler then finds on the request context.
 func Test_PaginateRequests(t *testing.T) {
 	t.Parallel()
-
 	idAsc := []SortField{{Field: "id", Order: ASC}}
 	cursor42 := base64.RawURLEncoding.EncodeToString([]byte(`{"id":42}`))
 	cursor1 := base64.RawURLEncoding.EncodeToString([]byte(`{"id":1}`))
@@ -450,7 +430,6 @@ func Test_PaginateRequests(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			got := paginateTestGet(t, tc.target, tc.cfg...)
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.start, got.Start())
@@ -475,7 +454,6 @@ func Test_PaginateFromContextWithoutNew(t *testing.T) {
 
 func Test_PaginateNextSkip(t *testing.T) {
 	t.Parallel()
-
 	app := paginateTestApp(Config{Next: func(_ fiber.Ctx) bool { return true }})
 
 	apptest.Expect(t, app, "/", fiber.StatusBadRequest)
@@ -483,7 +461,6 @@ func Test_PaginateNextSkip(t *testing.T) {
 
 func Test_PaginateEdgeCases(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name          string
 		url           string
@@ -500,7 +477,6 @@ func Test_PaginateEdgeCases(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			result := paginateTestGet(t, tc.url, Config{DefaultSort: "id", DefaultLimit: 10})
 			require.Equal(t, tc.expectedPage, result.Page)
 			require.Equal(t, tc.expectedLimit, result.Limit)
@@ -510,7 +486,6 @@ func Test_PaginateEdgeCases(t *testing.T) {
 
 func Test_PaginateWithMultipleSorting(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name         string
 		url          string
@@ -525,7 +500,6 @@ func Test_PaginateWithMultipleSorting(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			result := paginateTestGet(t, tc.url, Config{
 				SortKey:      "sort",
 				DefaultSort:  "id",
@@ -538,7 +512,6 @@ func Test_PaginateWithMultipleSorting(t *testing.T) {
 
 func Test_ParseSortQuery(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name         string
 		query        string
@@ -606,7 +579,6 @@ func Test_ParseSortQuery(t *testing.T) {
 
 func Test_PaginateInvalidCursorReturns400(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name   string
 		cursor string
@@ -618,7 +590,6 @@ func Test_PaginateInvalidCursorReturns400(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			apptest.Expect(t, paginateTestApp(), "/?cursor="+tc.cursor, fiber.StatusBadRequest)
 		})
 	}
@@ -626,7 +597,6 @@ func Test_PaginateInvalidCursorReturns400(t *testing.T) {
 
 func Test_NextPageURLWithKeys(t *testing.T) {
 	t.Parallel()
-
 	p := PageInfo{Page: 2, Limit: 10}
 	result := p.NextPageURLWithKeys("https://example.com/users", "p", "per_page")
 	require.Equal(t, "https://example.com/users?p=3&per_page=10", result)
@@ -634,7 +604,6 @@ func Test_NextPageURLWithKeys(t *testing.T) {
 
 func Test_PreviousPageURLWithKeys(t *testing.T) {
 	t.Parallel()
-
 	t.Run("has previous", func(t *testing.T) {
 		t.Parallel()
 		p := PageInfo{Page: 3, Limit: 15}
@@ -652,7 +621,6 @@ func Test_PreviousPageURLWithKeys(t *testing.T) {
 
 func Test_NextCursorURLWithKeys(t *testing.T) {
 	t.Parallel()
-
 	t.Run("has more", func(t *testing.T) {
 		t.Parallel()
 		p := &PageInfo{Limit: 20}
@@ -673,7 +641,6 @@ func Test_NextCursorURLWithKeys(t *testing.T) {
 
 func Test_PaginateCustomMaxLimit(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name          string
 		url           string
@@ -686,7 +653,6 @@ func Test_PaginateCustomMaxLimit(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			result := paginateTestGet(t, tc.url, Config{DefaultSort: "id", DefaultLimit: 10, MaxLimit: 50})
 			require.Equal(t, tc.expectedLimit, result.Limit)
 		})
@@ -695,7 +661,6 @@ func Test_PaginateCustomMaxLimit(t *testing.T) {
 
 func Test_ConfigDefaultMaxLimitNormalization(t *testing.T) {
 	t.Parallel()
-
 	cfg := configDefault(Config{MaxLimit: 0})
 	require.Equal(t, DefaultMaxLimit, cfg.MaxLimit)
 
@@ -781,7 +746,6 @@ func Benchmark_PaginateCursorMiddleware(b *testing.B) {
 
 func Test_Paginate_EmptySortKey_IgnoresQuery(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{AllowedSorts: []string{"name", "id"}, DefaultSort: "id"}))
 	app.Get("/", func(c fiber.Ctx) error {
@@ -801,7 +765,6 @@ func Test_Paginate_EmptySortKey_IgnoresQuery(t *testing.T) {
 
 func Test_PageInfo_NextPageURL_NoOverflow(t *testing.T) {
 	t.Parallel()
-
 	p := &PageInfo{Page: math.MaxInt, Limit: 10}
 	require.NotContains(t, p.NextPageURL("/items"), "-")
 	require.Contains(t, p.NextPageURL("/items"), "page="+strconv.Itoa(math.MaxInt))

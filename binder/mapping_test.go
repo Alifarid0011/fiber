@@ -16,7 +16,6 @@ import (
 
 func Test_EqualFieldType(t *testing.T) {
 	t.Parallel()
-
 	var out int
 	require.False(t, equalFieldType(&out, reflect.Int, "key", "query"))
 
@@ -77,7 +76,6 @@ func Test_EqualFieldType(t *testing.T) {
 
 func Test_ParseParamSquareBrackets(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		err      error
 		input    string
@@ -97,7 +95,6 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			t.Parallel()
-
 			result, err := parseParamSquareBrackets(tt.input)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -111,7 +108,6 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 
 func Test_parseToMap(t *testing.T) {
 	t.Parallel()
-
 	inputMap := map[string][]string{"key1": {"value1", "value2"}, "key2": {"value3"}, "key3": {"value4"}}
 
 	// Test map[string]string
@@ -156,7 +152,6 @@ func Test_parseToMap(t *testing.T) {
 
 func Test_FilterFlags(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		input    string
 		expected string
@@ -171,7 +166,6 @@ func Test_FilterFlags(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			t.Parallel()
-
 			result := FilterFlags(tt.input)
 			require.Equal(t, tt.expected, result)
 		})
@@ -198,10 +192,8 @@ func Benchmark_FilterFlags(b *testing.B) {
 // of the destination's.
 func Test_BindData_Bind(t *testing.T) {
 	t.Parallel()
-
 	t.Run("value", func(t *testing.T) {
 		t.Parallel()
-
 		data := &bindData{values: make(map[string][]string), mode: bindMap}
 		require.NoError(t, data.bind("query", &map[string][]string{}, "name", "John", false, false))
 		require.Equal(t, map[string][]string{"name": {"John"}}, data.values)
@@ -209,7 +201,6 @@ func Test_BindData_Bind(t *testing.T) {
 
 	t.Run("splitting enabled with comma", func(t *testing.T) {
 		t.Parallel()
-
 		out := struct {
 			Color  string   `query:"color"`
 			Colors []string `query:"colors"`
@@ -223,7 +214,6 @@ func Test_BindData_Bind(t *testing.T) {
 
 	t.Run("splitting disabled", func(t *testing.T) {
 		t.Parallel()
-
 		out := struct {
 			Colors []string `query:"colors"`
 		}{}
@@ -238,7 +228,6 @@ func Test_BindData_Bind(t *testing.T) {
 // malformed key is an error.
 func Test_BindData_BracketNotation(t *testing.T) {
 	t.Parallel()
-
 	out := &map[string][]string{}
 	data := &bindData{values: make(map[string][]string), mode: bindMap}
 	require.NoError(t, data.bind("query", out, "user[name]", "john", false, true))
@@ -260,7 +249,6 @@ func Test_BindData_BracketNotation(t *testing.T) {
 
 func Test_parseToStruct_MismatchedData(t *testing.T) {
 	t.Parallel()
-
 	type User struct {
 		Name string `query:"name"`
 		Age  int    `query:"age"`
@@ -320,7 +308,6 @@ func Test_parseToMap_Extended(t *testing.T) {
 
 func Test_decoderPoolMapInit(t *testing.T) {
 	t.Parallel()
-
 	for _, tag := range tags {
 		decAny := getDecoderPool(tag).Get()
 		dec, ok := decAny.(*schema.Decoder)
@@ -332,7 +319,6 @@ func Test_decoderPoolMapInit(t *testing.T) {
 
 func TestSetParserDecoderConcurrentAccess(t *testing.T) {
 	t.Parallel()
-
 	t.Cleanup(func() {
 		SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
 	})
@@ -396,7 +382,6 @@ func TestSetParserDecoderConcurrentAccess(t *testing.T) {
 
 func Test_getFieldCache(t *testing.T) {
 	t.Parallel()
-
 	for _, tag := range []string{"header", "respHeader", "cookie", "form", "uri", "query"} {
 		require.NotNil(t, getFieldCache(tag), tag)
 	}
@@ -405,7 +390,6 @@ func Test_getFieldCache(t *testing.T) {
 
 func Test_EqualFieldType_Map(t *testing.T) {
 	t.Parallel()
-
 	sliceMap := map[string][]string{}
 	require.True(t, equalFieldType(&sliceMap, reflect.Slice, "any", "query"))
 	require.True(t, equalFieldType(sliceMap, reflect.Slice, "any", "query"))
@@ -421,7 +405,6 @@ func Test_EqualFieldType_Map(t *testing.T) {
 
 func Test_EqualFieldType_ScalarNotSplit(t *testing.T) {
 	t.Parallel()
-
 	type Filter struct {
 		IDs []int `query:"ids"`
 	}
@@ -443,7 +426,6 @@ func Test_EqualFieldType_ScalarNotSplit(t *testing.T) {
 
 func Test_EqualFieldType_NestedDepth(t *testing.T) {
 	t.Parallel()
-
 	type Inner struct {
 		Name string   `query:"name"`
 		Tags []string `query:"tags"`
@@ -480,7 +462,6 @@ func Test_EqualFieldType_NestedDepth(t *testing.T) {
 
 func Test_EqualFieldType_EmbeddedStruct(t *testing.T) {
 	t.Parallel()
-
 	type Embedded struct {
 		Title string   `query:"title"`
 		Name  string   `query:"name"`
@@ -514,7 +495,6 @@ func Test_EqualFieldType_EmbeddedStruct(t *testing.T) {
 
 func Test_EqualFieldType_RecursiveType(t *testing.T) {
 	t.Parallel()
-
 	type Node struct {
 		Next   *Node    `query:"next"`
 		Values []string `query:"values"`
@@ -542,7 +522,6 @@ type DiamondMid struct {
 
 func Test_EqualFieldType_DiamondEmbedding(t *testing.T) {
 	t.Parallel()
-
 	type Outer struct {
 		DiamondMid
 	}
@@ -555,7 +534,6 @@ func Test_EqualFieldType_DiamondEmbedding(t *testing.T) {
 
 func Test_EqualFieldType_InvalidDestination(t *testing.T) {
 	t.Parallel()
-
 	type User struct {
 		Names []string `query:"names"`
 	}
@@ -600,7 +578,6 @@ func Test_buildFieldInfo_Unexported(t *testing.T) {
 
 func Test_fieldName(t *testing.T) {
 	t.Parallel()
-
 	type Tagged struct {
 		Plain    string   `query:"plain"`
 		Ignored  string   `query:"-"`
@@ -647,7 +624,6 @@ func Benchmark_equalFieldType(b *testing.B) {
 
 func Test_FieldInfo_ResolveKindsAgreesWithResolve(t *testing.T) {
 	t.Parallel()
-
 	type Inner struct {
 		Name string `query:"name"`
 	}
@@ -700,7 +676,6 @@ type walkTarget struct {
 
 func Test_StructKeyKind_NestedPaths(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		key  string
 		kind reflect.Kind
@@ -730,7 +705,6 @@ func Test_StructKeyKind_NestedPaths(t *testing.T) {
 
 func Test_IsDigits(t *testing.T) {
 	t.Parallel()
-
 	require.False(t, isDigits(""))
 	require.False(t, isDigits("12a"))
 	require.False(t, isDigits("-1"))
@@ -750,7 +724,6 @@ type mismatchOuter struct {
 
 func Test_StructKeyKind_NestedCacheTypeMismatch(t *testing.T) {
 	t.Parallel()
-
 	cache := getFieldCache("query")
 	typ := reflect.TypeFor[mismatchInner]()
 	cache.types.Store(typ, 1)
@@ -774,7 +747,6 @@ type MutualInner struct {
 
 func Test_CollectPromoted_MutualEmbedding(t *testing.T) {
 	t.Parallel()
-
 	var out MutualOuter
 	require.True(t, equalFieldType(&out, reflect.Slice, "names", "query"))
 	require.False(t, equalFieldType(&out, reflect.Bool, "names", "query"))
@@ -786,7 +758,6 @@ func Test_CollectPromoted_MutualEmbedding(t *testing.T) {
 // 5,000-pair body of two alternating keys to over four million slots.
 func Test_BindData_AlternatingKeys(t *testing.T) {
 	t.Parallel()
-
 	const pairs = 5000
 	data := &bindData{values: make(map[string][]string), mode: bindMap}
 	want := make(map[string][]string)
@@ -808,7 +779,6 @@ func Test_BindData_AlternatingKeys(t *testing.T) {
 // bind reusing the pool must leave its values as they were bound.
 func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 	t.Parallel()
-
 	require.Equal(t, bindMap, bindModeFor(&map[string][]string{}))
 	require.Equal(t, bindMap, bindModeFor(map[string][]string{}))
 	type named map[string][]string
@@ -848,13 +818,11 @@ func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 // that the entries it already held stay unless overwritten.
 func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
 	t.Parallel()
-
 	const input = "a=1&b=2&a=3&c=&b=4,5&a=6"
 
 	for _, src := range pairSources {
 		t.Run(src.name, func(t *testing.T) {
 			t.Parallel()
-
 			all := make(map[string][]string)
 			require.NoError(t, src.bind(t, input, false, &all))
 			want := map[string]string{"kept": "yes"}
@@ -878,7 +846,6 @@ func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
 // one, and a nil pointer fails as a nil pointer to a map of slices does.
 func Test_Bind_StringMap_Destinations(t *testing.T) {
 	t.Parallel()
-
 	req := newQueryRequest(t, "a=1&a=2&b=3")
 	b := &QueryBinding{}
 	want := map[string]string{"a": "2", "b": "3"}
@@ -905,7 +872,6 @@ func Test_Bind_StringMap_Destinations(t *testing.T) {
 // is how getDecoderPool finds a tag's pool in a decoderPoolSet.
 func Test_tagIndex_MatchesTags(t *testing.T) {
 	t.Parallel()
-
 	for i, tag := range tags {
 		require.Equal(t, i, tagIndex(tag), tag)
 		require.NotNil(t, getDecoderPool(tag), tag)

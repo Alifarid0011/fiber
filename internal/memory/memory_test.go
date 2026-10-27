@@ -76,7 +76,6 @@ func expiryOf(store *Storage, key string) uint32 {
 
 func Test_Memory_TTLRoundsUp(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name string
 		ttl  time.Duration
@@ -93,7 +92,6 @@ func Test_Memory_TTLRoundsUp(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			store := New()
 			now := setWithinSecond(t, store, "key", "value", tc.ttl)
 
@@ -109,7 +107,6 @@ func Test_Memory_TTLRoundsUp(t *testing.T) {
 
 func Test_Memory_SubSecondTTLExpires(t *testing.T) {
 	t.Parallel()
-
 	store := New()
 	store.Set("key", "value", 500*time.Millisecond)
 	require.Equal(t, "value", store.Get("key"))
@@ -154,7 +151,6 @@ func Test_Memory_CeilSecondsSaturates(t *testing.T) {
 
 func Test_Memory_MaxTTLDoesNotWrap(t *testing.T) {
 	t.Parallel()
-
 	store := New()
 	store.Set("max", "v", time.Duration(math.MaxInt64))
 
@@ -166,7 +162,6 @@ func Test_Memory_MaxTTLDoesNotWrap(t *testing.T) {
 
 func Test_Memory_DeleteIf(t *testing.T) {
 	t.Parallel()
-
 	for _, scenario := range []string{"match", "mismatch", "missing"} {
 		t.Run(scenario, func(t *testing.T) {
 			t.Parallel()

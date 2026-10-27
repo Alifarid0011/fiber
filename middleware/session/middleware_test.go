@@ -284,7 +284,6 @@ func Test_Session_Middleware(t *testing.T) {
 
 func Test_SessionLoggerTagRedactsSessionID(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 
 	app := fiber.New()
@@ -298,7 +297,6 @@ func Test_SessionLoggerTagRedactsSessionID(t *testing.T) {
 
 func Test_SessionLoggerTagWithOuterLoggerDoesNotPanic(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 
 	sessionHandler := New()
@@ -373,7 +371,6 @@ func Test_Session_FromSession(t *testing.T) {
 
 func Test_Session_FromContext_Types(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{PassLocalsToContext: true})
 	app.Use(New())
 
@@ -458,7 +455,6 @@ func Test_Session_WithConfig(t *testing.T) {
 
 func Test_Session_Next(t *testing.T) {
 	t.Parallel()
-
 	var (
 		doNext bool
 		muNext sync.RWMutex
@@ -569,7 +565,6 @@ func (*contextStorage) Close() error { return nil }
 // A failing session store must result in an error response, not a panic.
 func Test_Session_Middleware_StoreError(t *testing.T) {
 	t.Parallel()
-
 	storage := &failingStorage{err: errors.New("storage unavailable")}
 	app := fiber.New()
 	app.Use(New(Config{Storage: storage}))
@@ -590,7 +585,6 @@ func Test_Session_Middleware_StoreError(t *testing.T) {
 
 func Test_Session_Middleware_StoreError_CustomErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	storageErr := errors.New("redis dial tcp redis.internal.corp:6379: connect: connection refused")
 	storage := &failingStorage{err: storageErr}
 	app := fiber.New()
@@ -614,7 +608,6 @@ func Test_Session_Middleware_StoreError_CustomErrorHandler(t *testing.T) {
 
 func Test_Middleware_DestroyWithContext(t *testing.T) {
 	t.Parallel()
-
 	handler, _ := NewWithStore()
 	app := fiber.New()
 	app.Use(handler)
@@ -638,7 +631,6 @@ func Test_Middleware_DestroyWithContext(t *testing.T) {
 
 func Test_Middleware_ResetWithContext(t *testing.T) {
 	t.Parallel()
-
 	handler, _ := NewWithStore()
 	app := fiber.New()
 	app.Use(handler)
@@ -662,7 +654,6 @@ func Test_Middleware_ResetWithContext(t *testing.T) {
 
 func Test_Middleware_RegenerateWithContext(t *testing.T) {
 	t.Parallel()
-
 	handler, _ := NewWithStore()
 	app := fiber.New()
 	app.Use(handler)
@@ -685,7 +676,6 @@ func Test_Middleware_RegenerateWithContext(t *testing.T) {
 
 func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
 	t.Parallel()
-
 	canceledCtx := func() context.Context {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -716,7 +706,6 @@ func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
 
 func Test_Middleware_ResolveContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("resolve context returns fiber ctx when not nil", func(t *testing.T) {
 		t.Parallel()
 		fctx := apptest.Ctx(t, fiber.New())
@@ -773,7 +762,6 @@ func Test_Session_Save_After_Handler_Cancel(t *testing.T) {
 // request acquired it that goroutine read and wrote the other request's session.
 func Test_Session_FromContext_RetainedContext(t *testing.T) {
 	t.Parallel()
-
 	for _, pass := range []bool{true, false} {
 		name := "default"
 		if pass {
@@ -782,7 +770,6 @@ func Test_Session_FromContext_RetainedContext(t *testing.T) {
 
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(fiber.Config{PassLocalsToContext: pass})
 			app.Use(New())
 
@@ -838,7 +825,6 @@ func Test_Session_FromContext_RetainedContext(t *testing.T) {
 // is released, and never a half-reset object.
 func Test_Session_FromContext_RetainedContext_AfterHandler(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{PassLocalsToContext: true})
 	app.Use(New())
 
@@ -875,7 +861,6 @@ func Test_Session_FromContext_RetainedContext_AfterHandler(t *testing.T) {
 // address and only changed owner.
 func Test_Session_FromContext_RetainedContext_Concurrent(t *testing.T) {
 	t.Parallel()
-
 	const (
 		requests = 64
 		lookups  = 400
@@ -942,7 +927,6 @@ func Test_Session_FromContext_RetainedContext_Concurrent(t *testing.T) {
 // that was looked up while the request ran can never be handed to another one.
 func Test_Session_ReleaseMiddleware_DoesNotRecycleAPublishedOne(t *testing.T) {
 	t.Parallel()
-
 	published := acquireMiddleware()
 	published.escaped = true
 	releaseMiddleware(published)

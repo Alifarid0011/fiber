@@ -240,7 +240,6 @@ func Test_Coverage_DomainForward_HostMismatch_DoesNotProxy(t *testing.T) {
 // Test_Coverage_CanFastJoinPath_RepeatedSeparator covers a second '?' or '#' left to the url.Parse path.
 func Test_Coverage_CanFastJoinPath_RepeatedSeparator(t *testing.T) {
 	t.Parallel()
-
 	for _, target := range []string{"/a?b?c", "/a?b#c", "/a#b?c", "/a#b#c"} {
 		require.False(t, canFastJoinPath(target), target)
 	}

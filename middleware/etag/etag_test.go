@@ -86,7 +86,6 @@ func Test_ETag_SSE_Stream(t *testing.T) {
 // without a body alone.
 func Test_ETag_PassThrough(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		handler fiber.Handler
 		name    string
@@ -106,7 +105,6 @@ func Test_ETag_PassThrough(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New())
 			app.Get("/", tc.handler)
@@ -120,7 +118,6 @@ func Test_ETag_PassThrough(t *testing.T) {
 // it is answered with the page unless the tag the client sends matches.
 func Test_ETag_ConditionalGet(t *testing.T) {
 	t.Parallel()
-
 	for _, variant := range []struct {
 		handler  fiber.Handler
 		name     string
@@ -145,7 +142,6 @@ func Test_ETag_ConditionalGet(t *testing.T) {
 	} {
 		t.Run(variant.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, tc := range []struct {
 				name        string
 				ifNoneMatch string
@@ -157,7 +153,6 @@ func Test_ETag_ConditionalGet(t *testing.T) {
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-
 					app := fiber.New()
 					app.Use(New(variant.cfg...))
 					app.Get("/", variant.handler)
@@ -224,7 +219,6 @@ func Benchmark_Etag(b *testing.B) {
 
 func Test_ETag_WeakComparison(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name           string
 		ifNoneMatch    string
@@ -243,7 +237,6 @@ func Test_ETag_WeakComparison(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{Weak: tc.weak}))
 			app.Get("/", etagTestHello)
@@ -284,7 +277,6 @@ func Test_ETag_IfNoneMatchOnlyForGetHead(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.method, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New())
 			app.All("/", etagTestHello)
@@ -321,7 +313,6 @@ func Test_ETag_SplitIfNoneMatch(t *testing.T) {
 
 func Test_ETag_HandlerETagSpellingsWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-
 	for _, spelling := range []string{"ETag", "Etag", "etag", "ETAG", "eTaG"} {
 		t.Run(spelling, func(t *testing.T) {
 			t.Parallel()
@@ -377,7 +368,6 @@ func Test_ETag_HandlerETagWithoutNormalizing(t *testing.T) {
 
 func Test_Generate_MatchesCRC(t *testing.T) {
 	t.Parallel()
-
 	tab := crc32.MakeTable(0xD5828281)
 	r := rand.New(rand.NewPCG(1, 2))
 	check := func(n int) {

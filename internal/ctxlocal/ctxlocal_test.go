@@ -27,7 +27,6 @@ func (c *recordingCtx) Locals(key any, value ...any) any {
 // precedence over a custom context's own Locals.
 func Test_Set_UsesCustomCtxLocals(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
 		return &recordingCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
 	}))
@@ -44,7 +43,6 @@ func Test_Set_UsesCustomCtxLocals(t *testing.T) {
 // the concrete path, and the value is stored and returned unchanged.
 func Test_Set_UsesDefaultCtxDirectly(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, fiber.New())
 
 	_, isDefault := c.(*fiber.DefaultCtx)

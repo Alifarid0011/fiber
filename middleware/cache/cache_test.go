@@ -376,7 +376,6 @@ func cacheTestAKey(path string) string {
 
 func TestCacheStorageErrors(t *testing.T) {
 	t.Parallel()
-
 	key := cacheTestAKey("/")
 
 	for _, tc := range []struct {
@@ -391,7 +390,6 @@ func TestCacheStorageErrors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			storage := newFailingCacheStorage()
 			storage.errs[tc.errKey] = errors.New("boom")
 
@@ -436,7 +434,6 @@ func canceledContextWithMarker(label string) context.Context {
 
 func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 	t.Parallel()
-
 	storage := newContextRecorderStorage()
 	app := fiber.New()
 
@@ -476,7 +473,6 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 
 func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 	t.Parallel()
-
 	storage := newContextRecorderStorage()
 	storage.errs["set|"+cacheTestAKey("/")] = errors.New("boom")
 
@@ -510,7 +506,6 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 
 func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 	t.Parallel()
-
 	storage := newContextRecorderStorage()
 	app := fiber.New()
 
@@ -573,7 +568,6 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 
 func Test_Cache_CacheControl(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New(Config{Expiration: 10 * time.Second}))
@@ -590,7 +584,6 @@ func Test_Cache_CacheControl(t *testing.T) {
 
 func Test_Cache_CacheControl_Disabled(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New(Config{Expiration: 10 * time.Second, DisableCacheControl: true}))
@@ -650,7 +643,6 @@ func Test_Cache_Expired(t *testing.T) {
 
 func Test_Cache(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		mw   fiber.Handler
 		name string
@@ -660,7 +652,6 @@ func Test_Cache(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, _ := cacheTestAOrigin(tc.mw, "")
 
 			resp := apptest.Do(t, app, "/")
@@ -725,7 +716,6 @@ func cacheTestAIDApp(mw ...fiber.Handler) *fiber.App {
 
 func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	t.Parallel()
-
 	app := cacheTestAIDApp(New(Config{DisableQueryKeys: true}))
 
 	// Request id = 1
@@ -764,7 +754,6 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 
 func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	t.Parallel()
-
 	app := cacheTestAIDApp(etag.New(), New(Config{DisableQueryKeys: true}))
 
 	// withETag is a GET for target that carries the Cache-Control request header
@@ -809,7 +798,6 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 
 func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	t.Parallel()
-
 	app := cacheTestAIDApp(New(Config{DisableQueryKeys: true}))
 
 	// Request id = 2
@@ -831,7 +819,6 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 
 func Test_Cache_WithSeveralRequests(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New(Config{Expiration: 10 * time.Second}))
@@ -862,7 +849,6 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 
 func Test_Cache_Get(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New())
@@ -879,7 +865,6 @@ func Test_Cache_Get(t *testing.T) {
 
 func Test_Cache_Post(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New())
@@ -897,7 +882,6 @@ func Test_Cache_Post(t *testing.T) {
 
 func Test_Cache_CustomMethods(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		wantCache [2]string // X-Cache of the first and of the second request
 		name      string
@@ -939,7 +923,6 @@ func Test_Cache_CustomMethods(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, calls := cacheTestAOrigin(New(Config{Methods: tc.methods}), "")
 
 			// The origin answers with its call count, so a cached second answer repeats the first.
@@ -1041,7 +1024,6 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 
 	t.Run("distinct query values do not collide", func(t *testing.T) {
 		t.Parallel()
-
 		app := echoApp(New(), fiber.MethodGet, func(c fiber.Ctx) string { return string(c.Request().URI().QueryString()) })
 
 		apptest.ExpectBody(t, app, "/?id=1", fiber.StatusOK, "1:id=1")
@@ -1050,7 +1032,6 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 
 	t.Run("representation headers partition cache", func(t *testing.T) {
 		t.Parallel()
-
 		app := echoApp(New(), fiber.MethodGet, acceptLanguage)
 
 		apptest.ExpectBody(t, app, cacheTestAAcceptLanguage("en-US"), fiber.StatusOK, "1:en-US")
@@ -1059,7 +1040,6 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 
 	t.Run("keyed cookies preserve case-sensitive names", func(t *testing.T) {
 		t.Parallel()
-
 		app := echoApp(New(Config{KeyCookies: []string{"SessionID"}}), fiber.MethodGet,
 			func(c fiber.Ctx) string { return c.Cookies("SessionID") })
 
@@ -1076,7 +1056,6 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 
 	t.Run("long paths are bounded in storage keys", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newMutatingStorage(nil)
 		oversizedPath := "/" + strings.Repeat("a", maxKeyDimensionSegmentLength+1)
 		app := fiber.New()
@@ -1102,7 +1081,6 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 
 	t.Run("empty keyed headers disable default header partitioning", func(t *testing.T) {
 		t.Parallel()
-
 		app := echoApp(New(Config{KeyHeaders: []string{}}), fiber.MethodGet, acceptLanguage)
 
 		apptest.ExpectBody(t, app, cacheTestAAcceptLanguage("en-US"), fiber.StatusOK, "1:en-US")
@@ -1111,7 +1089,6 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 
 	t.Run("non-keyed headers do not fragment cache", func(t *testing.T) {
 		t.Parallel()
-
 		app := echoApp(New(), fiber.MethodGet, func(c fiber.Ctx) string { return c.Get("X-Request-ID") })
 
 		apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Request-ID", "a")), fiber.StatusOK, "1:a")
@@ -1120,7 +1097,6 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 
 	t.Run("body-dependent requests are bypassed by default", func(t *testing.T) {
 		t.Parallel()
-
 		app := echoApp(New(), fiber.MethodPost, func(c fiber.Ctx) string { return string(c.Body()) })
 
 		apptest.ExpectBody(t, app, httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a")), fiber.StatusOK, "1:a")
@@ -1162,7 +1138,6 @@ func cacheTestAExpectRepeat(t *testing.T, app *fiber.App, target string) []byte 
 
 func Test_Cache_CustomNext(t *testing.T) {
 	t.Parallel()
-
 	app, _ := cacheTestAOrigin(New(Config{
 		Next: func(c fiber.Ctx) bool { return c.Response().StatusCode() != fiber.StatusOK },
 	}), "")
@@ -1183,7 +1158,6 @@ func Test_Cache_CustomNext(t *testing.T) {
 
 func Test_CustomKey(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	var called bool
 	app.Use(New(Config{KeyGenerator: func(c fiber.Ctx) string {
@@ -1243,7 +1217,6 @@ func Test_CustomExpiration(t *testing.T) {
 
 func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{StoreResponseHeaders: true}))
 
@@ -1269,7 +1242,6 @@ func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 // one's page.
 func Test_SetCookieResponseIsNotStored(t *testing.T) {
 	t.Parallel()
-
 	var calls int
 	app := fiber.New()
 	app.Use(New(Config{StoreResponseHeaders: true}))
@@ -1301,11 +1273,9 @@ func Test_SetCookieResponseIsNotStored(t *testing.T) {
 // cookie gate therefore handed the first client's page to the second.
 func Test_SetCookieResponseRevalidateDirectivesAreNotConsent(t *testing.T) {
 	t.Parallel()
-
 	for _, directive := range []string{"must-revalidate", "proxy-revalidate"} {
 		t.Run(directive, func(t *testing.T) {
 			t.Parallel()
-
 			var calls int
 			app := fiber.New()
 			app.Use(New(Config{StoreResponseHeaders: true}))
@@ -1331,11 +1301,9 @@ func Test_SetCookieResponseRevalidateDirectivesAreNotConsent(t *testing.T) {
 // not a blanket refusal of every cookie-setting response.
 func Test_SetCookieResponseSharedCacheOptIn(t *testing.T) {
 	t.Parallel()
-
 	for _, directive := range []string{"public", "s-maxage=60"} {
 		t.Run(directive, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{StoreResponseHeaders: true}))
 			app.Get("/", func(c fiber.Ctx) error {
@@ -1370,7 +1338,6 @@ func Test_SetCookieResponseSharedCacheOptIn(t *testing.T) {
 // docs/middleware/cache.md rather than asserted as behavior.
 func Test_SetCookieFromInnerMiddlewareIsSeen(t *testing.T) {
 	t.Parallel()
-
 	var calls int
 	app := fiber.New()
 	app.Use(New())
@@ -1396,7 +1363,6 @@ func Test_SetCookieFromInnerMiddlewareIsSeen(t *testing.T) {
 // client's session to the rest.
 func Test_StoreResponseHeaders_DropsSetCookie(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{StoreResponseHeaders: true}))
 
@@ -1429,7 +1395,6 @@ func Test_StoreResponseHeaders_DropsSetCookie(t *testing.T) {
 // one is weaker on its own.
 func Test_StoreResponseHeaders_KeepsRepeatedFieldLines(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{StoreResponseHeaders: true}))
 
@@ -1457,7 +1422,6 @@ func Test_StoreResponseHeaders_KeepsRepeatedFieldLines(t *testing.T) {
 
 func Test_CacheHeader(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -1484,7 +1448,6 @@ func Test_CacheHeader(t *testing.T) {
 
 func Test_Cache_WithHead(t *testing.T) {
 	t.Parallel()
-
 	app, _ := cacheTestAOrigin(New(), "", "Cache-Time", "1")
 
 	resp := cacheTestAExpect(t, app, apptest.Req(fiber.MethodHead, "/"), cacheMiss)
@@ -1499,7 +1462,6 @@ func Test_Cache_WithHead(t *testing.T) {
 
 func Test_Cache_WithHeadThenGet(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New())
 
@@ -1514,7 +1476,6 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 
 func Test_CustomCacheHeader(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New(Config{CacheHeader: "Cache-Status"}))
@@ -1527,7 +1488,6 @@ func Test_CustomCacheHeader(t *testing.T) {
 
 func Test_CacheInvalidation(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name     string
 		maxBytes uint
@@ -1537,7 +1497,6 @@ func Test_CacheInvalidation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, _ := cacheTestAOrigin(New(Config{
 				CacheInvalidator: func(c fiber.Ctx) bool { return fiber.Query[bool](c, "invalidate") },
 				MaxBytes:         tc.maxBytes,
@@ -1572,7 +1531,6 @@ func Test_CacheInvalidation_noCacheEntry(t *testing.T) {
 
 func Test_CacheInvalidator_PanicReleasesLock(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(recover.New())
 	var panicked atomic.Bool
@@ -1600,12 +1558,10 @@ func Test_CacheInvalidator_PanicReleasesLock(t *testing.T) {
 
 func Test_CacheInvalidation_IgnoresMaxStale(t *testing.T) {
 	t.Parallel()
-
 	for _, storage := range storageKinds {
 		for _, maxStale := range []string{"max-stale", "max-stale=3600"} {
 			t.Run(storage+"/"+maxStale, func(t *testing.T) {
 				t.Parallel()
-
 				cfg := Config{
 					MaxBytes:         1 << 20,
 					CacheInvalidator: func(c fiber.Ctx) bool { return c.Get("X-Session-Ended") == "1" },
@@ -1641,11 +1597,9 @@ func Test_CacheInvalidation_IgnoresMaxStale(t *testing.T) {
 // CacheInvalidator must not run under the middleware's lock: a slow call would stall every request, a panic would leave it held.
 func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
 	t.Parallel()
-
 	for _, storage := range storageKinds {
 		t.Run("a panic does not wedge the cache/"+storage, func(t *testing.T) {
 			t.Parallel()
-
 			cfg := Config{
 				CacheInvalidator: func(c fiber.Ctx) bool {
 					if c.Get("X-Panic") == "1" {
@@ -1671,7 +1625,6 @@ func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
 
 	t.Run("a slow one does not stall other requests", func(t *testing.T) {
 		t.Parallel()
-
 		entered := make(chan struct{})
 		release := make(chan struct{})
 		var releaseOnce sync.Once
@@ -1844,7 +1797,6 @@ func stableAscendingExpiration() func(c1 fiber.Ctx, c2 *Config) time.Duration {
 
 func Test_Cache_StorageMissingBodyIsMiss(t *testing.T) {
 	t.Parallel()
-
 	storage := newFailingCacheStorage()
 	app := fiber.New()
 	app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
@@ -1900,7 +1852,6 @@ func (p *accountingProbe) nodes() int {
 
 func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name   string
 		header string
@@ -1912,7 +1863,6 @@ func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			probe := &accountingProbe{}
 			app := fiber.New()
 			app.Use(New(Config{MaxBytes: 1500, Expiration: time.Hour, accounting: probe.record}))
@@ -1937,7 +1887,6 @@ func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 
 func Test_Cache_FailedRefresh(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name      string
 		failedKey string // the storage write that fails
@@ -1961,7 +1910,6 @@ func Test_Cache_FailedRefresh(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			storage := newFailingCacheStorage()
 			probe := &accountingProbe{}
 			app := fiber.New()
@@ -1990,7 +1938,6 @@ func Test_Cache_FailedRefresh(t *testing.T) {
 
 func Test_Cache_UncacheableResponseDoesNotEvict(t *testing.T) {
 	t.Parallel()
-
 	probe := &accountingProbe{}
 	app := fiber.New()
 	app.Use(New(Config{MaxBytes: 10, Expiration: time.Hour, accounting: probe.record}))
@@ -2187,7 +2134,6 @@ func TestCacheUpstreamAge(t *testing.T) {
 
 func Test_Cache_PartialContentNotStored(t *testing.T) {
 	t.Parallel()
-
 	const full = "0123456789"
 	app := fiber.New()
 	app.Use(New())
@@ -2210,7 +2156,6 @@ func Test_Cache_PartialContentNotStored(t *testing.T) {
 
 func Test_CacheRequestMaxAgeRevalidates(t *testing.T) {
 	t.Parallel()
-
 	app, _ := cacheTestAOrigin(New(Config{
 		Expiration:   30 * time.Second,
 		KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|req-max-age-zero" },
@@ -2223,7 +2168,6 @@ func Test_CacheRequestMaxAgeRevalidates(t *testing.T) {
 
 func Test_CacheExpiresFutureAllowsCaching(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name   string
 		layout string
@@ -2237,7 +2181,6 @@ func Test_CacheExpiresFutureAllowsCaching(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, _ := cacheTestAOrigin(New(Config{StoreResponseHeaders: true}), "expires",
 				fiber.HeaderExpires, time.Now().Add(30*time.Second).UTC().Format(tc.layout))
 
@@ -2249,7 +2192,6 @@ func Test_CacheExpiresFutureAllowsCaching(t *testing.T) {
 
 func Test_CacheExpiresPastPreventsCaching(t *testing.T) {
 	t.Parallel()
-
 	app, _ := cacheTestAOrigin(New(), "expires",
 		fiber.HeaderExpires, time.Now().Add(-1*time.Minute).UTC().Format(http.TimeFormat))
 
@@ -2259,7 +2201,6 @@ func Test_CacheExpiresPastPreventsCaching(t *testing.T) {
 
 func Test_CacheAllowsSharedCacheRevalidateWithAuthorization(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name         string
 		cacheControl string
@@ -2271,7 +2212,6 @@ func Test_CacheAllowsSharedCacheRevalidateWithAuthorization(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, _ := cacheTestAOrigin(New(Config{
 				Expiration:   30 * time.Second,
 				KeyGenerator: func(c fiber.Ctx) string { return c.Path() + tc.keySuffix },
@@ -2289,7 +2229,6 @@ func Test_CacheAllowsSharedCacheRevalidateWithAuthorization(t *testing.T) {
 
 func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 	t.Parallel()
-
 	storage := newFailingCacheStorage()
 
 	app, _ := cacheTestAOrigin(New(Config{
@@ -2385,7 +2324,6 @@ func Test_CacheSMaxAgeOverridesMaxAgeWhenLonger(t *testing.T) {
 
 func Test_CacheOnlyIfCachedMiss(t *testing.T) {
 	t.Parallel()
-
 	app, calls := cacheTestAOrigin(New(), "")
 
 	cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
@@ -2394,7 +2332,6 @@ func Test_CacheOnlyIfCachedMiss(t *testing.T) {
 
 func Test_CacheOnlyIfCachedStaleNotServed(t *testing.T) {
 	t.Parallel()
-
 	app, calls := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=1")
 
 	cacheTestAExpect(t, app, "/", cacheMiss)
@@ -2412,7 +2349,6 @@ func Test_CacheOnlyIfCachedStaleNotServed(t *testing.T) {
 // fresh entry used to fall through to the handler instead.
 func Test_CacheOnlyIfCachedWithNoCache(t *testing.T) {
 	t.Parallel()
-
 	requests := []struct {
 		header map[string]string
 		name   string
@@ -2427,7 +2363,6 @@ func Test_CacheOnlyIfCachedWithNoCache(t *testing.T) {
 		for _, tc := range requests {
 			t.Run(storageName+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
-
 				cfg := Config{}
 				if storageName == "storage" {
 					cfg.Storage = memory.New()
@@ -2457,7 +2392,6 @@ func Test_CacheOnlyIfCachedWithNoCache(t *testing.T) {
 
 func Test_CacheMaxStaleServesStaleResponse(t *testing.T) {
 	t.Parallel()
-
 	app, calls := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=2")
 
 	cacheTestAExpect(t, app, "/", cacheMiss)
@@ -2473,7 +2407,6 @@ func Test_CacheMaxStaleServesStaleResponse(t *testing.T) {
 
 func Test_CacheMaxStaleRespectsMustRevalidate(t *testing.T) {
 	t.Parallel()
-
 	app, calls := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=1, must-revalidate")
 
 	cacheTestAExpect(t, app, "/", cacheMiss)
@@ -2506,7 +2439,6 @@ func Test_CacheMaxStaleRespectsProxyRevalidateSharedAuth(t *testing.T) {
 
 func Test_CachePreservesCacheControlHeaders(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New())
 
@@ -2538,7 +2470,6 @@ func setResponseDate(date time.Time) fiber.Handler {
 
 func Test_CacheDateAndAgeHandling(t *testing.T) {
 	t.Parallel()
-
 	type testCase struct {
 		name             string
 		cacheControl     string
@@ -2574,7 +2505,6 @@ func Test_CacheDateAndAgeHandling(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{Expiration: tc.expiration}))
 			app.Use(setResponseDate(time.Now().Add(tc.dateOffset).UTC()))
@@ -2643,7 +2573,6 @@ func cacheTestAMutatedHit(t *testing.T, expiration time.Duration, mutate func(it
 
 func Test_CacheClampsInvalidStoredDate(t *testing.T) {
 	t.Parallel()
-
 	resp := cacheTestAMutatedHit(t, time.Minute, func(it *item) { it.date = uint64(math.MaxInt64) + 1024 },
 		fiber.HeaderCacheControl, "public, max-age=60")
 
@@ -2659,7 +2588,6 @@ func Test_CacheClampsInvalidStoredDate(t *testing.T) {
 
 func Test_CacheClampsFutureStoredDate(t *testing.T) {
 	t.Parallel()
-
 	resp := cacheTestAMutatedHit(t, time.Minute, func(it *item) {
 		future := time.Now().Add(2 * time.Second).UTC()
 		it.date = uint64(max(future.Unix(), 0))
@@ -2676,7 +2604,6 @@ func Test_CacheClampsFutureStoredDate(t *testing.T) {
 
 func Test_CacheAgeClockStepsBackwards(t *testing.T) {
 	t.Parallel()
-
 	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
 	app.Use(New(Config{clock: clock.Now}))
@@ -2693,7 +2620,6 @@ func Test_CacheAgeClockStepsBackwards(t *testing.T) {
 
 func Test_RequestPragmaNoCacheTriggersMiss(t *testing.T) {
 	t.Parallel()
-
 	app, _ := cacheTestAOrigin(New(Config{
 		Expiration: time.Minute,
 	}), "body", fiber.HeaderCacheControl, "public, max-age=60")
@@ -2706,7 +2632,6 @@ func Test_RequestPragmaNoCacheTriggersMiss(t *testing.T) {
 
 func Test_CacheStaleResponseAddsWarning110(t *testing.T) {
 	t.Parallel()
-
 	app, _ := cacheTestAOrigin(New(Config{
 		Expiration: 2 * time.Second,
 	}), "body", fiber.HeaderCacheControl, "public, max-age=1")
@@ -2745,7 +2670,6 @@ func Test_CacheStaleResponseAddsWarning110(t *testing.T) {
 
 func Test_CacheHeuristicFreshnessAddsWarning113(t *testing.T) {
 	t.Parallel()
-
 	app, _ := cacheTestAOrigin(New(Config{
 		Expiration: 2 * time.Second,
 	}), "body", fiber.HeaderCacheControl, "public, max-age=60")
@@ -2760,7 +2684,6 @@ func Test_CacheHeuristicFreshnessAddsWarning113(t *testing.T) {
 
 func Test_CacheHeuristicFreshnessAddsWarning113AfterThreshold(t *testing.T) {
 	t.Parallel()
-
 	resp := cacheTestAMutatedHit(t, 2*time.Second, func(it *item) {
 		oldDate := time.Now().Add(-25 * time.Hour).UTC()
 		it.date = uint64(max(oldDate.Unix(), 0))
@@ -2777,7 +2700,6 @@ func Test_CacheHeuristicFreshnessAddsWarning113AfterThreshold(t *testing.T) {
 
 func Test_CacheAgeHeaderIsCappedAtMaxDeltaSeconds(t *testing.T) {
 	t.Parallel()
-
 	const veryLargeAge = uint64(math.MaxInt32) + 1000
 	resp := cacheTestAMutatedHit(t, time.Minute, func(it *item) { it.age = veryLargeAge },
 		fiber.HeaderCacheControl, "public, max-age=60")
@@ -2789,7 +2711,6 @@ func Test_CacheAgeHeaderIsCappedAtMaxDeltaSeconds(t *testing.T) {
 
 func Test_CacheMinFreshForcesRevalidation(t *testing.T) {
 	t.Parallel()
-
 	app, calls := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=5")
 
 	cacheTestAExpectBody(t, app, "/", cacheMiss, "1")
@@ -2803,7 +2724,6 @@ func Test_CacheMinFreshForcesRevalidation(t *testing.T) {
 
 func Test_CachePermanentRedirectCached(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{
 		Expiration:           30 * time.Second,
@@ -2828,11 +2748,9 @@ func Test_CachePermanentRedirectCached(t *testing.T) {
 
 func Test_CacheNoStoreAndNoCacheDirectives(t *testing.T) {
 	t.Parallel()
-
 	for _, directive := range []string{"no-store", "no-cache"} {
 		t.Run(directive, func(t *testing.T) {
 			t.Parallel()
-
 			app, _ := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, directive)
 
 			cacheTestAExpectBody(t, app, "/", cacheUnreachable, "1")
@@ -2843,7 +2761,6 @@ func Test_CacheNoStoreAndNoCacheDirectives(t *testing.T) {
 
 func Test_CacheNoCacheDirectiveOverridesExistingEntry(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New())
 
@@ -2867,10 +2784,8 @@ func Test_CacheNoCacheDirectiveOverridesExistingEntry(t *testing.T) {
 
 func Test_CacheRespectsUpstreamAgeForFreshness(t *testing.T) {
 	t.Parallel()
-
 	t.Run("skipsCachingWhenAgeExhaustsFreshness", func(t *testing.T) {
 		t.Parallel()
-
 		app, _ := cacheTestAOrigin(New(Config{
 			KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|age-exhausted" },
 		}), "", fiber.HeaderCacheControl, "public, max-age=2", fiber.HeaderAge, "2")
@@ -2901,7 +2816,6 @@ func Test_CacheRespectsUpstreamAgeForFreshness(t *testing.T) {
 
 func Test_CacheVarySeparatesVariants(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|vary-separated" }}))
 
@@ -2920,11 +2834,9 @@ func Test_CacheVarySeparatesVariants(t *testing.T) {
 
 func Test_CacheVaryStarUncacheable(t *testing.T) {
 	t.Parallel()
-
 	for _, disableVaryHeaders := range []bool{false, true} {
 		t.Run(fmt.Sprintf("DisableVaryHeaders=%t", disableVaryHeaders), func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{
 				DisableVaryHeaders: disableVaryHeaders,
@@ -2953,7 +2865,6 @@ func Test_CacheVaryStarUncacheable(t *testing.T) {
 
 func Test_CachePrivateDirective(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New())
 
@@ -3002,7 +2913,6 @@ func cacheTestBExpectUncacheable(t *testing.T, app *fiber.App, opts ...apptest.O
 // the default config alone, which skips such requests.
 func Test_CacheUncacheableWithAuthorization(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name         string
 		cacheControl string
@@ -3012,7 +2922,6 @@ func Test_CacheUncacheableWithAuthorization(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New())
 
@@ -3032,7 +2941,6 @@ func Test_CacheUncacheableWithAuthorization(t *testing.T) {
 
 func Test_CachePrivateDirectiveInvalidatesExistingEntry(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New())
 
@@ -3076,7 +2984,6 @@ func cacheTestBInvalidateByQuery(c fiber.Ctx) bool {
 
 func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		setUncacheableHeaders func(fiber.Ctx)
 		name                  string
@@ -3099,7 +3006,6 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			storage := newContextRecorderStorage()
 			var returnUncacheable atomic.Bool
 
@@ -3186,7 +3092,6 @@ func cacheTestBFlipping(flipped *atomic.Bool, staleCC, newerCC string, staleExtr
 
 func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name              string
 		failedKeySuffix   string
@@ -3208,7 +3113,6 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			storage := newContextRecorderStorage()
 			var returnNoCache atomic.Bool
 
@@ -3280,11 +3184,9 @@ func cacheTestBRequireAccounting(t *testing.T, probe *accountingProbe, counted u
 
 func Test_CacheStorage_UncacheableRevalidationPrecheckFailuresReturnOrigin(t *testing.T) {
 	t.Parallel()
-
 	for _, missing := range []bool{false, true} {
 		t.Run(fmt.Sprintf("metadataMissing=%t", missing), func(t *testing.T) {
 			t.Parallel()
-
 			storage := newFailingCacheStorage()
 			probe := &accountingProbe{}
 			key := cacheKeyVersion + "|GET|/cached"
@@ -3327,11 +3229,9 @@ func Test_CacheStorage_UncacheableRevalidationPrecheckFailuresReturnOrigin(t *te
 
 func Test_CacheStorage_EvictionRestoreDropsAbsentOrReplacedEntry(t *testing.T) {
 	t.Parallel()
-
 	for _, mutation := range []string{"missing", "replaced"} {
 		t.Run(mutation, func(t *testing.T) {
 			t.Parallel()
-
 			storage := &restoreMutationStorage{
 				failingCacheStorage: newFailingCacheStorage(),
 				key:                 cacheKeyVersion + "|GET|/old",
@@ -3402,7 +3302,6 @@ func (p *cacheTestBParked) finish(t *testing.T) *http.Response {
 
 func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *testing.T) {
 	t.Parallel()
-
 	storage := &blockingFailedEvictionStorage{
 		failingCacheStorage: newFailingCacheStorage(),
 		key:                 cacheKeyVersion + "|GET|/old",
@@ -3442,7 +3341,6 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 
 func Test_CacheStorage_MinFreshUncacheableRevalidationCleansEntry(t *testing.T) {
 	t.Parallel()
-
 	storage := newFailingCacheStorage()
 	probe := &accountingProbe{}
 	var uncacheable atomic.Bool
@@ -3463,7 +3361,6 @@ func Test_CacheStorage_MinFreshUncacheableRevalidationCleansEntry(t *testing.T) 
 
 func Test_Cache_InMemoryUncacheableRevalidationRemovesStaleEntry(t *testing.T) {
 	t.Parallel()
-
 	probe := &accountingProbe{}
 	var uncacheable atomic.Bool
 	app := cacheTestBPathKeyedApp(&Config{
@@ -3488,7 +3385,6 @@ func Test_Cache_InMemoryUncacheableRevalidationRemovesStaleEntry(t *testing.T) {
 
 func Test_Cache_DefaultMemoryRevalidationDoesNotReplayUncacheableEntry(t *testing.T) {
 	t.Parallel()
-
 	var uncacheable atomic.Bool
 	app := fiber.New()
 	app.Use(New(Config{Expiration: time.Hour}))
@@ -3508,7 +3404,6 @@ func Test_Cache_DefaultMemoryRevalidationDoesNotReplayUncacheableEntry(t *testin
 
 func Test_Cache_InvalidExpiresMemoryRevalidationCleansEntry(t *testing.T) {
 	t.Parallel()
-
 	var noCache atomic.Bool
 	app := fiber.New()
 	app.Use(New(Config{Expiration: 30 * time.Second, MaxBytes: 5}))
@@ -3524,7 +3419,6 @@ func Test_Cache_InvalidExpiresMemoryRevalidationCleansEntry(t *testing.T) {
 
 func Test_CacheStorage_ExpiredMetadataRemovesMatchingHeapEntry(t *testing.T) {
 	t.Parallel()
-
 	storage := newFailingCacheStorage()
 	probe := &accountingProbe{}
 	var originCalls atomic.Int32
@@ -3620,7 +3514,6 @@ func (r *cacheTestBRace) finish(t *testing.T) {
 
 func Test_Cache_ConcurrentUncacheableCleanupPreservesReplacementAccounting(t *testing.T) {
 	t.Parallel()
-
 	storage := &blockingDeleteStorage{
 		failingCacheStorage: newFailingCacheStorage(),
 		deleteStarted:       make(chan struct{}),
@@ -3642,7 +3535,6 @@ func Test_Cache_ConcurrentUncacheableCleanupPreservesReplacementAccounting(t *te
 
 func Test_Cache_InMemoryUncacheableRevalidationPreservesConcurrentReplacement(t *testing.T) {
 	t.Parallel()
-
 	originStarted := make(chan struct{})
 	continueOrigin := make(chan struct{})
 	probe := &accountingProbe{}
@@ -3661,7 +3553,6 @@ func Test_Cache_InMemoryUncacheableRevalidationPreservesConcurrentReplacement(t 
 
 func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *testing.T) {
 	t.Parallel()
-
 	for _, tt := range []struct {
 		name     string
 		maxBytes uint
@@ -3671,7 +3562,6 @@ func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			originStarted := make(chan struct{})
 			continueOrigin := make(chan struct{})
 			storage := newFailingCacheStorage()
@@ -3703,11 +3593,9 @@ func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *
 
 func Test_CacheStorage_UncacheableRevalidationPreservesCompletedReplacement(t *testing.T) {
 	t.Parallel()
-
 	for _, maxBytes := range []uint{0, 20} {
 		t.Run(fmt.Sprintf("MaxBytes=%d", maxBytes), func(t *testing.T) {
 			t.Parallel()
-
 			originStarted := make(chan struct{})
 			continueOrigin := make(chan struct{})
 			probe := &accountingProbe{}
@@ -3728,11 +3616,9 @@ func Test_CacheStorage_UncacheableRevalidationPreservesCompletedReplacement(t *t
 
 func Test_CacheStorage_NoStoreRevalidationCleansVaryManifest(t *testing.T) {
 	t.Parallel()
-
 	for _, failDelete := range []bool{false, true} {
 		t.Run(fmt.Sprintf("deleteFailure=%t", failDelete), func(t *testing.T) {
 			t.Parallel()
-
 			storage := newFailingCacheStorage()
 			var noStore atomic.Bool
 			app := cacheTestBPathKeyedApp(&Config{Storage: storage})
@@ -3798,7 +3684,6 @@ func Test_CacheMaxAgeDirective(t *testing.T) {
 
 func TestCacheBypassesExistingEntryForAuthorization(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New())
 
@@ -3818,7 +3703,6 @@ func TestCacheBypassesExistingEntryForAuthorization(t *testing.T) {
 
 func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 	t.Parallel()
-
 	const cacheHeader = "X-Test-Cache"
 
 	storage := newMutatingStorage(nil)
@@ -3894,7 +3778,6 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 // directive that lets a shared cache keep it.
 func TestCacheAuthorizationWithSharedCacheDirectives(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name          string
 		cacheControl  string
@@ -3942,7 +3825,6 @@ func TestCacheAuthorizationWithSharedCacheDirectives(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{Expiration: 10 * time.Second}))
 
@@ -3971,7 +3853,6 @@ func TestCacheAuthorizationWithSharedCacheDirectives(t *testing.T) {
 
 func TestCacheSeparatesAuthorizationValues(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: 10 * time.Second}))
 
@@ -4302,7 +4183,6 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 
 			app.Use(New(Config{MaxBytes: 100}))
@@ -4335,7 +4215,6 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 
 	t.Run("revalidation respects MaxBytes eviction", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 
 		app.Use(New(Config{
@@ -4368,7 +4247,6 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 
 	t.Run("no-store revalidation removes old in-memory entry", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 
 		app.Use(New(Config{MaxBytes: 100}))
@@ -4403,7 +4281,6 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 // for quoted-string values in Cache-Control directives
 func Test_parseCacheControlDirectives_QuotedStrings(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		expected map[string]string
@@ -4481,7 +4358,6 @@ func Test_parseCacheControlDirectives_QuotedStrings(t *testing.T) {
 // when an entry is larger than MaxBytes, ensuring such entries are treated as unreachable
 func Test_Cache_MaxBytes_InsufficientSpace(t *testing.T) {
 	t.Parallel()
-
 	t.Run("entry larger than MaxBytes with empty cache", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
@@ -4524,7 +4400,6 @@ func Test_Cache_MaxBytes_InsufficientSpace(t *testing.T) {
 
 func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 	t.Parallel()
-
 	storage := newFailingCacheStorage()
 
 	app := fiber.New()
@@ -4572,7 +4447,6 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 // goroutines making simultaneous requests
 func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 	t.Parallel()
-
 	t.Run("concurrent requests with MaxBytes limit", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
@@ -4653,7 +4527,6 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 // Test_Cache_HelperFunctions tests various helper functions for better coverage
 func Test_Cache_HelperFunctions(t *testing.T) {
 	t.Parallel()
-
 	t.Run("parseHTTPDate empty", func(t *testing.T) {
 		t.Parallel()
 		result, ok := parseHTTPDate([]byte{})
@@ -4843,7 +4716,6 @@ func cacheTestBRun(t *testing.T, cases []cacheTestBCase) {
 		tc := &cases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			cfg := tc.cfg
 			if cfg.Expiration == 0 {
 				cfg.Expiration = time.Hour
@@ -4875,7 +4747,6 @@ func cacheTestBRun(t *testing.T, cases []cacheTestBCase) {
 // Test_Cache_VaryAndAuth tests vary and auth functionality
 func Test_Cache_VaryAndAuth(t *testing.T) {
 	t.Parallel()
-
 	t.Run("storeVaryManifest failure", func(t *testing.T) {
 		t.Parallel()
 		storage := newFailingCacheStorage()
@@ -4917,7 +4788,6 @@ func Test_Cache_VaryAndAuth(t *testing.T) {
 // Test_Cache_DateAndCacheControl tests date parsing and cache control
 func Test_Cache_DateAndCacheControl(t *testing.T) {
 	t.Parallel()
-
 	cacheTestBRun(t, []cacheTestBCase{
 		{
 			name:         "date header parsing",
@@ -4939,7 +4809,6 @@ func Test_Cache_DateAndCacheControl(t *testing.T) {
 // Test_Cache_CacheControlCombinations tests common cache control directive combinations
 func Test_Cache_CacheControlCombinations(t *testing.T) {
 	t.Parallel()
-
 	cacheTestBRun(t, []cacheTestBCase{
 		{name: "max-age with public", cacheControl: "public, max-age=3600", first: cacheMiss, second: cacheHit},
 		{name: "max-age with private", cacheControl: "private, max-age=3600", first: cacheUnreachable},
@@ -4961,7 +4830,6 @@ func Test_Cache_CacheControlCombinations(t *testing.T) {
 // Test_Cache_RequestResponseDirectives tests caching behavior with various request/response cache-control directives
 func Test_Cache_RequestResponseDirectives(t *testing.T) {
 	t.Parallel()
-
 	cacheTestBRun(t, []cacheTestBCase{
 		{
 			name:         "request with pragma no-cache",
@@ -5118,7 +4986,6 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 // Test_Cache_ConfigurationAndResponseHandling tests cache behavior for specific configuration and response edge cases.
 func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 	t.Parallel()
-
 	cacheTestBRun(t, []cacheTestBCase{
 		{
 			name:         "response with Vary star prevents caching",
@@ -5258,7 +5125,6 @@ func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 // space, tab, and '=' as valid terminators (fixes #4143).
 func Test_hasDirective(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name      string
 		cc        string
@@ -5313,7 +5179,6 @@ func Test_hasDirective(t *testing.T) {
 // that silently disabled invalidation would also fail.
 func Test_CacheInvalidator_NoDataRace(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		invalidator  func(fiber.Ctx) bool
 		invalidating func() *http.Request
@@ -5335,7 +5200,6 @@ func Test_CacheInvalidator_NoDataRace(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var handlerCalls atomic.Uint64
 			app := fiber.New()
 			app.Use(New(Config{
@@ -5428,11 +5292,9 @@ func Benchmark_hasDirective(b *testing.B) {
 
 func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
 	t.Parallel()
-
 	for _, maxBytes := range []uint{0, 4096} {
 		t.Run(fmt.Sprintf("maxbytes-%d", maxBytes), func(t *testing.T) {
 			t.Parallel()
-
 			storage := newFailingCacheStorage()
 			app := fiber.New()
 			app.Use(New(Config{Storage: storage, Expiration: time.Hour, MaxBytes: maxBytes}))
@@ -5465,7 +5327,6 @@ func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
 
 func Test_Cache_BodyFetchFailure(t *testing.T) {
 	t.Parallel()
-
 	newApp := func(storage fiber.Storage) *fiber.App {
 		app := fiber.New()
 		app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
@@ -5493,7 +5354,6 @@ func Test_Cache_BodyFetchFailure(t *testing.T) {
 
 	t.Run("body read fails", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		app := newApp(storage)
 		key := prime(t, app, storage)
@@ -5507,7 +5367,6 @@ func Test_Cache_BodyFetchFailure(t *testing.T) {
 
 	t.Run("orphaned metadata delete fails", func(t *testing.T) {
 		t.Parallel()
-
 		storage := newFailingCacheStorage()
 		app := newApp(storage)
 		key := prime(t, app, storage)
@@ -5523,7 +5382,6 @@ func Test_Cache_BodyFetchFailure(t *testing.T) {
 
 func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 	t.Parallel()
-
 	const body = "0123456789abcdef"
 	storage := newFailingCacheStorage()
 	app := fiber.New()
@@ -5563,7 +5421,6 @@ func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 // carries, on one line, and the stored header list no longer holds a copy.
 func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name string
 		// A prefix of the Cache-Control the hit must carry, or empty when none
@@ -5580,7 +5437,6 @@ func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(tc.cfg))
 			app.Get("/", func(c fiber.Ctx) error {
@@ -5626,7 +5482,6 @@ func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
 // KeyCookies, KeyCredentialHeaders, or a credential header in KeyHeaders.
 func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		appCfg fiber.Config
 		name   string
@@ -5736,7 +5591,6 @@ func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 // selected by. The key namespace is versioned so no such entry is ever read.
 func Test_Cache_EntryStoredWithoutVaryIsNotRead(t *testing.T) {
 	t.Parallel()
-
 	storage := memory.New()
 	app := fiber.New()
 	app.Use(New(Config{
@@ -5784,7 +5638,6 @@ func Test_Cache_EntryStoredWithoutVaryIsNotRead(t *testing.T) {
 // body suits every client.
 func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New())
 	app.Use(compress.New())
@@ -5808,7 +5661,6 @@ func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
 // at the limit still round-trips.
 func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name       string
 		wantSecond string
@@ -5849,7 +5701,6 @@ func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
 
 func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name   string
 		header string
@@ -5865,7 +5716,6 @@ func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			storage := newFailingCacheStorage()
 			cfg := tc.cfg
 			cfg.Storage = storage
@@ -5898,7 +5748,6 @@ func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {
 // that sends one of the headers is private and not served stale. One that sends none finds the shared entry.
 func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 	t.Parallel()
-
 	token := map[string]string{"X-Company-Token": "t"}
 	tests := []struct {
 		headers    map[string]string
@@ -5917,7 +5766,6 @@ func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			clock := newTestClock(time.Unix(1_700_000_000, 0))
 			cfg := Config{Expiration: time.Minute, clock: clock.Now, KeyGenerator: pathKey}
 			if tc.declared {
@@ -5959,7 +5807,6 @@ func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 
 func Test_configDefault_KeyCredentialHeaders(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name            string
 		wantKeyHeaders  []string

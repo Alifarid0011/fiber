@@ -12,7 +12,6 @@ import (
 // Secure requirements, and the invalid-to-Lax fallback contract.
 func Test_ParseSameSite(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name  string
 		value string
@@ -58,7 +57,6 @@ func Test_ParseSameSite(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-
 			got, valid := ParseSameSite(test.value)
 			require.Equal(t, test.valid, valid)
 			require.Equal(t, test.want, got)
@@ -68,7 +66,6 @@ func Test_ParseSameSite(t *testing.T) {
 
 func Test_FormatSameSite(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name string
 		want string
@@ -84,7 +81,6 @@ func Test_FormatSameSite(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			got := FormatSameSite(tc.mode)
 			require.Equal(t, tc.want, got)
 

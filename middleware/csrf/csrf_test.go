@@ -278,7 +278,6 @@ func csrfTestPostCases(t *testing.T, h fasthttp.RequestHandler, token string, ca
 		tc := &cases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			ctx := newTrustedRequestCtx()
 			ctx.Request.Header.SetMethod(fiber.MethodPost)
 			if tc.host != "" {
@@ -312,7 +311,6 @@ func csrfTestPostCases(t *testing.T, h fasthttp.RequestHandler, token string, ca
 // ErrorHandler wrapped with what the middleware was doing.
 func Test_CSRF_StorageErrors(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		keyGenerator func() string
 		name         string
@@ -362,7 +360,6 @@ func Test_CSRF_StorageErrors(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			storage := newFailingCSRFStorage()
 			if tc.stored {
 				storage.data["token"] = []byte("value")
@@ -401,7 +398,6 @@ func Test_CSRF_StorageErrors(t *testing.T) {
 
 func Test_CSRF(t *testing.T) {
 	t.Parallel()
-
 	h := csrfTestHandler(fiber.New(), &Config{})
 	ctx := &fasthttp.RequestCtx{}
 
@@ -442,7 +438,6 @@ func Test_CSRF(t *testing.T) {
 
 func Test_CSRF_WithSession(t *testing.T) {
 	t.Parallel()
-
 	h, ctx, sessionID := csrfTestSession(t, fiber.New(), &Config{})
 
 	methods := [5]string{fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace, fiber.MethodQuery}
@@ -521,7 +516,6 @@ func Test_CSRF_WithSession_Middleware(t *testing.T) {
 
 func Test_CSRF_ExpiredToken(t *testing.T) {
 	t.Parallel()
-
 	const idleTimeout = 1 * time.Second
 
 	h := csrfTestHandler(fiber.New(), &Config{IdleTimeout: idleTimeout})
@@ -543,7 +537,6 @@ func Test_CSRF_ExpiredToken(t *testing.T) {
 
 func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 	t.Parallel()
-
 	h, ctx, sessionID := csrfTestSession(t, fiber.New(), &Config{IdleTimeout: 1 * time.Second})
 
 	// Generate CSRF token
@@ -563,7 +556,6 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 
 func Test_CSRF_MultiUseToken(t *testing.T) {
 	t.Parallel()
-
 	h := csrfTestHandler(fiber.New(), &Config{Extractor: extractors.FromHeader("X-Csrf-Token")})
 	ctx := &fasthttp.RequestCtx{}
 
@@ -588,7 +580,6 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 
 func Test_CSRF_SingleUseToken(t *testing.T) {
 	t.Parallel()
-
 	h := csrfTestHandler(fiber.New(), &Config{SingleUseToken: true})
 	ctx := &fasthttp.RequestCtx{}
 
@@ -616,7 +607,6 @@ func Test_CSRF_Next(t *testing.T) {
 
 func Test_CSRFLoggerTagRedactsToken(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 
 	app := fiber.New()
@@ -650,7 +640,6 @@ func Test_CSRFLogContextTagRedactsToken(t *testing.T) {
 
 func Test_CSRF_SecFetchSite(t *testing.T) {
 	t.Parallel()
-
 	errorHandler := func(c fiber.Ctx, err error) error {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
@@ -840,7 +829,6 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 
 func Test_CSRF_Origin(t *testing.T) {
 	t.Parallel()
-
 	h, token := csrfTestTrusted(t, &Config{CookieSecure: true}, "http")
 
 	csrfTestPostCases(t, h, token, []csrfTestPostCase{
@@ -898,7 +886,6 @@ func Test_CSRF_Origin(t *testing.T) {
 
 func Test_CSRF_TrustedOrigins(t *testing.T) {
 	t.Parallel()
-
 	h, token := csrfTestTrusted(t, &Config{
 		CookieSecure: true,
 		TrustedOrigins: []string{
@@ -940,7 +927,6 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 
 func Test_CSRF_TrustedOrigins_InvalidOrigins(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name   string
 		origin string
@@ -968,7 +954,6 @@ func Test_CSRF_TrustedOrigins_InvalidOrigins(t *testing.T) {
 
 func Test_CSRF_Referer(t *testing.T) {
 	t.Parallel()
-
 	h, token := csrfTestTrusted(t, &Config{CookieSecure: true}, "https")
 
 	viaHTTPS := map[string]string{fiber.HeaderXForwardedProto: "https"}
@@ -1096,7 +1081,6 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 
 func Test_CSRF_ErrorHandler_Token(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		wantErr     error
 		name        string
@@ -1110,7 +1094,6 @@ func Test_CSRF_ErrorHandler_Token(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			h := csrfTestHandler(fiber.New(), &Config{
 				ErrorHandler: func(ctx fiber.Ctx, err error) error {
 					require.Equal(t, tc.wantErr, err)
@@ -1138,7 +1121,6 @@ func Test_CSRF_ErrorHandler_Token(t *testing.T) {
 
 func Test_CSRF_ErrorHandler_MissingReferer(t *testing.T) {
 	t.Parallel()
-
 	h, token := csrfTestTrusted(t, &Config{
 		CookieSecure: true,
 		ErrorHandler: func(ctx fiber.Ctx, err error) error {
@@ -1156,7 +1138,6 @@ func Test_CSRF_ErrorHandler_MissingReferer(t *testing.T) {
 
 func Test_CSRF_Cookie_Injection_Exploit(t *testing.T) {
 	t.Parallel()
-
 	h := csrfTestHandler(fiber.New(), &Config{})
 	ctx := &fasthttp.RequestCtx{}
 
@@ -1286,7 +1267,6 @@ func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 
 func Test_CSRF_InvalidURLHeaders(t *testing.T) {
 	t.Parallel()
-
 	h, token := csrfTestTrusted(t, &Config{
 		ErrorHandler: func(ctx fiber.Ctx, err error) error { return ctx.Status(419).Send([]byte(err.Error())) },
 	}, "http")
@@ -1367,7 +1347,6 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 
 func Test_deleteTokenFromStorage(t *testing.T) {
 	t.Parallel()
-
 	ctx := apptest.Ctx(t, fiber.New())
 
 	token := "token123"
@@ -1396,7 +1375,6 @@ func Test_deleteTokenFromStorage(t *testing.T) {
 
 func Test_storageManager_logKey(t *testing.T) {
 	t.Parallel()
-
 	redacted := newStorageManager(nil, true)
 	require.Equal(t, redactedKey, redacted.logKey("secret"))
 
@@ -1650,7 +1628,6 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 		tc := &testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			h := csrfTestHandler(fiber.New(), &Config{Extractor: tc.extractor, ErrorHandler: tc.errorHandler})
 			ctx := &fasthttp.RequestCtx{}
 
@@ -1675,7 +1652,6 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 
 func Test_CSRF_Param_Extractor(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		setupRequest func(ctx *fasthttp.RequestCtx, token string)
 		name         string
@@ -1842,7 +1818,6 @@ func (*flakySessionStorage) Close() error { return nil }
 // value is surfaced in the panic message when redaction is disabled.
 func Test_CSRF_DisableValueRedaction_TrustedOrigin(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name   string
 		origin string
@@ -1855,7 +1830,6 @@ func Test_CSRF_DisableValueRedaction_TrustedOrigin(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.PanicsWithValue(t, "[CSRF] Invalid origin format in configuration:"+tc.origin, func() {
 				New(Config{TrustedOrigins: []string{tc.origin}, DisableValueRedaction: true})
 			})
@@ -1867,7 +1841,6 @@ func Test_CSRF_DisableValueRedaction_TrustedOrigin(t *testing.T) {
 // not ErrNotFound is forwarded to the error handler verbatim.
 func Test_CSRF_Extractor_NonNotFoundError(t *testing.T) {
 	t.Parallel()
-
 	sentinel := errors.New("extractor boom")
 
 	var captured error
@@ -1893,7 +1866,6 @@ func Test_CSRF_Extractor_NonNotFoundError(t *testing.T) {
 // CSRF cookie is present on the request.
 func Test_CSRF_DeleteToken_NoCookie(t *testing.T) {
 	t.Parallel()
-
 	var captured error
 	app := fiber.New()
 	app.Use(New(Config{
@@ -1921,7 +1893,6 @@ func Test_CSRF_DeleteToken_NoCookie(t *testing.T) {
 // returns an error.
 func Test_CSRF_DeleteToken_StorageError(t *testing.T) {
 	t.Parallel()
-
 	storage := newFailingCSRFStorage()
 	storage.data["token"] = []byte("value")
 	storage.errs["del|token"] = errors.New("boom")
@@ -1957,7 +1928,6 @@ func Test_CSRF_DeleteToken_StorageError(t *testing.T) {
 // in-context branch of the session manager's delRaw.
 func Test_CSRF_DeleteToken_WithSessionMiddleware(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	smh, sstore := session.NewWithStore()
@@ -2000,7 +1970,6 @@ func Test_CSRF_DeleteToken_WithSessionMiddleware(t *testing.T) {
 // in the memory-backed getRaw.
 func Test_StorageManager_Memory_UnexpectedType(t *testing.T) {
 	t.Parallel()
-
 	m := newStorageManager(nil, false)
 	m.memory.Set("key", "not-bytes", 0)
 
@@ -2013,7 +1982,6 @@ func Test_StorageManager_Memory_UnexpectedType(t *testing.T) {
 // storage-backed setRaw and delRaw.
 func Test_StorageManager_Storage_Success(t *testing.T) {
 	t.Parallel()
-
 	storage := newFailingCSRFStorage()
 	m := newStorageManager(storage, false)
 
@@ -2059,7 +2027,6 @@ func newSessionCtx(t *testing.T, sessionID string) fiber.Ctx {
 // session from the store fails.
 func Test_SessionManager_GetRaw_StoreError(t *testing.T) {
 	t.Parallel()
-
 	m := newFlakySessionManager(true, false)
 	c := newSessionCtx(t, "abc")
 
@@ -2070,7 +2037,6 @@ func Test_SessionManager_GetRaw_StoreError(t *testing.T) {
 // store cannot be loaded during setRaw.
 func Test_SessionManager_SetRaw_StoreError(t *testing.T) {
 	t.Parallel()
-
 	m := newFlakySessionManager(true, false)
 	c := newSessionCtx(t, "abc")
 
@@ -2096,7 +2062,6 @@ func Test_SessionManager_SetRaw_SaveError(t *testing.T) {
 // store cannot be loaded during delRaw.
 func Test_SessionManager_DelRaw_StoreError(t *testing.T) {
 	t.Parallel()
-
 	m := newFlakySessionManager(true, false)
 	c := newSessionCtx(t, "abc")
 
@@ -2127,7 +2092,6 @@ func Test_SessionManager_DelRaw_SaveError(t *testing.T) {
 // still rejecting genuinely unknown values.
 func Test_CSRF_Security_SecFetchSite_Normalization(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	cases := []struct {
@@ -2163,7 +2127,6 @@ func Test_CSRF_Security_SecFetchSite_Normalization(t *testing.T) {
 // double-submit-cookie protection.
 func Test_CSRF_Security_DoubleSubmitMismatch(t *testing.T) {
 	t.Parallel()
-
 	var captured error
 	app := fiber.New()
 	app.Use(New(Config{
@@ -2203,7 +2166,6 @@ func Test_CSRF_Security_DoubleSubmitMismatch(t *testing.T) {
 // absent from storage is rejected and the stale cookie is expired.
 func Test_CSRF_Security_ForgedTokenNotInStorage(t *testing.T) {
 	t.Parallel()
-
 	var captured error
 	app := fiber.New()
 	app.Use(New(Config{
@@ -2239,7 +2201,6 @@ func Test_CSRF_Security_ForgedTokenNotInStorage(t *testing.T) {
 // header. Missing HttpOnly/Secure/SameSite flags would weaken the protection.
 func Test_CSRF_Security_CookieAttributes(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{
 		CookieName:     "__Host-csrf",
@@ -2276,7 +2237,6 @@ func Test_CSRF_Security_CookieAttributes(t *testing.T) {
 // the origin and must match.
 func Test_CSRF_Security_SchemeDowngradeRejected(t *testing.T) {
 	t.Parallel()
-
 	h, token := csrfTestTrusted(t, &Config{CookieSecure: true}, "https")
 
 	csrfTestPostCases(t, h, token, []csrfTestPostCase{{
@@ -2294,7 +2254,6 @@ func Test_CSRF_Security_SchemeDowngradeRejected(t *testing.T) {
 // origin under one scheme does not implicitly trust it under another scheme.
 func Test_CSRF_Security_TrustedOriginSchemeIsolation(t *testing.T) {
 	t.Parallel()
-
 	h, token := csrfTestTrusted(t, &Config{
 		CookieSecure:   true,
 		TrustedOrigins: []string{"https://trusted.example.com"},
@@ -2319,11 +2278,9 @@ func Test_CSRF_Security_TrustedOriginSchemeIsolation(t *testing.T) {
 // spelling was refused.
 func Test_CSRF_OriginCheckIgnoresHeaderNameCase(t *testing.T) {
 	t.Parallel()
-
 	for _, normalize := range []bool{true, false} {
 		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
 			t.Parallel()
-
 			h := csrfTestAccept(fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize}), &Config{})
 
 			// A legitimate visit, for the cookie and token a double-submit
@@ -2378,11 +2335,9 @@ func Test_CSRF_OriginCheckIgnoresHeaderNameCase(t *testing.T) {
 // which line the request meant.
 func Test_CSRF_RepeatedOriginIsRefused(t *testing.T) {
 	t.Parallel()
-
 	for _, normalize := range []bool{true, false} {
 		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
 			t.Parallel()
-
 			h := csrfTestAccept(fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize}), &Config{})
 			token, cookie := csrfTestVisit(t, h)
 
@@ -2512,7 +2467,6 @@ func Test_CSRF_RepeatedSecFetchSiteAndRefererAreRefused(t *testing.T) {
 // knows which origins those are.
 func Test_CSRF_TrustedOriginIsAllowedWhenCrossSite(t *testing.T) {
 	t.Parallel()
-
 	h := csrfTestAccept(fiber.New(), &Config{TrustedOrigins: []string{"http://partner.com"}})
 	token, cookie := csrfTestVisit(t, h)
 
@@ -2555,7 +2509,6 @@ func Test_CSRF_TrustedOriginIsAllowedWhenCrossSite(t *testing.T) {
 // accepted, and without one it is not.
 func Test_CSRF_CrossSiteWithoutOriginOverPlaintext(t *testing.T) {
 	t.Parallel()
-
 	h := csrfTestAccept(fiber.New(), &Config{})
 	token, cookie := csrfTestVisit(t, h)
 
@@ -2605,7 +2558,6 @@ func (c *varyMutatingCtx) Vary(fields ...string) {
 // for every later response and race with the requests running alongside it.
 func Test_CSRF_VaryDoesNotShareFieldsWithCustomCtx(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
 		return &varyMutatingCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
 	})

@@ -9,7 +9,6 @@ import (
 
 func Test_Msgpack_Binding_Bind(t *testing.T) {
 	t.Parallel()
-
 	b := &MsgPackBinding{MsgPackDecoder: msgpack.Unmarshal}
 	require.Equal(t, "msgpack", b.Name())
 
@@ -80,14 +79,12 @@ func Benchmark_Msgpack_Binding_Bind(b *testing.B) {
 
 func Test_UnimplementedMsgpackMarshal_ReturnsError(t *testing.T) {
 	t.Parallel()
-
 	_, err := UnimplementedMsgpackMarshal(struct{ Name string }{Name: "test"})
 	require.ErrorIs(t, err, ErrMsgPackNotConfigured)
 }
 
 func Test_UnimplementedMsgpackUnmarshal_ReturnsError(t *testing.T) {
 	t.Parallel()
-
 	var out any
 	err := UnimplementedMsgpackUnmarshal([]byte{0x80}, &out)
 	require.ErrorIs(t, err, ErrMsgPackNotConfigured)

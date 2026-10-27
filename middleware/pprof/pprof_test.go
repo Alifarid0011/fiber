@@ -34,11 +34,9 @@ func (m pprofTestMount) app(cfg Config) *fiber.App {
 
 func Test_Non_Pprof_Path(t *testing.T) {
 	t.Parallel()
-
 	for _, m := range pprofTestMounts {
 		t.Run(m.name, func(t *testing.T) {
 			t.Parallel()
-
 			apptest.ExpectBody(t, m.app(Config{}), "/", 200, "escaped")
 		})
 	}
@@ -46,11 +44,9 @@ func Test_Non_Pprof_Path(t *testing.T) {
 
 func Test_Pprof_Index(t *testing.T) {
 	t.Parallel()
-
 	for _, m := range pprofTestMounts {
 		t.Run(m.name, func(t *testing.T) {
 			t.Parallel()
-
 			resp := apptest.Expect(t, m.app(Config{}), m.prefix+"/debug/pprof/", 200)
 			require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
@@ -89,11 +85,9 @@ func Test_Pprof_Subs(t *testing.T) {
 
 func Test_Pprof_Other(t *testing.T) {
 	t.Parallel()
-
 	for _, m := range pprofTestMounts {
 		t.Run(m.name, func(t *testing.T) {
 			t.Parallel()
-
 			apptest.Expect(t, m.app(Config{}), m.prefix+"/debug/pprof/303", fiber.StatusSeeOther)
 		})
 	}
@@ -101,11 +95,9 @@ func Test_Pprof_Other(t *testing.T) {
 
 func Test_Pprof_TrailingSlash_RedirectsWithinPrefix(t *testing.T) {
 	t.Parallel()
-
 	for _, m := range pprofTestMounts {
 		t.Run(m.name, func(t *testing.T) {
 			t.Parallel()
-
 			resp := apptest.Expect(t, m.app(Config{}), m.prefix+"/debug/pprof/heap/", fiber.StatusSeeOther)
 			require.Equal(t, m.prefix+"/debug/pprof/heap", resp.Header.Get(fiber.HeaderLocation))
 		})
@@ -114,11 +106,9 @@ func Test_Pprof_TrailingSlash_RedirectsWithinPrefix(t *testing.T) {
 
 func Test_Pprof_Next(t *testing.T) {
 	t.Parallel()
-
 	for _, m := range pprofTestMounts {
 		t.Run(m.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := m.app(Config{Next: func(_ fiber.Ctx) bool { return true }})
 
 			apptest.Expect(t, app, m.prefix+"/debug/pprof/", 404)

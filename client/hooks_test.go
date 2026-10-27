@@ -52,7 +52,6 @@ func Test_Rand_String(t *testing.T) {
 // router delimiter cannot be added without the client following (#4635).
 func Test_PathParamEndChars_MatchesSharedSet(t *testing.T) {
 	t.Parallel()
-
 	want := paramdelim.PathEndChars()
 	want['#'] = true
 
@@ -504,7 +503,6 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 func Test_Parser_Request_Body(t *testing.T) {
 	t.Parallel()
-
 	type cborData struct {
 		Name string `cbor:"name"`
 		Age  int    `cbor:"age"`
@@ -619,7 +617,6 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 	t.Run("unsupported body type", func(t *testing.T) {
 		t.Parallel()
-
 		client := New()
 		req := AcquireRequest()
 
@@ -702,7 +699,6 @@ func clientTestCLoggedGet(t *testing.T, debug func(*Client) *Client) (logs *byte
 
 func Test_Client_Logger_Debug(t *testing.T) {
 	t.Parallel()
-
 	buf, addr := clientTestCLoggedGet(t, (*Client).Debug)
 
 	require.Contains(t, buf.String(), "Host: "+addr)
@@ -711,7 +707,6 @@ func Test_Client_Logger_Debug(t *testing.T) {
 
 func Test_Client_Logger_DisableDebug(t *testing.T) {
 	t.Parallel()
-
 	buf, _ := clientTestCLoggedGet(t, (*Client).DisableDebug)
 
 	require.Empty(t, buf.String())
@@ -800,7 +795,6 @@ func Benchmark_Parser_Request_URL_PathParams(b *testing.B) {
 
 func Test_Client_Logger_StreamedBodiesLogHeadersOnly(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 	client := New()
 	client.Debug().SetLogger(&dummyLogger{buf: &buf})
@@ -828,7 +822,6 @@ func Test_Client_Logger_StreamedBodiesLogHeadersOnly(t *testing.T) {
 
 func Test_ParseCookieIgnoringBadAttrs(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		value    string
@@ -849,7 +842,6 @@ func Test_ParseCookieIgnoringBadAttrs(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			cookie := fasthttp.AcquireCookie()
 			t.Cleanup(func() { fasthttp.ReleaseCookie(cookie) })
 
@@ -869,7 +861,6 @@ func Test_ParseCookieIgnoringBadAttrs(t *testing.T) {
 
 func Test_ParseCookieIgnoringBadAttrs_ManyAttributes(t *testing.T) {
 	t.Parallel()
-
 	value := make([]byte, 0, 16*1024)
 	value = append(value, "a=1; Expires=bogus"...)
 	for range 4_000 {
@@ -906,7 +897,6 @@ func Benchmark_ParseCookieIgnoringBadAttrs(b *testing.B) {
 
 func Test_Client_ResponseCookie_UnparsableAttribute(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 
 	req := AcquireRequest()
@@ -947,7 +937,6 @@ func hasRefererHeader(h *fasthttp.RequestHeader) bool {
 // with no referer configured must not send the header at all.
 func Test_Client_NoRefererByDefault(t *testing.T) {
 	t.Parallel()
-
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString(strconv.FormatBool(hasRefererHeader(&c.Request().Header)))

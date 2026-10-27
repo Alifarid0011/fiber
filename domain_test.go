@@ -82,7 +82,6 @@ func domainTestEngine(t *testing.T, dir string) *testTemplateEngine {
 
 func Test_Domain_Basic(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Domain("api.example.com").Get("/hello", func(c Ctx) error { return c.SendString("api hello") })
@@ -98,7 +97,6 @@ func Test_Domain_Basic(t *testing.T) {
 // DomainParam reads from the request's Host, and requests it with that host.
 func Test_Domain_Params(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		reply   func(c Ctx) string
 		name    string
@@ -131,7 +129,6 @@ func Test_Domain_Params(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			app.Domain(tc.pattern).Get("/", func(c Ctx) error { return c.SendString(tc.reply(c)) })
 
@@ -145,7 +142,6 @@ func Test_Domain_Params(t *testing.T) {
 // set and must not be reached (404) otherwise.
 func Test_Domain_HostMatching(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		pattern string
@@ -174,7 +170,6 @@ func Test_Domain_HostMatching(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			app.Domain(tc.pattern).Get("/", func(c Ctx) error { return c.SendString("ok") })
 
@@ -189,7 +184,6 @@ func Test_Domain_HostMatching(t *testing.T) {
 
 func Test_Domain_MultipleDomains(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Domain("api.example.com").Get("/", func(c Ctx) error { return c.SendString("api") })
@@ -210,7 +204,6 @@ func Test_Domain_MultipleDomains(t *testing.T) {
 // router, or through a domain router of a group, is served on that domain only.
 func Test_Domain_Group(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		register func(app *App, handler Handler)
 		name     string
@@ -225,7 +218,6 @@ func Test_Domain_Group(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			tc.register(app, func(c Ctx) error { return c.SendString(tc.body) })
 
@@ -240,7 +232,6 @@ func Test_Domain_Group(t *testing.T) {
 
 func Test_Domain_WithMiddleware(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	domain := app.Domain("api.example.com")
@@ -261,7 +252,6 @@ func Test_Domain_WithMiddleware(t *testing.T) {
 
 func Test_Domain_HTTPMethods(t *testing.T) {
 	t.Parallel()
-
 	methods := []struct {
 		reg    func(Router, string, any, ...any) Router
 		method string
@@ -292,7 +282,6 @@ func Test_Domain_HTTPMethods(t *testing.T) {
 
 func Test_Domain_Head(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Domain("api.example.com").Head("/test", func(c Ctx) error {
@@ -305,7 +294,6 @@ func Test_Domain_Head(t *testing.T) {
 
 func Test_Domain_All(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Domain("api.example.com").All("/test", func(c Ctx) error { return c.SendString("all methods") })
@@ -317,7 +305,6 @@ func Test_Domain_All(t *testing.T) {
 
 func Test_Domain_Add(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Domain("api.example.com").Add([]string{MethodGet, MethodPost}, "/test", func(c Ctx) error {
@@ -333,7 +320,6 @@ func Test_Domain_Add(t *testing.T) {
 
 func Test_Domain_Route(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Domain("api.example.com").Route("/api", func(router Router) {
@@ -351,7 +337,6 @@ func Test_Domain_Route(t *testing.T) {
 
 func Test_Domain_Name(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Domain("api.example.com").Get("/test", func(c Ctx) error { return c.SendString("ok") }).Name("api-test")
@@ -371,7 +356,6 @@ func Test_Domain_Name(t *testing.T) {
 
 func Test_Domain_NameWithGroup(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// When Domain is used with Route(prefix, fn, name), the group Name()
@@ -395,7 +379,6 @@ func Test_Domain_NameWithGroup(t *testing.T) {
 
 func Test_Domain_RouteChain(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Domain("api.example.com").RouteChain("/api/users").Get(func(c Ctx) error { return c.SendString("get users") }).
@@ -413,7 +396,6 @@ func Test_Domain_RouteChain(t *testing.T) {
 
 func Test_Domain_UseWithPrefix(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	domain := app.Domain("api.example.com")
@@ -429,7 +411,6 @@ func Test_Domain_UseWithPrefix(t *testing.T) {
 
 func Test_Domain_FallbackToNonDomain(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// Domain-specific route registered first
@@ -447,7 +428,6 @@ func Test_Domain_FallbackToNonDomain(t *testing.T) {
 
 func Test_Domain_WithPathParams(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Domain(":tenant.example.com").Get("/users/:id", func(c Ctx) error {
@@ -461,7 +441,6 @@ func Test_Domain_WithPathParams(t *testing.T) {
 
 func Test_Domain_NestedGroups(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	domain := app.Domain("api.example.com")
@@ -474,7 +453,6 @@ func Test_Domain_NestedGroups(t *testing.T) {
 
 func Test_Domain_Chaining(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// Methods should return the domain router for chaining
@@ -489,7 +467,6 @@ func Test_Domain_Chaining(t *testing.T) {
 
 func Test_Domain_MultipleHandlers(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Domain("api.example.com").Get(
@@ -513,7 +490,6 @@ func Test_Domain_MultipleHandlers(t *testing.T) {
 
 func Test_Domain_NetHTTPHandler(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// Register a net/http handler through domain routing
@@ -531,7 +507,6 @@ func Test_Domain_NetHTTPHandler(t *testing.T) {
 
 func Test_Domain_DomainOnDomain(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// Domain created from a domain router (should replace the pattern)
@@ -545,7 +520,6 @@ func Test_Domain_DomainOnDomain(t *testing.T) {
 
 func Test_Domain_GroupMiddleware(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	domain := app.Domain("api.example.com")
@@ -566,7 +540,6 @@ func Test_Domain_GroupMiddleware(t *testing.T) {
 
 func Test_Domain_UseMultiplePrefixes(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	domain := app.Domain("api.example.com")
@@ -586,7 +559,6 @@ func Test_Domain_UseMultiplePrefixes(t *testing.T) {
 
 func Test_Domain_RoutePanic(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	require.Panics(t, func() { app.Domain("api.example.com").Route("/test", nil) })
@@ -594,7 +566,6 @@ func Test_Domain_RoutePanic(t *testing.T) {
 
 func Test_Domain_UseMount(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	subApp := New()
 
@@ -617,7 +588,6 @@ func Test_Domain_UseMount(t *testing.T) {
 
 func Test_Domain_UseMountNoPrefix(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// Create a route in the sub-app
@@ -635,7 +605,6 @@ func Test_Domain_UseMountNoPrefix(t *testing.T) {
 
 func Test_Domain_UseMountFromGroup(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// Create a route in the sub-app
@@ -654,7 +623,6 @@ func Test_Domain_UseMountFromGroup(t *testing.T) {
 
 func Test_Domain_StaleParamsCleared(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// First: a domain with a parameter
@@ -675,7 +643,6 @@ func Test_Domain_StaleParamsCleared(t *testing.T) {
 
 func Test_Domain_RouteChainNested(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Domain("api.example.com").RouteChain("/api").RouteChain("/v1").
@@ -686,7 +653,6 @@ func Test_Domain_RouteChainNested(t *testing.T) {
 
 func Test_Domain_RouteChainAllMethods(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	rc := app.Domain("api.example.com").RouteChain("/test")
@@ -710,7 +676,6 @@ func Test_Domain_RouteChainAllMethods(t *testing.T) {
 
 func Test_parseDomainPattern(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name       string
 		pattern    string
@@ -741,7 +706,6 @@ func Test_parseDomainPattern(t *testing.T) {
 
 func Test_domainMatcher_match(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		pattern  string
@@ -906,7 +870,6 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 // Test_Domain_UseHandlerTypes verifies that Use() is compatible with all handler types.
 func Test_Domain_UseHandlerTypes(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		middleware any
 		name       string
@@ -988,7 +951,6 @@ func Benchmark_Domain_NoImpact(b *testing.B) {
 // rejected when the domain router is created.
 func Test_Domain_Security_InvalidPatterns(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		pattern string
@@ -1042,7 +1004,6 @@ func Test_Domain_Security_InvalidHostnameChars(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			app.Domain("example.com").Get("/", func(c Ctx) error { return c.SendString("ok") })
 
@@ -1058,7 +1019,6 @@ func Test_Domain_Security_InvalidHostnameChars(t *testing.T) {
 // Test_Domain_Security_ValidParamNames tests that valid parameter names are accepted
 func Test_Domain_Security_ValidParamNames(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name    string
 		pattern string
@@ -1082,7 +1042,6 @@ func Test_Domain_Security_ValidParamNames(t *testing.T) {
 // is not mutated).
 func Test_Domain_UseMountReusable(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	subApp := domainTestApp("/data", "data response")
 
@@ -1105,7 +1064,6 @@ func Test_Domain_UseMountReusable(t *testing.T) {
 // mount clones routes at mount time).
 func Test_Domain_UseMountRoutesAfterMount(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	// Register a route BEFORE mounting
@@ -1135,7 +1093,6 @@ func Test_Domain_UseMountRoutesAfterMount(t *testing.T) {
 // domain and are filtered by host like any other domain-mounted route.
 func Test_Domain_UseMountNested(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestApp("/x", "nested x")
 
 	subApp := New()
@@ -1160,7 +1117,6 @@ func Test_Domain_UseMountNested(t *testing.T) {
 // level deep are expanded, and that domain parameters resolve inside them.
 func Test_Domain_UseMountNestedDeep(t *testing.T) {
 	t.Parallel()
-
 	grandChild := New()
 	grandChild.Get("/deep", func(c Ctx) error { return c.SendString("tenant=" + DomainParam(c, "tenant")) })
 
@@ -1182,7 +1138,6 @@ func Test_Domain_UseMountNestedDeep(t *testing.T) {
 // sub-app is domain-filtered too, instead of running on every host.
 func Test_Domain_UseMountNestedMiddleware(t *testing.T) {
 	t.Parallel()
-
 	var hits int
 	child := New()
 	child.Use(func(c Ctx) error {
@@ -1211,7 +1166,6 @@ func Test_Domain_UseMountNestedMiddleware(t *testing.T) {
 // both the domain mount and the nested mount sit at the root path.
 func Test_Domain_UseMountNestedAtRoot(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestApp("/x", "nested x")
 
 	subApp := New()
@@ -1229,7 +1183,6 @@ func Test_Domain_UseMountNestedAtRoot(t *testing.T) {
 // through a group's domain router picks up the group prefix.
 func Test_Domain_UseMountNestedFromGroup(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestApp("/data", "data response")
 
 	subApp := New()
@@ -1249,7 +1202,6 @@ func Test_Domain_UseMountNestedFromGroup(t *testing.T) {
 // elsewhere, i.e. the original sub-app's handlers are never domain-wrapped.
 func Test_Domain_UseMountNestedReusable(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestApp("/x", "nested x")
 
 	subApp := New()
@@ -1277,7 +1229,6 @@ func Test_Domain_UseMountNestedReusable(t *testing.T) {
 // decides which route wins.
 func Test_Domain_UseMountNestedOrder(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestApp("/x", "child")
 
 	subApp := New()
@@ -1299,7 +1250,6 @@ func Test_Domain_UseMountNestedOrder(t *testing.T) {
 // nested sub-app survive the prefixing done while expanding the mount.
 func Test_Domain_UseMountNestedParams(t *testing.T) {
 	t.Parallel()
-
 	child := New()
 	child.Get("/user/:id", func(c Ctx) error { return c.SendString("id=" + c.Params("id")) })
 	child.Get("/files/*", func(c Ctx) error { return c.SendString("file=" + c.Params("*")) })
@@ -1320,7 +1270,6 @@ func Test_Domain_UseMountNestedParams(t *testing.T) {
 // on a domain router and plainly.
 func Test_Domain_UseMountNestedDomainMount(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestApp("/x", "nested x")
 
 	subApp := New()
@@ -1350,7 +1299,6 @@ func Test_Domain_UseMountNestedDomainMount(t *testing.T) {
 // method indexes.
 func Test_Domain_UseMountNestedRestrictedMethods(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestApp("/x", "restricted x", Config{RequestMethods: []string{MethodGet}})
 
 	app := New()
@@ -1367,7 +1315,6 @@ func Test_Domain_UseMountNestedRestrictedMethods(t *testing.T) {
 // has to be as long as the parent's method table.
 func Test_Domain_UseMountNestedExtraMethods(t *testing.T) {
 	t.Parallel()
-
 	methods := append(append([]string{}, DefaultMethods...), "PURGE")
 	app := New(Config{RequestMethods: methods})
 
@@ -1418,7 +1365,6 @@ func Test_Domain_UseMountNestedRequestMethods(t *testing.T) {
 // an app it has mounted, and that the HEAD route is domain-filtered too.
 func Test_Domain_UseMountAutoHead(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestApp("/nested", "nested")
 
 	subApp := New()
@@ -1441,7 +1387,6 @@ func Test_Domain_UseMountAutoHead(t *testing.T) {
 // automatic HEAD registration off does not get HEAD routes from the mount.
 func Test_Domain_UseMountAutoHeadDisabled(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestApp("/flat", "flat", Config{DisableHeadAutoRegister: true})
 
 	app := New()
@@ -1455,7 +1400,6 @@ func Test_Domain_UseMountAutoHeadDisabled(t *testing.T) {
 // the routes are expanded into the parent.
 func Test_Domain_UseMountCustomConstraint(t *testing.T) {
 	t.Parallel()
-
 	child := New()
 	child.RegisterCustomConstraint(&onlyFooConstraint{})
 	child.Get("/nested/:name<onlyfoo>", func(c Ctx) error { return c.SendString(c.Params("name")) })
@@ -1479,7 +1423,6 @@ func Test_Domain_UseMountCustomConstraint(t *testing.T) {
 // engine. Keyed by path alone they would displace each other.
 func Test_Domain_UseMountPerHostConfig(t *testing.T) {
 	t.Parallel()
-
 	subA := New(Config{
 		Views:        domainTestEngine(t, "testdata2"),
 		ErrorHandler: domainTestErrorHandler(591, "a error"),
@@ -1508,7 +1451,6 @@ func Test_Domain_UseMountPerHostConfig(t *testing.T) {
 // sub-app's error handler does not answer for a host its pattern rejects.
 func Test_Domain_UseMountConfigIgnoredOnOtherHost(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestFailingApp(593, "sub error", "/mounted")
 
 	app := New()
@@ -1526,7 +1468,6 @@ func Test_Domain_UseMountConfigIgnoredOnOtherHost(t *testing.T) {
 // covering the request wins, nested apps included.
 func Test_Domain_UseMountNestedErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestFailingApp(594, "child error", "/boom")
 
 	subApp := New(Config{ErrorHandler: domainTestErrorHandler(595, "sub error")})
@@ -1545,7 +1486,6 @@ func Test_Domain_UseMountNestedErrorHandler(t *testing.T) {
 // own afterwards.
 func Test_Domain_UseMountLeavesSubAppIntact(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestApp("/x", "nested x")
 
 	subApp := New()
@@ -1570,7 +1510,6 @@ func Test_Domain_UseMountLeavesSubAppIntact(t *testing.T) {
 // ViewsLayout is applied when the caller passes no layout of its own.
 func Test_Domain_UseMountViewsLayout(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestRenderApp("/view", "index.tmpl", Map{"Title": "Hello, World!"},
 		Config{Views: domainTestEngine(t, ""), ViewsLayout: "main.tmpl"})
 
@@ -1585,7 +1524,6 @@ func Test_Domain_UseMountViewsLayout(t *testing.T) {
 // the parent's views.
 func Test_Domain_UseMountViewsError(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestRenderApp("/view", "index.tmpl", Map{"Title": "Hello, World!"},
 		Config{Views: errorTemplateEngine{}})
 
@@ -1600,7 +1538,6 @@ func Test_Domain_UseMountViewsError(t *testing.T) {
 // no view engine of its own leaves rendering to the parent.
 func Test_Domain_UseMountWithoutViews(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestRenderApp("/view", "index.tmpl", Map{"Title": "from parent"})
 
 	app := New(Config{Views: domainTestEngine(t, "")})
@@ -1613,7 +1550,6 @@ func Test_Domain_UseMountWithoutViews(t *testing.T) {
 // engine of a domain-mounted sub-app, which appList no longer holds.
 func Test_Domain_UseMountReloadViews(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestRenderApp("/view", "bruh.tmpl", Map{}, Config{Views: domainTestEngine(t, "testdata2")})
 
 	app := New()
@@ -1628,7 +1564,6 @@ func Test_Domain_UseMountReloadViews(t *testing.T) {
 // router returns instead of deadlocking on the app's mutex.
 func Test_Domain_UseMountSelf(t *testing.T) {
 	t.Parallel()
-
 	app := domainTestApp("/x", "x")
 
 	done := make(chan struct{})
@@ -1654,7 +1589,6 @@ func Test_Domain_UseMountSelf(t *testing.T) {
 // anywhere in the URL — a query string carrying it must not select them.
 func Test_Domain_UseMountViewsPathOnly(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestRenderApp("/view", "bruh.tmpl", Map{}, Config{Views: domainTestEngine(t, "testdata2")})
 
 	app := New(Config{Views: domainTestEngine(t, "")})
@@ -1670,7 +1604,6 @@ func Test_Domain_UseMountViewsPathOnly(t *testing.T) {
 // would reach the handler with nothing in front of it.
 func Test_Domain_UseMountAutoHeadKeepsMiddleware(t *testing.T) {
 	t.Parallel()
-
 	subApp := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
 	subApp.Use(func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
 	subApp.Get("/secret", func(c Ctx) error {
@@ -1695,7 +1628,6 @@ func Test_Domain_UseMountAutoHeadKeepsMiddleware(t *testing.T) {
 // turned automatic HEAD routes off does not get them from the mount either.
 func Test_Domain_UseMountNestedAutoHeadDisabled(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestApp("/x", "nested x", Config{DisableHeadAutoRegister: true})
 
 	subApp := New()
@@ -1712,7 +1644,6 @@ func Test_Domain_UseMountNestedAutoHeadDisabled(t *testing.T) {
 // parent picks the metadata up when it discovers sub-apps at startup.
 func Test_Domain_UseMountAfterOuterMount(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestFailingApp(596, "child error", "/boom")
 
 	mid := New()
@@ -1732,7 +1663,6 @@ func Test_Domain_UseMountAfterOuterMount(t *testing.T) {
 // have been prefixed twice.
 func Test_Domain_UseMountParametricPrefix(t *testing.T) {
 	t.Parallel()
-
 	child := New()
 	child.Get("/x", func(c Ctx) error { return c.SendString("version=" + c.Params("version")) })
 
@@ -1752,7 +1682,6 @@ func Test_Domain_UseMountParametricPrefix(t *testing.T) {
 // case-insensitive app, the way its routes do.
 func Test_Domain_UseMountCaseInsensitivePath(t *testing.T) {
 	t.Parallel()
-
 	subApp := New(Config{
 		Views:        domainTestEngine(t, "testdata2"),
 		ErrorHandler: domainTestErrorHandler(599, "sub error"),
@@ -1777,7 +1706,6 @@ func Test_Domain_UseMountCaseInsensitivePath(t *testing.T) {
 // the same mount by every path that leads to it.
 func Test_Domain_UseMountRecordedOnce(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestApp("/x", "nested x")
 
 	inner := New()
@@ -1800,7 +1728,6 @@ func Test_Domain_UseMountRecordedOnce(t *testing.T) {
 // through its startup process.
 func Test_Domain_UseMountReloadViewsBeforeStart(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestRenderApp("/view", "bruh.tmpl", Map{}, Config{Views: domainTestEngine(t, "testdata2")})
 
 	mid := New()
@@ -1836,7 +1763,6 @@ func Test_Domain_UseMountOverlappingViews(t *testing.T) {
 // tells them apart.
 func Test_Domain_UseMountOverlappingViewsLaterMount(t *testing.T) {
 	t.Parallel()
-
 	exact := domainTestRenderApp("/view", "index.tmpl", Map{"Title": "exact"}, Config{Views: domainTestEngine(t, "")})
 
 	// Registered second, and owns the route this request runs.
@@ -1858,7 +1784,6 @@ func Test_Domain_UseMountOverlappingViewsLaterMount(t *testing.T) {
 // route that ran.
 func Test_Domain_UseMountOverlappingErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name   string
 		method string
@@ -1877,7 +1802,6 @@ func Test_Domain_UseMountOverlappingErrorHandler(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			first := domainTestFailingApp(581, "first", "/first")
 			second := domainTestFailingApp(582, "second", "/second")
 
@@ -1895,7 +1819,6 @@ func Test_Domain_UseMountOverlappingErrorHandler(t *testing.T) {
 // on: the route it registered is the one that ran, but it served nothing.
 func Test_Domain_UseMountDeclinedHostKeepsRootErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestFailingApp(585, "sub", "/boom")
 
 	app := New()
@@ -1909,7 +1832,6 @@ func Test_Domain_UseMountDeclinedHostKeepsRootErrorHandler(t *testing.T) {
 // layout, as an ordinary mount without an engine of its own does.
 func Test_Domain_UseMountViewsLayoutWithoutViews(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestRenderApp("/view", "index.tmpl", Map{"Title": "Hello"}, Config{ViewsLayout: "main.tmpl"})
 
 	app := New(Config{Views: domainTestEngine(t, "")})
@@ -1924,7 +1846,6 @@ func Test_Domain_UseMountViewsLayoutWithoutViews(t *testing.T) {
 // them upward.
 func Test_Domain_UseMountBehindPlainDescendant(t *testing.T) {
 	t.Parallel()
-
 	inner := domainTestFailingApp(586, "inner", "/boom")
 
 	mid := New()
@@ -1947,7 +1868,6 @@ func Test_Domain_UseMountBehindPlainDescendant(t *testing.T) {
 // it is domain-mounted afterwards, rather than being credited with all of them.
 func Test_Domain_UseMountStartedSubApp(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestFailingApp(587, "child", "/boom")
 
 	subApp := New(Config{ErrorHandler: domainTestErrorHandler(588, "sub")})
@@ -1969,7 +1889,6 @@ func Test_Domain_UseMountStartedSubApp(t *testing.T) {
 // of each app in turn is current.
 func Test_Domain_UseMountLateOrdinaryDescendant(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestFailingApp(589, "child", "/boom")
 
 	mid := New()
@@ -2007,7 +1926,6 @@ func Test_Domain_UseMountViewsSkipsPlainSibling(t *testing.T) {
 // inside, as an ordinarily nested mount does.
 func Test_Domain_UseMountInheritsEnclosingErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name   string
 		mount  string
@@ -2023,7 +1941,6 @@ func Test_Domain_UseMountInheritsEnclosingErrorHandler(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			child := New() // no handler of its own
 			child.Get("/boom", domainTestBoom)
 
@@ -2044,7 +1961,6 @@ func Test_Domain_UseMountInheritsEnclosingErrorHandler(t *testing.T) {
 // request.
 func Test_Domain_UseMountDropsPlainSiblingErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	plain := domainTestFailingApp(592, "plain", "/other")
 
 	subApp := New()
@@ -2061,7 +1977,6 @@ func Test_Domain_UseMountDropsPlainSiblingErrorHandler(t *testing.T) {
 // whose ordinary mounts form a cycle terminates and still serves its routes.
 func Test_Domain_UseMountCyclicOrdinaryMounts(t *testing.T) {
 	t.Parallel()
-
 	first := New()
 	second := domainTestApp("/ping", "pong")
 
@@ -2080,7 +1995,6 @@ func Test_Domain_UseMountCyclicOrdinaryMounts(t *testing.T) {
 // route needs an automatic companion of its own.
 func Test_Domain_UseMountAutoHeadPerMount(t *testing.T) {
 	t.Parallel()
-
 	inner := New()
 	inner.Head("/x", func(c Ctx) error {
 		c.Set("X-Handler", "inner")
@@ -2114,7 +2028,6 @@ func Test_Domain_UseMountAutoHeadPerMount(t *testing.T) {
 // none, as an ordinarily nested mount does.
 func Test_Domain_UseMountInheritsDomainErrorHandler(t *testing.T) {
 	t.Parallel()
-
 	child := New()
 	child.Get("/boom", domainTestBoom)
 
@@ -2132,7 +2045,6 @@ func Test_Domain_UseMountInheritsDomainErrorHandler(t *testing.T) {
 // domain mount on another path encloses nothing here.
 func Test_Domain_UseMountInheritsOnlyFromCoveringMounts(t *testing.T) {
 	t.Parallel()
-
 	other := domainTestApp("/thing", "thing", Config{ErrorHandler: domainTestErrorHandler(596, "other")})
 
 	child := New()
@@ -2154,7 +2066,6 @@ func Test_Domain_UseMountInheritsOnlyFromCoveringMounts(t *testing.T) {
 // by host and path encloses nothing.
 func Test_Domain_UseMountIgnoresOverlappingSibling(t *testing.T) {
 	t.Parallel()
-
 	wildcard := domainTestApp("/thing", "thing", Config{ErrorHandler: domainTestErrorHandler(598, "wildcard")})
 
 	exact := New() // no handler of its own
@@ -2173,7 +2084,6 @@ func Test_Domain_UseMountIgnoresOverlappingSibling(t *testing.T) {
 // the same prefix on a matching host.
 func Test_Domain_UseMountPlainRouteKeepsItsOwnConfig(t *testing.T) {
 	t.Parallel()
-
 	plain := New() // no handler of its own
 	plain.Get("/boom", domainTestBoom)
 
@@ -2194,7 +2104,6 @@ func Test_Domain_UseMountPlainRouteKeepsItsOwnConfig(t *testing.T) {
 // path it already serves has its handlers appended in place.
 func Test_Domain_UseMountConcurrentRegistration(t *testing.T) {
 	t.Parallel()
-
 	handler := func(c Ctx) error { return c.SendString("x") }
 	subApp := New()
 	subApp.Get("/x", handler)
@@ -2222,7 +2131,6 @@ func Test_Domain_UseMountConcurrentRegistration(t *testing.T) {
 // the one recording it.
 func Test_Domain_UseMountNestedPrefixConstraint(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestApp("/x", "x", Config{ErrorHandler: domainTestErrorHandler(603, "child")})
 
 	mid := New()
@@ -2245,7 +2153,6 @@ func Test_Domain_UseMountNestedPrefixConstraint(t *testing.T) {
 // of the former, whichever the unordered walk happens to record first.
 func Test_Domain_UseMountAncestryIsStable(t *testing.T) {
 	t.Parallel()
-
 	for range 40 {
 		child := New()
 		child.Get("/boom", domainTestBoom)
@@ -2269,7 +2176,6 @@ func Test_Domain_UseMountAncestryIsStable(t *testing.T) {
 // request either way.
 func Test_Domain_UseMountLayoutStopsAtEngine(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestRenderApp("/view", "index.tmpl", Map{"Title": "child"},
 		Config{Views: domainTestEngine(t, "")}) // an engine, and no layout
 
@@ -2288,7 +2194,6 @@ func Test_Domain_UseMountLayoutStopsAtEngine(t *testing.T) {
 // keep theirs, as they do under an ordinary mount.
 func Test_Domain_UseMountAutoHeadPerSubtree(t *testing.T) {
 	t.Parallel()
-
 	handler := func(c Ctx) error { return c.SendString("x") }
 
 	child := New(Config{DisableHeadAutoRegister: true})
@@ -2311,7 +2216,6 @@ func Test_Domain_UseMountAutoHeadPerSubtree(t *testing.T) {
 // with the depth of the tree.
 func Test_Domain_UseMountTreeVisitsEachMountOnce(t *testing.T) {
 	t.Parallel()
-
 	const depth = 12
 
 	apps := make([]*App, depth+1)
@@ -2333,7 +2237,6 @@ func Test_Domain_UseMountTreeVisitsEachMountOnce(t *testing.T) {
 // patterns that reach them.
 func Test_Domain_UseMountSharedAppOnTwoPatterns(t *testing.T) {
 	t.Parallel()
-
 	shared := domainTestFailingApp(608, "shared", "/boom")
 
 	subApp := New()
@@ -2353,7 +2256,6 @@ func Test_Domain_UseMountSharedAppOnTwoPatterns(t *testing.T) {
 // ownership where nothing better is known.
 func Test_Domain_UseMountOutranksDeeperUnrelatedMount(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestFailingApp(609, "domain", "/admin/boom")
 
 	plain := domainTestApp("/other", "other", Config{ErrorHandler: domainTestErrorHandler(610, "plain")})
@@ -2373,7 +2275,6 @@ func Test_Domain_UseMountOutranksDeeperUnrelatedMount(t *testing.T) {
 // engine rather than the root's.
 func Test_Domain_UseMountInheritsDomainViews(t *testing.T) {
 	t.Parallel()
-
 	child := domainTestRenderApp("/view", "index.tmpl", Map{"Title": "child"})
 
 	subApp := New(Config{Views: domainTestEngine(t, "")})
@@ -2391,7 +2292,6 @@ func Test_Domain_UseMountInheritsDomainViews(t *testing.T) {
 // leaving a route the parent registered at the same path with its own.
 func Test_Domain_UseMountKeepsParentAutoHead(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestApp("/x", "sub x", Config{DisableHeadAutoRegister: true})
 
 	app := New()
@@ -2407,7 +2307,6 @@ func Test_Domain_UseMountKeepsParentAutoHead(t *testing.T) {
 // error handler and views apply to them.
 func Test_Domain_UseMountParametricMountPath(t *testing.T) {
 	t.Parallel()
-
 	subApp := domainTestFailingApp(571, "sub error", "/boom")
 
 	app := New()
@@ -2421,7 +2320,6 @@ func Test_Domain_UseMountParametricMountPath(t *testing.T) {
 // registered after it still owns its own routes.
 func Test_Domain_UseMountRootIsShallowest(t *testing.T) {
 	t.Parallel()
-
 	rootApp := domainTestFailingApp(572, "root mount", "/other")
 	apiApp := domainTestFailingApp(573, "api mount", "/boom")
 
@@ -2437,7 +2335,6 @@ func Test_Domain_UseMountRootIsShallowest(t *testing.T) {
 // of the two renders with its own engine.
 func Test_Domain_UseMountViewsRankedAgainstPlain(t *testing.T) {
 	t.Parallel()
-
 	domainApp := domainTestRenderApp("/x", "bruh.tmpl", Map{}, Config{Views: domainTestEngine(t, "testdata2")})
 
 	plainApp := domainTestRenderApp("/view", "hello_world.tmpl", Map{"Name": "deep"},
@@ -2460,7 +2357,6 @@ func Test_Domain_UseMountViewsRankedAgainstPlain(t *testing.T) {
 // parent's startup loops in appendSubAppLists, independently of domain routing.
 func Test_Domain_UseMountNestedCycle(t *testing.T) {
 	t.Parallel()
-
 	first := New()
 	second := domainTestApp("/x", "nested x")
 	first.Use("/second", second)

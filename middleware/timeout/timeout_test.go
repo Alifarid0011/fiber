@@ -44,7 +44,6 @@ func sleepWithContext(ctx context.Context, d time.Duration, te error) error {
 // error or a panic, or has no deadline to exceed.
 func TestTimeout_Statuses(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		handler fiber.Handler
 		name    string
@@ -209,7 +208,6 @@ func TestTimeout_DefaultStatus(t *testing.T) {
 // included.
 func TestTimeout_OnTimeoutChoosesStatus(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		want *fiber.Error
 		name string
@@ -404,7 +402,6 @@ func TestTimeout_OnTimeoutEmptyResponse(t *testing.T) {
 // TestIsTimeoutError_DeadlineExceeded ensures context.DeadlineExceeded triggers timeout.
 func TestIsTimeoutError_DeadlineExceeded(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, isTimeoutError(context.DeadlineExceeded, nil))
 	require.True(t, isTimeoutError(fmt.Errorf("wrap: %w", context.DeadlineExceeded), nil))
 }
@@ -412,7 +409,6 @@ func TestIsTimeoutError_DeadlineExceeded(t *testing.T) {
 // TestIsTimeoutError_CustomErrors verifies custom errors are detected.
 func TestIsTimeoutError_CustomErrors(t *testing.T) {
 	t.Parallel()
-
 	customErr := errors.New("custom timeout")
 	require.True(t, isTimeoutError(customErr, []error{customErr}))
 	require.True(t, isTimeoutError(fmt.Errorf("wrap: %w", customErr), []error{customErr}))
@@ -645,7 +641,6 @@ func (neverReturningReader) Read(_ []byte) (int, error) { select {} }
 // either way: the handler is abandoned by design and keeps running.
 func Test_Timeout_ResponseUnwritten(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		setup func(resp *fasthttp.Response)
 		name  string
@@ -677,7 +672,6 @@ func Test_Timeout_ResponseUnwritten(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			resp := &fasthttp.Response{}
 			tc.setup(resp)
 			require.Equal(t, tc.want, timeoutResponseUnwritten(resp))
@@ -687,7 +681,6 @@ func Test_Timeout_ResponseUnwritten(t *testing.T) {
 
 func Test_Timeout_OnTimeout_ResetsBodyStream(t *testing.T) {
 	t.Parallel()
-
 	resp := &fasthttp.Response{}
 	resp.SetBodyStream(neverReturningReader{}, -1)
 
@@ -738,7 +731,6 @@ func Test_Timeout_DefaultReturnsErrServiceUnavailable(t *testing.T) {
 
 func Test_Timeout_ErrorHandlerSkippedAfterTimeout(t *testing.T) {
 	t.Parallel()
-
 	var errorHandlerCalls atomic.Int32
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {

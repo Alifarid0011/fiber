@@ -259,7 +259,6 @@ func Test_Req_Authorization(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			fctx := &fasthttp.RequestCtx{}
 			if tc.header != "" {
 				fctx.Request.Header.Set(HeaderAuthorization, tc.header)
@@ -296,7 +295,6 @@ func Test_Req_IsSafe_IsIdempotent(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.method, func(t *testing.T) {
 			t.Parallel()
-
 			fctx := &fasthttp.RequestCtx{}
 			fctx.Request.Header.SetMethod(tc.method)
 			c := apptest.CtxFor(t, app, fctx)
@@ -351,7 +349,6 @@ func Test_Req_IfNoneMatch(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			fctx := &fasthttp.RequestCtx{}
 			if tc.header != "" {
 				fctx.Request.Header.Set(HeaderIfNoneMatch, tc.header)
@@ -844,7 +841,6 @@ func Test_Ctx_IsFinal(t *testing.T) {
 
 func Test_Ctx_IsFinal_ScopedToTheRoute(t *testing.T) {
 	t.Parallel()
-
 	terminal := New()
 	var inUse bool
 	terminal.Use(func(c Ctx) error {
@@ -871,7 +867,6 @@ func Test_Ctx_IsFinal_ScopedToTheRoute(t *testing.T) {
 
 func Test_Ctx_MountPath(t *testing.T) {
 	t.Parallel()
-
 	micro := New()
 	var mounted, mountedPath string
 	micro.Get("/doe", func(c Ctx) error {
@@ -949,7 +944,6 @@ func rootMiscARawHeaderCtx(t *testing.T, prepare func(req *fasthttp.Request)) Ct
 
 func Test_Req_HeaderFieldWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-
 	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
 		req.Header.Set("origin", "https://example.com")
 		req.Header.Set("authorization", "Bearer abc123")
@@ -966,7 +960,6 @@ func Test_Req_HeaderFieldWithoutNormalizing(t *testing.T) {
 
 func Test_Req_ConditionalHeadersWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-
 	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
 		req.Header.Set("if-none-match", `"a", W/"b"`)
 		req.Header.Set("if-modified-since", "Wed, 21 Oct 2015 07:28:00 GMT")
@@ -981,7 +974,6 @@ func Test_Req_ConditionalHeadersWithoutNormalizing(t *testing.T) {
 
 func Test_Req_IsPreflightWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-
 	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
 		req.Header.SetMethod(MethodOptions)
 		req.Header.Set("origin", "https://example.com")
@@ -1042,14 +1034,12 @@ func Test_Res_GetCookie_NoAttributes(t *testing.T) {
 
 func Test_Ctx_MountPath_NoApp(t *testing.T) {
 	t.Parallel()
-
 	var c DefaultCtx
 	require.NotPanics(t, func() { require.Empty(t, c.MountPath()) })
 }
 
 func Test_Req_HasHeaderWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-
 	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) { req.Header.Set("x-test", "yes") })
 
 	require.True(t, c.Req().HasHeader("X-Test"))
@@ -1092,7 +1082,6 @@ func Test_Res_SendStatus_DropsDeclaredContentLength(t *testing.T) {
 
 func Test_Req_AcceptsWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-
 	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
 		req.Header.Set("accept", "application/json")
 		req.Header.Set("accept-charset", "utf-8")
@@ -1116,7 +1105,6 @@ func Test_Req_AcceptsWithoutNormalizing(t *testing.T) {
 
 func Test_Req_FreshWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-
 	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
 		req.Header.SetMethod(MethodGet)
 		req.Header.Set("if-none-match", `"abc"`)
@@ -1160,7 +1148,6 @@ func Test_Req_HeaderFieldSkipsEmptyFirstLine(t *testing.T) {
 
 func Test_Req_GetWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-
 	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) { req.Header.Set("x-api-key", "k1") })
 
 	require.True(t, c.Req().HasHeader("X-Api-Key"))
@@ -1170,7 +1157,6 @@ func Test_Req_GetWithoutNormalizing(t *testing.T) {
 
 func Test_Req_BodyContentEncodingWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
 	_, err := zw.Write([]byte("hello world"))
@@ -1188,7 +1174,6 @@ func Test_Req_BodyContentEncodingWithoutNormalizing(t *testing.T) {
 
 func Test_Req_UpgradePredicatesWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-
 	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
 		req.Header.Set("connection", "Upgrade")
 		req.Header.Set("upgrade", "websocket")
@@ -1207,7 +1192,6 @@ func Test_Req_UpgradePredicatesWithoutNormalizing(t *testing.T) {
 
 func Test_Res_FormatWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-
 	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) { req.Header.Set("accept", "text/html") })
 
 	err := c.Res().Format(
@@ -1233,7 +1217,6 @@ func Test_Res_DelKeyCaseWithoutNormalizing(t *testing.T) {
 
 func Test_Req_Res_AccessorsImmutable(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		read   func(c Ctx) string
 		name   string
@@ -1328,7 +1311,6 @@ func Test_Req_Res_AccessorsImmutable(t *testing.T) {
 
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New(Config{Immutable: true}))
 			header(c).Set(tc.header, tc.value)
 
@@ -1345,7 +1327,6 @@ func Test_Req_Res_AccessorsImmutable(t *testing.T) {
 
 		t.Run(tc.name+"/scrubReachesTheBuffer", func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, New())
 			header(c).Set(tc.header, tc.value)
 

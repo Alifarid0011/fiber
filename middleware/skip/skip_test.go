@@ -10,7 +10,6 @@ import (
 
 func Test_Skip(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		skip   func(fiber.Ctx) bool
 		name   string
@@ -22,7 +21,6 @@ func Test_Skip(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(skip.New(errTeapotHandler, tc.skip))
 			app.Get("/", helloWorldHandler)

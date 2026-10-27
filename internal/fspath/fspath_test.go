@@ -33,7 +33,6 @@ func Benchmark_Valid(b *testing.B) {
 
 func Test_Valid(t *testing.T) {
 	t.Parallel()
-
 	type testCase struct {
 		filesystem fs.FS
 		name       string
@@ -83,7 +82,6 @@ func Test_Valid(t *testing.T) {
 // path is literal and must not be decoded again.
 func Test_Valid_NoDecode(t *testing.T) {
 	t.Parallel()
-
 	for _, input := range []string{
 		"/%70rivate/secret.txt",
 		"/100%.txt",
@@ -108,7 +106,6 @@ func Test_Valid_NoDecode(t *testing.T) {
 
 func Test_Valid_Error(t *testing.T) {
 	t.Parallel()
-
 	type testCase struct {
 		filesystem fs.FS
 		name       string
@@ -190,7 +187,6 @@ func Test_Valid_Error(t *testing.T) {
 
 func Test_HasUnsafeSegment(t *testing.T) {
 	t.Parallel()
-
 	for _, p := range []string{"/../x", "/a/../x", "/a/..", "/./x", "/a/.", "/a//b", "//", "/a//", "//a", "..", "."} {
 		require.True(t, hasUnsafeSegment([]byte(p)), "path=%q", p)
 	}
@@ -201,7 +197,6 @@ func Test_HasUnsafeSegment(t *testing.T) {
 
 func Test_HasDriveLetter(t *testing.T) {
 	t.Parallel()
-
 	for input, want := range map[string]bool{
 		"":      false,
 		"C":     false,
@@ -219,7 +214,6 @@ func Test_HasDriveLetter(t *testing.T) {
 
 func Test_HasTrailingDotOrSpaceSegment(t *testing.T) {
 	t.Parallel()
-
 	for input, want := range map[string]bool{
 		"/":              false,
 		"/foo/bar.txt":   false,
@@ -243,7 +237,6 @@ func Test_HasTrailingDotOrSpaceSegment(t *testing.T) {
 // when it opens a file and would turn "private." into the guarded "private".
 func Test_Valid_TrailingDotOrSpace(t *testing.T) {
 	t.Parallel()
-
 	for _, filesystem := range []fs.FS{nil, fstest.MapFS{}} {
 		for _, input := range []string{"/private./secret.txt", "/private /secret.txt", "/y.../z.", "/foo. /"} {
 			require.Equal(t, runtime.GOOS != windowsOS, Valid([]byte(input), filesystem, true), "input=%q", input)
@@ -254,7 +247,6 @@ func Test_Valid_TrailingDotOrSpace(t *testing.T) {
 // Test_Valid_InPlace pins that Valid neither changes p nor keeps it.
 func Test_Valid_InPlace(t *testing.T) {
 	t.Parallel()
-
 	for _, input := range []string{"/foo%20bar/baz.txt", "/foo/../bar.txt", "/%70rivate"} {
 		p := []byte(input)
 		Valid(p, nil, true)
@@ -264,7 +256,6 @@ func Test_Valid_InPlace(t *testing.T) {
 
 func Test_Unhex(t *testing.T) {
 	t.Parallel()
-
 	for c := range 256 {
 		want := -1
 		switch {
@@ -281,7 +272,6 @@ func Test_Unhex(t *testing.T) {
 
 func Test_FSName(t *testing.T) {
 	t.Parallel()
-
 	for input, want := range map[string]string{
 		"":            "",
 		"/":           "",
@@ -308,7 +298,6 @@ func Test_FSName(t *testing.T) {
 
 func Test_OSName(t *testing.T) {
 	t.Parallel()
-
 	for input, want := range map[string]string{
 		"/srv/www/index.html":    "/srv/www/index.html",
 		"/srv/www/../index.html": "/srv/index.html",

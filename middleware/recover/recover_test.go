@@ -15,7 +15,6 @@ import (
 
 func Test_Recover(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name         string
 		panicVal     any

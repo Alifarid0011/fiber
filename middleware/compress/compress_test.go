@@ -87,7 +87,6 @@ func compressTestExpectEncoding(t *testing.T, resp *http.Response, encoding stri
 
 func Test_Compress_Algorithms(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		handler  fiber.Handler
 		name     string
@@ -101,7 +100,6 @@ func Test_Compress_Algorithms(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := compressTestApp(tc.handler)
 
 			compressTestExpectEncoding(t, compressTestGet(t, app, tc.encoding), tc.encoding)
@@ -118,7 +116,6 @@ func Test_Compress_Different_Level(t *testing.T) {
 		for _, level := range levels {
 			t.Run(fmt.Sprintf("%s_level %d", algo, level), func(t *testing.T) {
 				t.Parallel()
-
 				app := compressTestApp(compressTestSendReadme, Config{Level: level})
 
 				compressTestExpectEncoding(t, compressTestGet(t, app, algo), algo)
@@ -166,7 +163,6 @@ func Test_Compress_Vary(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := compressTestApp(func(c fiber.Ctx) error {
 				if tc.contentEncoding != "" {
 					c.Set(fiber.HeaderContentEncoding, tc.contentEncoding)
@@ -195,7 +191,6 @@ func Test_Compress_Vary(t *testing.T) {
 
 func Test_Compress_RespectsBodyLimitOnCompressedRequestBody(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{BodyLimit: 40})
 
 	app.Use(New())
@@ -309,7 +304,6 @@ func Test_Compress_Skip_Head(t *testing.T) {
 
 func Test_Compress_Skip_Status(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		send fiber.Handler
 		name string
@@ -332,7 +326,6 @@ func Test_Compress_Skip_Status(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := compressTestApp(func(c fiber.Ctx) error {
 				if tc.etag != "" {
 					c.Set(fiber.HeaderETag, tc.etag)
@@ -667,7 +660,6 @@ func Test_Compress_StreamedBody_KeepsETagWeak(t *testing.T) {
 
 func Test_Compress_AcceptEncoding_Negotiation(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		accept   string
 		encoding string
@@ -689,7 +681,6 @@ func Test_Compress_AcceptEncoding_Negotiation(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.accept, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New())
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Repeat("compressible ", 500)) })
@@ -739,7 +730,6 @@ func Test_Compress_Repeated_Accept_Encoding_Lines(t *testing.T) {
 
 func Test_Compress_Cache_Control_No_Transform(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name string
 		// wantEncoding is the Content-Encoding of the response.
@@ -758,7 +748,6 @@ func Test_Compress_Cache_Control_No_Transform(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := compressTestApp(compressTestSendReadme)
 
 			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAcceptEncoding, "gzip"))

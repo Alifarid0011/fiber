@@ -59,7 +59,6 @@ func TestAbsoluteTimeoutValidation(t *testing.T) {
 // supported mode and rejects unsupported non-empty values.
 func TestCookieSameSiteValidation(t *testing.T) {
 	t.Parallel()
-
 	for _, value := range []string{"", "disabled", "LAX", "Strict", "none"} {
 		t.Run(value, func(t *testing.T) {
 			t.Parallel()

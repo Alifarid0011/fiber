@@ -22,14 +22,12 @@ func expvarTestApp() *fiber.App {
 
 func Test_Non_Expvar_Path(t *testing.T) {
 	t.Parallel()
-
 	apptest.ExpectBody(t, expvarTestApp(), "/", 200, "escaped")
 }
 
 // Test_Expvar_Vars covers the full index and the index narrowed by the r query.
 func Test_Expvar_Vars(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		target  string
@@ -40,7 +38,6 @@ func Test_Expvar_Vars(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			resp := apptest.Expect(t, expvarTestApp(), tc.target, 200)
 			require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
@@ -53,7 +50,6 @@ func Test_Expvar_Vars(t *testing.T) {
 
 func Test_Expvar_Other_Path(t *testing.T) {
 	t.Parallel()
-
 	apptest.Expect(t, expvarTestApp(), "/debug/vars/303", fiber.StatusSeeOther)
 }
 

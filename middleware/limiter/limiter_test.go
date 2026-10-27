@@ -339,7 +339,6 @@ func limiterTestAsync(t *testing.T, app *fiber.App, req *http.Request, cfg ...fi
 
 func Test_Limiter_DefaultConfigNoPanic(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New())
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
@@ -349,7 +348,6 @@ func Test_Limiter_DefaultConfigNoPanic(t *testing.T) {
 
 func Test_getEffectiveStatusCode_FiberError(t *testing.T) {
 	t.Parallel()
-
 	c := apptest.Ctx(t, fiber.New())
 
 	c.Response().SetStatusCode(fiber.StatusOK)
@@ -370,7 +368,6 @@ func Test_getEffectiveStatusCode_FiberError(t *testing.T) {
 
 func Test_getEffectiveStatusCode_TypedNilError(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		err  error
 		name string
@@ -380,7 +377,6 @@ func Test_getEffectiveStatusCode_TypedNilError(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := apptest.Ctx(t, fiber.New())
 
 			c.Response().SetStatusCode(fiber.StatusAccepted)
@@ -392,7 +388,6 @@ func Test_getEffectiveStatusCode_TypedNilError(t *testing.T) {
 
 func Test_Limiter_StorageErrorMessages(t *testing.T) {
 	t.Parallel()
-
 	steps := []struct {
 		name string
 		want []string
@@ -406,7 +401,6 @@ func Test_Limiter_StorageErrorMessages(t *testing.T) {
 			for _, disableRedaction := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%s/DisableValueRedaction=%t", strategy.name, step.name, disableRedaction), func(t *testing.T) {
 					t.Parallel()
-
 					storage := newFakeLimiterStorage()
 					storage.errs[step.name+"|"+testLimiterClientKey] = errors.New("boom")
 
@@ -456,11 +450,9 @@ func requireContextRecords(t *testing.T, records []contextRecord, key, wantValue
 
 func Test_Limiter_PropagatesRequestContextToStorage(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-
 			storage := newContextRecorderLimiterStorage()
 
 			app := fiber.New()
@@ -532,7 +524,6 @@ func limiterTestFailingSecondSet() fiber.Storage {
 // for that key hangs.
 func Test_Limiter_StorageErrorsReleaseShard(t *testing.T) {
 	t.Parallel()
-
 	const (
 		getErr = "limiter: failed to get key"
 		setErr = "limiter: failed to persist state"
@@ -558,7 +549,6 @@ func Test_Limiter_StorageErrorsReleaseShard(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var captured limiterTestCapture
 			app := limiterTestApp(&Config{
 				Storage:                tc.newStorage(),
@@ -585,7 +575,6 @@ type skipStep struct {
 
 func Test_Limiter_Skip_Choices(t *testing.T) {
 	t.Parallel()
-
 	scenarios := []struct {
 		name  string
 		steps []skipStep
@@ -631,7 +620,6 @@ func Test_Limiter_Skip_Choices(t *testing.T) {
 			for _, store := range limiterTestMemoryStores {
 				t.Run(scenario.name+"/"+strategy.name+"/"+store.name, func(t *testing.T) {
 					t.Parallel()
-
 					cfg := scenario.cfg
 					cfg.Expiration = 2 * time.Second
 					cfg.LimiterMiddleware = strategy.handler
@@ -722,11 +710,9 @@ func Test_Limiter_With_Max_Func(t *testing.T) {
 
 func Test_Limiter_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, clock := limiterTestClockedApp(&Config{
 				Max:               2,
 				Expiration:        10 * time.Second,
@@ -755,7 +741,6 @@ func Test_Limiter_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
 // X-RateLimit-Reset said so.
 func Test_Limiter_ExpirationFunc_NonPositiveUsesConfiguredExpiration(t *testing.T) {
 	t.Parallel()
-
 	const expiration = 10 * time.Second
 
 	strategies := []struct {
@@ -774,7 +759,6 @@ func Test_Limiter_ExpirationFunc_NonPositiveUsesConfiguredExpiration(t *testing.
 		for _, returned := range []time.Duration{0, -time.Second} {
 			t.Run(strategy.name+"/"+returned.String(), func(t *testing.T) {
 				t.Parallel()
-
 				app, clock := limiterTestClockedApp(&Config{
 					Max:               1,
 					Expiration:        expiration,
@@ -803,11 +787,9 @@ func Test_Limiter_ExpirationFunc_NonPositiveUsesConfiguredExpiration(t *testing.
 // fallback: a positive value from ExpirationFunc keeps overriding Expiration.
 func Test_Limiter_ExpirationFunc_PositiveStillWins(t *testing.T) {
 	t.Parallel()
-
 	for name, handler := range map[string]Handler{"fixed": FixedWindow{}, "sliding": SlidingWindow{}} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app, _ := limiterTestClockedApp(&Config{
 				Max:               5,
 				Expiration:        time.Minute,
@@ -840,7 +822,6 @@ func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, clock := limiterTestClockedApp(&Config{
 				Max:               1,
 				Expiration:        500 * time.Millisecond,
@@ -895,11 +876,9 @@ func requireBurstLimited(t *testing.T, app *fiber.App, n int) {
 
 func Test_Limiter_Concurrency(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range limiterTestMemoryStores {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{Max: 50, Expiration: 2 * time.Second, Storage: tc.storage()}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
@@ -929,7 +908,6 @@ func (s *stallingStorage) GetWithContext(ctx context.Context, key string) ([]byt
 // A key stuck in a storage round-trip must not hold up requests for other keys.
 func Test_Limiter_Concurrency_UnrelatedKeys(t *testing.T) {
 	t.Parallel()
-
 	fast := "fast"
 	for i := 0; shardIndex(fast) == shardIndex("slow"); i++ {
 		fast = "fast" + strconv.Itoa(i)
@@ -1044,7 +1022,6 @@ func Test_Limiter_Sliding_Window_SkipFailedRequests_DecrementsPreviousWindow(t *
 
 func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t *testing.T) {
 	t.Parallel()
-
 	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
 
@@ -1118,11 +1095,9 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 // A returned *fiber.Error counts as failed, whatever status the response still carries.
 func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 
 			app.Use(New(Config{
@@ -1148,7 +1123,6 @@ func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests(t *testing.T) {
 // A Config given straight to a strategy, or none, gets the defaults New would give it.
 func Test_Limiter_RawConfigUsesDefaults(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		cfg   *Config
 		name  string
@@ -1166,7 +1140,6 @@ func Test_Limiter_RawConfigUsesDefaults(t *testing.T) {
 		for _, tc := range tests {
 			t.Run(strategy.name+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
-
 				app := fiber.New()
 				app.Use(strategy.handler.New(tc.cfg))
 				app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
@@ -1207,11 +1180,9 @@ func Test_Limiter_NilConfigKeepsCustomizedDefault(t *testing.T) {
 // A strategy leaves the Config it is given alone: ConfigDefault is shared.
 func Test_Limiter_RawConfigIsNotModified(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, cfg := range []*Config{{Max: 2}, &ConfigDefault} {
 				before := *cfg
 				strategy.handler.New(cfg)
@@ -1230,11 +1201,9 @@ func Test_Limiter_RawConfigIsNotModified(t *testing.T) {
 // Remaining reads 0 although rejected requests keep their hit.
 func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-
 			clock := newTestClock(time.Now().Truncate(time.Second))
 			app := fiber.New()
 
@@ -1276,7 +1245,6 @@ func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 // Skip* counts a plain error as the 500 it is answered with.
 func Test_Limiter_PlainErrorCountsAsInternalError(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name string
 		want []int // statuses of three requests, Max being 1
@@ -1290,7 +1258,6 @@ func Test_Limiter_PlainErrorCountsAsInternalError(t *testing.T) {
 		for _, tc := range tests {
 			t.Run(strategy.name+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
-
 				cfg := tc.cfg
 				cfg.Max = 1
 				cfg.Expiration = time.Minute
@@ -1314,7 +1281,6 @@ func Test_Limiter_PlainErrorCountsAsInternalError(t *testing.T) {
 
 func Test_Limiter_ConfigDefaultCopyKeepsMax(t *testing.T) {
 	t.Parallel()
-
 	cfg := ConfigDefault
 	cfg.Max = 2
 
@@ -1331,11 +1297,9 @@ func Test_Limiter_ConfigDefaultCopyKeepsMax(t *testing.T) {
 
 func Test_Limiter_Next_BeforeMaxFunc(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-
 			var maxFuncCalls atomic.Int32
 			app := fiber.New()
 			app.Use(New(Config{
@@ -1361,12 +1325,10 @@ func Test_Limiter_Next_BeforeMaxFunc(t *testing.T) {
 
 func Test_Limiter_NegativeMaxFuncRejectsEveryRequest(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		for _, limit := range []int{-1, math.MinInt} {
 			t.Run(fmt.Sprintf("%s/%d", strategy.name, limit), func(t *testing.T) {
 				t.Parallel()
-
 				app := limiterTestApp(&Config{
 					MaxFunc:           func(fiber.Ctx) int { return limit },
 					LimiterMiddleware: strategy.handler,
@@ -1381,11 +1343,9 @@ func Test_Limiter_NegativeMaxFuncRejectsEveryRequest(t *testing.T) {
 // Requests sharing a key share the window of the one that opened it (the docs' /login example).
 func Test_Limiter_ExpirationFunc_SharedKeyKeepsOpeningWindow(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-
 			clock := newTestClock(time.Now().Truncate(time.Second))
 			app := fiber.New()
 			app.Use(New(Config{
@@ -1428,7 +1388,6 @@ func Test_Limiter_ExpirationFunc_SharedKeyKeepsOpeningWindow(t *testing.T) {
 // A shorter window joining an open one must not shorten the entry's life.
 func Test_Limiter_Fixed_ShorterWindowDoesNotShortenTheEntry(t *testing.T) {
 	t.Parallel()
-
 	type step struct {
 		path string
 		at   time.Duration
@@ -1465,7 +1424,6 @@ func Test_Limiter_Fixed_ShorterWindowDoesNotShortenTheEntry(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			start := time.Now().Truncate(time.Second)
 			clock := newTestClock(start)
 			cfg := tc.cfg
@@ -1497,7 +1455,6 @@ func Test_Limiter_Fixed_ShorterWindowDoesNotShortenTheEntry(t *testing.T) {
 // A shorter window joining a longer open one must not inflate the previous weight.
 func Test_Limiter_Sliding_MixedWindowsDoNotInflateThePreviousWindow(t *testing.T) {
 	t.Parallel()
-
 	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
 	app.Use(New(Config{
@@ -1571,12 +1528,10 @@ func sendAsClient(t *testing.T, app *fiber.App) *http.Response {
 // A handler overwriting the memory behind the key must not misdirect the credit.
 func Test_Limiter_KeyOverwrittenByHandler(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		for _, store := range limiterStores {
 			t.Run(strategy.name+"/"+store.name, func(t *testing.T) {
 				t.Parallel()
-
 				app := keyOverwritingApp(&Config{
 					Max:                    1,
 					SkipSuccessfulRequests: true,
@@ -1595,7 +1550,6 @@ func Test_Limiter_KeyOverwrittenByHandler(t *testing.T) {
 // nothing reads the entry again: the next request rewrites that memory and the client finds nothing.
 func Test_Limiter_KeyOverwrittenByHandler_NothingRereads(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		for _, store := range limiterStores {
 			t.Run(strategy.name+"/"+store.name, func(t *testing.T) {
@@ -1634,11 +1588,9 @@ func Test_Limiter_KeyOverwrittenByHandler_NothingRereads(t *testing.T) {
 // A handler overwriting the key must not misdirect the sliding window's header refresh.
 func Test_Limiter_KeyOverwrittenByHandler_Headers(t *testing.T) {
 	t.Parallel()
-
 	for _, store := range limiterStores {
 		t.Run(store.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := keyOverwritingApp(&Config{Max: 5, LimiterMiddleware: SlidingWindow{}, Storage: store.storage()})
 			for i, remaining := range []string{"4", "3", "2"} {
 				resp := sendAsClient(t, app)
@@ -1792,7 +1744,6 @@ func Test_Limiter_AdmitKeyCopiesWithBuiltInStore(t *testing.T) {
 
 func Test_Limiter_DisableValueRedaction_ShowsBoundedKey(t *testing.T) {
 	t.Parallel()
-
 	oversizedKey := strings.Repeat("k", maxKeyLength*2)
 	storage := newFakeLimiterStorage()
 	storage.errs["get|"+boundKey(oversizedKey)] = errors.New("boom")
@@ -1812,7 +1763,6 @@ func Test_Limiter_DisableValueRedaction_ShowsBoundedKey(t *testing.T) {
 // Test_Limiter_StorageRoundTrips pins the storage reads and writes of a passing request, as the docs describe.
 func Test_Limiter_StorageRoundTrips(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name  string
 		cfg   Config
@@ -1832,7 +1782,6 @@ func Test_Limiter_StorageRoundTrips(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			storage := newContextRecorderLimiterStorage()
 			cfg := tc.cfg
 			cfg.Max = 1
@@ -2062,11 +2011,9 @@ func Test_Sliding_Window(t *testing.T) {
 // A sub-second ExpirationFunc floors to a 1s window: a 0s one made the sliding rate NaN.
 func Test_Limiter_SubSecondExpirationFunc(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-
 			clock := newTestClock(time.Now().Truncate(time.Second))
 			app := fiber.New()
 			app.Use(New(Config{
@@ -2098,11 +2045,9 @@ func Test_Limiter_SubSecondExpirationFunc(t *testing.T) {
 // each calls the manager independently.
 func Test_Limiter_OversizedKeyGeneratorIsBounded(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range []Handler{FixedWindow{}, SlidingWindow{}} {
 		t.Run(fmt.Sprintf("%T", strategy), func(t *testing.T) {
 			t.Parallel()
-
 			oversizedKey := strings.Repeat("x", maxKeyLength*4)
 			storage := newFakeLimiterStorage()
 			app := fiber.New()

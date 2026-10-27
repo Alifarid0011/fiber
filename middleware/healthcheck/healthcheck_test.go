@@ -32,7 +32,6 @@ func shouldGiveNotFound(t *testing.T, app *fiber.App, path string) {
 // StrictRouting: only the answer for a trailing slash differs.
 func Test_HealthCheck_Default(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name          string
 		trailingSlash int
@@ -43,7 +42,6 @@ func Test_HealthCheck_Default(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(fiber.Config{StrictRouting: tc.strict})
 			app.Get(LivenessEndpoint, New())
 			app.Get(ReadinessEndpoint, New())
@@ -60,7 +58,6 @@ func Test_HealthCheck_Default(t *testing.T) {
 
 func Test_HealthCheck_Custom(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	c1 := make(chan struct{}, 1)
 	app.Get("/live", New(Config{Probe: func(_ fiber.Ctx) bool { return true }}))
@@ -97,7 +94,6 @@ func Test_HealthCheck_Custom(t *testing.T) {
 
 func Test_HealthCheck_Custom_Nested(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	c1 := make(chan struct{}, 1)
@@ -135,7 +131,6 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 
 func Test_HealthCheck_Head(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Get(LivenessEndpoint, New())
 	app.Get(ReadinessEndpoint, New(Config{Probe: func(_ fiber.Ctx) bool { return false }}))
@@ -173,7 +168,6 @@ func Test_HealthCheck_Head(t *testing.T) {
 
 func Test_HealthCheck_Next(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	checker := New(Config{Next: func(_ fiber.Ctx) bool { return true }})
@@ -235,7 +229,6 @@ func Benchmark_HealthCheck_Parallel(b *testing.B) {
 
 func Test_HealthCheck_Text_Format(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	// Test default format (text)
@@ -318,7 +311,6 @@ func Test_HealthCheck_Structured_Formats(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(tc.app)
 			app.Get(LivenessEndpoint, New(Config{ResponseFormat: tc.format}))
 			app.Get(ReadinessEndpoint, New(Config{

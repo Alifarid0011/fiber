@@ -340,7 +340,6 @@ func clientTestCConcurrentHooks(t *testing.T, kind string, addHook func(client *
 
 func Test_PreHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
 	t.Parallel()
-
 	clientTestCConcurrentHooks(t, "request",
 		func(client *Client, hook func()) {
 			client.AddRequestHook(func(_ *Client, _ *Request) error {
@@ -353,7 +352,6 @@ func Test_PreHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
 
 func Test_AfterHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
 	t.Parallel()
-
 	clientTestCConcurrentHooks(t, "response",
 		func(client *Client, hook func()) {
 			client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
@@ -373,7 +371,6 @@ func Test_AfterHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
 // preHooks and its error is propagated (and the client lock is released).
 func Test_PreHooks_ReturnsHookError(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		add  func(client *Client, hooks ...RequestHook) *Client
 		name string
@@ -384,7 +381,6 @@ func Test_PreHooks_ReturnsHookError(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			client := New()
 			wantErr := errors.New(tc.msg)
 			tc.add(client, func(_ *Client, _ *Request) error { return wantErr })
@@ -400,7 +396,6 @@ func Test_PreHooks_ReturnsHookError(t *testing.T) {
 
 func Test_PreHooks_AllowsUserHookClientConfigMutation(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	client.AddRequestHook(func(c *Client, _ *Request) error {
 		c.SetBaseURL("http://example.com")
@@ -423,7 +418,6 @@ func Test_PreHooks_AllowsUserHookClientConfigMutation(t *testing.T) {
 
 func Test_PreHooks_FinalRequestHookSeesSerializedRequest(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	client.AddFinalRequestHook(func(_ *Client, req *Request) error {
 		require.Equal(t, "POST", string(req.RawRequest.Header.Method()))
@@ -443,7 +437,6 @@ func Test_PreHooks_FinalRequestHookSeesSerializedRequest(t *testing.T) {
 
 func Test_PreHooks_ReleasesClientLockWhenBuiltinHookPanics(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	callCount := 0
 	client.builtinRequestHooks = []RequestHook{func(_ *Client, _ *Request) error {
@@ -468,7 +461,6 @@ func Test_PreHooks_ReleasesClientLockWhenBuiltinHookPanics(t *testing.T) {
 
 func Test_PreHooks_RunsFinalRequestHooksOutsideClientLock(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	hookCount := 0
 	client.AddFinalRequestHook(func(c *Client, _ *Request) error {
@@ -488,7 +480,6 @@ func Test_PreHooks_RunsFinalRequestHooksOutsideClientLock(t *testing.T) {
 // aborts afterHooks and its error is propagated.
 func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	wantErr := errors.New("response hook failed")
 	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error { return wantErr })
@@ -640,7 +631,6 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 
 	t.Run("request with body stream is properly copied", func(t *testing.T) {
 		t.Parallel()
-
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Post("/echo", func(c fiber.Ctx) error {
 				body := c.Body()
@@ -664,7 +654,6 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 
 	t.Run("request body stream with content length", func(t *testing.T) {
 		t.Parallel()
-
 		resultCh := make(chan received, 1)
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Post("/check-length", func(c fiber.Ctx) error {
@@ -690,7 +679,6 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 
 	t.Run("raw body stream survives CopyTo", func(t *testing.T) {
 		t.Parallel()
-
 		const streamContent = "streaming raw request body"
 
 		resultCh := make(chan received, 1)

@@ -74,38 +74,32 @@ func requireNameAndReset(t *testing.T, b resettable, name string, splitting *boo
 
 func Test_Binders_NameAndReset(t *testing.T) {
 	t.Parallel()
-
 	t.Run("query", func(t *testing.T) {
 		t.Parallel()
-
 		b := &QueryBinding{EnableSplitting: true}
 		requireNameAndReset(t, b, "query", &b.EnableSplitting)
 	})
 
 	t.Run("form", func(t *testing.T) {
 		t.Parallel()
-
 		b := &FormBinding{EnableSplitting: true}
 		requireNameAndReset(t, b, "form", &b.EnableSplitting)
 	})
 
 	t.Run("header", func(t *testing.T) {
 		t.Parallel()
-
 		b := &HeaderBinding{EnableSplitting: true}
 		requireNameAndReset(t, b, "header", &b.EnableSplitting)
 	})
 
 	t.Run("resp header", func(t *testing.T) {
 		t.Parallel()
-
 		b := &RespHeaderBinding{EnableSplitting: true}
 		requireNameAndReset(t, b, "respHeader", &b.EnableSplitting)
 	})
 
 	t.Run("cookie", func(t *testing.T) {
 		t.Parallel()
-
 		b := &CookieBinding{EnableSplitting: true}
 		requireNameAndReset(t, b, "cookie", &b.EnableSplitting)
 	})
@@ -136,7 +130,6 @@ func Test_parseToMap_defaultCase(t *testing.T) {
 
 func Test_parse_function_maps(t *testing.T) {
 	t.Parallel()
-
 	m := map[string][]string{}
 	err := parse("query", &m, map[string][]string{"a": {"b"}})
 	require.NoError(t, err)

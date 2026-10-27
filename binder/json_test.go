@@ -9,7 +9,6 @@ import (
 
 func Test_JSON_Binding_Bind(t *testing.T) {
 	t.Parallel()
-
 	b := &JSONBinding{JSONDecoder: json.Unmarshal}
 	require.Equal(t, "json", b.Name())
 
@@ -39,7 +38,6 @@ func Test_JSON_Binding_Bind(t *testing.T) {
 
 func Test_JSON_Binding_Bind_OptionalIDParam(t *testing.T) {
 	t.Parallel()
-
 	b := &JSONBinding{JSONDecoder: json.Unmarshal}
 
 	// Use case from original issue
@@ -61,7 +59,6 @@ func Test_JSON_Binding_Bind_OptionalIDParam(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var param OptionalIDParam
 			require.NoError(t, b.Bind([]byte(tc.body), &param))
 			require.Equal(t, tc.want, param.IDPtr)

@@ -36,7 +36,6 @@ func withSecurityPolicyForTest(tb testing.TB, policy SecurityPolicy) {
 
 func Test_Security_IsBlockedIP(t *testing.T) {
 	t.Parallel()
-
 	cases := map[string]bool{
 		"127.0.0.1":                true,
 		"::1":                      true,
@@ -141,7 +140,6 @@ func Test_Security_SchemeAllowed(t *testing.T) {
 // an upstream without a host.
 func Test_Security_ValidateUpstream_Rejects(t *testing.T) {
 	t.Parallel()
-
 	strict := DefaultSecurityPolicy()
 	allowPrivate := proxyTestAllowPrivatePolicy()
 
@@ -218,7 +216,6 @@ func Test_Security_Balancer_AllowsPrivateOptIn(t *testing.T) {
 // (RFC 9110 §7.6.1) are dropped from the outbound request.
 func Test_Security_HopByHopRequestStripping(t *testing.T) {
 	t.Parallel()
-
 	hops := []string{
 		fiber.HeaderKeepAlive,
 		fiber.HeaderProxyAuthenticate,
@@ -261,7 +258,6 @@ func Test_Security_HopByHopRequestStripping(t *testing.T) {
 // rule takes X-Forwarded-* only.
 func Test_Security_IsForwardingHeader(t *testing.T) {
 	t.Parallel()
-
 	for name, want := range map[string]bool{
 		"X-Real-IP":         true,
 		"x-real-ip":         true,
@@ -397,7 +393,6 @@ func proxyTestParseUpstream(t *testing.T, raw string) *url.URL {
 // changes the scheme or the host the upstream pins, however it is spelled.
 func Test_Security_JoinUpstreamPath_KeepsTheUpstream(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name       string
 		base       string
@@ -431,7 +426,6 @@ func Test_Security_JoinUpstreamPath_KeepsTheUpstream(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			out := joinUpstreamPath(proxyTestParseUpstream(t, tc.base), tc.target)
 			require.NotEmpty(t, out)
 			parsed, err := url.Parse(out)
@@ -451,7 +445,6 @@ func Test_Security_JoinUpstreamPath_KeepsTheUpstream(t *testing.T) {
 // Test_Security_JoinUpstreamPath pins the URL a request path joins into.
 func Test_Security_JoinUpstreamPath(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name   string
 		base   string
@@ -470,7 +463,6 @@ func Test_Security_JoinUpstreamPath(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.Equal(t, tc.want, joinUpstreamPath(proxyTestParseUpstream(t, tc.base), tc.target))
 		})
 	}
@@ -485,7 +477,6 @@ func Test_Security_JoinUpstreamPath(t *testing.T) {
 // pinned by Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS.
 func Test_Security_FollowRedirects_ReappliesSchemePerHop(t *testing.T) {
 	t.Parallel()
-
 	var secondHopScheme string
 	followRecording(t, "http://origin.example/", map[string]redirectStep{
 		"http://origin.example/": {status: fasthttp.StatusFound, location: "https://origin.example/secure"},
@@ -500,7 +491,6 @@ func Test_Security_FollowRedirects_ReappliesSchemePerHop(t *testing.T) {
 
 func Test_Security_JoinUpstreamPath_EmptyQueryMarkersUseSlowPath(t *testing.T) {
 	t.Parallel()
-
 	baseWithEmptyQuery := proxyTestParseUpstream(t, "http://upstream.example?")
 	require.True(t, baseWithEmptyQuery.ForceQuery)
 	require.Equal(t, "http://upstream.example/foo?", joinUpstreamPath(baseWithEmptyQuery, "/foo"))
@@ -566,7 +556,6 @@ func Test_Security_IsBlockedIP_NilReturnsTrue(t *testing.T) {
 // Test_Security_IPv6Helpers_DeclineMalformedAddress pins that the IPv6 helpers decline odd-length slices.
 func Test_Security_IPv6Helpers_DeclineMalformedAddress(t *testing.T) {
 	t.Parallel()
-
 	ip := net.IP{1, 2, 3}
 	require.False(t, isBlockedIPv6TransitionRange(ip))
 	require.Nil(t, embeddedIPv4(ip))
@@ -617,7 +606,6 @@ func Test_Security_ValidateHostForSSRF_IPLiteralAllocs(t *testing.T) {
 // Test_Security_ValidateHostForSSRF_ZonedLiteral pins that a zoned literal is judged through the lookup.
 func Test_Security_ValidateHostForSSRF_ZonedLiteral(t *testing.T) {
 	t.Parallel()
-
 	err := validateHostForSSRF("fe80::1%eth0", nil)
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 	require.ErrorContains(t, err, "fe80::1%eth0 -> fe80::1")
@@ -627,7 +615,6 @@ func Test_Security_ValidateHostForSSRF_ZonedLiteral(t *testing.T) {
 // Test_Security_ValidateResolved pins what a lookup may answer: one or more addresses, none blocked.
 func Test_Security_ValidateResolved(t *testing.T) {
 	t.Parallel()
-
 	public := net.IPAddr{IP: net.ParseIP("198.51.100.7")}
 	private := net.IPAddr{IP: net.ParseIP("10.0.0.1")}
 
@@ -730,7 +717,6 @@ func Test_Security_ResolvePolicy_OverrideEmptySchemes(t *testing.T) {
 // redirect from "https://example.com".
 func Test_Security_ResolveRedirect(t *testing.T) {
 	t.Parallel()
-
 	allowPrivate := proxyTestAllowPrivatePolicy()
 	allowDowngrade := allowPrivate
 	allowDowngrade.AllowHTTPSDowngrade = true
@@ -757,7 +743,6 @@ func Test_Security_ResolveRedirect(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			out, err := resolveRedirect("https://example.com", []byte(tc.location), tc.policy, nil)
 			if tc.err != nil {
 				require.ErrorIs(t, err, tc.err)
@@ -792,7 +777,6 @@ func proxyTestFollow(t *testing.T, client *fasthttp.Client, start string, maxRed
 // returned by the upstream is propagated, no further requests are made.
 func Test_Security_FollowRedirects_NegativeMaxBecomesZero(t *testing.T) {
 	t.Parallel()
-
 	client, hits := newCountingRedirectClient(map[string]redirectStep{
 		"http://example.com/start": {status: fasthttp.StatusFound, location: "http://example.com/next"},
 	})
@@ -807,7 +791,6 @@ func Test_Security_FollowRedirects_NegativeMaxBecomesZero(t *testing.T) {
 // Location header.
 func Test_Security_FollowRedirects_MissingLocation(t *testing.T) {
 	t.Parallel()
-
 	client, _ := newCountingRedirectClient(map[string]redirectStep{
 		"http://example.com/start": {status: fasthttp.StatusFound, location: ""},
 	})
@@ -820,7 +803,6 @@ func Test_Security_FollowRedirects_MissingLocation(t *testing.T) {
 // the request: the handler's keeps its method, body and credentials.
 func Test_Security_FollowRedirects_LeavesCallerRequestIntact(t *testing.T) {
 	t.Parallel()
-
 	type seen struct{ method, body, contentType, auth, cookie string }
 	var hops []seen
 	req := followRecording(t, "http://first.example/start", map[string]redirectStep{
@@ -858,7 +840,6 @@ func Test_Security_FollowRedirects_LeavesCallerRequestIntact(t *testing.T) {
 // parsed survives a redirect that drops the body: removing it would delete its temp files.
 func Test_Security_FollowRedirects_KeepsMultipartForm(t *testing.T) {
 	t.Parallel()
-
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	require.NoError(t, mw.WriteField("a", "1"))
@@ -888,7 +869,6 @@ func Test_Security_FollowRedirects_KeepsMultipartForm(t *testing.T) {
 // `cli.Do` error path.
 func Test_Security_FollowRedirects_PropagatesClientError(t *testing.T) {
 	t.Parallel()
-
 	sentinel := errors.New("dial failure")
 	cli := &fasthttp.Client{Dial: func(string) (net.Conn, error) { return nil, sentinel }}
 
@@ -900,7 +880,6 @@ func Test_Security_FollowRedirects_PropagatesClientError(t *testing.T) {
 // host-mismatch branch where the middleware should be a no-op.
 func Test_Security_DomainForward_HostMismatchPassesThrough(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(DomainForward("only-this-host.example", "http://127.0.0.1:1"))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("pass-through") })
@@ -940,7 +919,6 @@ func Test_Security_RoundRobin_WrapsAround(t *testing.T) {
 
 	t.Run("current index", func(t *testing.T) {
 		t.Parallel()
-
 		r := &urlRoundrobin{pool: []*url.URL{a, b}}
 		r.next.Store(5)
 		require.Same(t, b, r.get(), "5 %% 2 should select pool[1]")
@@ -962,7 +940,6 @@ func Test_Security_RoundRobin_WrapsAround(t *testing.T) {
 
 func Test_Security_RoundRobin_ConcurrentSelection(t *testing.T) {
 	t.Parallel()
-
 	pool := []*url.URL{
 		{Scheme: schemeHTTP, Host: "a"},
 		{Scheme: schemeHTTP, Host: "b"},
@@ -1005,7 +982,6 @@ func Test_Security_ValidateUpstream_PublicIPLiteral(t *testing.T) {
 // ModifyResponse error branches in Balancer's handler.
 func Test_Security_Balancer_ModifyErrorPropagates(t *testing.T) {
 	t.Parallel()
-
 	sentinel := errors.New("modify failed")
 
 	for _, tc := range []struct {
@@ -1079,7 +1055,6 @@ func Test_Security_DialChecked_RejectsMalformedAddr(t *testing.T) {
 // cannot crash startup) and is instead validated at dial time.
 func Test_Security_Balancer_HostnameDefersToDial(t *testing.T) {
 	t.Parallel()
-
 	policy := DefaultSecurityPolicy() // AllowPrivateIPs == false
 
 	// Must not panic even though the host cannot be resolved right now.
@@ -1226,11 +1201,9 @@ var redirectRewriteCases = []struct {
 // Test_Security_RedirectRequest pins the request a redirect leaves for the next hop (RFC 9110 §15.4).
 func Test_Security_RedirectRequest(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range redirectRewriteCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := fasthttp.AcquireRequest()
 			defer fasthttp.ReleaseRequest(req)
 			req.Header.SetMethod(tc.method)
@@ -1262,7 +1235,6 @@ func Test_Security_RedirectRequest(t *testing.T) {
 // handler's body alone.
 func Test_Security_RedirectRequest_LeavesTheHandlerBody(t *testing.T) {
 	t.Parallel()
-
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	req.Header.SetMethod(fasthttp.MethodPut)
@@ -1284,11 +1256,9 @@ func Test_Security_RedirectRequest_LeavesTheHandlerBody(t *testing.T) {
 // Test_Security_RedirectRequest_DropsParsedForm pins that a parsed form goes with the body.
 func Test_Security_RedirectRequest_DropsParsedForm(t *testing.T) {
 	t.Parallel()
-
 	for _, method := range []string{fasthttp.MethodPost, fasthttp.MethodPut} {
 		t.Run(method, func(t *testing.T) {
 			t.Parallel()
-
 			req := fasthttp.AcquireRequest()
 			defer fasthttp.ReleaseRequest(req)
 			req.SetRequestURI("http://example.com/start")
@@ -1311,7 +1281,6 @@ func Test_Security_RedirectRequest_DropsParsedForm(t *testing.T) {
 // Test_Security_RedirectRequest_DropsFraming pins that a dropped chunked body takes its framing with it.
 func Test_Security_RedirectRequest_DropsFraming(t *testing.T) {
 	t.Parallel()
-
 	const raw = "POST /start HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nTrailer: X-Sum\r\n\r\n" +
 		"3\r\nabc\r\n0\r\nX-Sum: 1\r\n\r\n"
 	req := fasthttp.AcquireRequest()
@@ -1332,14 +1301,12 @@ func Test_Security_RedirectRequest_DropsFraming(t *testing.T) {
 // Test_Security_FollowRedirects_MethodPerStatus drives the same cases through the redirect loop.
 func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range redirectRewriteCases {
 		if !fasthttp.StatusCodeIsRedirect(tc.status) {
 			continue
 		}
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var hops []string
 			followRecording(t, "http://example.com/start", map[string]redirectStep{
 				"http://example.com/start": {status: tc.status, location: "http://example.com/after"},
@@ -1363,7 +1330,6 @@ func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 // port (RFC 6454): a change of any loses the credentials, a spelled-out default port does not.
 func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T) {
 	t.Parallel()
-
 	for name, tc := range map[string]struct {
 		start    string
 		location string
@@ -1380,7 +1346,6 @@ func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T)
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			var sawAuth, sawCookie string
 			followRecording(t, tc.start, map[string]redirectStep{
 				tc.start: {status: fasthttp.StatusFound, location: tc.location},
@@ -1405,7 +1370,6 @@ func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T)
 // of a multipart form the server parsed ahead of the handler: CopyTo leaves such a form out.
 func Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart(t *testing.T) {
 	t.Parallel()
-
 	var form bytes.Buffer
 	mw := multipart.NewWriter(&form)
 	require.NoError(t, mw.WriteField("field", "value"))
@@ -1442,7 +1406,6 @@ func Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart(t *testing.T
 // the request's body again.
 func Test_Security_FollowRedirects_CopiedHopKeepsBody(t *testing.T) {
 	t.Parallel()
-
 	for name, tc := range map[string]struct {
 		method string
 		body   string
@@ -1456,7 +1419,6 @@ func Test_Security_FollowRedirects_CopiedHopKeepsBody(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			var hops []string
 			followRecording(t, "http://first.example/start", map[string]redirectStep{
 				"http://first.example/start": {status: tc.status, location: "http://second.example/next"},
@@ -1485,7 +1447,6 @@ func (c *closeCounter) Close() error {
 // request timeout and the user values CopyTo leaves out, and does not Close the values it shares.
 func Test_Security_FollowRedirects_CopiedHopKeepsTimeoutAndUserValues(t *testing.T) {
 	t.Parallel()
-
 	type hopState struct {
 		trace   any
 		timeout time.Duration
@@ -1500,7 +1461,6 @@ func Test_Security_FollowRedirects_CopiedHopKeepsTimeoutAndUserValues(t *testing
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			closer := &closeCounter{}
 			var hops []hopState
 			followRecording(t, "http://first.example/", map[string]redirectStep{
@@ -1530,14 +1490,12 @@ func Test_Security_FollowRedirects_CopiedHopKeepsTimeoutAndUserValues(t *testing
 // request fails, as fasthttp's own loop does, and that one dropping the body goes on.
 func Test_Security_FollowRedirects_StreamedBody(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range redirectRewriteCases {
 		if !fasthttp.StatusCodeIsRedirect(tc.status) {
 			continue
 		}
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var methods []string
 			_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
 				"http://example.com/start": {status: tc.status, location: "http://example.com/after"},
@@ -1580,7 +1538,6 @@ func streamedRequest(tb testing.TB, req *fasthttp.Request, raw string) {
 // request is followed when the server read the whole body ahead (up to 8 KiB), and fails otherwise.
 func Test_Security_FollowRedirects_ServerStreamedBody(t *testing.T) {
 	t.Parallel()
-
 	const readAhead = 8 * 1024
 	for _, tc := range []struct {
 		name    string
@@ -1599,7 +1556,6 @@ func Test_Security_FollowRedirects_ServerStreamedBody(t *testing.T) {
 			for _, status := range []int{fasthttp.StatusTemporaryRedirect, fasthttp.StatusPermanentRedirect} {
 				t.Run(tc.name+" "+strconv.Itoa(status)+" to "+location, func(t *testing.T) {
 					t.Parallel()
-
 					var wires []string
 					_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
 						"http://example.com/start": {status: status, location: location},
@@ -1632,14 +1588,12 @@ func Test_Security_FollowRedirects_ServerStreamedBody(t *testing.T) {
 // request a GET ends the stream rule, so a later method-keeping redirect is followed.
 func Test_Security_FollowRedirects_StreamedBodyEndsWithTheMethod(t *testing.T) {
 	t.Parallel()
-
 	for name, tc := range map[string]struct{ framing, onWire string }{
 		"known length": {framing: "Content-Length: 7", onWire: "payload"},
 		"chunked":      {framing: "Transfer-Encoding: chunked", onWire: "7\r\npayload\r\n0\r\n\r\n"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			var methods []string
 			_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
 				"http://example.com/start": {status: fasthttp.StatusSeeOther, location: "http://example.com/mid"},
@@ -1661,7 +1615,6 @@ func Test_Security_FollowRedirects_StreamedBodyEndsWithTheMethod(t *testing.T) {
 // buffered by the redirect, which fails.
 func Test_Security_FollowRedirects_UnreadStream(t *testing.T) {
 	t.Parallel()
-
 	reader := &countingReader{Reader: strings.NewReader("payload")}
 	_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
 		"http://example.com/start": {status: fasthttp.StatusTemporaryRedirect, location: "http://example.com/after"},
@@ -1695,11 +1648,9 @@ var contentFieldNames = []string{
 // content go with it, whatever case they are stored under.
 func Test_Security_RedirectRequest_DropsContentFields(t *testing.T) {
 	t.Parallel()
-
 	for name, canonical := range map[string]bool{"canonical names": true, "names as sent": false} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			req := fasthttp.AcquireRequest()
 			defer fasthttp.ReleaseRequest(req)
 			if !canonical {
@@ -1731,7 +1682,6 @@ func Test_Security_RedirectRequest_DropsContentFields(t *testing.T) {
 // expecting content leave with a body a redirect drops, and stay with one it repeats.
 func Test_Security_FollowRedirects_ContentFieldsFollowTheBody(t *testing.T) {
 	t.Parallel()
-
 	for name, tc := range map[string]struct {
 		status int
 		kept   bool
@@ -1741,7 +1691,6 @@ func Test_Security_FollowRedirects_ContentFieldsFollowTheBody(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			var hops [][]string
 			followRecording(t, "http://example.com/start", map[string]redirectStep{
 				"http://example.com/start": {status: tc.status, location: "http://example.com/after"},
@@ -1775,11 +1724,9 @@ func Test_Security_FollowRedirects_ContentFieldsFollowTheBody(t *testing.T) {
 // Test_Security_KeepHopByHopHeaders_Balancer pins the opt-out for a Balancer with its own policy.
 func Test_Security_KeepHopByHopHeaders_Balancer(t *testing.T) {
 	t.Parallel()
-
 	for name, keep := range map[string]bool{"stripped by default": false, "kept with the opt-out": true} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			seen := make(chan [2]string, 1)
 			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 				seen <- [2]string{c.Get(fiber.HeaderProxyAuthorization), c.Get(fiber.HeaderKeepAlive)}
@@ -1841,7 +1788,6 @@ func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
 // parse is ErrUpstreamHostInvalid, with the *url.Error still reachable.
 func Test_Security_ValidateUpstream_UnparsableIsHostInvalid(t *testing.T) {
 	t.Parallel()
-
 	for _, raw := range []string{"http://[::1", "http://exam ple.com", "http://%zz.com/", "http://a:b:c/"} {
 		_, err := validateUpstream(raw, DefaultSecurityPolicy(), nil)
 		require.ErrorIs(t, err, ErrUpstreamHostInvalid, raw)
@@ -1860,7 +1806,6 @@ func Test_Security_ValidateUpstream_UnparsableIsHostInvalid(t *testing.T) {
 // form; Test_Proxy_Balancer_RejectsNonOriginServer pins what is refused.
 func Test_Security_ValidateUpstreamForBalancer_Schemes(t *testing.T) {
 	t.Parallel()
-
 	policy := proxyTestAllowPrivatePolicy()
 
 	for raw, wantScheme := range map[string]string{
