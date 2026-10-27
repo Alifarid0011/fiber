@@ -16,11 +16,9 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 
 	// An extractor that reads from the cookie "csrf_" (simulating dangerous behavior)
 	insecureCookieExtractor := extractors.Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			return c.Cookies("csrf_"), nil
-		},
-		Source: extractors.SourceCookie,
-		Key:    "csrf_",
+		Extract: func(c fiber.Ctx) (string, error) { return c.Cookies("csrf_"), nil },
+		Source:  extractors.SourceCookie,
+		Key:     "csrf_",
 	}
 
 	// A deeply nested chain must not cause unbounded recursion during validation.
@@ -91,11 +89,9 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 			name:       "DifferentCookieNames",
 			cookieName: "csrf_",
 			extractor: extractors.Extractor{
-				Extract: func(c fiber.Ctx) (string, error) {
-					return c.Cookies("different_cookie"), nil
-				},
-				Source: extractors.SourceCookie,
-				Key:    "different_cookie",
+				Extract: func(c fiber.Ctx) (string, error) { return c.Cookies("different_cookie"), nil },
+				Source:  extractors.SourceCookie,
+				Key:     "different_cookie",
 			},
 			message: "Should not panic when extractor reads from different cookie",
 		},
@@ -105,11 +101,9 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 			name:       "CookieName_CaseInsensitive_Warning",
 			cookieName: "csrf_",
 			extractor: extractors.Extractor{
-				Extract: func(c fiber.Ctx) (string, error) {
-					return c.Cookies("CSRF_"), nil
-				},
-				Source: extractors.SourceCookie,
-				Key:    "CSRF_",
+				Extract: func(c fiber.Ctx) (string, error) { return c.Cookies("CSRF_"), nil },
+				Source:  extractors.SourceCookie,
+				Key:     "CSRF_",
 			},
 			message: "Should not panic for case-insensitive cookie name match, but should warn",
 		},
@@ -353,7 +347,5 @@ func Test_isInsecureCookieExtractor(t *testing.T) {
 func Test_CSRF_validateExtractorSecurity_NilConfig(t *testing.T) {
 	t.Parallel()
 
-	require.NotPanics(t, func() {
-		validateExtractorSecurity(nil)
-	})
+	require.NotPanics(t, func() { validateExtractorSecurity(nil) })
 }

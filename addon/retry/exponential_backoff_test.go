@@ -21,9 +21,7 @@ func Test_ExponentialBackoff_Retry(t *testing.T) {
 		{
 			name:       "With default values - successful",
 			expBackoff: NewExponentialBackoff(),
-			f: func() error {
-				return nil
-			},
+			f:          func() error { return nil },
 		},
 		{
 			name: "Successful function",
@@ -33,9 +31,7 @@ func Test_ExponentialBackoff_Retry(t *testing.T) {
 				Multiplier:      2.0,
 				MaxRetryCount:   5,
 			},
-			f: func() error {
-				return nil
-			},
+			f: func() error { return nil },
 		},
 		{
 			name: "Unsuccessful function",
@@ -45,9 +41,7 @@ func Test_ExponentialBackoff_Retry(t *testing.T) {
 				Multiplier:      2.0,
 				MaxRetryCount:   5,
 			},
-			f: func() error {
-				return errors.New("failed function")
-			},
+			f:      func() error { return errors.New("failed function") },
 			expErr: errors.New("failed function"),
 		},
 	}

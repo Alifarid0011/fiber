@@ -15,9 +15,7 @@ func expvarTestApp() *fiber.App {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("escaped") })
 
 	return app
 }
@@ -64,9 +62,7 @@ func Test_Expvar_Next(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	apptest.Expect(t, app, "/debug/vars", 404)
@@ -80,9 +76,7 @@ func Test_Expvar_Sibling_Prefix_Path(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/debug/varsdump", func(c fiber.Ctx) error {
-		return c.SendString("app route")
-	})
+	app.Get("/debug/varsdump", func(c fiber.Ctx) error { return c.SendString("app route") })
 
 	apptest.ExpectBody(t, app, "/debug/varsdump", fiber.StatusOK, "app route")
 }

@@ -22,9 +22,7 @@ func Benchmark_CookieBinder_Bind(b *testing.B) {
 	var user User
 
 	req := fasthttp.AcquireRequest()
-	b.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-	})
+	b.Cleanup(func() { fasthttp.ReleaseRequest(req) })
 
 	req.Header.SetCookie("name", "john")
 	req.Header.SetCookie("age", "42")

@@ -794,9 +794,7 @@ func clientTestCLoggedGet(t *testing.T, debug func(*Client) *Client) (logs *byte
 	t.Helper()
 
 	app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("response")
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("response") })
 	})
 	t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
 

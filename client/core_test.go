@@ -39,13 +39,9 @@ func clientTestCExecServer(t *testing.T, extra func(app *fiber.App)) *fasthttput
 	ln := fasthttputil.NewInmemoryListener()
 	app := fiber.New()
 
-	app.Get("/normal", func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname())
-	})
+	app.Get("/normal", func(c fiber.Ctx) error { return c.SendString(c.Hostname()) })
 
-	app.Get("/return-error", func(_ fiber.Ctx) error {
-		return errors.New("the request is error")
-	})
+	app.Get("/return-error", func(_ fiber.Ctx) error { return errors.New("the request is error") })
 
 	app.Get("/hang-up", func(c fiber.Ctx) error {
 		time.Sleep(time.Second)
@@ -56,9 +52,7 @@ func clientTestCExecServer(t *testing.T, extra func(app *fiber.App)) *fasthttput
 		extra(app)
 	}
 
-	go func() {
-		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
-	}()
+	go func() { assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
 
 	return ln
 }
@@ -66,9 +60,7 @@ func clientTestCExecServer(t *testing.T, extra func(app *fiber.App)) *fasthttput
 func Test_Exec_Func(t *testing.T) {
 	t.Parallel()
 	ln := clientTestCExecServer(t, func(app *fiber.App) {
-		app.Get("/redirect", func(c fiber.Ctx) error {
-			return c.Redirect().Status(fiber.StatusFound).To("/normal")
-		})
+		app.Get("/redirect", func(c fiber.Ctx) error { return c.Redirect().Status(fiber.StatusFound).To("/normal") })
 	})
 
 	time.Sleep(300 * time.Millisecond)
@@ -228,11 +220,7 @@ func Test_Execute(t *testing.T) {
 	ln := clientTestCExecServer(t, nil)
 
 	// newClient returns a client that dials the server above.
-	newClient := func() *Client {
-		return New().SetDial(func(_ string) (net.Conn, error) {
-			return ln.Dial()
-		})
-	}
+	newClient := func() *Client { return New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) }
 
 	t.Run("add user request hooks", func(t *testing.T) {
 		t.Parallel()
@@ -470,9 +458,7 @@ func Test_PreHooks_ReleasesClientLockWhenBuiltinHookPanics(t *testing.T) {
 	firstCore := clientTestCCore(client)
 	defer ReleaseRequest(firstCore.req)
 
-	require.PanicsWithValue(t, "built-in request hook panic", func() {
-		require.NoError(t, firstCore.preHooks())
-	})
+	require.PanicsWithValue(t, "built-in request hook panic", func() { require.NoError(t, firstCore.preHooks()) })
 
 	secondCore := clientTestCCore(client)
 	defer ReleaseRequest(secondCore.req)

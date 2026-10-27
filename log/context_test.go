@@ -291,9 +291,7 @@ func Test_MustRegisterContextTag_PanicsOnInvalidInput(t *testing.T) {
 	t.Parallel()
 
 	require.PanicsWithError(t, ErrContextTagInvalid.Error(), func() {
-		MustRegisterContextTag("", func(Buffer, any, *ContextData, string) (int, error) {
-			return 0, nil
-		})
+		MustRegisterContextTag("", func(Buffer, any, *ContextData, string) (int, error) { return 0, nil })
 	})
 }
 

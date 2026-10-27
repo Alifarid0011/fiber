@@ -23,9 +23,7 @@ func testApp(cfg Config, unescape bool) *fiber.App {
 
 	app := fiber.New(fiber.Config{UnescapePath: unescape})
 	app.Use(New(cfg))
-	app.Get("/*", func(c fiber.Ctx) error {
-		return c.SendString("fell through")
-	})
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
 	return app
 }
 
@@ -122,13 +120,9 @@ func Test_Redirect(t *testing.T) {
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
-	app.Get("/api/*", func(c fiber.Ctx) error {
-		return c.SendString("API")
-	})
+	app.Get("/api/*", func(c fiber.Ctx) error { return c.SendString("API") })
 
-	app.Get("/new", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/new", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
 	tests := []struct {
 		name       string
@@ -451,9 +445,7 @@ func Test_Redirect_ConfigOutcomes(t *testing.T) {
 			app := fiber.New()
 			app.Use(New(tc.cfg...))
 			if tc.route {
-				app.Use(func(c fiber.Ctx) error {
-					return c.SendStatus(fiber.StatusOK)
-				})
+				app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 			}
 
 			status, location := get(t, app, "/default")
@@ -774,9 +766,7 @@ func Test_Redirect_UnboundedRulesKeepTheirBreadth(t *testing.T) {
 func Test_Redirect_UnterminatedQuoteRuleIsRejected(t *testing.T) {
 	t.Parallel()
 
-	require.Panics(t, func() {
-		New(Config{RuleList: []Rule{{From: `/p/*\Qab*`, To: "/safe"}}})
-	})
+	require.Panics(t, func() { New(Config{RuleList: []Rule{{From: `/p/*\Qab*`, To: "/safe"}}}) })
 }
 
 func Test_Redirect_HexEscapeOutranksAClass(t *testing.T) {
@@ -825,9 +815,7 @@ func Test_Redirect_DeepNestingIsBounded(t *testing.T) {
 	t.Parallel()
 
 	deep := "/p/" + strings.Repeat("(?:", 16000) + "a" + strings.Repeat(")", 16000)
-	require.NotPanics(t, func() {
-		New(Config{RuleList: []Rule{{From: deep, To: "/x"}, {From: "/p/a", To: "/y"}}})
-	})
+	require.NotPanics(t, func() { New(Config{RuleList: []Rule{{From: deep, To: "/x"}, {From: "/p/a", To: "/y"}}}) })
 }
 
 // Test_Redirect_BothRuleFieldsPanic pins that a config setting the deprecated
@@ -844,12 +832,8 @@ func Test_Redirect_BothRuleFieldsPanic(t *testing.T) {
 	})
 
 	// Either alone is fine.
-	require.NotPanics(t, func() {
-		New(Config{Rules: map[string]string{"/old": "/new"}})
-	})
-	require.NotPanics(t, func() {
-		New(Config{RuleList: []Rule{{From: "/old", To: "/new"}}})
-	})
+	require.NotPanics(t, func() { New(Config{Rules: map[string]string{"/old": "/new"}}) })
+	require.NotPanics(t, func() { New(Config{RuleList: []Rule{{From: "/old", To: "/new"}}}) })
 }
 
 // Test_Redirect_DeprecatedMapStillRedirects pins that the deprecated field goes
@@ -1032,9 +1016,7 @@ func Benchmark_Redirect_Handler(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			app := fiber.New()
 			app.Use(New(Config{RuleList: tc.rules}))
-			app.Get("/*", func(c fiber.Ctx) error {
-				return c.SendString("fell through")
-			})
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
 
 			b.ReportAllocs()
 			for b.Loop() {

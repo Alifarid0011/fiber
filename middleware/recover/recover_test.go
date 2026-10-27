@@ -64,9 +64,7 @@ func Test_Recover(t *testing.T) {
 
 			app.Use(New(Config{PanicHandler: tc.panicHandler}))
 
-			app.Get("/panic", func(_ fiber.Ctx) error {
-				panic(tc.panicVal)
-			})
+			app.Get("/panic", func(_ fiber.Ctx) error { panic(tc.panicVal) })
 
 			apptest.Expect(t, app, "/panic", fiber.StatusTeapot)
 		})
@@ -77,9 +75,7 @@ func Test_Recover_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
@@ -92,9 +88,7 @@ func Test_Recover_EnableStackTrace(t *testing.T) {
 		EnableStackTrace: true,
 	}))
 
-	app.Get("/panic", func(_ fiber.Ctx) error {
-		panic("Hi, I'm an error!")
-	})
+	app.Get("/panic", func(_ fiber.Ctx) error { panic("Hi, I'm an error!") })
 
 	apptest.Expect(t, app, "/panic", fiber.StatusInternalServerError)
 }

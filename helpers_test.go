@@ -149,9 +149,7 @@ func Test_ReadContentReturnsBytes(t *testing.T) {
 	content := []byte("fiber read content test")
 	tempFile, err := os.CreateTemp("", "fiber-read-content-*.txt")
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.Remove(tempFile.Name()))
-	})
+	t.Cleanup(func() { require.NoError(t, os.Remove(tempFile.Name())) })
 
 	_, err = tempFile.Write(content)
 	require.NoError(t, err)
@@ -250,9 +248,7 @@ func Test_GetTLSConfig(t *testing.T) {
 
 			cfg := &tls.Config{MinVersion: tc.minVersion}
 			ln := tc.wrap(newLocalListener(t), cfg)
-			t.Cleanup(func() {
-				require.NoError(t, ln.Close())
-			})
+			t.Cleanup(func() { require.NoError(t, ln.Close()) })
 
 			if tc.wantConfig {
 				require.Same(t, cfg, getTLSConfig(ln), tc.msg)
@@ -1363,9 +1359,7 @@ func TestValueFromContext(t *testing.T) {
 	}{
 		{name: "fiber.Ctx", newApp: func() *App { return New() }},
 		{name: "fiber.CustomCtx", newApp: func() *App {
-			return NewWithCustomCtx(func(app *App) CustomCtx {
-				return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
-			})
+			return NewWithCustomCtx(func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} })
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

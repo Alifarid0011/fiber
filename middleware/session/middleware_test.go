@@ -293,9 +293,7 @@ func Test_SessionLoggerTagRedactsSessionID(t *testing.T) {
 		Format: "${session-id}",
 		Stream: &buf,
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Contains(t, buf.String(), "****")
@@ -315,9 +313,7 @@ func Test_SessionLoggerTagWithOuterLoggerDoesNotPanic(t *testing.T) {
 	app := fiber.New()
 	app.Use(requestLogger)
 	app.Use(sessionHandler)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Empty(t, buf.String())
@@ -410,14 +406,10 @@ func Test_Session_WithConfig(t *testing.T) {
 	const idleTimeout = 1 * time.Second
 
 	app.Use(New(Config{
-		Next: func(c fiber.Ctx) bool {
-			return c.Get("key") == "value"
-		},
-		IdleTimeout: idleTimeout,
-		Extractor:   extractors.FromCookie("session_id_test"),
-		KeyGenerator: func() string {
-			return "test"
-		},
+		Next:         func(c fiber.Ctx) bool { return c.Get("key") == "value" },
+		IdleTimeout:  idleTimeout,
+		Extractor:    extractors.FromCookie("session_id_test"),
+		KeyGenerator: func() string { return "test" },
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -594,9 +586,7 @@ func Test_Session_Middleware_StoreError(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{Storage: storage}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 
@@ -625,9 +615,7 @@ func Test_Session_Middleware_StoreError_CustomErrorHandler(t *testing.T) {
 		},
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	ctx := sessionTestRequest(t, app.Handler(), fiber.MethodGet, "", fiber.StatusInternalServerError,
 		sessionTestCookie("session_id", "some-session-id"))

@@ -165,9 +165,7 @@ func TestState_MustGet(t *testing.T) {
 	require.Equal(t, "value", val)
 
 	// must-get on missing key should panic
-	require.Panics(t, func() {
-		_ = st.MustGet("missing")
-	})
+	require.Panics(t, func() { _ = st.MustGet("missing") })
 }
 
 func TestState_Has(t *testing.T) {
@@ -307,14 +305,10 @@ func Test_MustGetStateGeneric(t *testing.T) {
 	require.True(t, flag)
 
 	// mismatched type should panic
-	require.Panics(t, func() {
-		_ = MustGetState[string](st, "flag")
-	})
+	require.Panics(t, func() { _ = MustGetState[string](st, "flag") })
 
 	// missing key should also panic
-	require.Panics(t, func() {
-		_ = MustGetState[string](st, "missing")
-	})
+	require.Panics(t, func() { _ = MustGetState[string](st, "missing") })
 }
 
 func Test_GetStateWithDefault(t *testing.T) {
@@ -558,9 +552,7 @@ func TestState_MustGetService(t *testing.T) {
 
 		st := newState()
 
-		require.Panics(t, func() {
-			_ = MustGetService[*mockService](st, srv1.String())
-		})
+		require.Panics(t, func() { _ = MustGetService[*mockService](st, srv1.String()) })
 	})
 }
 

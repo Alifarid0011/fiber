@@ -1272,9 +1272,7 @@ func Test_DoRedirects_NilResponse(t *testing.T) {
 	defer fasthttp.ReleaseRequest(req)
 	req.SetRequestURI("http://example.com/start")
 
-	require.NotPanics(t, func() {
-		require.NoError(t, transport.DoRedirects(req, nil, 3))
-	})
+	require.NotPanics(t, func() { require.NoError(t, transport.DoRedirects(req, nil, 3)) })
 	require.Equal(t, 2, hops, "the redirect was still followed")
 }
 

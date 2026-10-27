@@ -300,9 +300,7 @@ func Test_ConvertRequest_RoutedPath(t *testing.T) {
 func Test_FiberHandler_RoutesTheURL(t *testing.T) {
 	t.Parallel()
 
-	h := func(c fiber.Ctx) error {
-		return c.SendString(c.Path() + "|" + c.OriginalURL())
-	}
+	h := func(c fiber.Ctx) error { return c.SendString(c.Path() + "|" + c.OriginalURL()) }
 
 	rec := httptest.NewRecorder()
 	http.StripPrefix("/app", FiberHandler(h)).ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/app/users/%41?x=1", http.NoBody))
@@ -331,9 +329,7 @@ func Test_FiberHandler_RoutesTheURL(t *testing.T) {
 func Test_FiberHandler_ConnectAuthorityForm(t *testing.T) {
 	t.Parallel()
 
-	h := func(c fiber.Ctx) error {
-		return c.SendString(c.Path() + "|" + c.Host())
-	}
+	h := func(c fiber.Ctx) error { return c.SendString(c.Path() + "|" + c.Host()) }
 	retarget := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.URL.Host = "other.internal:8443"
@@ -416,9 +412,7 @@ func Test_HTTPMiddleware_RejectsAuthorityTarget(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return next }))
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname() + "|" + c.Path())
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendString(c.Hostname() + "|" + c.Path()) })
 
 	adaptorTestRequireRawStatus(t, app, "//u:pw@evil.example/a:/x/..//b", fiber.StatusBadRequest)
 
@@ -451,9 +445,7 @@ func Test_HTTPHandler_PanicRestoresRequestLine(t *testing.T) {
 	app := fiber.New()
 	after := adaptorTestRecordURL(app)
 	app.Use(recoverer.New())
-	app.Use(HTTPHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		panic("boom")
-	})))
+	app.Use(HTTPHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") })))
 
 	adaptorTestRequireRawStatus(t, app, "/a/../public/%41", fiber.StatusInternalServerError)
 	require.Equal(t, "/a/../public/%41", *after)
@@ -483,9 +475,7 @@ func Test_HTTPMiddleware_RejectsForgedEscape(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return next }))
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendString(c.Path())
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
 	forgedEscapeOutcome(t, rawCtx(t, app, "/public/%%32e%%32e/admin/x"), "/public/%252e%252e/admin/x")
 }
 
@@ -556,9 +546,7 @@ func Test_Adaptor_KeepsAbsoluteFormHost(t *testing.T) {
 				next.ServeHTTP(w, r)
 			})
 		}))
-		app.Get("/x", func(c fiber.Ctx) error {
-			return c.SendString(c.Hostname())
-		})
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendString(c.Hostname()) })
 		fctx := rawLine(t, app, raw)
 		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
 		require.Equal(t, "public.example", seen)
@@ -585,9 +573,7 @@ func Test_HTTPMiddleware_ForwardsQueryAsSent(t *testing.T) {
 			next.ServeHTTP(w, r)
 		})
 	}))
-	app.Get("/x", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusNoContent)
-	})
+	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 
 	adaptorTestRequireRawStatus(t, app, "/x?a=%20b&c=;d&sig=AbC%2F", fiber.StatusNoContent)
 	require.Equal(t, "a=%20b&c=;d&sig=AbC%2F", rawQuery)
@@ -601,12 +587,8 @@ func Test_FiberHandler_RoutesRawBytes(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Get("/über", func(c fiber.Ctx) error {
-		return c.SendString("static|" + c.Path())
-	})
-	app.Get("/p/:name", func(c fiber.Ctx) error {
-		return c.SendString(c.Params("name"))
-	})
+	app.Get("/über", func(c fiber.Ctx) error { return c.SendString("static|" + c.Path()) })
+	app.Get("/p/:name", func(c fiber.Ctx) error { return c.SendString(c.Params("name")) })
 	h := FiberApp(app)
 
 	for target, want := range map[string]string{
@@ -629,9 +611,7 @@ func Test_FiberHandler_RoutesRawBytes(t *testing.T) {
 func Test_HTTPMiddleware_ServesEscapedSlash(t *testing.T) {
 	t.Parallel()
 
-	repos := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, r.URL.EscapedPath())
-	})
+	repos := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, r.URL.EscapedPath()) })
 	app := fiber.New()
 	app.Use("/repos", HTTPMiddleware(func(http.Handler) http.Handler { return repos }))
 	app.Get("/handler/*", HTTPHandler(repos))

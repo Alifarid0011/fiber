@@ -213,9 +213,7 @@ func Test_Store_GetByID(t *testing.T) {
 		require.NoError(t, retrievedSession.Destroy())
 		require.IsType(t, []any{}, retrievedSession.Keys())
 		require.NoError(t, retrievedSession.Regenerate())
-		require.NotPanics(t, func() {
-			retrievedSession.Release()
-		})
+		require.NotPanics(t, func() { retrievedSession.Release() })
 	})
 }
 
@@ -397,9 +395,7 @@ func Test_Store_FixationGuard(t *testing.T) {
 	// keyless child — FromCustom(""), or a hand-rolled one — used to skip the
 	// guard entirely and let a read-only ID reach the configured cookie sink.
 	keyless := extractors.Chain(
-		extractors.FromCustom("", func(c fiber.Ctx) (string, error) {
-			return fiber.Query[string](c, "sid"), nil
-		}),
+		extractors.FromCustom("", func(c fiber.Ctx) (string, error) { return fiber.Query[string](c, "sid"), nil }),
 		extractors.FromCookie("sid"),
 	)
 

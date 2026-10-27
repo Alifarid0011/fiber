@@ -745,32 +745,20 @@ func Test_Request_Methods_With_Server(t *testing.T) {
 	const target = "http://example.com"
 
 	// What the routes answer with.
-	hostname := func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname())
-	}
-	form := func(c fiber.Ctx) error {
-		return c.SendString(c.FormValue("foo"))
-	}
+	hostname := func(c fiber.Ctx) error { return c.SendString(c.Hostname()) }
+	form := func(c fiber.Ctx) error { return c.SendString(c.FormValue("foo")) }
 	created := func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusCreated).
 			SendString(c.FormValue("foo"))
 	}
-	echo := func(c fiber.Ctx) error {
-		return c.Send(c.Body())
-	}
+	echo := func(c fiber.Ctx) error { return c.Send(c.Body()) }
 	reply := func(status int, body string) fiber.Handler {
-		return func(c fiber.Ctx) error {
-			return c.Status(status).SendString(body)
-		}
+		return func(c fiber.Ctx) error { return c.Status(status).SendString(body) }
 	}
 
 	// What the requests carry and how they are sent.
-	withForm := func(r *Request) {
-		r.SetFormData("foo", "bar")
-	}
-	withRawBody := func(r *Request) {
-		r.SetRawBody([]byte("query body"))
-	}
+	withForm := func(r *Request) { r.SetFormData("foo", "bar") }
+	withRawBody := func(r *Request) { r.SetRawBody([]byte("query body")) }
 	send := func(r *Request, url string) (*Response, error) {
 		return r.SetURL(url).
 			SetMethod(fiber.MethodPost).
@@ -803,9 +791,7 @@ func Test_Request_Methods_With_Server(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := clientTestAClient(t, func(app *fiber.App) {
-				tc.register(app, "/", tc.handler)
-			})
+			client := clientTestAClient(t, func(app *fiber.App) { tc.register(app, "/", tc.handler) })
 
 			for range 5 {
 				req := AcquireRequest().SetClient(client)
@@ -855,9 +841,7 @@ func Test_Request_Header_With_Server(t *testing.T) {
 func Test_Request_UserAgent_With_Server(t *testing.T) {
 	t.Parallel()
 
-	handler := func(c fiber.Ctx) error {
-		return c.Send(c.Request().Header.UserAgent())
-	}
+	handler := func(c fiber.Ctx) error { return c.Send(c.Request().Header.UserAgent()) }
 
 	t.Run("default", func(t *testing.T) {
 		t.Parallel()
@@ -866,9 +850,7 @@ func Test_Request_UserAgent_With_Server(t *testing.T) {
 
 	t.Run("custom", func(t *testing.T) {
 		t.Parallel()
-		testRequest(t, handler, func(agent *Request) {
-			agent.SetUserAgent("ua")
-		}, "ua", 5)
+		testRequest(t, handler, func(agent *Request) { agent.SetUserAgent("ua") }, "ua", 5)
 	})
 }
 
@@ -894,22 +876,16 @@ func Test_Request_Cookie_With_Server(t *testing.T) {
 
 func Test_Request_Referer_With_Server(t *testing.T) {
 	t.Parallel()
-	handler := func(c fiber.Ctx) error {
-		return c.Send(c.Request().Header.Referer())
-	}
+	handler := func(c fiber.Ctx) error { return c.Send(c.Request().Header.Referer()) }
 
-	wrapAgent := func(req *Request) {
-		req.SetReferer("http://referer.com")
-	}
+	wrapAgent := func(req *Request) { req.SetReferer("http://referer.com") }
 
 	testRequest(t, handler, wrapAgent, "http://referer.com")
 }
 
 func Test_Request_QueryString_With_Server(t *testing.T) {
 	t.Parallel()
-	handler := func(c fiber.Ctx) error {
-		return c.Send(c.Request().URI().QueryString())
-	}
+	handler := func(c fiber.Ctx) error { return c.Send(c.Request().URI().QueryString()) }
 
 	wrapAgent := func(req *Request) {
 		req.SetParam("foo", "bar").
@@ -1107,12 +1083,8 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		t.Parallel()
 		testRequest(
 			t,
-			func(c fiber.Ctx) error {
-				return c.SendString(string(c.Request().Body()))
-			},
-			func(agent *Request) {
-				agent.SetRawBody([]byte("hello"))
-			},
+			func(c fiber.Ctx) error { return c.SendString(string(c.Request().Body())) },
+			func(agent *Request) { agent.SetRawBody([]byte("hello")) },
 			"hello",
 		)
 	})
@@ -1209,9 +1181,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 		}
 		return c.Redirect().To("/")
 	})
-	app.Get("/foo", func(c fiber.Ctx) error {
-		return c.SendString("redirect")
-	})
+	app.Get("/foo", func(c fiber.Ctx) error { return c.SendString("redirect") })
 
 	go func() { assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
 
@@ -1271,9 +1241,7 @@ func Test_Request_Query_Redirect(t *testing.T) {
 	app.Query("/start", func(c fiber.Ctx) error {
 		return c.Redirect().Status(fiber.StatusPermanentRedirect).To("/end")
 	})
-	app.Query("/end", func(c fiber.Ctx) error {
-		return c.Send(c.Body())
-	})
+	app.Query("/end", func(c fiber.Ctx) error { return c.Send(c.Body()) })
 
 	go func() { assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
 

@@ -30,9 +30,7 @@ func crossOriginAllowed(t *testing.T, cfg CrossOriginConfig, r *crossOriginReque
 
 	app := fiber.New()
 	app.Use(NewCrossOriginProtection(cfg))
-	app.All("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusNoContent)
-	})
+	app.All("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 
 	host := r.host
 	if host == "" {
@@ -208,9 +206,7 @@ func Test_CSRF_CrossOriginProtection_EmptyHost(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(NewCrossOriginProtection())
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusNoContent)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
@@ -250,9 +246,7 @@ func Test_CSRF_CrossOriginProtection_IgnoresForwardedHost(t *testing.T) {
 				return c.Next()
 			})
 			app.Use(NewCrossOriginProtection())
-			app.Post("/", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusNoContent)
-			})
+			app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.Header.SetMethod(fiber.MethodPost)
@@ -288,9 +282,7 @@ func Test_CSRF_CrossOriginProtection_DisableHeaderNormalizing(t *testing.T) {
 
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 	app.Use(NewCrossOriginProtection())
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusNoContent)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 	h := app.Handler()
 
 	tests := []struct{ header, value string }{
@@ -319,9 +311,7 @@ func Benchmark_Middleware_CSRF_CrossOriginProtection(b *testing.B) {
 	app := fiber.New()
 
 	app.Use(NewCrossOriginProtection())
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}

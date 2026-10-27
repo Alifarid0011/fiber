@@ -20,9 +20,7 @@ func Test_Middleware_Favicon(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(_ fiber.Ctx) error {
-		return nil
-	})
+	app.Get("/", func(_ fiber.Ctx) error { return nil })
 
 	// Skip Favicon middleware
 	apptest.Expect(t, app, "/", fiber.StatusOK)
@@ -54,9 +52,7 @@ func Test_Middleware_Favicon_Panics(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Panics(t, func() {
-				fiber.New().Use(New(tc.config))
-			}, "should catch panic")
+			require.Panics(t, func() { fiber.New().Use(New(tc.config)) }, "should catch panic")
 		})
 	}
 }
@@ -111,9 +107,7 @@ func Test_Middleware_Favicon_Serves(t *testing.T) {
 
 			app.Use(New(tc.config))
 
-			app.Get("/", func(_ fiber.Ctx) error {
-				return nil
-			})
+			app.Get("/", func(_ fiber.Ctx) error { return nil })
 
 			resp := apptest.Expect(t, app, tc.target, fiber.StatusOK)
 			require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
@@ -127,9 +121,7 @@ func Test_Middleware_Favicon_Serves(t *testing.T) {
 func Benchmark_Middleware_Favicon(b *testing.B) {
 	app := fiber.New()
 	app.Use(New())
-	app.Get("/", func(_ fiber.Ctx) error {
-		return nil
-	})
+	app.Get("/", func(_ fiber.Ctx) error { return nil })
 	handler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}
@@ -145,9 +137,7 @@ func Test_Favicon_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)

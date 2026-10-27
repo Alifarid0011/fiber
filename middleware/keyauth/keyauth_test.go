@@ -120,9 +120,7 @@ func Test_AuthSources(t *testing.T) {
 					},
 				})
 
-				handler := func(c fiber.Ctx) error {
-					return c.SendString("Success!")
-				}
+				handler := func(c fiber.Ctx) error { return c.SendString("Success!") }
 
 				method := fiber.MethodGet
 				switch authSource {
@@ -237,9 +235,7 @@ func TestMultipleKeyLookup(t *testing.T) {
 		},
 	})
 	app.Use(authMiddleware)
-	app.Get("/foo", func(c fiber.Ctx) error {
-		return c.SendString(success)
-	})
+	app.Get("/foo", func(c fiber.Ctx) error { return c.SendString(success) })
 
 	// construct the test HTTP request
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", http.NoBody)
@@ -268,9 +264,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 	// set up keyauth for /auth1 and /auth2, each with a different password
 	for _, auth := range []struct{ route, password string }{{"/auth1", "password1"}, {"/auth2", "password2"}} {
 		app.Use(New(Config{
-			Next: func(c fiber.Ctx) bool {
-				return c.Path() != auth.route
-			},
+			Next:      func(c fiber.Ctx) bool { return c.Path() != auth.route },
 			Extractor: extractors.FromAuthHeader("Bearer"),
 			Validator: func(_ fiber.Ctx, key string) (bool, error) {
 				if key == auth.password {
@@ -281,17 +275,11 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		}))
 	}
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("No auth needed!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("No auth needed!") })
 
-	app.Get("/auth1", func(c fiber.Ctx) error {
-		return c.SendString("Successfully authenticated for auth1!")
-	})
+	app.Get("/auth1", func(c fiber.Ctx) error { return c.SendString("Successfully authenticated for auth1!") })
 
-	app.Get("/auth2", func(c fiber.Ctx) error {
-		return c.SendString("Successfully authenticated for auth2!")
-	})
+	app.Get("/auth2", func(c fiber.Ctx) error { return c.SendString("Successfully authenticated for auth2!") })
 
 	// define test cases
 	tests := []struct {
@@ -403,9 +391,7 @@ func Test_CustomNextFunc(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Next: func(c fiber.Ctx) bool {
-			return c.Path() == "/allowed"
-		},
+		Next:      func(c fiber.Ctx) bool { return c.Path() == "/allowed" },
 		Validator: validateCorrectKey,
 	}))
 
@@ -413,9 +399,7 @@ func Test_CustomNextFunc(t *testing.T) {
 	app.Get("/allowed", func(c fiber.Ctx) error {
 		return c.SendString("API key is valid and request was allowed by custom filter")
 	})
-	app.Get("/not-allowed", func(c fiber.Ctx) error {
-		return c.SendString("Should be protected")
-	})
+	app.Get("/not-allowed", func(c fiber.Ctx) error { return c.SendString("Should be protected") })
 
 	// A request with the "/allowed" path is let through
 	apptest.ExpectBody(t, app, "/allowed", http.StatusOK, "API key is valid and request was allowed by custom filter")
@@ -430,9 +414,7 @@ func Test_CustomNextFunc(t *testing.T) {
 func Test_TokenFromContext_None(t *testing.T) {
 	app := fiber.New()
 	// Define a test handler that checks TokenFromContext
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(TokenFromContext(c))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
 
 	// Verify a "" is sent back if nothing sets the token on the context.
 	apptest.ExpectBody(t, app, "/", http.StatusOK, "")
@@ -446,9 +428,7 @@ func Test_TokenFromContext(t *testing.T) {
 		Validator: validateCorrectKey,
 	}))
 	// Define a test handler that checks TokenFromContext
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(TokenFromContext(c))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
 
 	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, "Basic "+CorrectKey)), http.StatusOK, CorrectKey)
 }
@@ -461,17 +441,13 @@ func Test_LogTagsRedactToken(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		Extractor: extractors.FromAuthHeader("Bearer"),
-		Validator: func(_ fiber.Ctx, key string) (bool, error) {
-			return key == CorrectKey, nil
-		},
+		Validator: func(_ fiber.Ctx, key string) (bool, error) { return key == CorrectKey, nil },
 	}))
 	app.Use(logger.New(logger.Config{
 		Format: "${api-key}",
 		Stream: &buf,
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", bearerCorrectKey), fiber.StatusOK)
 	require.Equal(t, redact.Prefix(CorrectKey), buf.String())
@@ -485,9 +461,7 @@ func Test_LogContextTagRedactsToken(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		Extractor: extractors.FromAuthHeader("Bearer"),
-		Validator: func(_ fiber.Ctx, key string) (bool, error) {
-			return key == CorrectKey, nil
-		},
+		Validator: func(_ fiber.Ctx, key string) (bool, error) { return key == CorrectKey, nil },
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
 		fiberlog.WithContext(c).Info("start")
@@ -544,9 +518,7 @@ func Test_AuthScheme(t *testing.T) {
 				Extractor: extractors.FromAuthHeader(tc.scheme),
 				Validator: validateCorrectKey,
 			}))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("API key is valid")
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("API key is valid") })
 
 			req := apptest.Req(fiber.MethodGet, "/")
 			if tc.authorization != "" {
@@ -614,9 +586,7 @@ func Test_Challenge(t *testing.T) {
 	invalid := func(fiber.Ctx, string) (bool, error) { return false, errors.New("invalid") }
 	valid := func(fiber.Ctx, string) (bool, error) { return true, nil }
 	// answerWith refuses every request with the given error.
-	answerWith := func(err error) fiber.ErrorHandler {
-		return func(fiber.Ctx, error) error { return err }
-	}
+	answerWith := func(err error) fiber.ErrorHandler { return func(fiber.Ctx, error) error { return err } }
 	// answerStatus refuses every request with the given status and text.
 	answerStatus := func(status int, text string) fiber.ErrorHandler {
 		return func(c fiber.Ctx, _ error) error { return c.Status(status).SendString(text) }
@@ -766,9 +736,7 @@ func Test_Challenge(t *testing.T) {
 
 			app := fiber.New()
 			app.Use(New(tc.config))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("OK")
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
 			req := apptest.Req(fiber.MethodGet, "/")
 			if tc.authorization != "" {
@@ -873,9 +841,7 @@ func benchValidator(_ fiber.Ctx, key string) (bool, error) {
 func benchApp(cfg *Config) fasthttp.RequestHandler {
 	app := fiber.New()
 	app.Use(New(*cfg))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 	return app.Handler()
 }
 

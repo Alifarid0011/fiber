@@ -505,9 +505,7 @@ func Test_PaginateNextSkip(t *testing.T) {
 	t.Parallel()
 
 	app := paginateTestApp(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Next: func(_ fiber.Ctx) bool { return true },
 	})
 
 	apptest.Expect(t, app, "/", fiber.StatusBadRequest)

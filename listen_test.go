@@ -252,9 +252,7 @@ func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
 	app := New()
 	err = app.Listen(addr, ListenConfig{
 		DisableStartupMessage: true,
-		BeforeServeFunc: func(_ *App) error {
-			return errors.New("stop before serving")
-		},
+		BeforeServeFunc:       func(_ *App) error { return errors.New("stop before serving") },
 	})
 	require.Error(t, err)
 
@@ -266,17 +264,11 @@ func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
 }
 
 func Test_Listen_Graceful_Shutdown(t *testing.T) {
-	t.Run("Basic Graceful Shutdown", func(t *testing.T) {
-		testGracefulShutdown(t, 0)
-	})
+	t.Run("Basic Graceful Shutdown", func(t *testing.T) { testGracefulShutdown(t, 0) })
 
-	t.Run("Shutdown With Timeout", func(t *testing.T) {
-		testGracefulShutdown(t, 500*time.Millisecond)
-	})
+	t.Run("Shutdown With Timeout", func(t *testing.T) { testGracefulShutdown(t, 500*time.Millisecond) })
 
-	t.Run("Shutdown With Timeout Error", func(t *testing.T) {
-		testGracefulShutdown(t, 1*time.Nanosecond)
-	})
+	t.Run("Shutdown With Timeout Error", func(t *testing.T) { testGracefulShutdown(t, 1*time.Nanosecond) })
 }
 
 func Test_ShutdownWithContext_PostShutdownHookReceivesError(t *testing.T) {
@@ -614,11 +606,9 @@ func Test_Listen_TLSConfigFunc(t *testing.T) {
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfigFunc: func(_ *tls.Config) {
-			callTLSConfig = true
-		},
-		CertFile:    "./.github/testdata/ssl.pem",
-		CertKeyFile: "./.github/testdata/ssl.key",
+		TLSConfigFunc:         func(_ *tls.Config) { callTLSConfig = true },
+		CertFile:              "./.github/testdata/ssl.pem",
+		CertKeyFile:           "./.github/testdata/ssl.key",
 	}))
 
 	require.True(t, callTLSConfig)
@@ -652,10 +642,8 @@ func Test_Listen_TLSConfig(t *testing.T) {
 	run("TLSConfig with GetCertificate", ListenConfig{
 		DisableStartupMessage: true,
 		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-				return &cert, nil
-			},
+			MinVersion:     tls.VersionTLS12,
+			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return &cert, nil },
 		},
 	})
 
@@ -705,9 +693,7 @@ func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
 			MinVersion:   tls.VersionTLS12,
 			Certificates: []tls.Certificate{cert},
 		},
-		TLSConfigFunc: func(_ *tls.Config) {
-			calledTLSConfigFunc = true
-		},
+		TLSConfigFunc: func(_ *tls.Config) { calledTLSConfigFunc = true },
 	}))
 
 	require.False(t, calledTLSConfigFunc)
@@ -889,11 +875,9 @@ func Test_Listen_ListenerAddrFunc(t *testing.T) {
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
-		ListenerAddrFunc: func(addr net.Addr) {
-			network = addr.Network()
-		},
-		CertFile:    "./.github/testdata/ssl.pem",
-		CertKeyFile: "./.github/testdata/ssl.key",
+		ListenerAddrFunc:      func(addr net.Addr) { network = addr.Network() },
+		CertFile:              "./.github/testdata/ssl.pem",
+		CertKeyFile:           "./.github/testdata/ssl.key",
 	}))
 
 	require.Equal(t, "tcp", network)
@@ -974,9 +958,7 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		ListenerNetwork:       NetworkTCP6,
-		ListenerAddrFunc: func(addr net.Addr) {
-			network = addr.String()
-		},
+		ListenerAddrFunc:      func(addr net.Addr) { network = addr.String() },
 	}))
 
 	require.Contains(t, network, "[::]:")
@@ -986,9 +968,7 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		ListenerNetwork:       NetworkTCP4,
-		ListenerAddrFunc: func(addr net.Addr) {
-			network = addr.String()
-		},
+		ListenerAddrFunc:      func(addr net.Addr) { network = addr.String() },
 	}))
 
 	require.Contains(t, network, "0.0.0.0:")
@@ -997,9 +977,7 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 	app := New()
 
-	app.Get("/test", func(c Ctx) error {
-		return c.SendString("all good")
-	})
+	app.Get("/test", func(c Ctx) error { return c.SendString("all good") })
 
 	var (
 		f       os.FileInfo
@@ -1023,9 +1001,7 @@ func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 
 		client := &fasthttp.HostClient{
 			Addr: sock,
-			Dial: func(addr string) (net.Conn, error) {
-				return net.Dial("unix", addr)
-			},
+			Dial: func(addr string) (net.Conn, error) { return net.Dial("unix", addr) },
 		}
 
 		req := &fasthttp.Request{}
@@ -1072,9 +1048,7 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 	app := New()
 	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, &cfg, childPIDs)
 
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
+	startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
 	colors := Colors{}
 	rootMiscBRequireContains(t, startupMessage,
 		fmt.Sprintf("https://127.0.0.1:%d", port),
@@ -1114,9 +1088,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 
 			listenData := app.prepareListenData(fmt.Sprintf(":%d", port), tc.isTLS, &cfg, tc.childPIDs)
 
-			startupMessage := captureOutput(func() {
-				app.startupMessage(listenData, &cfg)
-			})
+			startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
 			require.Equal(t, tc.appName, app.Config().AppName)
 			require.Contains(t, startupMessage, tc.appName)
 		})
@@ -1134,9 +1106,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 
 	listenData := app.prepareListenData(fmt.Sprintf("server.com:%d", port), true, &cfg, nil)
 
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
+	startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
 	colors := Colors{}
 	expectedURL := fmt.Sprintf("https://server.com:%d", port)
 	rootMiscBRequireContains(t, startupMessage,
@@ -1169,9 +1139,7 @@ func Test_StartupMessageCustomization(t *testing.T) {
 		return nil
 	})
 
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
+	startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
 
 	rootMiscBRequireContains(t, startupMessage, "FOOBER v98", "Git hash: \tabc123", "Version: \tv98")
 	rootMiscBRequireNotContains(t, startupMessage, "Server started on:", "Prefork:")
@@ -1193,9 +1161,7 @@ func Test_StartupMessageDisabledPostHook(t *testing.T) {
 		return nil
 	})
 
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
+	startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
 
 	require.Empty(t, startupMessage)
 	require.True(t, post.Disabled)
@@ -1221,9 +1187,7 @@ func Test_StartupMessagePreventedByHook(t *testing.T) {
 		return nil
 	})
 
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
+	startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
 
 	require.Empty(t, startupMessage)
 	require.False(t, post.Disabled)
@@ -1234,9 +1198,7 @@ func Test_StartupMessagePreventedByHook(t *testing.T) {
 func Test_Listen_Print_Route(t *testing.T) {
 	app := New()
 	app.Get("/", emptyHandler).Name("routeName")
-	printRoutesMessage := captureOutput(func() {
-		app.printRoutesMessage()
-	})
+	printRoutesMessage := captureOutput(func() { app.printRoutesMessage() })
 	rootMiscBRequireContains(t, printRoutesMessage, MethodGet, "/", "emptyHandler", "routeName")
 }
 
@@ -1249,9 +1211,7 @@ func Test_Listen_Print_Route_With_Group(t *testing.T) {
 	v1.Post("/test/fiber", emptyHandler)
 	v1.Put("/test/fiber/*", emptyHandler)
 
-	printRoutesMessage := captureOutput(func() {
-		app.printRoutesMessage()
-	})
+	printRoutesMessage := captureOutput(func() { app.printRoutesMessage() })
 
 	rootMiscBRequireContains(t, printRoutesMessage,
 		MethodGet, "/", "emptyHandler",
@@ -2253,9 +2213,7 @@ func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 			cfg := tc.cfg
 			cfg.DisableStartupMessage = true
 			// Fail instead of serving plaintext.
-			cfg.BeforeServeFunc = func(_ *App) error {
-				return errors.New("server would have served plaintext HTTP")
-			}
+			cfg.BeforeServeFunc = func(_ *App) error { return errors.New("server would have served plaintext HTTP") }
 
 			err := app.Listen("127.0.0.1:0", cfg)
 			require.ErrorIs(t, err, ErrCertFileAndKeyRequired)
@@ -2287,9 +2245,7 @@ func Test_Listener_TLS_ClientHelloInfo_PerConnection(t *testing.T) {
 	})
 
 	errs := make(chan error, 1)
-	go func() {
-		errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true}) }()
 
 	rootMiscBWaitDialable(t, ln)
 
@@ -2335,9 +2291,7 @@ func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 	errs := make(chan error, 1)
-	go func() {
-		errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true}) }()
 
 	conn, err := ln.Dial()
 	require.NoError(t, err)
@@ -2377,9 +2331,7 @@ func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP_NoLeak(t *testing.T) {
 	})
 
 	errs := make(chan error, 1)
-	go func() {
-		errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true}) }()
 
 	// Sequential handshakes: the per-IP cap bounds concurrency, not the total.
 	for range 12 {
@@ -2430,9 +2382,7 @@ func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP(t *testing.T) {
 	})
 
 	errs := make(chan error, 1)
-	go func() {
-		errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true}) }()
 
 	addr := raw.Addr().String()
 	dial := func(serverName string) *tls.Conn {

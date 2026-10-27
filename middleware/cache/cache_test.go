@@ -420,9 +420,7 @@ func TestCacheStorageErrors(t *testing.T) {
 			})
 
 			app.Use(New(Config{Storage: storage, Expiration: time.Second}))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("ok")
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 			apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 			require.Error(t, captured)
@@ -464,13 +462,9 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 
 	app.Use(New(Config{Storage: storage, Expiration: time.Minute, MaxBytes: 5}))
 
-	app.Get("/first", func(c fiber.Ctx) error {
-		return c.SendString("aaa")
-	})
+	app.Get("/first", func(c fiber.Ctx) error { return c.SendString("aaa") })
 
-	app.Get("/second", func(c fiber.Ctx) error {
-		return c.SendString("bbbb")
-	})
+	app.Get("/second", func(c fiber.Ctx) error { return c.SendString("bbbb") })
 
 	apptest.Expect(t, app, "/first", fiber.StatusOK)
 
@@ -510,9 +504,7 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 
 	app.Use(New(Config{Storage: storage, Expiration: time.Minute}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("payload")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("payload") })
 
 	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 	require.Error(t, captured)
@@ -548,9 +540,7 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 
 	app.Use(New(Config{Storage: storage, Expiration: time.Minute}))
 
-	app.Get("/cache", func(c fiber.Ctx) error {
-		return c.SendString("payload")
-	})
+	app.Get("/cache", func(c fiber.Ctx) error { return c.SendString("payload") })
 
 	for _, label := range []string{"store", "fetch"} {
 		apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/cache",
@@ -597,9 +587,7 @@ func Test_Cache_CacheControl(t *testing.T) {
 
 	app.Use(New(Config{Expiration: 10 * time.Second}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
 	apptest.Do(t, app, "/")
 
@@ -620,9 +608,7 @@ func Test_Cache_CacheControl_Disabled(t *testing.T) {
 		DisableCacheControl: true,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
 	apptest.Do(t, app, "/")
 
@@ -746,9 +732,7 @@ func cacheTestAIDApp(mw ...fiber.Handler) *fiber.App {
 	for _, h := range mw {
 		app.Use(h)
 	}
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(fiber.Query(c, "id", "1"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(fiber.Query(c, "id", "1")) })
 	return app
 }
 
@@ -867,9 +851,7 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 		Expiration: 10 * time.Second,
 	}))
 
-	app.Get("/:id", func(c fiber.Ctx) error {
-		return c.SendString(c.Params("id"))
-	})
+	app.Get("/:id", func(c fiber.Ctx) error { return c.SendString(c.Params("id")) })
 
 	for range 10 {
 		for i := range 10 {
@@ -900,13 +882,9 @@ func Test_Cache_Get(t *testing.T) {
 
 	app.Use(New())
 
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendString(fiber.Query[string](c, "cache"))
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString(fiber.Query[string](c, "cache")) })
 
-	app.Get("/get", func(c fiber.Ctx) error {
-		return c.SendString(fiber.Query[string](c, "cache"))
-	})
+	app.Get("/get", func(c fiber.Ctx) error { return c.SendString(fiber.Query[string](c, "cache")) })
 
 	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodPost, "/?cache=123"), fiber.StatusOK, "123")
 	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodPost, "/?cache=12345"), fiber.StatusOK, "12345")
@@ -1121,9 +1099,7 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 			Expiration: 1 * time.Hour,
 			Storage:    storage,
 		}))
-		app.Get(oversizedPath, func(c fiber.Ctx) error {
-			return c.SendString("ok")
-		})
+		app.Get(oversizedPath, func(c fiber.Ctx) error { return c.SendString("ok") })
 
 		cacheTestAExpect(t, app, oversizedPath, cacheMiss)
 
@@ -1206,9 +1182,7 @@ func Test_Cache_CustomNext(t *testing.T) {
 	t.Parallel()
 
 	app, _ := cacheTestAOrigin(New(Config{
-		Next: func(c fiber.Ctx) bool {
-			return c.Response().StatusCode() != fiber.StatusOK
-		},
+		Next: func(c fiber.Ctx) bool { return c.Response().StatusCode() != fiber.StatusOK },
 	}), "")
 
 	errorCount := 0
@@ -1235,9 +1209,7 @@ func Test_CustomKey(t *testing.T) {
 		return utils.CopyString(c.Path())
 	}}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("hi")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("hi") })
 
 	apptest.Do(t, app, "/")
 	require.True(t, called)
@@ -1517,18 +1489,12 @@ func Test_CacheHeader(t *testing.T) {
 
 	app.Use(New(Config{
 		Expiration: 10 * time.Second,
-		Next: func(c fiber.Ctx) bool {
-			return c.Response().StatusCode() != fiber.StatusOK
-		},
+		Next:       func(c fiber.Ctx) bool { return c.Response().StatusCode() != fiber.StatusOK },
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendString(fiber.Query[string](c, "cache"))
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString(fiber.Query[string](c, "cache")) })
 
 	count := 0
 	app.Get("/error", func(c fiber.Ctx) error {
@@ -1564,9 +1530,7 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 	app := fiber.New()
 	app.Use(New())
 
-	handler := func(c fiber.Ctx) error {
-		return c.SendString(fiber.Query[string](c, "cache"))
-	}
+	handler := func(c fiber.Ctx) error { return c.SendString(fiber.Query[string](c, "cache")) }
 	app.RouteChain("/").Get(handler).Head(handler)
 
 	cacheTestAExpectBody(t, app, apptest.Req(fiber.MethodHead, "/?cache=123"), cacheMiss, "")
@@ -1584,9 +1548,7 @@ func Test_CustomCacheHeader(t *testing.T) {
 		CacheHeader: "Cache-Status",
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
 	resp := apptest.Do(t, app, "/")
 	require.Equal(t, cacheMiss, resp.Header.Get("Cache-Status"))
@@ -1606,10 +1568,8 @@ func Test_CacheInvalidation(t *testing.T) {
 			t.Parallel()
 
 			app, _ := cacheTestAOrigin(New(Config{
-				CacheInvalidator: func(c fiber.Ctx) bool {
-					return fiber.Query[bool](c, "invalidate")
-				},
-				MaxBytes: tc.maxBytes,
+				CacheInvalidator: func(c fiber.Ctx) bool { return fiber.Query[bool](c, "invalidate") },
+				MaxBytes:         tc.maxBytes,
 			}), "")
 
 			body := cacheTestAExpectRepeat(t, app, "/")
@@ -1653,9 +1613,7 @@ func Test_CacheInvalidator_PanicReleasesLock(t *testing.T) {
 			return false
 		},
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 	cfg := fiber.TestConfig{Timeout: 2 * time.Second, FailOnTimeout: true}
 	resp := apptest.Do(t, app, "/", cfg)
@@ -1678,10 +1636,8 @@ func Test_CacheInvalidation_IgnoresMaxStale(t *testing.T) {
 				t.Parallel()
 
 				cfg := Config{
-					MaxBytes: 1 << 20,
-					CacheInvalidator: func(c fiber.Ctx) bool {
-						return c.Get("X-Session-Ended") == "1"
-					},
+					MaxBytes:         1 << 20,
+					CacheInvalidator: func(c fiber.Ctx) bool { return c.Get("X-Session-Ended") == "1" },
 				}
 				cfg.Storage = storageOf(storage)
 				var calls atomic.Int32
@@ -1926,9 +1882,7 @@ func Test_Cache_StorageMissingBodyIsMiss(t *testing.T) {
 	app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
 
 	var calls atomic.Int32
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("response-" + strconv.Itoa(int(calls.Add(1))))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("response-" + strconv.Itoa(int(calls.Add(1)))) })
 
 	cacheTestAExpect(t, app, "/", cacheMiss)
 
@@ -1998,9 +1952,7 @@ func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 				Expiration: time.Hour,
 				accounting: probe.record,
 			}))
-			app.Get("/*", func(c fiber.Ctx) error {
-				return c.Send(make([]byte, 600))
-			})
+			app.Get("/*", func(c fiber.Ctx) error { return c.Send(make([]byte, 600)) })
 
 			cacheTestAExpect(t, app, "/x", cacheMiss)
 			cacheTestAExpect(t, app, apptest.Req(fiber.MethodGet, "/x", apptest.WithHeader(tc.header, noCache)), cacheMiss)
@@ -2055,9 +2007,7 @@ func Test_Cache_FailedRefresh(t *testing.T) {
 				Expiration: time.Hour,
 				accounting: probe.record,
 			}))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.Send(make([]byte, 600))
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.Send(make([]byte, 600)) })
 
 			apptest.Expect(t, app, "/", fiber.StatusOK)
 			counted, nodes := probe.counted(), probe.nodes()
@@ -2089,9 +2039,7 @@ func Test_Cache_UncacheableResponseDoesNotEvict(t *testing.T) {
 		Expiration: time.Hour,
 		accounting: probe.record,
 	}))
-	app.Get("/a", func(c fiber.Ctx) error {
-		return c.SendString("aaaaa")
-	})
+	app.Get("/a", func(c fiber.Ctx) error { return c.SendString("aaaaa") })
 	app.Get("/b", func(c fiber.Ctx) error {
 		// max-age=0 is never stored, and the body only fits if /a is evicted.
 		c.Set(fiber.HeaderCacheControl, "max-age=0")
@@ -2115,9 +2063,7 @@ func Test_Cache_MaxBytesOrder(t *testing.T) {
 		ExpirationGenerator: stableAscendingExpiration(),
 	}))
 
-	app.Get("/*", func(c fiber.Ctx) error {
-		return c.SendString("1")
-	})
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("1") })
 
 	cases := [][]string{
 		// Insert a, b into cache of size 2 bytes (responses are 1 byte)
@@ -2317,10 +2263,8 @@ func Test_CacheRequestMaxAgeRevalidates(t *testing.T) {
 	t.Parallel()
 
 	app, _ := cacheTestAOrigin(New(Config{
-		Expiration: 30 * time.Second,
-		KeyGenerator: func(c fiber.Ctx) string {
-			return c.Path() + "|req-max-age-zero"
-		},
+		Expiration:   30 * time.Second,
+		KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|req-max-age-zero" },
 	}), "", fiber.HeaderCacheControl, "public, max-age=30")
 
 	cacheTestAExpectBody(t, app, "/", cacheMiss, "1")
@@ -2380,10 +2324,8 @@ func Test_CacheAllowsSharedCacheRevalidateWithAuthorization(t *testing.T) {
 			t.Parallel()
 
 			app, _ := cacheTestAOrigin(New(Config{
-				Expiration: 30 * time.Second,
-				KeyGenerator: func(c fiber.Ctx) string {
-					return c.Path() + tc.keySuffix
-				},
+				Expiration:   30 * time.Second,
+				KeyGenerator: func(c fiber.Ctx) string { return c.Path() + tc.keySuffix },
 			}), tc.prefix, fiber.HeaderCacheControl, tc.cacheControl)
 
 			authorized := func() *http.Request {
@@ -2402,11 +2344,9 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 	storage := newFailingCacheStorage()
 
 	app, _ := cacheTestAOrigin(New(Config{
-		Expiration: 30 * time.Second,
-		KeyGenerator: func(c fiber.Ctx) string {
-			return c.Path() + "|invalid-expires"
-		},
-		Storage: storage,
+		Expiration:   30 * time.Second,
+		KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|invalid-expires" },
+		Storage:      storage,
 	}), "body", fiber.HeaderCacheControl, "public", fiber.HeaderExpires, "invalid-date")
 
 	expectedKey := cacheKeyVersion + "|GET|/|invalid-expires"
@@ -2791,9 +2731,7 @@ func Test_CacheAgeClockStepsBackwards(t *testing.T) {
 	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
 	app.Use(New(Config{clock: clock.Now}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("cached")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("cached") })
 
 	cacheTestAExpect(t, app, "/", cacheMiss)
 
@@ -2921,9 +2859,7 @@ func Test_CachePermanentRedirectCached(t *testing.T) {
 	app.Use(New(Config{
 		Expiration:           30 * time.Second,
 		StoreResponseHeaders: true,
-		KeyGenerator: func(c fiber.Ctx) string {
-			return c.Path() + "|status-308"
-		},
+		KeyGenerator:         func(c fiber.Ctx) string { return c.Path() + "|status-308" },
 	}))
 
 	var count int
@@ -2987,9 +2923,7 @@ func Test_CacheRespectsUpstreamAgeForFreshness(t *testing.T) {
 		t.Parallel()
 
 		app, _ := cacheTestAOrigin(New(Config{
-			KeyGenerator: func(c fiber.Ctx) string {
-				return c.Path() + "|age-exhausted"
-			},
+			KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|age-exhausted" },
 		}), "", fiber.HeaderCacheControl, "public, max-age=2", fiber.HeaderAge, "2")
 
 		cacheTestAExpectBody(t, app, "/", cacheUnreachable, "1")
@@ -3003,10 +2937,8 @@ func Test_CacheRespectsUpstreamAgeForFreshness(t *testing.T) {
 		// left, a tick of the real clock would expire the entry before the hit.
 		clock := newTestClock(time.Now().Truncate(time.Second))
 		app, _ := cacheTestAOrigin(New(Config{
-			clock: clock.Now,
-			KeyGenerator: func(c fiber.Ctx) string {
-				return c.Path() + "|age-remaining"
-			},
+			clock:        clock.Now,
+			KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|age-remaining" },
 		}), "", fiber.HeaderCacheControl, "public, max-age=2", fiber.HeaderAge, "1")
 
 		cacheTestAExpectBody(t, app, "/", cacheMiss, "1")
@@ -3023,9 +2955,7 @@ func Test_CacheVarySeparatesVariants(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		KeyGenerator: func(c fiber.Ctx) string {
-			return c.Path() + "|vary-separated"
-		},
+		KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|vary-separated" },
 	}))
 
 	var count int
@@ -3051,9 +2981,7 @@ func Test_CacheVaryStarUncacheable(t *testing.T) {
 			app := fiber.New()
 			app.Use(New(Config{
 				DisableVaryHeaders: disableVaryHeaders,
-				KeyGenerator: func(c fiber.Ctx) string {
-					return c.Path() + "|vary-star"
-				},
+				KeyGenerator:       func(c fiber.Ctx) string { return c.Path() + "|vary-star" },
 			}))
 
 			var count int
@@ -3207,28 +3135,20 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 		name                  string
 	}{
 		{
-			name: "private",
-			setUncacheableHeaders: func(c fiber.Ctx) {
-				c.Set(fiber.HeaderCacheControl, "private")
-			},
+			name:                  "private",
+			setUncacheableHeaders: func(c fiber.Ctx) { c.Set(fiber.HeaderCacheControl, "private") },
 		},
 		{
-			name: "no-cache",
-			setUncacheableHeaders: func(c fiber.Ctx) {
-				c.Set(fiber.HeaderCacheControl, "no-cache")
-			},
+			name:                  "no-cache",
+			setUncacheableHeaders: func(c fiber.Ctx) { c.Set(fiber.HeaderCacheControl, "no-cache") },
 		},
 		{
-			name: "no-store",
-			setUncacheableHeaders: func(c fiber.Ctx) {
-				c.Set(fiber.HeaderCacheControl, "no-store")
-			},
+			name:                  "no-store",
+			setUncacheableHeaders: func(c fiber.Ctx) { c.Set(fiber.HeaderCacheControl, "no-store") },
 		},
 		{
-			name: "vary-star",
-			setUncacheableHeaders: func(c fiber.Ctx) {
-				c.Set(fiber.HeaderVary, "*")
-			},
+			name:                  "vary-star",
+			setUncacheableHeaders: func(c fiber.Ctx) { c.Set(fiber.HeaderVary, "*") },
 		},
 	}
 
@@ -4364,9 +4284,7 @@ func Benchmark_Cache_QueryMethod(b *testing.B) {
 		Methods: []string{fiber.MethodQuery},
 	}))
 
-	app.Query("/demo", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	app.Query("/demo", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 	h := app.Handler()
 
@@ -4404,9 +4322,7 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 			app := fiber.New()
 			app.Use(New(Config{MaxBytes: size}))
 
-			app.Get("/*", func(c fiber.Ctx) error {
-				return c.Status(fiber.StatusOK).SendString("1")
-			})
+			app.Get("/*", func(c fiber.Ctx) error { return c.Status(fiber.StatusOK).SendString("1") })
 
 			h := app.Handler()
 			fctx := &fasthttp.RequestCtx{}
@@ -4732,9 +4648,7 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 		Storage:    storage,
 	}))
 
-	app.Get("/:name", func(c fiber.Ctx) error {
-		return c.SendString("data")
-	})
+	app.Get("/:name", func(c fiber.Ctx) error { return c.SendString("data") })
 
 	// Seed the cache with a single entry
 	cacheTestBExpect(t, app, "/first", cacheMiss)
@@ -5202,9 +5116,7 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 		{
 			name: "custom key generator",
 			cfg: Config{
-				KeyGenerator: func(c fiber.Ctx) string {
-					return "custom-" + c.Path()
-				},
+				KeyGenerator: func(c fiber.Ctx) string { return "custom-" + c.Path() },
 			},
 			first:  cacheMiss,
 			second: cacheHit,
@@ -5241,9 +5153,7 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
 		app.Use(New(Config{Expiration: 1 * time.Hour}))
-		app.Post("/test", func(c fiber.Ctx) error {
-			return c.SendString("test")
-		})
+		app.Post("/test", func(c fiber.Ctx) error { return c.SendString("test") })
 
 		cacheTestBExpect(t, app, apptest.Req(fiber.MethodPost, "/test"), cacheUnreachable)
 	})
@@ -5308,9 +5218,7 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 			Expiration: 1 * time.Hour,
 			Storage:    storage,
 		}))
-		app.Get("/test", func(c fiber.Ctx) error {
-			return c.SendString("test content")
-		})
+		app.Get("/test", func(c fiber.Ctx) error { return c.SendString("test content") })
 
 		cacheTestBExpect(t, app, "/test", cacheMiss)
 
@@ -5405,13 +5313,9 @@ func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Expiration: 1 * time.Hour,
-			Next: func(c fiber.Ctx) bool {
-				return c.Path() == "/skip"
-			},
+			Next:       func(c fiber.Ctx) bool { return c.Path() == "/skip" },
 		}))
-		app.Get("/skip", func(c fiber.Ctx) error {
-			return c.SendString("test")
-		})
+		app.Get("/skip", func(c fiber.Ctx) error { return c.SendString("test") })
 
 		cacheTestBExpect(t, app, "/skip", cacheUnreachable)
 	})
@@ -5420,9 +5324,7 @@ func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
 		app.Use(New(Config{Expiration: 1 * time.Hour}))
-		app.Get("/test", func(c fiber.Ctx) error {
-			return c.Status(fiber.StatusCreated).SendString("created")
-		})
+		app.Get("/test", func(c fiber.Ctx) error { return c.Status(fiber.StatusCreated).SendString("created") })
 
 		cacheTestBExpect(t, app, "/test", cacheUnreachable)
 	})
@@ -5434,9 +5336,7 @@ func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 			Expiration: 1 * time.Hour,
 			MaxBytes:   10,
 		}))
-		app.Get("/test", func(c fiber.Ctx) error {
-			return c.Send(make([]byte, 100))
-		})
+		app.Get("/test", func(c fiber.Ctx) error { return c.Send(make([]byte, 100)) })
 
 		cacheTestBExpect(t, app, "/test", cacheUnreachable)
 	})
@@ -5559,9 +5459,7 @@ func Test_CacheInvalidator_NoDataRace(t *testing.T) {
 		{
 			name: "SharedEntryNoDataRace",
 			// Keyed on a header outside the cache key, so every request shares one entry.
-			invalidator: func(c fiber.Ctx) bool {
-				return c.Get("X-Invalidate") == "1"
-			},
+			invalidator: func(c fiber.Ctx) bool { return c.Get("X-Invalidate") == "1" },
 			invalidating: func() *http.Request {
 				return apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Invalidate", "1"))
 			},
@@ -5579,9 +5477,7 @@ func Test_CacheInvalidator_NoDataRace(t *testing.T) {
 				Expiration: time.Hour,
 			}))
 
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString(strconv.FormatUint(handlerCalls.Add(1), 10))
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString(strconv.FormatUint(handlerCalls.Add(1), 10)) })
 
 			// Prime the cache so the served-from-cache branch is reachable.
 			resp := apptest.Do(t, app, "/")
@@ -5639,9 +5535,7 @@ func Benchmark_parseCacheControlDirectives(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		for _, in := range inputs {
-			parseCacheControlDirectives(in, func(key, value []byte) {
-				n += len(key) + len(value)
-			})
+			parseCacheControlDirectives(in, func(key, value []byte) { n += len(key) + len(value) })
 		}
 	}
 	_ = n
@@ -6026,9 +5920,7 @@ func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
 	app := fiber.New()
 	app.Use(New())
 	app.Use(compress.New())
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(strings.Repeat("compressible ", 256))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Repeat("compressible ", 256)) })
 
 	for _, want := range []string{cacheMiss, cacheHit} {
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)

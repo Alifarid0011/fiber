@@ -65,12 +65,8 @@ func Test_Response_Status(t *testing.T) {
 	t.Parallel()
 
 	routes := func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("foo")
-		})
-		app.Get("/fail", func(c fiber.Ctx) error {
-			return c.SendStatus(407)
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("foo") })
+		app.Get("/fail", func(c fiber.Ctx) error { return c.SendStatus(407) })
 	}
 
 	for _, tc := range []struct {
@@ -125,9 +121,7 @@ func Test_Response_Protocol(t *testing.T) {
 		t.Parallel()
 
 		resp := clientTestBGet(t, func(app *fiber.App) {
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("foo")
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("foo") })
 		}, "http://example")
 
 		require.Equal(t, "HTTP/1.1", resp.Protocol())
@@ -145,9 +139,7 @@ func Test_Response_Protocol(t *testing.T) {
 		ln = tls.NewListener(ln, serverTLSConf)
 
 		app := fiber.New()
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString(c.Scheme())
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Scheme()) })
 
 		go func() {
 			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
@@ -295,17 +287,11 @@ func Test_Response_Body(t *testing.T) {
 	t.Parallel()
 
 	routes := func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("hello world")
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("hello world") })
 
-		app.Get("/json", func(c fiber.Ctx) error {
-			return c.SendString("{\"status\":\"success\"}")
-		})
+		app.Get("/json", func(c fiber.Ctx) error { return c.SendString("{\"status\":\"success\"}") })
 
-		app.Get("/xml", func(c fiber.Ctx) error {
-			return c.SendString("<status><name>success</name></status>")
-		})
+		app.Get("/xml", func(c fiber.Ctx) error { return c.SendString("<status><name>success</name></status>") })
 
 		app.Get("/cbor", func(c fiber.Ctx) error {
 			type cborData struct {
@@ -466,9 +452,7 @@ func Test_Response_Save(t *testing.T) {
 	t.Parallel()
 
 	routes := func(app *fiber.App) {
-		app.Get("/json", func(c fiber.Ctx) error {
-			return c.SendString("{\"status\":\"success\"}")
-		})
+		app.Get("/json", func(c fiber.Ctx) error { return c.SendString("{\"status\":\"success\"}") })
 	}
 
 	t.Run("file path", func(t *testing.T) {
@@ -600,9 +584,7 @@ func Test_Response_BodyStream_Fallback(t *testing.T) {
 	t.Run("non-streaming response fallback to bytes.Reader", func(t *testing.T) {
 		t.Parallel()
 		client := clientTestAClient(t, func(app *fiber.App) {
-			app.Get("/regular", func(c fiber.Ctx) error {
-				return c.SendString("regular response body")
-			})
+			app.Get("/regular", func(c fiber.Ctx) error { return c.SendString("regular response body") })
 		})
 		resp := clientTestBClientGet(t, client, "http://example.com/regular")
 		require.False(t, resp.IsStreaming())
@@ -621,9 +603,7 @@ func Test_Response_IsStreaming(t *testing.T) {
 		t.Parallel()
 
 		client := clientTestAClient(t, func(app *fiber.App) {
-			app.Get("/regular", func(c fiber.Ctx) error {
-				return c.SendString("regular content")
-			})
+			app.Get("/regular", func(c fiber.Ctx) error { return c.SendString("regular content") })
 		})
 		resp := clientTestBClientGet(t, client, "http://example.com/regular")
 		require.False(t, resp.IsStreaming())
@@ -633,9 +613,7 @@ func Test_Response_IsStreaming(t *testing.T) {
 		t.Parallel()
 
 		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/test", func(c fiber.Ctx) error {
-				return c.SendString("test content")
-			})
+			app.Get("/test", func(c fiber.Ctx) error { return c.SendString("test content") })
 		})
 		defer server.stop()
 
@@ -708,9 +686,7 @@ func Test_Response_Save_Streaming(t *testing.T) {
 		t.Parallel()
 
 		client := clientTestAClient(t, func(app *fiber.App) {
-			app.Get("/regular", func(c fiber.Ctx) error {
-				return c.SendString("regular file content")
-			})
+			app.Get("/regular", func(c fiber.Ctx) error { return c.SendString("regular file content") })
 		})
 
 		resp := clientTestBClientGet(t, client, "http://example.com/regular")
@@ -728,9 +704,7 @@ func Test_Response_Save_Streaming(t *testing.T) {
 		t.Parallel()
 
 		client := clientTestAClient(t, func(app *fiber.App) {
-			app.Get("/test", func(c fiber.Ctx) error {
-				return c.SendString("test content")
-			})
+			app.Get("/test", func(c fiber.Ctx) error { return c.SendString("test content") })
 		})
 
 		resp := clientTestBClientGet(t, client, "http://example.com/test")

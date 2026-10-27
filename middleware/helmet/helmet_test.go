@@ -19,9 +19,7 @@ func helmetTestApp(cfg ...Config) *fiber.App {
 
 	app.Use(New(cfg...))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
 	return app
 }
@@ -161,14 +159,10 @@ func Test_Next(t *testing.T) {
 	t.Parallel()
 
 	app := helmetTestApp(Config{
-		Next: func(ctx fiber.Ctx) bool {
-			return ctx.Path() == "/next"
-		},
+		Next:           func(ctx fiber.Ctx) bool { return ctx.Path() == "/next" },
 		ReferrerPolicy: "no-referrer",
 	})
-	app.Get("/next", func(c fiber.Ctx) error {
-		return c.SendString("Skipped!")
-	})
+	app.Get("/next", func(c fiber.Ctx) error { return c.SendString("Skipped!") })
 
 	resp := apptest.Do(t, app, "/")
 	require.Equal(t, "no-referrer", resp.Header.Get(fiber.HeaderReferrerPolicy))

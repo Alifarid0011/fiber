@@ -117,9 +117,7 @@ func Test_Template_UnknownBareTagHintsParametric(t *testing.T) {
 	t.Parallel()
 
 	_, err := Build[string, testData]("${reqHeader}", map[string]Func[string, testData]{
-		"reqHeader:": func(_ Buffer, _ string, _ *testData, _ string) (int, error) {
-			return 0, nil
-		},
+		"reqHeader:": func(_ Buffer, _ string, _ *testData, _ string) (int, error) { return 0, nil },
 	})
 	require.ErrorIs(t, err, ErrUnknownTag)
 
@@ -135,9 +133,7 @@ func Test_Template_FuncReturnsError(t *testing.T) {
 
 	tagErr := errors.New("tag failure")
 	tmpl, err := Build[string, testData]("${fail}", map[string]Func[string, testData]{
-		"fail": func(_ Buffer, _ string, _ *testData, _ string) (int, error) {
-			return 0, tagErr
-		},
+		"fail": func(_ Buffer, _ string, _ *testData, _ string) (int, error) { return 0, tagErr },
 	})
 	require.NoError(t, err)
 
@@ -160,9 +156,7 @@ func Test_ExecuteChainsRejectsMismatchedLengths(t *testing.T) {
 
 func Benchmark_Template_Build(b *testing.B) {
 	tagFns := map[string]Func[string, testData]{
-		"tag": func(output Buffer, _ string, _ *testData, _ string) (int, error) {
-			return output.WriteString("v")
-		},
+		"tag": func(output Buffer, _ string, _ *testData, _ string) (int, error) { return output.WriteString("v") },
 		"param:": func(output Buffer, _ string, _ *testData, extraParam string) (int, error) {
 			return output.WriteString(extraParam)
 		},

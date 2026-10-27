@@ -450,9 +450,7 @@ func Test_PathParam_RoundTrip(t *testing.T) {
 	// UnescapePath makes the server decode the segment once, which is the half
 	// of the round trip that proves the escaping was correct rather than lossy.
 	app := fiber.New(fiber.Config{UnescapePath: true})
-	app.Get("/api/:id/end", func(c fiber.Ctx) error {
-		return c.SendString(c.Params("id"))
-	})
+	app.Get("/api/:id/end", func(c fiber.Ctx) error { return c.SendString(c.Params("id")) })
 
 	ch := make(chan struct{})
 	go func() {
@@ -803,9 +801,7 @@ func Test_Client_DisablePathNormalizing_ClientHandedOver(t *testing.T) {
 	const target = "http://example.com/files/pub/:name"
 
 	// forName is the config that fills :name in the target with name.
-	forName := func(name string) Config {
-		return Config{PathParam: map[string]string{"name": name}}
-	}
+	forName := func(name string) Config { return Config{PathParam: map[string]string{"name": name}} }
 
 	t.Run("a client that served the host already keeps the check on", func(t *testing.T) {
 		t.Parallel()

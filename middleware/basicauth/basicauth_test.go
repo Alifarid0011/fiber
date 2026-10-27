@@ -39,9 +39,7 @@ func Test_BasicAuth_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
@@ -113,9 +111,7 @@ func Test_BasicAuthLoggerTagWritesUsername(t *testing.T) {
 		Format: "${username}",
 		Stream: &buf,
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.SetBasicAuth("john", "doe")
@@ -205,9 +201,7 @@ func Test_BasicAuth_NoConfig(t *testing.T) {
 
 			app := fiber.New()
 			app.Use(handler)
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusTeapot)
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
 			tests := []struct {
 				name          string
@@ -602,9 +596,7 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 			"john": hashedJohn,
 		},
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
 	h := app.Handler()
 
@@ -632,9 +624,7 @@ func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
 			"john": hashedJohn,
 		},
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
 	h := app.Handler()
 

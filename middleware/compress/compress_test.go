@@ -205,9 +205,7 @@ func Test_Compress_RespectsBodyLimitOnCompressedRequestBody(t *testing.T) {
 
 	app.Use(New())
 
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.Send(c.Body())
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.Send(c.Body()) })
 
 	var b bytes.Buffer
 	gz := gzip.NewWriter(&b)
@@ -397,9 +395,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(_ fiber.Ctx) error {
-		return errors.New("next error")
-	})
+	app.Get("/", func(_ fiber.Ctx) error { return errors.New("next error") })
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
@@ -414,9 +410,7 @@ func Test_Compress_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
@@ -705,9 +699,7 @@ func Test_Compress_AcceptEncoding_Negotiation(t *testing.T) {
 
 			app := fiber.New()
 			app.Use(New())
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString(strings.Repeat("compressible ", 500))
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Repeat("compressible ", 500)) })
 
 			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 			if tc.accept != "" {
@@ -730,9 +722,7 @@ func Test_Compress_RequestHeaderUntouched(t *testing.T) {
 		return err
 	})
 	app.Use(New())
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(strings.Repeat("compressible ", 500))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Repeat("compressible ", 500)) })
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAcceptEncoding, "br;q=0.5, gzip;q=1")

@@ -670,9 +670,7 @@ func Test_Res_NoContent(t *testing.T) {
 func Test_Res_NoContent_OverHTTP(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Delete("/item", func(c Ctx) error {
-		return c.Res().NoContent()
-	})
+	app.Delete("/item", func(c Ctx) error { return c.Res().NoContent() })
 
 	resp := apptest.Expect(t, app, apptest.Req(MethodDelete, "/item"), StatusNoContent)
 	require.Empty(t, resp.Header.Get(HeaderContentType))
@@ -931,9 +929,7 @@ func Test_Ctx_Error(t *testing.T) {
 func Test_Ctx_Error_ReachesErrorHandler(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.Error(StatusBadRequest, "id must be numeric")
-	})
+	app.Get("/", func(c Ctx) error { return c.Error(StatusBadRequest, "id must be numeric") })
 
 	apptest.ExpectBody(t, app, "/", StatusBadRequest, "id must be numeric")
 }
@@ -1054,9 +1050,7 @@ func Test_Ctx_MountPath_NoApp(t *testing.T) {
 func Test_Req_HasHeaderWithoutNormalizing(t *testing.T) {
 	t.Parallel()
 
-	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
-		req.Header.Set("x-test", "yes")
-	})
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) { req.Header.Set("x-test", "yes") })
 
 	require.True(t, c.Req().HasHeader("X-Test"))
 	require.Equal(t, []string{"yes"}, c.Req().GetAll("X-Test"))
@@ -1072,9 +1066,7 @@ func Test_Res_SendStatus_DropsDeclaredContentLength(t *testing.T) {
 			c.Set(HeaderContentLength, "42")
 			return c.SendStatus(status)
 		})
-		app.Get("/bare"+strconv.Itoa(status), func(c Ctx) error {
-			return c.SendStatus(status)
-		})
+		app.Get("/bare"+strconv.Itoa(status), func(c Ctx) error { return c.SendStatus(status) })
 	}
 	app.Get("/nocontent", func(c Ctx) error {
 		c.Set(HeaderContentLength, "42")
@@ -1169,9 +1161,7 @@ func Test_Req_HeaderFieldSkipsEmptyFirstLine(t *testing.T) {
 func Test_Req_GetWithoutNormalizing(t *testing.T) {
 	t.Parallel()
 
-	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
-		req.Header.Set("x-api-key", "k1")
-	})
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) { req.Header.Set("x-api-key", "k1") })
 
 	require.True(t, c.Req().HasHeader("X-Api-Key"))
 	require.Equal(t, "k1", c.Req().Get("X-Api-Key"))
@@ -1218,9 +1208,7 @@ func Test_Req_UpgradePredicatesWithoutNormalizing(t *testing.T) {
 func Test_Res_FormatWithoutNormalizing(t *testing.T) {
 	t.Parallel()
 
-	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
-		req.Header.Set("accept", "text/html")
-	})
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) { req.Header.Set("accept", "text/html") })
 
 	err := c.Res().Format(
 		ResFmt{MediaType: "application/json", Handler: func(cc Ctx) error { return cc.SendString("json") }},

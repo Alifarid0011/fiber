@@ -111,24 +111,20 @@ func TestTimeout_Statuses(t *testing.T) {
 		},
 		{
 			// A panic in the handler results in 500 Internal Server Error.
-			name: "panic in the handler",
-			handler: func(_ fiber.Ctx) error {
-				panic("test panic")
-			},
-			cfg:  []Config{{Timeout: 100 * time.Millisecond}},
-			want: fiber.StatusInternalServerError,
+			name:    "panic in the handler",
+			handler: func(_ fiber.Ctx) error { panic("test panic") },
+			cfg:     []Config{{Timeout: 100 * time.Millisecond}},
+			want:    fiber.StatusInternalServerError,
 		},
 		{
 			// When the handler returns a timeout error and no OnTimeout is configured,
 			// invokeOnTimeout falls back to fiber.ErrServiceUnavailable. The handler
 			// returns immediately so the result is processed via the handler-returned
 			// branch deterministically.
-			name: "deadline error without OnTimeout",
-			handler: func(_ fiber.Ctx) error {
-				return context.DeadlineExceeded
-			},
-			cfg:  []Config{{Timeout: time.Second}},
-			want: fiber.StatusServiceUnavailable,
+			name:    "deadline error without OnTimeout",
+			handler: func(_ fiber.Ctx) error { return context.DeadlineExceeded },
+			cfg:     []Config{{Timeout: time.Second}},
+			want:    fiber.StatusServiceUnavailable,
 		},
 		{
 			// The Next function skips the middleware.
@@ -442,9 +438,7 @@ func TestIsTimeoutError_WithOnTimeout(t *testing.T) {
 	}
 
 	// Test via full middleware to ensure OnTimeout is called
-	handler := New(func(_ fiber.Ctx) error {
-		return fmt.Errorf("wrap: %w", errCustomTimeout)
-	}, cfg)
+	handler := New(func(_ fiber.Ctx) error { return fmt.Errorf("wrap: %w", errCustomTimeout) }, cfg)
 
 	err := handler(ctx)
 	require.True(t, called)

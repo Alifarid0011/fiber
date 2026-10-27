@@ -410,9 +410,7 @@ func TestAdapter_MixedHandlerIntegration(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			resp := apptest.Do(t, app, apptest.Req(tc.method, tc.path))
-			t.Cleanup(func() {
-				require.NoError(t, resp.Body.Close())
-			})
+			t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
 
 			body := apptest.Body(t, resp)
 
@@ -462,9 +460,7 @@ func TestToFiberHandler_ExpressNextNoArgMiddleware(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-	})
+	t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
 
 	callOrder := make([]string, 0, 2)
 
@@ -628,9 +624,7 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
 	t.Parallel()
 
-	httpFunc := func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}
+	httpFunc := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
 
 	converted, ok := toFiberHandler(httpFunc)
 	require.True(t, ok)
@@ -652,9 +646,7 @@ func TestWrapHTTPHandler_Nil(t *testing.T) {
 func TestCollectHandlers_InvalidType(t *testing.T) {
 	t.Parallel()
 
-	require.PanicsWithValue(t, "context: invalid handler #0 (int)\n", func() {
-		collectHandlers("context", 42)
-	})
+	require.PanicsWithValue(t, "context: invalid handler #0 (int)\n", func() { collectHandlers("context", 42) })
 }
 
 func TestCollectHandlers_TypedNil(t *testing.T) {
@@ -686,9 +678,7 @@ func TestCollectHandlers_TypedNil(t *testing.T) {
 
 			expected := fmt.Sprintf("context: invalid handler #0 (%T)\n", tt.handler)
 
-			require.PanicsWithValue(t, expected, func() {
-				collectHandlers("context", tt.handler)
-			})
+			require.PanicsWithValue(t, expected, func() { collectHandlers("context", tt.handler) })
 		})
 	}
 }
@@ -746,9 +736,7 @@ func TestCollectHandlers_FasthttpHandler(t *testing.T) {
 func TestCollectHandlers_FiberHandlerNoErrorReturn(t *testing.T) {
 	t.Parallel()
 
-	noError := func(c Ctx) {
-		c.Set("X-Handler", "fiber")
-	}
+	noError := func(c Ctx) { c.Set("X-Handler", "fiber") }
 
 	handlers := collectHandlers("ctx", noError)
 	require.Len(t, handlers, 1)
@@ -791,7 +779,5 @@ func TestCollectHandlers_MixedHandlers(t *testing.T) {
 func TestCollectHandlers_Nil(t *testing.T) {
 	t.Parallel()
 
-	require.PanicsWithValue(t, "nil: invalid handler #0 (<nil>)\n", func() {
-		collectHandlers("nil", nil)
-	})
+	require.PanicsWithValue(t, "nil: invalid handler #0 (<nil>)\n", func() { collectHandlers("nil", nil) })
 }

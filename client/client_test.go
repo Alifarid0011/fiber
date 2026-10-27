@@ -45,9 +45,7 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 	go func(server *fiber.App) {
 		err := server.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
-			ListenerAddrFunc: func(addr net.Addr) {
-				addrChan <- addr.String()
-			},
+			ListenerAddrFunc:      func(addr net.Addr) { addrChan <- addr.String() },
 		})
 		if err != nil {
 			errChan <- err
@@ -92,9 +90,7 @@ func clientTestAStartTLSServer(t *testing.T, body string, tune ...func(server, c
 	ln = tls.NewListener(ln, serverTLSConf)
 
 	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(body)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(body) })
 
 	go func() {
 		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
@@ -134,9 +130,7 @@ func Test_New_With_Client(t *testing.T) {
 	t.Run("with nil client", func(t *testing.T) {
 		t.Parallel()
 
-		require.PanicsWithValue(t, "fasthttp.Client must not be nil", func() {
-			NewWithClient(nil)
-		})
+		require.PanicsWithValue(t, "fasthttp.Client must not be nil", func() { NewWithClient(nil) })
 	})
 }
 
@@ -157,9 +151,7 @@ func Test_New_With_HostClient(t *testing.T) {
 	t.Run("with nil host client", func(t *testing.T) {
 		t.Parallel()
 
-		require.PanicsWithValue(t, "fasthttp.HostClient must not be nil", func() {
-			NewWithHostClient(nil)
-		})
+		require.PanicsWithValue(t, "fasthttp.HostClient must not be nil", func() { NewWithHostClient(nil) })
 	})
 }
 
@@ -186,9 +178,7 @@ func Test_New_With_LBClient(t *testing.T) {
 	t.Run("with nil lb client", func(t *testing.T) {
 		t.Parallel()
 
-		require.PanicsWithValue(t, "fasthttp.LBClient must not be nil", func() {
-			NewWithLBClient(nil)
-		})
+		require.PanicsWithValue(t, "fasthttp.LBClient must not be nil", func() { NewWithLBClient(nil) })
 	})
 }
 
@@ -241,26 +231,20 @@ func TestClientSetRootCertificateErrors(t *testing.T) {
 	t.Parallel()
 
 	client := New()
-	require.Panics(t, func() {
-		client.SetRootCertificate("does-not-exist.pem")
-	})
+	require.Panics(t, func() { client.SetRootCertificate("does-not-exist.pem") })
 
 	tmpDir := t.TempDir()
 	badPath := filepath.Join(tmpDir, "invalid.pem")
 	require.NoError(t, os.WriteFile(badPath, []byte("not a pem"), 0o600))
 
-	require.Panics(t, func() {
-		client.SetRootCertificate(badPath)
-	})
+	require.Panics(t, func() { client.SetRootCertificate(badPath) })
 }
 
 func TestClientSetRootCertificateFromStringError(t *testing.T) {
 	t.Parallel()
 
 	client := New()
-	require.Panics(t, func() {
-		client.SetRootCertificateFromString("invalid pem data")
-	})
+	require.Panics(t, func() { client.SetRootCertificateFromString("invalid pem data") })
 }
 
 func TestClientLoggerAccessors(t *testing.T) {
@@ -432,27 +416,19 @@ func Test_Client_Add_Hook(t *testing.T) {
 	t.Run("add final request hooks", func(t *testing.T) {
 		t.Parallel()
 
-		client := New().AddFinalRequestHook(func(_ *Client, _ *Request) error {
-			return nil
-		})
+		client := New().AddFinalRequestHook(func(_ *Client, _ *Request) error { return nil })
 
 		require.Len(t, client.FinalRequestHook(), 1)
 	})
 
 	t.Run("add response hooks", func(t *testing.T) {
 		t.Parallel()
-		client := New().AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
-			return nil
-		})
+		client := New().AddResponseHook(func(_ *Client, _ *Response, _ *Request) error { return nil })
 
 		require.Len(t, client.ResponseHook(), 1)
 
-		hook1 := func(_ *Client, _ *Response, _ *Request) error {
-			return nil
-		}
-		hook2 := func(_ *Client, _ *Response, _ *Request) error {
-			return nil
-		}
+		hook1 := func(_ *Client, _ *Response, _ *Request) error { return nil }
+		hook2 := func(_ *Client, _ *Response, _ *Request) error { return nil }
 		client.AddResponseHook(hook1, hook2)
 
 		require.Len(t, client.ResponseHook(), 3)
@@ -488,16 +464,10 @@ func (tr clientTestATransport) run(t *testing.T) {
 		t.Parallel()
 
 		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Get("/ok", func(c fiber.Ctx) error {
-				return c.SendString("ok")
-			})
-			app.Get("/redirect", func(c fiber.Ctx) error {
-				return c.Redirect().Status(fiber.StatusFound).To("/ok")
-			})
+			app.Get("/ok", func(c fiber.Ctx) error { return c.SendString("ok") })
+			app.Get("/redirect", func(c fiber.Ctx) error { return c.Redirect().Status(fiber.StatusFound).To("/ok") })
 		})
-		t.Cleanup(func() {
-			require.NoError(t, app.Shutdown())
-		})
+		t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
 
 		client := tr.newClient(addr, false)
 
@@ -512,13 +482,9 @@ func (tr clientTestATransport) run(t *testing.T) {
 		t.Parallel()
 
 		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("retry")
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("retry") })
 		})
-		t.Cleanup(func() {
-			require.NoError(t, app.Shutdown())
-		})
+		t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
 
 		client := tr.newClient(addr, false)
 		client.SetRetryConfig(&RetryConfig{
@@ -732,9 +698,7 @@ func clientTestAMarshal[F ~func(any) ([]byte, error)](t *testing.T, format strin
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := set(New(), func(_ any) ([]byte, error) {
-				return tc.payload, tc.err
-			})
+			client := set(New(), func(_ any) ([]byte, error) { return tc.payload, tc.err })
 
 			val, err := get(client)(nil)
 			require.Equal(t, tc.payload, val)
@@ -754,9 +718,7 @@ func clientTestAUnmarshal[F ~func([]byte, any) error](t *testing.T, format strin
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			client := set(New(), func(_ []byte, _ any) error {
-				return failure
-			})
+			client := set(New(), func(_ []byte, _ any) error { return failure })
 
 			require.Equal(t, failure, get(client)(nil, nil))
 		})
@@ -787,9 +749,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 
 	app, dial, start := createHelperServer(t)
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname())
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Hostname()) })
 
 	go start()
 
@@ -814,9 +774,7 @@ func Test_Client_ConcurrencyRequests(t *testing.T) {
 	t.Parallel()
 
 	app, dial, start := createHelperServer(t)
-	app.All("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname() + " " + c.Method())
-	})
+	app.All("/", func(c fiber.Ctx) error { return c.SendString(c.Hostname() + " " + c.Method()) })
 	go start()
 
 	client := New().SetDial(dial)
@@ -878,17 +836,15 @@ func Test_Client_HTTPMethods(t *testing.T) {
 			calls:       1,
 		},
 		{
-			name:   "post",
-			method: fiber.MethodPost,
-			global: Post,
-			client: (*Client).Post,
-			handler: func(c fiber.Ctx) error {
-				return c.Status(fiber.StatusCreated).SendString(c.FormValue("foo"))
-			},
-			cfg:    []Config{{FormData: map[string]string{"foo": "bar"}}},
-			status: fiber.StatusCreated,
-			body:   "bar",
-			calls:  5,
+			name:    "post",
+			method:  fiber.MethodPost,
+			global:  Post,
+			client:  (*Client).Post,
+			handler: func(c fiber.Ctx) error { return c.Status(fiber.StatusCreated).SendString(c.FormValue("foo")) },
+			cfg:     []Config{{FormData: map[string]string{"foo": "bar"}}},
+			status:  fiber.StatusCreated,
+			body:    "bar",
+			calls:   5,
 		},
 		{
 			name:    "put",
@@ -902,13 +858,11 @@ func Test_Client_HTTPMethods(t *testing.T) {
 			calls:   5,
 		},
 		{
-			name:   "delete",
-			method: fiber.MethodDelete,
-			global: Delete,
-			client: (*Client).Delete,
-			handler: func(c fiber.Ctx) error {
-				return c.Status(fiber.StatusNoContent).SendString("deleted")
-			},
+			name:        "delete",
+			method:      fiber.MethodDelete,
+			global:      Delete,
+			client:      (*Client).Delete,
+			handler:     func(c fiber.Ctx) error { return c.Status(fiber.StatusNoContent).SendString("deleted") },
 			cfg:         []Config{{FormData: map[string]string{"foo": "bar"}}},
 			status:      fiber.StatusNoContent,
 			calls:       5,
@@ -967,9 +921,7 @@ func Test_Client_HTTPMethods(t *testing.T) {
 					app, addr := startTestServerWithPort(t, func(app *fiber.App) {
 						app.Add([]string{tc.method}, "/", tc.handler)
 					})
-					defer func() {
-						require.NoError(t, app.Shutdown())
-					}()
+					defer func() { require.NoError(t, app.Shutdown()) }()
 
 					if delay > 0 {
 						time.Sleep(delay)
@@ -1018,13 +970,9 @@ func Test_Client_UserAgent(t *testing.T) {
 			t.Parallel()
 
 			app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-				app.Get("/", func(c fiber.Ctx) error {
-					return c.Send(c.Request().Header.UserAgent())
-				})
+				app.Get("/", func(c fiber.Ctx) error { return c.Send(c.Request().Header.UserAgent()) })
 			})
-			defer func() {
-				require.NoError(t, app.Shutdown())
-			}()
+			defer func() { require.NoError(t, app.Shutdown()) }()
 
 			for range 5 {
 				resp, err := tc.send("http://" + addr)
@@ -1171,14 +1119,10 @@ func Test_Client_Settings_With_Server(t *testing.T) {
 			want: "v1v2v3",
 		},
 		{
-			name: "referer",
-			handler: func(c fiber.Ctx) error {
-				return c.Send(c.Request().Header.Referer())
-			},
-			setup: func(c *Client) {
-				c.SetReferer("http://referer.com")
-			},
-			want: "http://referer.com",
+			name:    "referer",
+			handler: func(c fiber.Ctx) error { return c.Send(c.Request().Header.Referer()) },
+			setup:   func(c *Client) { c.SetReferer("http://referer.com") },
+			want:    "http://referer.com",
 		},
 		{
 			name: "query params",
@@ -1402,9 +1346,7 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 
 	t.Run("different domain", func(t *testing.T) {
 		t.Parallel()
-		handler := func(c fiber.Ctx) error {
-			return c.SendString(c.Cookies("k1"))
-		}
+		handler := func(c fiber.Ctx) error { return c.SendString(c.Cookies("k1")) }
 
 		jar := AcquireCookieJar()
 		defer ReleaseCookieJar(jar)
@@ -1493,9 +1435,7 @@ func Test_Client_PathParam(t *testing.T) {
 func Test_Client_PathParam_With_Server(t *testing.T) {
 	app, dial, start := createHelperServer(t)
 
-	app.Get("/:test", func(c fiber.Ctx) error {
-		return c.SendString(c.Params("test"))
-	})
+	app.Get("/:test", func(c fiber.Ctx) error { return c.SendString(c.Params("test")) })
 
 	go start()
 
@@ -1596,9 +1536,7 @@ func Test_Client_R(t *testing.T) {
 func Test_Replace(t *testing.T) {
 	app, dial, start := createHelperServer(t)
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(string(c.Request().Header.Peek("k1")))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(string(c.Request().Header.Peek("k1"))) })
 
 	go start()
 
@@ -1622,9 +1560,7 @@ func Test_Replace(t *testing.T) {
 
 func Test_Replace_ConcurrentAccess(t *testing.T) {
 	original := C()
-	t.Cleanup(func() {
-		defaultClient.Store(original)
-	})
+	t.Cleanup(func() { defaultClient.Store(original) })
 
 	clients := []*Client{New(), New(), New()}
 
@@ -1783,9 +1719,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 	t.Parallel()
 
 	app, dial, start := createHelperServer(t)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Get("isProxy"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Get("isProxy")) })
 
 	go start()
 
@@ -1825,15 +1759,11 @@ func Test_Client_SetProxyURL(t *testing.T) {
 	go func() {
 		assert.NoError(t, proxyServer.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
-			ListenerAddrFunc: func(addr net.Addr) {
-				addrChan <- addr.String()
-			},
+			ListenerAddrFunc:      func(addr net.Addr) { addrChan <- addr.String() },
 		}))
 	}()
 
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-	})
+	t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
 
 	time.Sleep(1 * time.Second)
 
@@ -1880,9 +1810,7 @@ func Test_Client_SetRetryConfig(t *testing.T) {
 
 func Benchmark_Client_Request(b *testing.B) {
 	app, dial, start := createHelperServer(b)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("hello world")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("hello world") })
 
 	go start()
 
@@ -1901,9 +1829,7 @@ func Benchmark_Client_Request(b *testing.B) {
 
 func Benchmark_Client_Request_Parallel(b *testing.B) {
 	app, dial, start := createHelperServer(b)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("hello world")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("hello world") })
 
 	go start()
 
@@ -2061,9 +1987,7 @@ func Test_Client_ResponseHookError_KeepsCallerRequest(t *testing.T) {
 	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 	})
-	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
-		return errors.New("hook failed")
-	})
+	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error { return errors.New("hook failed") })
 
 	req := AcquireRequest()
 	defer ReleaseRequest(req)
@@ -2122,9 +2046,7 @@ func Test_CookieJar_MaxAge(t *testing.T) {
 			c.Response().Header.Add(fiber.HeaderSetCookie, "sid=abc; Max-Age=0")
 			return c.SendString("del")
 		})
-		app.Get("/echo", func(c fiber.Ctx) error {
-			return c.SendString(c.Cookies("sid"))
-		})
+		app.Get("/echo", func(c fiber.Ctx) error { return c.SendString(c.Cookies("sid")) })
 	})
 
 	jar := AcquireCookieJar()
@@ -2197,9 +2119,7 @@ func Test_Client_DispatchError_ReleasesOwnedRequest(t *testing.T) {
 	t.Parallel()
 
 	var seen *Request
-	client := New().SetDial(func(_ string) (net.Conn, error) {
-		return nil, errors.New("boom")
-	})
+	client := New().SetDial(func(_ string) (net.Conn, error) { return nil, errors.New("boom") })
 	client.AddRequestHook(func(_ *Client, req *Request) error {
 		seen = req
 		return nil
@@ -2218,9 +2138,7 @@ func Test_Client_AfterHookError_ReleasesOwnedRequest(t *testing.T) {
 	t.Parallel()
 
 	client := clientTestAClient(t, func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("ok")
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 	})
 
 	var seen *Request
@@ -2436,9 +2354,7 @@ func Test_Client_RequestHeaderOverridesClientHeader(t *testing.T) {
 	t.Parallel()
 
 	client := clientTestAClient(t, func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString(strings.Join(c.GetReqHeaders()["X-Level"], "|"))
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Join(c.GetReqHeaders()["X-Level"], "|")) })
 	})
 	client.SetHeader("X-Level", "client")
 
@@ -2496,9 +2412,7 @@ func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
 	t.Parallel()
 
 	client := clientTestAClient(t, func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString(strconv.Itoa(len(c.GetReqHeaders()["X-A"])))
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString(strconv.Itoa(len(c.GetReqHeaders()["X-A"]))) })
 	})
 
 	req := AcquireRequest()

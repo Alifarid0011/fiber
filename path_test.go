@@ -513,9 +513,7 @@ func Test_ConstraintCheckConstraint_NilRegexMatcher(t *testing.T) {
 
 	constraint := *newConstraint(regexConstraintType{}, ConstraintRegex, []string{"("})
 
-	require.NotPanics(t, func() {
-		require.False(t, constraint.CheckConstraint("123"))
-	})
+	require.NotPanics(t, func() { require.False(t, constraint.CheckConstraint("123")) })
 }
 
 func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
@@ -657,9 +655,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 	t.Run("exactly_maxParams", func(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams)
-		require.NotPanics(t, func() {
-			parseRoute(route, regexp.MustCompile)
-		})
+		require.NotPanics(t, func() { parseRoute(route, regexp.MustCompile) })
 	})
 
 	// Test with maxParams + 1 (31) - should panic
@@ -691,9 +687,7 @@ func Test_App_Register_TooManyParams_Panic(t *testing.T) {
 		route := paramsRoute(t, maxParams+1)
 
 		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
-			app.Get(route, func(c Ctx) error {
-				return c.SendString("test")
-			})
+			app.Get(route, func(c Ctx) error { return c.SendString("test") })
 		})
 	})
 
@@ -703,11 +697,7 @@ func Test_App_Register_TooManyParams_Panic(t *testing.T) {
 		app := New()
 		route := paramsRoute(t, maxParams)
 
-		require.NotPanics(t, func() {
-			app.Get(route, func(c Ctx) error {
-				return c.SendString("test")
-			})
-		})
+		require.NotPanics(t, func() { app.Get(route, func(c Ctx) error { return c.SendString("test") }) })
 	})
 }
 
@@ -731,9 +721,7 @@ func Test_RegexHandler_Default(t *testing.T) {
 	require.NotNil(t, app.config.RegexHandler)
 	require.Equal(t, reflect.ValueOf(regexp.MustCompile).Pointer(), reflect.ValueOf(app.config.RegexHandler).Pointer())
 
-	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
-		return c.SendString("matched")
-	})
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error { return c.SendString("matched") })
 
 	apptest.Expect(t, app, "/api/123", StatusOK)
 }
@@ -783,9 +771,7 @@ func Test_RegexHandler_Custom(t *testing.T) {
 	})
 
 	// Register a route with regex constraint
-	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
-		return c.SendString("matched")
-	})
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error { return c.SendString("matched") })
 
 	// Verify the mock handler was used during route registration
 	require.True(t, compileCalled, "RegexHandler should have been called")
@@ -811,9 +797,7 @@ func Test_RegexHandler_MatchOnlyCompiler(t *testing.T) {
 		},
 	})
 
-	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
-		return c.SendString("matched")
-	})
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error { return c.SendString("matched") })
 
 	require.True(t, compileCalled)
 
@@ -892,9 +876,7 @@ func Test_RegexHandler_NilDefaultsToStdlib(t *testing.T) {
 	require.NotNil(t, app.config.RegexHandler)
 
 	// Register a route with regex constraint
-	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
-		return c.SendString("matched")
-	})
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error { return c.SendString("matched") })
 
 	// Test the route works
 	apptest.Expect(t, app, "/api/123", 200)
@@ -971,9 +953,7 @@ func Test_RegexHandler_NilReturnPanics(t *testing.T) {
 	})
 
 	require.PanicsWithValue(t, "fiber: Config.RegexHandler must not return nil", func() {
-		app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
-			return c.SendString("matched")
-		})
+		app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error { return c.SendString("matched") })
 	})
 }
 
@@ -1697,9 +1677,7 @@ func Test_HasDotSegment_MatchesReference(t *testing.T) {
 		}
 		return strings.Contains(s, "/.")
 	}
-	forEachPathSample(func(s string) {
-		require.Equal(t, ref(s), hasDotSegment([]byte(s)), "path=%q", s)
-	})
+	forEachPathSample(func(s string) { require.Equal(t, ref(s), hasDotSegment([]byte(s)), "path=%q", s) })
 }
 
 func Benchmark_NeedsPathNormalization(b *testing.B) {

@@ -226,9 +226,7 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			probe := &accountingProbe{}
 			key := cacheKeyVersion + "|GET|/a"
 			app := cacheTestBPathKeyedApp(&Config{Storage: storage, MaxBytes: 15, accounting: probe.record})
-			app.Get("/:name", func(c fiber.Ctx) error {
-				return c.SendString("0123456789")
-			})
+			app.Get("/:name", func(c fiber.Ctx) error { return c.SendString("0123456789") })
 			request := func(path string, status int) {
 				t.Helper()
 				apptest.BodyBytes(t, apptest.Expect(t, app, path, status))

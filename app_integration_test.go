@@ -46,9 +46,7 @@ func performOversizedRequest(t *testing.T, app *fiber.App, configure func(req *f
 	ln := fasthttputil.NewInmemoryListener()
 	errCh := make(chan error, 1)
 
-	go func() {
-		errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
 
 	t.Cleanup(func() {
 		require.NoError(t, app.Shutdown())
@@ -80,9 +78,7 @@ func performOversizedRequest(t *testing.T, app *fiber.App, configure func(req *f
 	}
 
 	client := fasthttp.Client{
-		Dial: func(string) (net.Conn, error) {
-			return ln.Dial()
-		},
+		Dial: func(string) (net.Conn, error) { return ln.Dial() },
 	}
 
 	require.NoError(t, client.Do(req, resp))
@@ -93,9 +89,7 @@ func performOversizedRequest(t *testing.T, app *fiber.App, configure func(req *f
 	fasthttp.ReleaseRequest(req)
 	fasthttp.ReleaseResponse(resp)
 
-	t.Cleanup(func() {
-		fasthttp.ReleaseResponse(respCopy)
-	})
+	t.Cleanup(func() { fasthttp.ReleaseResponse(respCopy) })
 
 	return respCopy
 }
@@ -205,9 +199,7 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 				app.Use(cors.New(cors.Config{AllowOrigins: []string{corsHelmetOrigin}}))
 				app.Use(helmet.New())
 			},
-			configureRequest: func(req *fasthttp.Request) {
-				req.Header.Set(fiber.HeaderOrigin, corsHelmetOrigin)
-			},
+			configureRequest: func(req *fasthttp.Request) { req.Header.Set(fiber.HeaderOrigin, corsHelmetOrigin) },
 			assertions: func(t *testing.T, resp *fasthttp.Response) {
 				t.Helper()
 				require.Equal(t, corsHelmetOrigin, string(resp.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
@@ -239,14 +231,10 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 				app.Use(cors.New(cors.Config{AllowOrigins: []string{corsHelmetRequestID}}))
 				app.Use(helmet.New())
 				app.Use(requestid.New(requestid.Config{
-					Generator: func() string {
-						return generatedRequestID
-					},
+					Generator: func() string { return generatedRequestID },
 				}))
 			},
-			configureRequest: func(req *fasthttp.Request) {
-				req.Header.Set(fiber.HeaderOrigin, corsHelmetRequestID)
-			},
+			configureRequest: func(req *fasthttp.Request) { req.Header.Set(fiber.HeaderOrigin, corsHelmetRequestID) },
 			assertions: func(t *testing.T, resp *fasthttp.Response) {
 				t.Helper()
 				require.Equal(t, corsHelmetRequestID, string(resp.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
@@ -298,9 +286,7 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 					return c.Next()
 				})
 			},
-			configureRequest: func(req *fasthttp.Request) {
-				req.Header.Set(fiber.HeaderOrigin, corsSessionOrigin)
-			},
+			configureRequest: func(req *fasthttp.Request) { req.Header.Set(fiber.HeaderOrigin, corsSessionOrigin) },
 			assertions: func(t *testing.T, resp *fasthttp.Response) {
 				t.Helper()
 				require.Equal(t, corsSessionOrigin, string(resp.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
@@ -332,11 +318,9 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 			setup: func(app *fiber.App) {
 				app.Use(helmet.New())
 				app.Use(limiter.New(limiter.Config{
-					Max:        helmetLimiterMax,
-					Expiration: time.Duration(helmetLimiterReset) * time.Second,
-					KeyGenerator: func(fiber.Ctx) string {
-						return "helmet+limiter"
-					},
+					Max:          helmetLimiterMax,
+					Expiration:   time.Duration(helmetLimiterReset) * time.Second,
+					KeyGenerator: func(fiber.Ctx) string { return "helmet+limiter" },
 				}))
 			},
 			assertions: func(t *testing.T, resp *fasthttp.Response) {
@@ -397,9 +381,7 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 					KeyGenerator: func() string { return csrfTokenValue },
 				}))
 			},
-			configureRequest: func(req *fasthttp.Request) {
-				req.Header.SetMethod(fiber.MethodGet)
-			},
+			configureRequest: func(req *fasthttp.Request) { req.Header.SetMethod(fiber.MethodGet) },
 			assertions: func(t *testing.T, resp *fasthttp.Response) {
 				t.Helper()
 				require.Equal(t, "nosniff", string(resp.Header.Peek(fiber.HeaderXContentTypeOptions)))
@@ -451,9 +433,7 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 					Realm:            keyAuthRealm,
 					Error:            keyauth.ErrorInvalidToken,
 					ErrorDescription: keyAuthErrorDesc,
-					Validator: func(fiber.Ctx, string) (bool, error) {
-						return false, nil
-					},
+					Validator:        func(fiber.Ctx, string) (bool, error) { return false, nil },
 					ErrorHandler: func(c fiber.Ctx, _ error) error {
 						c.Status(fiber.StatusUnauthorized)
 						return fiber.ErrUnauthorized
@@ -488,9 +468,7 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 					return nil
 				})
 			},
-			configureRequest: func(req *fasthttp.Request) {
-				req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
-			},
+			configureRequest: func(req *fasthttp.Request) { req.Header.Set(fiber.HeaderAcceptEncoding, "gzip") },
 			assertions: func(t *testing.T, resp *fasthttp.Response) {
 				t.Helper()
 				require.Equal(t, "nosniff", string(resp.Header.Peek(fiber.HeaderXContentTypeOptions)))
@@ -504,9 +482,7 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 				app.Use(helmet.New())
 				app.Use(recover.New())
 			},
-			handler: func(fiber.Ctx) error {
-				panic("panic for recover middleware")
-			},
+			handler: func(fiber.Ctx) error { panic("panic for recover middleware") },
 			assertions: func(t *testing.T, resp *fasthttp.Response) {
 				t.Helper()
 				require.Equal(t, "nosniff", string(resp.Header.Peek(fiber.HeaderXContentTypeOptions)))
@@ -543,9 +519,7 @@ func Test_Integration_App_ServerErrorHandler_PreservesCORSHeadersOnBodyLimit(t *
 		AllowCredentials: true,
 		ExposeHeaders:    []string{"X-Request-ID"},
 	}))
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	resp := performOversizedRequest(t, app, nil)
 
@@ -559,9 +533,7 @@ func Test_Integration_App_ServerErrorHandler_PreservesCORSHeadersOnBodyLimit(t *
 func Test_Integration_App_ServerErrorHandler_PreservesHelmetHeadersOnBodyLimit(t *testing.T) {
 	app := fiber.New(fiber.Config{BodyLimit: 16})
 	app.Use(helmet.New())
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	resp := performOversizedRequest(t, app, nil)
 
@@ -589,9 +561,7 @@ func Test_Integration_App_ServerErrorHandler_CustomMultipartBodyLimit(t *testing
 			})
 		},
 	})
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -616,9 +586,7 @@ func Test_Integration_App_ServerErrorHandler_PreservesRequestID(t *testing.T) {
 
 	app := fiber.New(fiber.Config{BodyLimit: 16})
 	app.Use(requestid.New())
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	resp := performOversizedRequest(t, app, func(req *fasthttp.Request) {
 		req.Header.Set("X-Request-ID", expectedRequestID)
@@ -638,9 +606,7 @@ func Test_Integration_App_ServerErrorHandler_GroupMiddlewareChain(t *testing.T) 
 		c.Set("X-Group-Middleware", "active")
 		return c.Next()
 	})
-	api.Post("/resource", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	api.Post("/resource", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	resp := performOversizedRequest(t, app, func(req *fasthttp.Request) {
 		req.SetRequestURI("http://example.com/api/resource")
@@ -659,9 +625,7 @@ func Test_Integration_App_ServerErrorHandler_RetainsHeadersFromSubsequentMiddlew
 		return c.Next()
 	})
 	app.Use(cors.New())
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	resp := performOversizedRequest(t, app, nil)
 
@@ -679,9 +643,7 @@ func Test_Integration_App_ServerErrorHandler_WithCustomCtx(t *testing.T) {
 		return c.Next()
 	})
 	app.Use(cors.New(cors.Config{AllowOrigins: []string{"https://example.org"}}))
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	resp := performOversizedRequest(t, app, func(req *fasthttp.Request) {
 		req.Header.Set(fiber.HeaderOrigin, "https://example.org")
@@ -702,14 +664,10 @@ func Test_Integration_Domain_WithMiddleware(t *testing.T) {
 	app.Use(requestid.New())
 
 	// Domain-specific route with middleware
-	app.Domain("api.example.com").Get("/users", func(c fiber.Ctx) error {
-		return c.SendString("api users")
-	})
+	app.Domain("api.example.com").Get("/users", func(c fiber.Ctx) error { return c.SendString("api users") })
 
 	// Fallback route
-	app.Get("/users", func(c fiber.Ctx) error {
-		return c.SendString("default users")
-	})
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendString("default users") })
 
 	// Test matching domain
 	resp := apptest.ExpectBody(t, app, apptest.Req(http.MethodGet, "/users", apptest.WithHost("api.example.com")), fiber.StatusOK, "api users")
@@ -731,9 +689,7 @@ func Test_Integration_Domain_WithCORS(t *testing.T) {
 		AllowCredentials: true,
 	}))
 
-	app.Domain("api.example.com").Get("/data", func(c fiber.Ctx) error {
-		return c.JSON(fiber.Map{"source": "api"})
-	})
+	app.Domain("api.example.com").Get("/data", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"source": "api"}) })
 
 	req := apptest.Req(http.MethodGet, "/data", apptest.WithHost("api.example.com"), apptest.WithHeader(fiber.HeaderOrigin, apiOrigin))
 	resp := apptest.Expect(t, app, req, fiber.StatusOK)
@@ -754,14 +710,10 @@ func Test_Integration_Domain_WithGroup(t *testing.T) {
 	}))
 
 	v1 := apiDomain.Group("/v1")
-	v1.Get("/posts", func(c fiber.Ctx) error {
-		return c.SendString("v1 posts")
-	})
+	v1.Get("/posts", func(c fiber.Ctx) error { return c.SendString("v1 posts") })
 
 	v2 := apiDomain.Group("/v2")
-	v2.Get("/posts", func(c fiber.Ctx) error {
-		return c.SendString("v2 posts")
-	})
+	v2.Get("/posts", func(c fiber.Ctx) error { return c.SendString("v2 posts") })
 
 	// Test v1
 	resp := apptest.ExpectBody(t, app, apptest.Req(http.MethodGet, "/v1/posts", apptest.WithHost("api.example.com")), fiber.StatusOK, "v1 posts")
@@ -781,20 +733,14 @@ func Test_Integration_Domain_WithSubAppMount(t *testing.T) {
 	// Create sub-app with routes
 	subApp := fiber.New()
 	subApp.Use(requestid.New())
-	subApp.Get("/users", func(c fiber.Ctx) error {
-		return c.JSON(fiber.Map{"users": []string{"alice", "bob"}})
-	})
-	subApp.Get("/posts", func(c fiber.Ctx) error {
-		return c.JSON(fiber.Map{"posts": []string{"post1", "post2"}})
-	})
+	subApp.Get("/users", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"users": []string{"alice", "bob"}}) })
+	subApp.Get("/posts", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"posts": []string{"post1", "post2"}}) })
 
 	// Mount sub-app on domain
 	app.Domain("api.example.com").Use("/api", subApp)
 
 	// Fallback route
-	app.Get("/api/users", func(c fiber.Ctx) error {
-		return c.SendString("default users")
-	})
+	app.Get("/api/users", func(c fiber.Ctx) error { return c.SendString("default users") })
 
 	// Test domain-mounted sub-app
 	resp := apptest.Expect(t, app, apptest.Req(http.MethodGet, "/api/users", apptest.WithHost("api.example.com")), fiber.StatusOK)
@@ -835,22 +781,14 @@ func Test_Integration_Domain_MultipleDomains(t *testing.T) {
 	app := fiber.New()
 
 	// Different domains with different responses
-	app.Domain("api.example.com").Get("/", func(c fiber.Ctx) error {
-		return c.SendString("api domain")
-	})
+	app.Domain("api.example.com").Get("/", func(c fiber.Ctx) error { return c.SendString("api domain") })
 
-	app.Domain("admin.example.com").Get("/", func(c fiber.Ctx) error {
-		return c.SendString("admin domain")
-	})
+	app.Domain("admin.example.com").Get("/", func(c fiber.Ctx) error { return c.SendString("admin domain") })
 
-	app.Domain("app.example.com").Get("/", func(c fiber.Ctx) error {
-		return c.SendString("app domain")
-	})
+	app.Domain("app.example.com").Get("/", func(c fiber.Ctx) error { return c.SendString("app domain") })
 
 	// Default fallback
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("default domain")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("default domain") })
 
 	tests := []struct {
 		host     string
@@ -935,16 +873,12 @@ func Test_Integration_Domain_WithLimiter(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(limiter.New(limiter.Config{
-		Max:        maxRequests,
-		Expiration: 1 * time.Minute,
-		KeyGenerator: func(_ fiber.Ctx) string {
-			return "domain-limiter"
-		},
+		Max:          maxRequests,
+		Expiration:   1 * time.Minute,
+		KeyGenerator: func(_ fiber.Ctx) string { return "domain-limiter" },
 	}))
 
-	app.Domain("api.example.com").Get("/limited", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	app.Domain("api.example.com").Get("/limited", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 	// Make requests up to the limit
 	for range maxRequests {
@@ -967,9 +901,7 @@ func Test_Integration_Domain_WithCSRF(t *testing.T) {
 		KeyGenerator: func() string { return "test-csrf-token" },
 	}))
 
-	app.Domain("api.example.com").Get("/form", func(c fiber.Ctx) error {
-		return c.SendString("form page")
-	})
+	app.Domain("api.example.com").Get("/form", func(c fiber.Ctx) error { return c.SendString("form page") })
 
 	resp := apptest.Expect(t, app, apptest.Req(http.MethodGet, "/form", apptest.WithHost("api.example.com")), fiber.StatusOK)
 	require.Contains(t, resp.Header.Get(fiber.HeaderSetCookie), csrfCookie+"=")
@@ -980,9 +912,7 @@ func Test_Integration_Domain_CaseInsensitiveMatching(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Domain("API.Example.COM").Get("/", func(c fiber.Ctx) error {
-		return c.SendString("matched")
-	})
+	app.Domain("API.Example.COM").Get("/", func(c fiber.Ctx) error { return c.SendString("matched") })
 
 	// Test various case combinations
 	hosts := []string{
@@ -1007,9 +937,7 @@ func Test_Integration_Domain_ReusableSubApp(t *testing.T) {
 
 	// Create a reusable sub-app
 	apiApp := fiber.New()
-	apiApp.Get("/status", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	apiApp.Get("/status", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 	// Mount the same sub-app on multiple domains
 	app.Domain("api1.example.com").Use("/v1", apiApp)

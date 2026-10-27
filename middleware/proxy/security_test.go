@@ -183,9 +183,7 @@ func Test_Security_Forward_BlocksPrivateByDefault(t *testing.T) {
 	// Intentionally not parallel: it sets the strict default policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy())
 
-	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		return c.SendString("should not be reached")
-	})
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString("should not be reached") })
 
 	app := fiber.New()
 	app.Use(Forward("http://" + addr))
@@ -195,9 +193,7 @@ func Test_Security_Forward_BlocksPrivateByDefault(t *testing.T) {
 
 func Test_Security_Balancer_BlocksPrivateByDefault(t *testing.T) {
 	t.Parallel()
-	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
 	// Build a policy that blocks private IPs and feed it via Config so
 	// the panic surfaces at Balancer construction time.
@@ -212,9 +208,7 @@ func Test_Security_Balancer_BlocksPrivateByDefault(t *testing.T) {
 
 func Test_Security_Balancer_AllowsPrivateOptIn(t *testing.T) {
 	t.Parallel()
-	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
 	policy := proxyTestAllowPrivatePolicy()
 	app := fiber.New()
@@ -344,9 +338,7 @@ func Test_Security_KeepConnectionPreservesOtherHopByHop(t *testing.T) {
 func Test_Security_Do_BlocksFileScheme(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Get("/test", func(c fiber.Ctx) error {
-		return Do(c, "file:///etc/passwd")
-	})
+	app.Get("/test", func(c fiber.Ctx) error { return Do(c, "file:///etc/passwd") })
 	apptest.Expect(t, app, "/test", fiber.StatusInternalServerError)
 }
 
@@ -379,9 +371,7 @@ func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
 	startServer(httpsApp, httpsLn)
 
 	plainApp := fiber.New()
-	plainApp.Get("/secret", func(c fiber.Ctx) error {
-		return c.SendString("LEAKED")
-	})
+	plainApp.Get("/secret", func(c fiber.Ctx) error { return c.SendString("LEAKED") })
 	startServer(plainApp, plaintextLn)
 
 	// Use a custom proxy client that trusts the self-signed cert; otherwise
@@ -995,9 +985,7 @@ func Test_Security_RoundRobin_ConcurrentSelection(t *testing.T) {
 	var counts [3]atomic.Int32
 	var wg sync.WaitGroup
 	for range 300 {
-		wg.Go(func() {
-			counts[slices.Index(pool, r.get())].Add(1)
-		})
+		wg.Go(func() { counts[slices.Index(pool, r.get())].Add(1) })
 	}
 	wg.Wait()
 
@@ -1040,9 +1028,7 @@ func Test_Security_Balancer_ModifyErrorPropagates(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-				return c.SendString("ok")
-			})
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString("ok") })
 
 			cfg := tc.cfg
 			cfg.Servers = []string{addr}
@@ -1454,9 +1440,7 @@ func Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart(t *testing.T
 		"http://first.example/start": {status: fasthttp.StatusTemporaryRedirect, location: "http://second.example/next"},
 	}, func(req *fasthttp.Request) {
 		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
-	}, func(req *fasthttp.Request) {
-		bodies = append(bodies, string(req.Body()))
-	})
+	}, func(req *fasthttp.Request) { bodies = append(bodies, string(req.Body())) })
 
 	require.Len(t, bodies, 2)
 	for hop, body := range bodies {

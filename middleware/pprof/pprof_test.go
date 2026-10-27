@@ -34,9 +34,7 @@ func (m pprofTestMount) app(cfg Config) *fiber.App {
 
 	app := fiber.New()
 	app.Use(New(cfg))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("escaped") })
 	return app
 }
 
@@ -128,9 +126,7 @@ func Test_Pprof_Next(t *testing.T) {
 			t.Parallel()
 
 			app := m.app(Config{
-				Next: func(_ fiber.Ctx) bool {
-					return true
-				},
+				Next: func(_ fiber.Ctx) bool { return true },
 			})
 
 			apptest.Expect(t, app, m.prefix+"/debug/pprof/", 404)
@@ -146,9 +142,7 @@ func Test_Pprof_Sibling_Prefix_Path(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/debug/pprofiler", func(c fiber.Ctx) error {
-		return c.SendString("app route")
-	})
+	app.Get("/debug/pprofiler", func(c fiber.Ctx) error { return c.SendString("app route") })
 
 	apptest.ExpectBody(t, app, "/debug/pprofiler", fiber.StatusOK, "app route")
 }

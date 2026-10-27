@@ -39,9 +39,7 @@ func Test_Logger_DefaultFormat_StatusColors(t *testing.T) {
 			t.Parallel()
 
 			app, buf := loggerTestApp(t, &Config{ForceColors: true})
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendStatus(tc.status)
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(tc.status) })
 
 			apptest.Expect(t, app, "/", tc.status)
 			require.Contains(t, buf.String(), "|"+tc.want+fmt.Sprintf(" %3d ", tc.status)+colors.Reset+"|")
@@ -72,9 +70,7 @@ func Test_Logger_DefaultFormat_MethodColors(t *testing.T) {
 			t.Parallel()
 
 			app, buf := loggerTestApp(t, &Config{ForceColors: true})
-			app.All("/", func(c fiber.Ctx) error {
-				return c.SendString("ok")
-			})
+			app.All("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 			apptest.Expect(t, app, apptest.Req(tc.method, "/"), fiber.StatusOK)
 			require.Contains(t, buf.String(), "|"+tc.want+fmt.Sprintf(" %-7s ", tc.method)+colors.Reset+"|")
@@ -90,9 +86,7 @@ func Test_Logger_DefaultFormat_ColoredError(t *testing.T) {
 
 	colors := fiber.DefaultColors
 	app, buf := loggerTestApp(t, &Config{ForceColors: true})
-	app.Get("/", func(fiber.Ctx) error {
-		return errors.New("boom\r\n200 | forged")
-	})
+	app.Get("/", func(fiber.Ctx) error { return errors.New("boom\r\n200 | forged") })
 
 	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 
@@ -108,9 +102,7 @@ func Test_Logger_DefaultFormat_ColoredError(t *testing.T) {
 // No t.Parallel() here or in the subtests: t.Setenv rejects both, and the env
 // is what is under test. Same as prefork_test.go and middleware/envvar.
 func Test_beforeHandlerFunc_StdoutColorSelection(t *testing.T) {
-	stdoutCfg := func() *Config {
-		return &Config{Stream: os.Stdout, areColorsEnabled: true}
-	}
+	stdoutCfg := func() *Config { return &Config{Stream: os.Stdout, areColorsEnabled: true} }
 	isPlain := func(w io.Writer) bool {
 		_, ok := w.(*colorable.NonColorable)
 		return ok
@@ -154,7 +146,5 @@ func Test_beforeHandlerFunc_StdoutColorSelection(t *testing.T) {
 		require.Same(t, os.Stdout, cfg.Stream)
 	})
 
-	t.Run("nil config", func(t *testing.T) {
-		require.NotPanics(t, func() { beforeHandlerFunc(nil) })
-	})
+	t.Run("nil config", func(t *testing.T) { require.NotPanics(t, func() { beforeHandlerFunc(nil) }) })
 }

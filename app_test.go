@@ -170,9 +170,7 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
+	app.Use(func(c Ctx) error { return c.Next() })
 
 	app.Post("/", testEmptyHandler)
 
@@ -280,9 +278,7 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 	t.Parallel()
 	app := New()
 
-	app.Use(func(c Ctx) error {
-		return c.SendStatus(404)
-	})
+	app.Use(func(c Ctx) error { return c.SendStatus(404) })
 
 	app.Post("/", testEmptyHandler)
 
@@ -290,9 +286,7 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 	require.Equal(t, strconv.Itoa(len("Not Found")), resp.Header.Get(HeaderContentLength))
 
-	g := app.Group("/with-next", func(c Ctx) error {
-		return c.Status(404).Next()
-	})
+	g := app.Group("/with-next", func(c Ctx) error { return c.Status(404).Next() })
 
 	g.Post("/", testEmptyHandler)
 
@@ -305,9 +299,7 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 	t.Parallel()
 	app := New(Config{ReadBufferSize: 4096})
 
-	app.Get("/", func(_ Ctx) error {
-		panic(errors.New("should never called"))
-	})
+	app.Get("/", func(_ Ctx) error { panic(errors.New("should never called")) })
 
 	request := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	logHeaderSlice := make([]string, 5000)
@@ -327,9 +319,7 @@ func Test_App_Errors(t *testing.T) {
 		BodyLimit: 4,
 	})
 
-	app.Get("/", func(_ Ctx) error {
-		return errors.New("hi, i'm an error")
-	})
+	app.Get("/", func(_ Ctx) error { return errors.New("hi, i'm an error") })
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
@@ -371,9 +361,7 @@ func Test_App_BodyLimit(t *testing.T) {
 
 			app := New(Config{BodyLimit: tc.limit})
 
-			app.Post("/", func(c Ctx) error {
-				return c.SendStatus(StatusOK)
-			})
+			app.Post("/", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 			largeBody := bytes.Repeat([]byte{'a'}, tc.rejected)
 			req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(largeBody))
@@ -410,17 +398,11 @@ func Test_App_CustomConstraint(t *testing.T) {
 	app := New()
 	app.RegisterCustomConstraint(&customConstraint{})
 
-	app.Get("/test/:param<test(test)>", func(c Ctx) error {
-		return c.SendString("test")
-	})
+	app.Get("/test/:param<test(test)>", func(c Ctx) error { return c.SendString("test") })
 
-	app.Get("/test2/:param<test>", func(c Ctx) error {
-		return c.SendString("test")
-	})
+	app.Get("/test2/:param<test>", func(c Ctx) error { return c.SendString("test") })
 
-	app.Get("/test3/:param<test()>", func(c Ctx) error {
-		return c.SendString("test")
-	})
+	app.Get("/test3/:param<test()>", func(c Ctx) error { return c.SendString("test") })
 
 	apptest.Expect(t, app, "/test/test", 200)
 
@@ -436,14 +418,10 @@ func Test_App_CustomConstraint(t *testing.T) {
 func Test_App_ErrorHandler_Custom(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
-		ErrorHandler: func(c Ctx, _ error) error {
-			return c.Status(200).SendString("hi, i'm a custom error")
-		},
+		ErrorHandler: func(c Ctx, _ error) error { return c.Status(200).SendString("hi, i'm a custom error") },
 	})
 
-	app.Get("/", func(_ Ctx) error {
-		return errors.New("hi, i'm an error")
-	})
+	app.Get("/", func(_ Ctx) error { return errors.New("hi, i'm an error") })
 
 	apptest.ExpectBody(t, app, "/", 200, "hi, i'm a custom error")
 }
@@ -465,9 +443,7 @@ func Test_App_ErrorHandler_HandlerStack(t *testing.T) {
 		require.Equal(t, "0: GET error", err.Error())
 		return errors.New("2: USE error")
 	})
-	app.Get("/", func(_ Ctx) error {
-		return errors.New("0: GET error")
-	})
+	app.Get("/", func(_ Ctx) error { return errors.New("0: GET error") })
 
 	apptest.ExpectBody(t, app, "/", 500, "1: USE error")
 }
@@ -509,9 +485,7 @@ func Test_DefaultErrorHandler_TypedNilError(t *testing.T) {
 
 			c := apptest.CtxAs[*DefaultCtx](t, New())
 
-			require.NotPanics(t, func() {
-				require.NoError(t, DefaultErrorHandler(c, tc.err))
-			})
+			require.NotPanics(t, func() { require.NoError(t, DefaultErrorHandler(c, tc.err)) })
 			require.Equal(t, StatusInternalServerError, c.fasthttp.Response.StatusCode())
 			require.Equal(t, utils.StatusMessage(StatusInternalServerError), string(c.fasthttp.Response.Body()))
 		})
@@ -571,9 +545,7 @@ func Test_App_serverErrorHandler(t *testing.T) {
 			app := New()
 			c := apptest.CtxAs[*DefaultCtx](t, app)
 
-			require.NotPanics(t, func() {
-				app.serverErrorHandler(c.fasthttp, tc.err)
-			})
+			require.NotPanics(t, func() { app.serverErrorHandler(c.fasthttp, tc.err) })
 			require.Equal(t, tc.wantBody, string(c.fasthttp.Response.Body()))
 			require.Equal(t, tc.wantStatus, c.fasthttp.Response.StatusCode())
 		})
@@ -584,9 +556,7 @@ func Test_App_serverErrorHandler_Unsupported_Method_Request(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.Get("/bar", func(c Ctx) error {
-		return c.SendString("bar")
-	})
+	app.Get("/bar", func(c Ctx) error { return c.SendString("bar") })
 
 	ln := fasthttputil.NewInmemoryListener()
 
@@ -627,18 +597,10 @@ func Test_App_Nested_Params(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Get("/test", func(c Ctx) error {
-		return c.Status(400).Send([]byte("Should move on"))
-	})
-	app.Get("/test/:param", func(c Ctx) error {
-		return c.Status(400).Send([]byte("Should move on"))
-	})
-	app.Get("/test/:param/test", func(c Ctx) error {
-		return c.Status(400).Send([]byte("Should move on"))
-	})
-	app.Get("/test/:param/test/:param2", func(c Ctx) error {
-		return c.Status(200).Send([]byte("Good job"))
-	})
+	app.Get("/test", func(c Ctx) error { return c.Status(400).Send([]byte("Should move on")) })
+	app.Get("/test/:param", func(c Ctx) error { return c.Status(400).Send([]byte("Should move on")) })
+	app.Get("/test/:param/test", func(c Ctx) error { return c.Status(400).Send([]byte("Should move on")) })
+	app.Get("/test/:param/test/:param2", func(c Ctx) error { return c.Status(200).Send([]byte("Good job")) })
 
 	apptest.Expect(t, app, "/test/john/test/doe", 200)
 }
@@ -705,9 +667,7 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	t.Parallel()
 	app := New(Config{CaseSensitive: true})
 
-	app.Use("/abc", func(c Ctx) error {
-		return c.SendString(c.Path())
-	})
+	app.Use("/abc", func(c Ctx) error { return c.SendString(c.Path()) })
 
 	// wrong letters in the requested route -> 404
 	apptest.Expect(t, app, "/AbC", StatusNotFound)
@@ -730,14 +690,10 @@ func Test_App_Not_Use_StrictRouting(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Use("/abc", func(c Ctx) error {
-		return c.SendString(c.Path())
-	})
+	app.Use("/abc", func(c Ctx) error { return c.SendString(c.Path()) })
 
 	g := app.Group("/foo")
-	g.Use("/", func(c Ctx) error {
-		return c.SendString(c.Path())
-	})
+	g.Use("/", func(c Ctx) error { return c.SendString(c.Path()) })
 
 	// wrong path in the requested route -> 404
 	apptest.Expect(t, app, "/abc/", StatusOK)
@@ -756,14 +712,10 @@ func Test_App_Use_MultiplePrefix(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Use([]string{"/john", "/doe"}, func(c Ctx) error {
-		return c.SendString(c.Path())
-	})
+	app.Use([]string{"/john", "/doe"}, func(c Ctx) error { return c.SendString(c.Path()) })
 
 	g := app.Group("/test")
-	g.Use([]string{"/john", "/doe"}, func(c Ctx) error {
-		return c.SendString(c.Path())
-	})
+	g.Use([]string{"/john", "/doe"}, func(c Ctx) error { return c.SendString(c.Path()) })
 
 	apptest.ExpectBody(t, app, "/john", StatusOK, "/john")
 
@@ -780,9 +732,7 @@ func Test_Group_Use_NoBoundary(t *testing.T) {
 	app := New()
 	grp := app.Group("/api")
 
-	grp.Use("/foo", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	grp.Use("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	apptest.Expect(t, app, "/api/foo/bar", StatusOK)
 
@@ -793,14 +743,10 @@ func Test_App_Use_StrictRouting(t *testing.T) {
 	t.Parallel()
 	app := New(Config{StrictRouting: true})
 
-	app.Get("/abc", func(c Ctx) error {
-		return c.SendString(c.Path())
-	})
+	app.Get("/abc", func(c Ctx) error { return c.SendString(c.Path()) })
 
 	g := app.Group("/foo")
-	g.Get("/", func(c Ctx) error {
-		return c.SendString(c.Path())
-	})
+	g.Get("/", func(c Ctx) error { return c.SendString(c.Path()) })
 
 	// wrong path in the requested route -> 404
 	apptest.Expect(t, app, "/abc/", StatusNotFound)
@@ -832,9 +778,7 @@ func Test_App_Add_Method_Test(t *testing.T) {
 	apptest.Expect(t, app, apptest.Req("UNKNOWN", "/john"), StatusNotImplemented)
 
 	// Add a new method
-	require.Panics(t, func() {
-		app.Add([]string{"JANE"}, "/jane", testEmptyHandler)
-	})
+	require.Panics(t, func() { app.Add([]string{"JANE"}, "/jane", testEmptyHandler) })
 }
 
 func Test_App_All_Method_Test(t *testing.T) {
@@ -851,9 +795,7 @@ func Test_App_All_Method_Test(t *testing.T) {
 	apptest.Expect(t, app, apptest.Req("JOHN", "/doe"), StatusOK)
 
 	// Add a new method
-	require.Panics(t, func() {
-		app.Add([]string{"JANE"}, "/jane", testEmptyHandler)
-	})
+	require.Panics(t, func() { app.Add([]string{"JANE"}, "/jane", testEmptyHandler) })
 }
 
 func Test_App_GETOnly(t *testing.T) {
@@ -862,9 +804,7 @@ func Test_App_GETOnly(t *testing.T) {
 		GETOnly: true,
 	})
 
-	app.Post("/", func(c Ctx) error {
-		return c.SendString("Hello 👋!")
-	})
+	app.Post("/", func(c Ctx) error { return c.SendString("Hello 👋!") })
 
 	apptest.Expect(t, app, apptest.Req(MethodPost, "/"), StatusMethodNotAllowed)
 }
@@ -882,9 +822,7 @@ func Test_App_GETOnly_Middleware_Status(t *testing.T) {
 		return err
 	})
 
-	app.Post("/", func(c Ctx) error {
-		return c.SendString("Hello 👋!")
-	})
+	app.Post("/", func(c Ctx) error { return c.SendString("Hello 👋!") })
 
 	apptest.Expect(t, app, apptest.Req(MethodPost, "/"), StatusMethodNotAllowed)
 	require.Equal(t, StatusMethodNotAllowed, <-observed, "Status code seen by middleware")
@@ -895,15 +833,11 @@ func Test_App_GETOnly_Middleware_Status(t *testing.T) {
 func Test_App_GETOnly_ErrorHandler_WithoutStatus(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
-		GETOnly: true,
-		ErrorHandler: func(c Ctx, err error) error {
-			return c.SendString(err.Error())
-		},
+		GETOnly:      true,
+		ErrorHandler: func(c Ctx, err error) error { return c.SendString(err.Error()) },
 	})
 
-	app.Post("/", func(c Ctx) error {
-		return c.SendString("Hello 👋!")
-	})
+	app.Post("/", func(c Ctx) error { return c.SendString("Hello 👋!") })
 
 	resp := apptest.Expect(t, app, apptest.Req(MethodPost, "/"), StatusMethodNotAllowed)
 
@@ -951,9 +885,7 @@ func Test_App_Use_Params_Group(t *testing.T) {
 	app := New()
 
 	group := app.Group("/prefix/:param/*")
-	group.Use("/", func(c Ctx) error {
-		return c.Next()
-	})
+	group.Use("/", func(c Ctx) error { return c.Next() })
 	group.Get("/test", func(c Ctx) error {
 		require.Equal(t, "john", c.Params("param"))
 		require.Equal(t, "doe", c.Params("*"))
@@ -965,21 +897,15 @@ func Test_App_Use_Params_Group(t *testing.T) {
 
 func Test_App_Chaining(t *testing.T) {
 	t.Parallel()
-	n := func(c Ctx) error {
-		return c.Next()
-	}
+	n := func(c Ctx) error { return c.Next() }
 	app := New()
-	app.Use("/john", n, n, n, n, func(c Ctx) error {
-		return c.SendStatus(202)
-	})
+	app.Use("/john", n, n, n, n, func(c Ctx) error { return c.SendStatus(202) })
 	// check handler count for registered HEAD route
 	require.Len(t, app.stack[app.methodInt(MethodHead)][0].Handlers, 5, "app.Test(req)")
 
 	apptest.Expect(t, app, apptest.Req(MethodPost, "/john"), 202)
 
-	app.Get("/test", n, n, n, n, func(c Ctx) error {
-		return c.SendStatus(203)
-	})
+	app.Get("/test", n, n, n, n, func(c Ctx) error { return c.SendStatus(203) })
 
 	apptest.Expect(t, app, "/test", 203)
 }
@@ -1050,18 +976,14 @@ func Test_App_AutoHead_Compliance(t *testing.T) {
 			app.startupProcess()
 
 			getResp := apptest.Do(t, app, tc.path)
-			defer func() {
-				require.NoError(t, getResp.Body.Close())
-			}()
+			defer func() { require.NoError(t, getResp.Body.Close()) }()
 
 			body := apptest.BodyBytes(t, getResp)
 			require.Equal(t, tc.body, string(body))
 			require.Equal(t, tc.xTest, getResp.Header.Get("X-Test"))
 
 			headResp := apptest.Do(t, app, apptest.Req(MethodHead, tc.path))
-			defer func() {
-				require.NoError(t, headResp.Body.Close())
-			}()
+			defer func() { require.NoError(t, headResp.Body.Close()) }()
 
 			require.Equal(t, getResp.StatusCode, headResp.StatusCode)
 			require.Equal(t, strconv.Itoa(len(body)), headResp.Header.Get(HeaderContentLength))
@@ -1120,9 +1042,7 @@ func Test_App_Methods(t *testing.T) {
 func Test_App_Route_Naming(t *testing.T) {
 	t.Parallel()
 	app := New()
-	handler := func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	}
+	handler := func(c Ctx) error { return c.SendStatus(StatusOK) }
 	app.Get("/john", handler).Name("john")
 	app.Delete("/doe", handler)
 	app.Name("doe")
@@ -1277,9 +1197,7 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 	<-connReady // Waiting for the request to be sent
 
 	shutdownErr := make(chan error)
-	go func() {
-		shutdownErr <- app.ShutdownWithTimeout(1 * time.Second)
-	}()
+	go func() { shutdownErr <- app.ShutdownWithTimeout(1 * time.Second) }()
 
 	timer := time.NewTimer(time.Second * 5)
 	select {
@@ -1433,9 +1351,7 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 		app := New()
 
 		// Fast request that should complete
-		app.Get("/", func(c Ctx) error {
-			return c.SendString("OK")
-		})
+		app.Get("/", func(c Ctx) error { return c.SendString("OK") })
 
 		ln := fasthttputil.NewInmemoryListener()
 		serverStarted := make(chan bool, 1)
@@ -1657,9 +1573,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 func Test_App_Group_Invalid(t *testing.T) {
 	t.Parallel()
 
-	require.PanicsWithValue(t, "use: invalid handler int\n", func() {
-		New().Group("/").Use(1)
-	})
+	require.PanicsWithValue(t, "use: invalid handler int\n", func() { New().Group("/").Use(1) })
 }
 
 func Test_App_Group(t *testing.T) {
@@ -1770,9 +1684,7 @@ func Test_App_Route(t *testing.T) {
 	app.Route("/test", func(api Router) {
 		api.Get("/foo", testEmptyHandler).Name("foo")
 
-		api.Route("/bar", func(bar Router) {
-			bar.Get("/", testEmptyHandler).Name("index")
-		}, "bar.")
+		api.Route("/bar", func(bar Router) { bar.Get("/", testEmptyHandler).Name("index") }, "bar.")
 	}, "test.")
 
 	testStatus200(t, app, "/test/foo", MethodGet)
@@ -1788,9 +1700,7 @@ func Test_App_Route_nilFuncPanics(t *testing.T) {
 
 	app := New()
 
-	require.PanicsWithValue(t, "route handler 'fn' cannot be nil", func() {
-		app.Route("/panic", nil)
-	})
+	require.PanicsWithValue(t, "route handler 'fn' cannot be nil", func() { app.Route("/panic", nil) })
 }
 
 func Test_Group_Route_nilFuncPanics(t *testing.T) {
@@ -1799,9 +1709,7 @@ func Test_Group_Route_nilFuncPanics(t *testing.T) {
 	app := New()
 	grp := app.Group("/api")
 
-	require.PanicsWithValue(t, "route handler 'fn' cannot be nil", func() {
-		grp.Route("/panic", nil)
-	})
+	require.PanicsWithValue(t, "route handler 'fn' cannot be nil", func() { grp.Route("/panic", nil) })
 }
 
 func Test_Group_RouteChain_All(t *testing.T) {
@@ -2189,22 +2097,16 @@ func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
 		renderEntered: make(chan struct{}),
 	}
 	app := New(Config{Views: view})
-	app.Get("/", func(c Ctx) error {
-		return c.Render("home", nil)
-	})
+	app.Get("/", func(c Ctx) error { return c.Render("home", nil) })
 	handler := app.Handler()
 
 	reloadDone := make(chan error, 1)
-	go func() {
-		reloadDone <- app.ReloadViews()
-	}()
+	go func() { reloadDone <- app.ReloadViews() }()
 
 	<-view.loadStarted
 
 	renderDone := make(chan int, 1)
-	go func() {
-		renderDone <- runGetHandlerRequest(handler, "/")
-	}()
+	go func() { renderDone <- runGetHandlerRequest(handler, "/") }()
 
 	rootMiscBRequireNothing(t, view.renderEntered, "render should wait until ReloadViews Load finishes")
 
@@ -2219,9 +2121,7 @@ func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 
 	view := &panicLoadView{}
 	app := New(Config{Views: view})
-	app.Get("/", func(c Ctx) error {
-		return c.Render("home", nil)
-	})
+	app.Get("/", func(c Ctx) error { return c.Render("home", nil) })
 	handler := app.Handler()
 
 	type reloadResult struct {
@@ -2245,9 +2145,7 @@ func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 	require.Equal(t, "panic load", result.recovered)
 
 	renderDone := make(chan int, 1)
-	go func() {
-		renderDone <- runGetHandlerRequest(handler, "/")
-	}()
+	go func() { renderDone <- runGetHandlerRequest(handler, "/") }()
 
 	require.Equal(t, StatusOK, rootMiscBRecv(t, renderDone, "render request did not finish after reload panic"))
 }
@@ -2289,9 +2187,7 @@ func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
 	t.Parallel()
 
 	app := New(Config{Views: &panicRenderView{}})
-	app.Get("/", func(c Ctx) error {
-		return c.Render("home", nil)
-	})
+	app.Get("/", func(c Ctx) error { return c.Render("home", nil) })
 
 	type renderResult struct {
 		err       error
@@ -2320,9 +2216,7 @@ func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
 	require.Equal(t, "panic render", result.recovered)
 
 	reloadDone := make(chan error, 1)
-	go func() {
-		reloadDone <- app.ReloadViews()
-	}()
+	go func() { reloadDone <- app.ReloadViews() }()
 
 	require.NoError(t, rootMiscBRecv(t, reloadDone, "reload did not finish after render panic"))
 }
@@ -2465,16 +2359,12 @@ func Test_App_Render_WaitsForReloadViews(t *testing.T) {
 	view.loads = 1
 
 	reloadDone := make(chan error, 1)
-	go func() {
-		reloadDone <- app.ReloadViews()
-	}()
+	go func() { reloadDone <- app.ReloadViews() }()
 
 	<-view.loadStarted
 
 	renderDone := make(chan error, 1)
-	go func() {
-		renderDone <- app.Render(io.Discard, "partial", nil)
-	}()
+	go func() { renderDone <- app.Render(io.Discard, "partial", nil) }()
 
 	rootMiscBRequireNothing(t, view.renderEntered, "Render should wait until ReloadViews Load finishes")
 
@@ -2585,25 +2475,19 @@ func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testin
 	}
 	subAppA := New(Config{Views: view})
 	subAppB := New(Config{Views: view})
-	subAppB.Get("/render", func(c Ctx) error {
-		return c.Render("home", nil)
-	})
+	subAppB.Get("/render", func(c Ctx) error { return c.Render("home", nil) })
 	app := New()
 	app.Use("/a", subAppA)
 	app.Use("/b", subAppB)
 	handler := app.Handler()
 
 	reloadDone := make(chan error, 1)
-	go func() {
-		reloadDone <- subAppA.ReloadViews()
-	}()
+	go func() { reloadDone <- subAppA.ReloadViews() }()
 
 	<-view.loadStarted
 
 	renderDone := make(chan int, 1)
-	go func() {
-		renderDone <- runGetHandlerRequest(handler, "/b/render")
-	}()
+	go func() { renderDone <- runGetHandlerRequest(handler, "/b/render") }()
 
 	rootMiscBRequireNothing(t, view.renderEntered, "render should wait until shared view engine reload finishes")
 
@@ -2624,9 +2508,7 @@ func Test_App_ReloadViews_SharedEngineBlocksRenderAfterReusableMount(t *testing.
 	}
 
 	reusableSubApp := New(Config{Views: view})
-	reusableSubApp.Get("/render", func(c Ctx) error {
-		return c.Render("home", nil)
-	})
+	reusableSubApp.Get("/render", func(c Ctx) error { return c.Render("home", nil) })
 
 	siblingApp := New(Config{Views: view})
 
@@ -2640,16 +2522,12 @@ func Test_App_ReloadViews_SharedEngineBlocksRenderAfterReusableMount(t *testing.
 	handler := parentAppA.Handler()
 
 	reloadDone := make(chan error, 1)
-	go func() {
-		reloadDone <- siblingApp.ReloadViews()
-	}()
+	go func() { reloadDone <- siblingApp.ReloadViews() }()
 
 	<-view.loadStarted
 
 	renderDone := make(chan int, 1)
-	go func() {
-		renderDone <- runGetHandlerRequest(handler, "/shared/render")
-	}()
+	go func() { renderDone <- runGetHandlerRequest(handler, "/shared/render") }()
 
 	rootMiscBRequireNothing(t, view.renderEntered, "render should wait until shared view engine reload finishes")
 
@@ -2758,9 +2636,7 @@ func Test_App_RefusedRequest(t *testing.T) {
 
 			app := New(tc.config)
 
-			app.Get(tc.route, func(c Ctx) error {
-				return c.SendString("I should not be sent")
-			})
+			app.Get(tc.route, func(c Ctx) error { return c.SendString("I should not be sent") })
 
 			ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
 			require.NoError(t, err)
@@ -2800,9 +2676,7 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 		ReadBufferSize: 1,
 	})
 
-	app.Get("/small-read-buffer", func(c Ctx) error {
-		return c.SendString("I should not be sent")
-	})
+	app.Get("/small-read-buffer", func(c Ctx) error { return c.SendString("I should not be sent") })
 
 	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
@@ -2831,9 +2705,7 @@ func Test_App_Server(t *testing.T) {
 
 func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 	app := New()
-	app.config.ErrorHandler = func(_ Ctx, _ error) error {
-		return errors.New("fake error")
-	}
+	app.config.ErrorHandler = func(_ Ctx, _ error) error { return errors.New("fake error") }
 	app.server.GetOnly = true
 
 	apptest.Expect(t, app, apptest.Req(MethodPost, "/"), 500)
@@ -2982,9 +2854,7 @@ func Test_App_Test_drop_empty_response(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.Drop()
-	})
+	app.Get("/", func(c Ctx) error { return c.Drop() })
 
 	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{
 		Timeout:       0,
@@ -3013,9 +2883,7 @@ func Test_App_Test_response_error(t *testing.T) {
 	})
 
 	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	app.Get("/", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{
 		Timeout:       0,
@@ -3145,12 +3013,8 @@ func Test_App_AddCustomRequestMethod(t *testing.T) {
 func Test_App_GetRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
-	handler := func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	}
+	app.Use(func(c Ctx) error { return c.Next() })
+	handler := func(c Ctx) error { return c.SendStatus(StatusOK) }
 	app.Delete("/delete", handler).Name("delete")
 	app.Post("/post", handler).Name("post")
 	routes := app.GetRoutes(false)
@@ -3177,42 +3041,24 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 	named := "named"
 	app := New()
 
-	app.Get("/unnamed", func(c Ctx) error {
-		return c.Next()
-	})
+	app.Get("/unnamed", func(c Ctx) error { return c.Next() })
 
-	app.Post("/named", func(c Ctx) error {
-		return c.Next()
-	}).Name(named)
+	app.Post("/named", func(c Ctx) error { return c.Next() }).Name(named)
 
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	}) // no name - logging MW
+	app.Use(func(c Ctx) error { return c.Next() }) // no name - logging MW
 
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	}).Name("corsMW")
+	app.Use(func(c Ctx) error { return c.Next() }).Name("corsMW")
 
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	}).Name("compressMW")
+	app.Use(func(c Ctx) error { return c.Next() }).Name("compressMW")
 
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	}) // no name - cache MW
+	app.Use(func(c Ctx) error { return c.Next() }) // no name - cache MW
 
 	grp := app.Group("/pages").Name("pages.")
-	grp.Use(func(c Ctx) error {
-		return c.Next()
-	}).Name("csrfMW")
+	grp.Use(func(c Ctx) error { return c.Next() }).Name("csrfMW")
 
-	grp.Get("/home", func(c Ctx) error {
-		return c.Next()
-	}).Name("home")
+	grp.Get("/home", func(c Ctx) error { return c.Next() }).Name("home")
 
-	grp.Get("/unnamed", func(c Ctx) error {
-		return c.Next()
-	})
+	grp.Get("/unnamed", func(c Ctx) error { return c.Next() })
 
 	for _, route := range app.GetRoutes() {
 		switch route.Path {
@@ -3322,9 +3168,7 @@ func Test_App_State(t *testing.T) {
 func Benchmark_Communication_Flow(b *testing.B) {
 	app := New()
 
-	app.Get("/", func(c Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/", func(c Ctx) error { return c.SendString("Hello, World!") })
 
 	h := app.Handler()
 
@@ -3345,9 +3189,7 @@ func Benchmark_Communication_Flow(b *testing.B) {
 func Benchmark_Communication_Flow_Parallel(b *testing.B) {
 	app := New()
 
-	app.Get("/", func(c Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/", func(c Ctx) error { return c.SendString("Hello, World!") })
 
 	h := app.Handler()
 
@@ -3437,25 +3279,19 @@ func TestErrorHandler_PicksRightOne(t *testing.T) {
 	// common handler to be used by all routes,
 	// it will always fail by returning an error since
 	// we need to test that the right ErrorHandler is invoked
-	handler := func(_ Ctx) error {
-		return errors.New("random error")
-	}
+	handler := func(_ Ctx) error { return errors.New("random error") }
 
 	// subapp /api/v1/users [no custom error handler]
 	appAPIV1Users := New()
 	appAPIV1Users.Get("/", handler)
 
 	// subapp /api/v1/use [with custom error handler]
-	appAPIV1UseEH := func(c Ctx, _ error) error {
-		return c.SendString("/api/v1/use error handler")
-	}
+	appAPIV1UseEH := func(c Ctx, _ error) error { return c.SendString("/api/v1/use error handler") }
 	appAPIV1Use := New(Config{ErrorHandler: appAPIV1UseEH})
 	appAPIV1Use.Get("/", handler)
 
 	// subapp: /api/v1 [with custom error handler]
-	appV1EH := func(c Ctx, _ error) error {
-		return c.SendString("/api/v1 error handler")
-	}
+	appV1EH := func(c Ctx, _ error) error { return c.SendString("/api/v1 error handler") }
 	appV1 := New(Config{ErrorHandler: appV1EH})
 	appV1.Get("/", handler)
 	appV1.Use("/users", appAPIV1Users)
@@ -3587,9 +3423,7 @@ func Test_App_ShutdownWithTimeout_HandlerTakesAppMutex(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 	errs := make(chan error, 1)
-	go func() {
-		errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true}) }()
 
 	rootMiscBSendOnNewConn(t, ln, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
 
@@ -3724,9 +3558,7 @@ func Test_App_Shutdown_HookRegistrationNoRace(t *testing.T) {
 			app.Hooks().OnPostShutdown(func(error) error { return nil })
 		}
 	})
-	wg.Go(func() {
-		assert.NoError(t, app.Shutdown())
-	})
+	wg.Go(func() { assert.NoError(t, app.Shutdown()) })
 	wg.Wait()
 }
 
@@ -3888,9 +3720,7 @@ func Test_App_AcceptsEncodings_EmptyField_Request(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.AcceptsEncodings("br", "gzip", "identity"))
-	})
+	app.Get("/", func(c Ctx) error { return c.SendString(c.AcceptsEncodings("br", "gzip", "identity")) })
 	ln := startRawServer(t, app)
 
 	for name, tc := range map[string]struct{ field, answer string }{

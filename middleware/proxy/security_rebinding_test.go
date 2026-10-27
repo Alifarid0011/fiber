@@ -236,12 +236,8 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 	// sees the public answer and the block genuinely happens at dial time —
 	// not because a shared resolver already flipped to the loopback answer.
 	dispatch := map[string]func(c fiber.Ctx, target string) error{
-		"default client": func(c fiber.Ctx, target string) error {
-			return Do(c, target)
-		},
-		"custom client": func(c fiber.Ctx, target string) error {
-			return Do(c, target, &fasthttp.Client{})
-		},
+		"default client": func(c fiber.Ctx, target string) error { return Do(c, target) },
+		"custom client":  func(c fiber.Ctx, target string) error { return Do(c, target, &fasthttp.Client{}) },
 		// A client that configures DialTimeout instead of Dial must still be
 		// guarded: fasthttp's callDialFunc prefers DialTimeout, so a guard
 		// that wrapped only Dial would leave this path unvalidated.
@@ -252,9 +248,7 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 		// DoRedirects dispatches through the same guarded client; the first
 		// hop's dial must be blocked. Pins that the redirect path (and its
 		// per-hop cli.Do) is guarded too.
-		"DoRedirects": func(c fiber.Ctx, target string) error {
-			return DoRedirects(c, target, 3)
-		},
+		"DoRedirects": func(c fiber.Ctx, target string) error { return DoRedirects(c, target, 3) },
 	}
 
 	for name, do := range dispatch {
@@ -430,9 +424,7 @@ func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 
 			var wg sync.WaitGroup
 			for range 32 {
-				wg.Go(func() {
-					ensureClientGuarded(cli)
-				})
+				wg.Go(func() { ensureClientGuarded(cli) })
 			}
 			wg.Wait()
 
@@ -577,9 +569,7 @@ func Test_Security_GuardedDialTimeouts_HandTheTimeoutOn(t *testing.T) {
 			"a Balancer host client": func() fasthttp.DialFuncWithTimeout {
 				return newHostClient(upstream, &Config{DialDualStack: dualStack}, DefaultSecurityPolicy()).DialTimeout
 			},
-			"the guard": func() fasthttp.DialFuncWithTimeout {
-				return newDialGuard(dualStack).dialCheckedTimeout
-			},
+			"the guard": func() fasthttp.DialFuncWithTimeout { return newDialGuard(dualStack).dialCheckedTimeout },
 		}
 		viaTimeout := "DialTimeout"
 		if dualStack {

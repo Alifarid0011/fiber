@@ -102,9 +102,7 @@ func Test_WithContextRenderError(t *testing.T) {
 	require.NoError(t, SetContextTemplate(ContextConfig{
 		Format: "[${broken}] ",
 		CustomTags: map[string]ContextTagFunc{
-			"broken": func(_ Buffer, _ any, _ *ContextData, _ string) (int, error) {
-				return 0, templateErr
-			},
+			"broken": func(_ Buffer, _ any, _ *ContextData, _ string) (int, error) { return 0, templateErr },
 		},
 	}))
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
@@ -165,9 +163,7 @@ func Test_DefaultLogger(t *testing.T) {
 	Warn("work may fail")
 	Error("work failed")
 
-	require.Panics(t, func() {
-		Panic("work panic")
-	})
+	require.Panics(t, func() { Panic("work panic") })
 
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
@@ -189,9 +185,7 @@ func Test_DefaultFormatLogger(t *testing.T) {
 	Warnf("%s may fail", work)
 	Errorf("%s failed", work)
 
-	require.Panics(t, func() {
-		Panicf("%s panic", work)
-	})
+	require.Panics(t, func() { Panicf("%s panic", work) })
 
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
@@ -215,9 +209,7 @@ func Test_CtxLogger(t *testing.T) {
 	WithContext(ctx).Warnf("%s may fail", work)
 	WithContext(ctx).Errorf("%s failed %d", work, 50)
 
-	require.Panics(t, func() {
-		WithContext(ctx).Panicf("%s panic", work)
-	})
+	require.Panics(t, func() { WithContext(ctx).Panicf("%s panic", work) })
 
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
@@ -434,9 +426,7 @@ func Test_Logw(t *testing.T) {
 			SetOutput(&w)
 
 			if tt.panics {
-				require.Panics(t, func() {
-					tt.log(tt.msg, keysAndValues...)
-				})
+				require.Panics(t, func() { tt.log(tt.msg, keysAndValues...) })
 			} else {
 				tt.log(tt.msg, keysAndValues...)
 			}
@@ -485,9 +475,7 @@ func Test_DefaultLoggerNonStringKeys(t *testing.T) {
 				depth:  4,
 			}
 
-			require.NotPanics(t, func() {
-				tt.log(l)
-			})
+			require.NotPanics(t, func() { tt.log(l) })
 
 			require.Equal(t, tt.want, buf.String())
 		})

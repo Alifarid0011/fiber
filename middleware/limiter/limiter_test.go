@@ -277,9 +277,7 @@ func canceledContextWithMarker(label string) context.Context {
 func limiterTestApp(cfg *Config, appCfg ...fiber.Config) *fiber.App {
 	app := fiber.New(appCfg...)
 	app.Use(New(*cfg))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	return app
 }
 
@@ -350,13 +348,9 @@ func Test_Limiter_DefaultConfigNoPanic(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New())
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	require.NotPanics(t, func() {
-		apptest.Expect(t, app, "/", fiber.StatusOK)
-	})
+	require.NotPanics(t, func() { apptest.Expect(t, app, "/", fiber.StatusOK) })
 }
 
 func Test_getEffectiveStatusCode_FiberError(t *testing.T) {
@@ -397,9 +391,7 @@ func Test_getEffectiveStatusCode_TypedNilError(t *testing.T) {
 
 			c.Response().SetStatusCode(fiber.StatusAccepted)
 
-			require.NotPanics(t, func() {
-				require.Equal(t, fiber.StatusAccepted, getEffectiveStatusCode(c, tc.err))
-			})
+			require.NotPanics(t, func() { require.Equal(t, fiber.StatusAccepted, getEffectiveStatusCode(c, tc.err)) })
 		})
 	}
 }
@@ -495,15 +487,11 @@ func Test_Limiter_PropagatesRequestContextToStorage(t *testing.T) {
 				Max:                    1,
 				Expiration:             time.Minute,
 				SkipSuccessfulRequests: true,
-				KeyGenerator: func(c fiber.Ctx) string {
-					return c.Path()
-				},
-				LimiterMiddleware: strategy.handler,
+				KeyGenerator:           func(c fiber.Ctx) string { return c.Path() },
+				LimiterMiddleware:      strategy.handler,
 			}))
 
-			app.Get("/:mode", func(c fiber.Ctx) error {
-				return c.SendString("ok")
-			})
+			app.Get("/:mode", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 			for _, path := range []string{"/normal", "/rollback"} {
 				apptest.Expect(t, app, path, fiber.StatusOK)
@@ -710,16 +698,12 @@ func Test_Limiter_With_Max_Func_With_Zero(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		MaxFunc: func(_ fiber.Ctx) int {
-			return 0
-		},
+		MaxFunc:    func(_ fiber.Ctx) int { return 0 },
 		Expiration: 2 * time.Second,
 		Storage:    memory.New(),
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello tester!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
 
 	limiterTestConcurrentOK(t, app, 5)
 
@@ -732,16 +716,12 @@ func Test_Limiter_With_Max_Func(t *testing.T) {
 	const maxRequests = 10
 
 	app.Use(New(Config{
-		MaxFunc: func(_ fiber.Ctx) int {
-			return maxRequests
-		},
+		MaxFunc:    func(_ fiber.Ctx) int { return maxRequests },
 		Expiration: 2 * time.Second,
 		Storage:    memory.New(),
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello tester!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
 
 	requireBurstLimited(t, app, maxRequests)
 }
@@ -932,9 +912,7 @@ func Test_Limiter_Concurrency(t *testing.T) {
 				Expiration: 2 * time.Second,
 				Storage:    tc.storage(),
 			}))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("Hello tester!")
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
 
 			requireBurstLimited(t, app, 50)
 		})
@@ -981,9 +959,7 @@ func Test_Limiter_Concurrency_UnrelatedKeys(t *testing.T) {
 			LimiterMiddleware: mw,
 			KeyGenerator:      func(c fiber.Ctx) string { return c.Get("X-Client") },
 		}))
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusOK)
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 		done := make(chan error, 1)
 		go func() {
@@ -1144,9 +1120,7 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 		Storage:    memory.New(),
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
 	h := app.Handler()
 
@@ -1178,9 +1152,7 @@ func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests(t *testing.T) {
 				DisableHeaders:         true,
 			}))
 
-			app.Get("/", func(_ fiber.Ctx) error {
-				return fiber.NewErrorf(fiber.StatusInternalServerError, "Error")
-			})
+			app.Get("/", func(_ fiber.Ctx) error { return fiber.NewErrorf(fiber.StatusInternalServerError, "Error") })
 
 			apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 
@@ -1215,9 +1187,7 @@ func Test_Limiter_RawConfigUsesDefaults(t *testing.T) {
 
 				app := fiber.New()
 				app.Use(strategy.handler.New(tc.cfg))
-				app.Get("/", func(c fiber.Ctx) error {
-					return c.SendStatus(fiber.StatusOK)
-				})
+				app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 				for i := range tc.limit {
 					resp := apptest.Do(t, app, "/")
@@ -1243,9 +1213,7 @@ func Test_Limiter_NilConfigKeepsCustomizedDefault(t *testing.T) {
 	for _, strategy := range windowStrategies {
 		app := fiber.New()
 		app.Use(strategy.handler.New(nil))
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusOK)
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		require.NoError(t, err, strategy.name)
@@ -1349,9 +1317,7 @@ func Test_Limiter_PlainErrorCountsAsInternalError(t *testing.T) {
 
 				app := fiber.New()
 				app.Use(New(cfg))
-				app.Get("/", func(fiber.Ctx) error {
-					return errors.New("boom")
-				})
+				app.Get("/", func(fiber.Ctx) error { return errors.New("boom") })
 
 				got := make([]int, 0, len(tc.want))
 				for range tc.want {
@@ -1398,9 +1364,7 @@ func Test_Limiter_Next_BeforeMaxFunc(t *testing.T) {
 				},
 				LimiterMiddleware: strategy.handler,
 			}))
-			app.Get("/*", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusOK)
-			})
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 			for range 3 {
 				apptest.Expect(t, app, "/skipped", fiber.StatusOK)
@@ -1455,9 +1419,7 @@ func Test_Limiter_ExpirationFunc_SharedKeyKeepsOpeningWindow(t *testing.T) {
 				clock:             clock.Now,
 				Storage:           newFakeLimiterStorage(),
 			}))
-			app.Get("/*", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusOK)
-			})
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 			reset := func(path string) string {
 				resp := apptest.Expect(t, app, path, fiber.StatusOK)
@@ -1538,12 +1500,8 @@ func Test_Limiter_Fixed_ShorterWindowDoesNotShortenTheEntry(t *testing.T) {
 
 			app := fiber.New()
 			app.Use(New(cfg))
-			app.Get("/login", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusOK)
-			})
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendStatus(tc.shortStatus)
-			})
+			app.Get("/login", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(tc.shortStatus) })
 
 			for _, s := range tc.steps {
 				clock.Add(start.Add(s.at).Sub(clock.Now()))
@@ -1573,9 +1531,7 @@ func Test_Limiter_Sliding_MixedWindowsDoNotInflateThePreviousWindow(t *testing.T
 		clock:             clock.Now,
 		Storage:           newFakeLimiterStorage(),
 	}))
-	app.Get("/*", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	get := func(path string) *http.Response {
 		resp := apptest.Do(t, app, path)
@@ -1913,9 +1869,7 @@ func Test_Limiter_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
@@ -1930,9 +1884,7 @@ func Test_Limiter_Headers(t *testing.T) {
 		Expiration: 2 * time.Second,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello tester!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
@@ -1959,9 +1911,7 @@ func Test_Limiter_Disable_Headers(t *testing.T) {
 		DisableHeaders: true,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello tester!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
 
 	// first request should pass
 	fctx := &fasthttp.RequestCtx{}
@@ -1998,9 +1948,7 @@ func Benchmark_Limiter(b *testing.B) {
 		Expiration: 60 * time.Second,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
 	h := app.Handler()
 
@@ -2024,9 +1972,7 @@ func Benchmark_Limiter_Parallel_Keys(b *testing.B) {
 		KeyGenerator: func(c fiber.Ctx) string { return c.Get("X-Client") },
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
 	h := app.Handler()
 
@@ -2069,9 +2015,7 @@ func Benchmark_Limiter_Admit(b *testing.B) {
 
 			app := fiber.New()
 			app.Use(New(cfg))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("Hello, World!")
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
 			h := app.Handler()
 
@@ -2123,9 +2067,7 @@ func Test_Sliding_Window(t *testing.T) {
 		LimiterMiddleware: SlidingWindow{},
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello tester!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
 
 	for _, step := range []struct {
 		wait     time.Duration // before the requests

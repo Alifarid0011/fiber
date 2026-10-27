@@ -205,7 +205,5 @@ func enableTestOnPrefork(t *testing.T) {
 
 	previous := testOnPrefork
 	testOnPrefork = true
-	t.Cleanup(func() {
-		testOnPrefork = previous
-	})
+	t.Cleanup(func() { testOnPrefork = previous })
 }

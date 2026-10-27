@@ -30,9 +30,7 @@ func Test_Middleware_Panics(t *testing.T) {
 
 	t.Run("Invalid Key", func(t *testing.T) {
 		t.Parallel()
-		require.Panics(t, func() {
-			GenerateKey(11)
-		})
+		require.Panics(t, func() { GenerateKey(11) })
 	})
 }
 
@@ -194,9 +192,7 @@ func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 		Key: testKey,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("value=" + c.Cookies("test"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + c.Cookies("test")) })
 	app.Post("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "test",
@@ -269,10 +265,8 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Key: testKey,
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Key:  testKey,
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -348,9 +342,7 @@ func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 		},
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("value=" + c.Cookies("test"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + c.Cookies("test")) })
 	app.Post("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "test",
@@ -423,9 +415,7 @@ func Benchmark_Middleware_Encrypt_Cookie(b *testing.B) {
 		Key: testKey,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("value=" + c.Cookies("test"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + c.Cookies("test")) })
 	app.Post("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "test",
@@ -467,10 +457,8 @@ func Benchmark_Encrypt_Cookie_Next(b *testing.B) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Key: testKey,
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Key:  testKey,
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -543,9 +531,7 @@ func Benchmark_Encrypt_Cookie_Custom_Encryptor(b *testing.B) {
 		},
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("value=" + c.Cookies("test"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + c.Cookies("test")) })
 	app.Post("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "test",
@@ -590,9 +576,7 @@ func Benchmark_Middleware_Encrypt_Cookie_Parallel(b *testing.B) {
 		Key: testKey,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("value=" + c.Cookies("test"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + c.Cookies("test")) })
 	app.Post("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "test",
@@ -646,10 +630,8 @@ func Benchmark_Encrypt_Cookie_Next_Parallel(b *testing.B) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Key: testKey,
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Key:  testKey,
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -726,9 +708,7 @@ func Benchmark_Encrypt_Cookie_Custom_Encryptor_Parallel(b *testing.B) {
 		},
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("value=" + c.Cookies("test"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + c.Cookies("test")) })
 	app.Post("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "test",
@@ -866,9 +846,7 @@ func Test_Middleware_Duplicate_Cookie_Names(t *testing.T) {
 			Key:    testKey,
 			Except: except,
 		}))
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("value=" + c.Cookies("test"))
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + c.Cookies("test")) })
 		return app
 	}
 
@@ -891,9 +869,7 @@ func Test_Middleware_Duplicate_Cookie_Names(t *testing.T) {
 	t.Run("without middleware the first cookie wins", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("value=" + c.Cookies("test"))
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + c.Cookies("test")) })
 		body, _ := request(t, app, "test=first; test=second")
 		require.Equal(t, "value=first", body)
 	})
@@ -970,9 +946,7 @@ func Test_Middleware_Duplicate_Cookie_Names(t *testing.T) {
 			Key:    testKey,
 			Except: []string{"set", "quoted"},
 		}))
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString(c.Cookies("set") + "|" + c.Cookies("quoted"))
-		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Cookies("set") + "|" + c.Cookies("quoted")) })
 
 		run := func(cookieHeader string) string {
 			ctx := &fasthttp.RequestCtx{}

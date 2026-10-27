@@ -347,9 +347,7 @@ func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	var user User
 
 	req := fasthttp.AcquireRequest()
-	b.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-	})
+	b.Cleanup(func() { fasthttp.ReleaseRequest(req) })
 
 	buf := &bytes.Buffer{}
 	mw := multipart.NewWriter(buf)

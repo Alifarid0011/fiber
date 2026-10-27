@@ -26,9 +26,7 @@ func Benchmark_RespHeaderBinder_Bind(b *testing.B) {
 	resp.Header.Set("age", "42")
 	resp.Header.Set("posts", "post1,post2,post3")
 
-	b.Cleanup(func() {
-		fasthttp.ReleaseResponse(resp)
-	})
+	b.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
 
 	var err error
 	for b.Loop() {

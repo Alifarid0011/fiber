@@ -210,9 +210,7 @@ func Test_HasConfiguredServices(t *testing.T) {
 		require.Equal(t, expected, result)
 	}
 
-	t.Run("no-services", func(t *testing.T) {
-		testHasConfiguredServicesFn(t, &App{configured: Config{}}, false)
-	})
+	t.Run("no-services", func(t *testing.T) { testHasConfiguredServicesFn(t, &App{configured: Config{}}, false) })
 
 	t.Run("has-services", func(t *testing.T) {
 		testHasConfiguredServicesFn(t, &App{configured: Config{Services: []Service{&mockService{name: "test-dep"}}}}, true)
@@ -532,12 +530,8 @@ func Test_ServiceContextProviders(t *testing.T) {
 		ctx := context.TODO()
 		app := &App{
 			configured: Config{
-				ServicesStartupContextProvider: func() context.Context {
-					return ctx
-				},
-				ServicesShutdownContextProvider: func() context.Context {
-					return ctx
-				},
+				ServicesStartupContextProvider:  func() context.Context { return ctx },
+				ServicesShutdownContextProvider: func() context.Context { return ctx },
 			},
 			state: newState(),
 		}
@@ -563,9 +557,7 @@ func Benchmark_StartServices(b *testing.B) {
 		}
 	}
 
-	b.Run("no-services", func(b *testing.B) {
-		benchmarkFn(b, []Service{})
-	})
+	b.Run("no-services", func(b *testing.B) { benchmarkFn(b, []Service{}) })
 
 	b.Run("single-service", func(b *testing.B) {
 		benchmarkFn(b, []Service{
@@ -606,9 +598,7 @@ func Benchmark_ShutdownServices(b *testing.B) {
 		}
 	}
 
-	b.Run("no-services", func(b *testing.B) {
-		benchmarkFn(b, []Service{})
-	})
+	b.Run("no-services", func(b *testing.B) { benchmarkFn(b, []Service{}) })
 
 	b.Run("single-service", func(b *testing.B) {
 		benchmarkFn(b, []Service{
@@ -775,9 +765,7 @@ func Benchmark_ServicesMemory(b *testing.B) {
 		require.NoError(b, err)
 	}
 
-	b.Run("no-services", func(b *testing.B) {
-		benchmarkFn(b, []Service{})
-	})
+	b.Run("no-services", func(b *testing.B) { benchmarkFn(b, []Service{}) })
 
 	b.Run("single-service", func(b *testing.B) {
 		benchmarkFn(b, []Service{
@@ -855,9 +843,7 @@ func Test_ShutdownServices_UncomparableService(t *testing.T) {
 	require.NoError(t, app.startServices(context.Background()))
 	require.Equal(t, 2, app.state.ServicesLen())
 
-	require.NotPanics(t, func() {
-		require.NoError(t, app.shutdownServices(context.Background()))
-	})
+	require.NotPanics(t, func() { require.NoError(t, app.shutdownServices(context.Background())) })
 	require.Zero(t, app.state.ServicesLen())
 }
 
@@ -943,9 +929,7 @@ func Test_ShutdownServices_ConcurrentCallersTerminateOnce(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make([]error, callers)
 	for i := range callers {
-		wg.Go(func() {
-			errs[i] = app.shutdownServices(context.Background())
-		})
+		wg.Go(func() { errs[i] = app.shutdownServices(context.Background()) })
 	}
 	wg.Wait()
 

@@ -60,9 +60,7 @@ func echoTarget(t *testing.T) string {
 	t.Helper()
 
 	target := fiber.New()
-	target.Use(func(c fiber.Ctx) error {
-		return c.SendString(c.OriginalURL())
-	})
+	target.Use(func(c fiber.Ctx) error { return c.SendString(c.OriginalURL()) })
 	return listenUpstream(t, target)
 }
 
@@ -430,9 +428,7 @@ func Test_Proxy_Do_UserClientForwardsTargetAsGiven(t *testing.T) {
 	// "/a/b/d?q=%2F" for a target the handler never wrote.
 	target := "http://" + addr + "/a%2Fb//c/..%2Fd?q=%2F"
 	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		return Do(c, target, &fasthttp.Client{})
-	})
+	app.Get("/", func(c fiber.Ctx) error { return Do(c, target, &fasthttp.Client{}) })
 
 	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, "/a%2Fb//c/..%2Fd?q=%2F", readBody(t, resp))

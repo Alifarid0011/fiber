@@ -452,9 +452,7 @@ func Test_FiberHandler(t *testing.T) {
 func Test_FiberHandler_ProtocolPropagation(t *testing.T) {
 	t.Parallel()
 
-	handler := FiberHandlerFunc(func(c fiber.Ctx) error {
-		return c.SendString(c.Protocol())
-	})
+	handler := FiberHandlerFunc(func(c fiber.Ctx) error { return c.SendString(c.Protocol()) })
 
 	// The requests are served one after another by one handler, so a later one
 	// may be served by a context an earlier one has used: no subtests, which
@@ -558,9 +556,7 @@ func Test_FiberHandler_BodyLimit(t *testing.T) {
 				BodyLimit: tt.bodyLimit,
 			})
 
-			app.Post("/", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusOK)
-			})
+			app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 			handlerFunc := FiberApp(app)
 			body := bytes.Repeat([]byte("a"), tt.bodySize)
@@ -879,18 +875,14 @@ func Test_CopyContextToFiberContext(t *testing.T) {
 			t.Parallel()
 
 			var fctx fasthttp.RequestCtx
-			require.NotPanics(t, func() {
-				CopyContextToFiberContext(tc.src, &fctx)
-			})
+			require.NotPanics(t, func() { CopyContextToFiberContext(tc.src, &fctx) })
 		})
 	}
 
 	t.Run("nil request context", func(t *testing.T) {
 		t.Parallel()
 		ctx := context.WithValue(context.Background(), contextKey("nil-request-context"), "value")
-		require.NotPanics(t, func() {
-			CopyContextToFiberContext(ctx, nil)
-		})
+		require.NotPanics(t, func() { CopyContextToFiberContext(ctx, nil) })
 	})
 
 	t.Run("copies key value pairs", func(t *testing.T) {
@@ -934,9 +926,7 @@ func Test_HTTPMiddleware_ErrorHandling(t *testing.T) {
 		})
 	}
 
-	fiberHandler := func(_ fiber.Ctx) error {
-		return fiber.NewError(fiber.StatusBadRequest, "test error")
-	}
+	fiberHandler := func(_ fiber.Ctx) error { return fiber.NewError(fiber.StatusBadRequest, "test error") }
 
 	app := fiber.New()
 	app.Use(HTTPMiddleware(errorMiddleware))
@@ -952,9 +942,7 @@ func Test_FiberHandler_IOError(t *testing.T) {
 	t.Parallel()
 
 	// Test io.Copy error by using a failing reader
-	handlerFunc := FiberHandlerFunc(func(c fiber.Ctx) error {
-		return c.SendString("should not reach here")
-	})
+	handlerFunc := FiberHandlerFunc(func(c fiber.Ctx) error { return c.SendString("should not reach here") })
 
 	req := createTestRequest(http.MethodPost, "", &failingReader{})
 	req.ContentLength = 100 // Set content length so it tries to read
@@ -1025,9 +1013,7 @@ func Test_FiberHandler_ClosesBodyStream(t *testing.T) {
 				closed:     closed,
 			}
 
-			handlerFunc := FiberHandlerFunc(func(c fiber.Ctx) error {
-				return c.SendStream(body)
-			})
+			handlerFunc := FiberHandlerFunc(func(c fiber.Ctx) error { return c.SendStream(body) })
 
 			handlerFunc.ServeHTTP(tc.w, httptest.NewRequest(http.MethodGet, "/test", http.NoBody))
 			require.True(t, closed.Load())
@@ -1081,9 +1067,7 @@ func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	go func() {
 		server.Serve(listener) //nolint:errcheck // not needed
 	}()
-	defer func() {
-		require.NoError(t, server.Close())
-	}()
+	defer func() { require.NoError(t, server.Close()) }()
 
 	cc := &http.Client{
 		Timeout: 200 * time.Millisecond,
@@ -1149,9 +1133,7 @@ func Benchmark_FiberHandlerFunc(b *testing.B) {
 		},
 	}
 
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	}
+	fiberH := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }
 	handlerFunc := FiberHandlerFunc(fiberH)
 
 	for _, bm := range benchmarks {
@@ -1223,9 +1205,7 @@ func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
 		},
 	}
 
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	}
+	fiberH := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }
 	handlerFunc := FiberHandlerFunc(fiberH)
 
 	for _, bm := range benchmarks {
@@ -1271,9 +1251,7 @@ func Benchmark_HTTPHandler(b *testing.B) {
 	app := fiber.New()
 
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer func() {
-		app.ReleaseCtx(ctx)
-	}()
+	defer func() { app.ReleaseCtx(ctx) }()
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -1303,9 +1281,7 @@ func Benchmark_HTTPHandlerWithContext(b *testing.B) {
 
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	defer func() {
-		app.ReleaseCtx(ctx)
-	}()
+	defer func() { app.ReleaseCtx(ctx) }()
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -1440,9 +1416,7 @@ func Test_FiberHandler_ErrorFallback(t *testing.T) {
 	t.Parallel()
 
 	// Test case where resolveRemoteAddr fails and falls back to nil
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendString("success")
-	}
+	fiberH := func(c fiber.Ctx) error { return c.SendString("success") }
 	handlerFunc := FiberHandlerFunc(fiberH)
 
 	// Use helper function for cleaner test setup
@@ -1458,9 +1432,7 @@ func Test_FiberHandler_WithUnixSocket(t *testing.T) {
 	t.Parallel()
 
 	// Test case where request has unix socket context
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendString("unix socket success")
-	}
+	fiberH := func(c fiber.Ctx) error { return c.SendString("unix socket success") }
 	handlerFunc := FiberHandlerFunc(fiberH)
 
 	// Create a context with unix socket local address
@@ -1480,9 +1452,7 @@ func Test_FiberHandler_BodySizeLimit(t *testing.T) {
 	t.Parallel()
 
 	// Test body size limit enforcement
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendString("processed")
-	}
+	fiberH := func(c fiber.Ctx) error { return c.SendString("processed") }
 	handlerFunc := FiberHandlerFunc(fiberH)
 
 	// Create a large body exceeding limit
@@ -1506,9 +1476,7 @@ func TestUnixSocketAdaptor(t *testing.T) {
 	}()
 
 	app := fiber.New()
-	app.Get("/hello", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	app.Get("/hello", func(c fiber.Ctx) error { return c.SendString("ok") })
 	handler := FiberApp(app)
 
 	listener, err := net.Listen("unix", socketPath)
@@ -1734,9 +1702,7 @@ func Benchmark_HTTPMiddleware(b *testing.B) {
 
 	app := fiber.New()
 	app.Use(HTTPMiddleware(nethttpMW))
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	handler := app.Handler()
 
@@ -1817,9 +1783,7 @@ func Benchmark_FiberApp(b *testing.B) {
 // net/http body into the fasthttp request before the handler runs.
 func Benchmark_FiberApp_Body(b *testing.B) {
 	app := fiber.New()
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	handler := FiberApp(app)
 
@@ -2410,9 +2374,7 @@ func Test_HTTPHandler_TLSPropagated(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Scheme() + " " + strconv.FormatBool(c.Secure()))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Scheme() + " " + strconv.FormatBool(c.Secure())) })
 
 	handler := FiberApp(app)
 
@@ -2433,12 +2395,8 @@ func Test_HTTPMiddleware_URLRewrite(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
-		return http.StripPrefix("/api", next)
-	}))
-	app.Get("/users", func(c fiber.Ctx) error {
-		return c.SendString("users at " + c.Path())
-	})
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return http.StripPrefix("/api", next) }))
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendString("users at " + c.Path()) })
 
 	apptest.ExpectBody(t, app, "/api/users?x=1", fiber.StatusOK, "users at /users")
 }
@@ -2562,12 +2520,8 @@ func Test_HTTPMiddleware_NoRewriteKeepsChainPosition(t *testing.T) {
 				authRan.Store(true)
 				return fiber.ErrForbidden
 			})
-			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
-				return next
-			}))
-			app.Get("/api/admin/secret", func(c fiber.Ctx) error {
-				return c.SendString("SECRET")
-			})
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return next }))
+			app.Get("/api/admin/secret", func(c fiber.Ctx) error { return c.SendString("SECRET") })
 
 			resp := apptest.Do(t, app, path)
 			body := apptest.Body(t, resp)

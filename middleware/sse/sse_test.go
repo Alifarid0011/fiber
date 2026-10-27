@@ -60,9 +60,7 @@ func sseTestOnClose(t *testing.T, handler func(fiber.Ctx, *Stream) error) error 
 	app.Get("/events", New(Config{
 		DisableHeartbeat: true,
 		Handler:          handler,
-		OnClose: func(_ fiber.Ctx, err error) {
-			closed <- err
-		},
+		OnClose:          func(_ fiber.Ctx, err error) { closed <- err },
 	}))
 
 	apptest.Expect(t, app, "/events", fiber.StatusOK)
@@ -133,9 +131,7 @@ func Test_SSE_NewUsesAppJSONEncoder(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New(fiber.Config{
-		JSONEncoder: func(any) ([]byte, error) {
-			return []byte(`{"encoded":"custom"}`), nil
-		},
+		JSONEncoder: func(any) ([]byte, error) { return []byte(`{"encoded":"custom"}`), nil },
 	})
 	app.Get("/events", New(Config{
 		DisableHeartbeat: true,
@@ -244,9 +240,7 @@ func Test_SSE_NewWritesHeartbeat(t *testing.T) {
 func Test_SSE_OnCloseReceivesNilAfterNormalClose(t *testing.T) {
 	t.Parallel()
 
-	err := sseTestOnClose(t, func(_ fiber.Ctx, stream *Stream) error {
-		return stream.Event(Event{Data: "ok"})
-	})
+	err := sseTestOnClose(t, func(_ fiber.Ctx, stream *Stream) error { return stream.Event(Event{Data: "ok"}) })
 
 	require.NoError(t, err)
 }
@@ -299,9 +293,7 @@ func Test_SSE_StreamConcurrentWrites(t *testing.T) {
 	errs := make(chan error, writers)
 	var wg sync.WaitGroup
 	for i := range writers {
-		wg.Go(func() {
-			errs <- stream.Event(Event{Name: "message", Data: i})
-		})
+		wg.Go(func() { errs <- stream.Event(Event{Name: "message", Data: i}) })
 	}
 	wg.Wait()
 	close(errs)
@@ -398,9 +390,7 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 			handlerDone <- err
 			return err
 		},
-		OnClose: func(_ fiber.Ctx, err error) {
-			onCloseDone <- err
-		},
+		OnClose: func(_ fiber.Ctx, err error) { onCloseDone <- err },
 	}))
 
 	resp := apptest.Do(t, app, "/events", fiber.TestConfig{
@@ -432,9 +422,7 @@ func Test_SSE_HandlerErrorCallsOnClose(t *testing.T) {
 	t.Parallel()
 
 	handlerErr := errors.New("boom")
-	err := sseTestOnClose(t, func(fiber.Ctx, *Stream) error {
-		return handlerErr
-	})
+	err := sseTestOnClose(t, func(fiber.Ctx, *Stream) error { return handlerErr })
 
 	require.ErrorIs(t, err, handlerErr)
 }
@@ -442,9 +430,7 @@ func Test_SSE_HandlerErrorCallsOnClose(t *testing.T) {
 func Test_SSE_HandlerPanicCallsOnClose(t *testing.T) {
 	t.Parallel()
 
-	err := sseTestOnClose(t, func(fiber.Ctx, *Stream) error {
-		panic("boom")
-	})
+	err := sseTestOnClose(t, func(fiber.Ctx, *Stream) error { panic("boom") })
 
 	require.EqualError(t, err, "sse: handler panic: boom")
 }
@@ -452,9 +438,7 @@ func Test_SSE_HandlerPanicCallsOnClose(t *testing.T) {
 func Test_SSE_NewPanicsWithoutHandler(t *testing.T) {
 	t.Parallel()
 
-	require.PanicsWithValue(t, "sse: Handler must not be nil", func() {
-		New()
-	})
+	require.PanicsWithValue(t, "sse: Handler must not be nil", func() { New() })
 }
 
 func Test_SSE_StopHeartbeatIsIdempotent(t *testing.T) {

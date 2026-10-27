@@ -91,18 +91,12 @@ func Test_RegisterContextTag(t *testing.T) {
 	t.Parallel()
 
 	const tagName = "cov-ctx-tag"
-	RegisterContextTag(tagName, func(_ any) string {
-		return "rendered-value"
-	})
+	RegisterContextTag(tagName, func(_ any) string { return "rendered-value" })
 
 	require.Contains(t, loggerTestLog(t, &Config{Format: "${" + tagName + "}\n"}), "rendered-value")
 
-	require.Panics(t, func() {
-		RegisterContextTag("", func(_ any) string { return "" })
-	})
-	require.Panics(t, func() {
-		RegisterContextTag("name", nil)
-	})
+	require.Panics(t, func() { RegisterContextTag("", func(_ any) string { return "" }) })
+	require.Panics(t, func() { RegisterContextTag("name", nil) })
 }
 
 // Test_RegisterContextTag_EmptyValue ensures the empty-return path of the
@@ -111,9 +105,7 @@ func Test_RegisterContextTag_EmptyValue(t *testing.T) {
 	t.Parallel()
 
 	const tagName = "cov-ctx-empty"
-	RegisterContextTag(tagName, func(_ any) string {
-		return ""
-	})
+	RegisterContextTag(tagName, func(_ any) string { return "" })
 
 	require.Contains(t, loggerTestLog(t, &Config{Format: "[${" + tagName + "}]\n"}), "[]")
 }

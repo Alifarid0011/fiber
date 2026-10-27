@@ -1292,9 +1292,7 @@ func Test_Bind_Body(t *testing.T) {
 		require.Equal(t, "john", d.Name)
 	}
 
-	t.Run("JSON", func(t *testing.T) {
-		testDecodeParser(t, MIMEApplicationJSON, []byte(`{"name":"john"}`))
-	})
+	t.Run("JSON", func(t *testing.T) { testDecodeParser(t, MIMEApplicationJSON, []byte(`{"name":"john"}`)) })
 	t.Run("MsgPack", func(t *testing.T) {
 		testDecodeParser(t, MIMEApplicationMsgPack, []byte{0x81, 0xa4, 0x6e, 0x61, 0x6d, 0x65, 0xa4, 0x6a, 0x6f, 0x68, 0x6e})
 		require.Error(t, bindBody(t, MIMEApplicationMsgPack, []byte{0xFF, 0xFF}, new(Demo)))
@@ -1321,9 +1319,7 @@ func Test_Bind_Body(t *testing.T) {
 		testDecodeParser(t, MIMEApplicationXML, []byte(`<Demo><name>john</name></Demo>`))
 	})
 
-	t.Run("Form", func(t *testing.T) {
-		testDecodeParser(t, MIMEApplicationForm, []byte("name=john"))
-	})
+	t.Run("Form", func(t *testing.T) { testDecodeParser(t, MIMEApplicationForm, []byte("name=john")) })
 
 	t.Run("MultipartForm", func(t *testing.T) {
 		testDecodeParser(t, MIMEMultipartForm+`;boundary="b"`, []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--"))

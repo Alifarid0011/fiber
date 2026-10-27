@@ -115,9 +115,7 @@ func (*failingCSRFStorage) Close() error { return nil }
 // answers 200 on app, and returns the handler of app.
 func csrfTestHandler(app *fiber.App, cfg *Config) fasthttp.RequestHandler {
 	app.Use(New(*cfg))
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	return app.Handler()
 }
@@ -391,9 +389,7 @@ func Test_CSRF_StorageErrors(t *testing.T) {
 				},
 			}))
 
-			app.All("/", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusOK)
-			})
+			app.All("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 			req := httptest.NewRequest(tc.method, "/", http.NoBody)
 			if tc.headerToken {
@@ -623,9 +619,7 @@ func Test_CSRF_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
@@ -642,9 +636,7 @@ func Test_CSRFLoggerTagRedactsToken(t *testing.T) {
 		Format: "${csrf-token}",
 		Stream: &buf,
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	apptest.Expect(t, app, "/", fiber.StatusOK)
 	// CSRF tokens are randomly generated per request, so assert on the
@@ -681,9 +673,7 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 
 	app.Use(New(Config{ErrorHandler: errorHandler}))
 
-	app.All("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.All("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 	ctx := newTrustedRequestCtx()
@@ -1217,15 +1207,9 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New())
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-	app.Get("/test", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 
@@ -1273,13 +1257,9 @@ func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 	app := fiber.New()
 
 	app.Use(New())
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
@@ -1316,9 +1296,7 @@ func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 	app := fiber.New()
 
 	app.Use(New())
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
@@ -1339,9 +1317,7 @@ func Test_CSRF_InvalidURLHeaders(t *testing.T) {
 	t.Parallel()
 
 	h, token := csrfTestTrusted(t, &Config{
-		ErrorHandler: func(ctx fiber.Ctx, err error) error {
-			return ctx.Status(419).Send([]byte(err.Error()))
-		},
+		ErrorHandler: func(ctx fiber.Ctx, err error) error { return ctx.Status(419).Send([]byte(err.Error())) },
 	}, "http")
 
 	csrfTestPostCases(t, h, token, []csrfTestPostCase{
@@ -1476,11 +1452,9 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 		Key:    "_csrf",
 	}
 	emptyExtractor := extractors.Extractor{
-		Extract: func(_ fiber.Ctx) (string, error) {
-			return "", nil
-		},
-		Source: extractors.SourceCustom,
-		Key:    "_csrf",
+		Extract: func(_ fiber.Ctx) (string, error) { return "", nil },
+		Source:  extractors.SourceCustom,
+		Key:     "_csrf",
 	}
 	customHeaderExtractor := extractors.Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
@@ -1625,11 +1599,9 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 			expectStatus: 200,
 		},
 		{
-			name:      "FromCustom_EmptyString",
-			extractor: emptyExtractor,
-			errorHandler: func(c fiber.Ctx, err error) error {
-				return c.Status(403).SendString(err.Error())
-			},
+			name:         "FromCustom_EmptyString",
+			extractor:    emptyExtractor,
+			errorHandler: func(c fiber.Ctx, err error) error { return c.Status(403).SendString(err.Error()) },
 			setupRequest: postBody(fiber.MIMETextPlain),
 			expectStatus: 403,
 			expectBody:   ErrTokenNotFound.Error(),
@@ -1783,9 +1755,7 @@ func Test_CSRF_Param_Extractor(t *testing.T) {
 
 			// Only use param-based routing for param extractor tests
 			csrfGroup := app.Group("/:csrf", New(Config{Extractor: extractors.FromParam("csrf")}))
-			csrfGroup.Post("/", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusOK)
-			})
+			csrfGroup.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 			h := app.Handler()
 			ctx := &fasthttp.RequestCtx{}
@@ -1944,20 +1914,16 @@ func Test_CSRF_Extractor_NonNotFoundError(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		Extractor: extractors.Extractor{
-			Extract: func(fiber.Ctx) (string, error) {
-				return "", sentinel
-			},
-			Source: extractors.SourceCustom,
-			Key:    "_csrf",
+			Extract: func(fiber.Ctx) (string, error) { return "", sentinel },
+			Source:  extractors.SourceCustom,
+			Key:     "_csrf",
 		},
 		ErrorHandler: func(_ fiber.Ctx, err error) error {
 			captured = err
 			return fiber.ErrTeapot
 		},
 	}))
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "/"), fiber.StatusTeapot)
 	require.ErrorIs(t, captured, sentinel)
@@ -2038,9 +2004,7 @@ func Test_CSRF_DeleteToken_WithSessionMiddleware(t *testing.T) {
 	app.Use(smh)
 	app.Use(New(Config{Session: sstore}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Post("/delete", func(c fiber.Ctx) error {
 		handler := HandlerFromContext(c)
 		require.NotNil(t, handler)
@@ -2150,9 +2114,7 @@ func Test_SessionManager_SetRaw_StoreError(t *testing.T) {
 	m := newFlakySessionManager(true, false)
 	c := newSessionCtx(t, "abc")
 
-	require.NotPanics(t, func() {
-		m.setRaw(c, "key", dummyValue, time.Minute)
-	})
+	require.NotPanics(t, func() { m.setRaw(c, "key", dummyValue, time.Minute) })
 }
 
 // Test_SessionManager_SetRaw_SaveError covers the save-failure warning branch of
@@ -2178,9 +2140,7 @@ func Test_SessionManager_DelRaw_StoreError(t *testing.T) {
 	m := newFlakySessionManager(true, false)
 	c := newSessionCtx(t, "abc")
 
-	require.NotPanics(t, func() {
-		m.delRaw(c)
-	})
+	require.NotPanics(t, func() { m.delRaw(c) })
 }
 
 // Test_SessionManager_DelRaw_SaveError covers the save-failure warning branch of

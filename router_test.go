@@ -261,9 +261,7 @@ func Test_Route_Match_Param(t *testing.T) {
 
 			app := New()
 
-			handler := func(c Ctx) error {
-				return c.SendString(c.Params(tc.param))
-			}
+			handler := func(c Ctx) error { return c.SendString(c.Params(tc.param)) }
 			if tc.use {
 				app.Use(tc.pattern, handler)
 			} else {
@@ -287,15 +285,11 @@ func Test_Route_Match_SlashInParams(t *testing.T) {
 	app.Get("/api/v1/:param-:param2", func(c Ctx) error {
 		return c.SendString(c.Params("param") + "|" + c.Params("param2"))
 	})
-	app.Get("/test:sign:param", func(c Ctx) error {
-		return c.SendString(c.Params("sign") + "|" + c.Params("param"))
-	})
+	app.Get("/test:sign:param", func(c Ctx) error { return c.SendString(c.Params("sign") + "|" + c.Params("param")) })
 	app.Get("/date/:day/:month?/:year?", func(c Ctx) error {
 		return c.SendString(c.Params("day") + "|" + c.Params("month") + "|" + c.Params("year"))
 	})
-	app.Use("/mw/:version", func(c Ctx) error {
-		return c.SendString(c.Params("version"))
-	})
+	app.Use("/mw/:version", func(c Ctx) error { return c.SendString(c.Params("version")) })
 
 	testCases := []struct {
 		url  string
@@ -325,9 +319,7 @@ func Test_App_HasParamRoutes(t *testing.T) {
 
 	app := New()
 	app.Get("/static/route", testEmptyHandler)
-	app.Get("/*", func(c Ctx) error {
-		return c.SendString(c.Params("*"))
-	})
+	app.Get("/*", func(c Ctx) error { return c.SendString(c.Params("*")) })
 	app.startupProcess()
 	require.False(t, app.hasParamRoutes)
 
@@ -336,9 +328,7 @@ func Test_App_HasParamRoutes(t *testing.T) {
 	apptest.ExpectBody(t, app, "/anything/else", StatusOK, "anything/else")
 
 	// the GET star route would shadow a GET param route, so use POST
-	app.Post("/users/:id", func(c Ctx) error {
-		return c.SendString(c.Params("id"))
-	})
+	app.Post("/users/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
 	app.RebuildTree()
 	require.True(t, app.hasParamRoutes)
 
@@ -377,9 +367,7 @@ func Test_Route_Match_Root(t *testing.T) {
 
 	app := New()
 
-	app.Get("/", func(c Ctx) error {
-		return c.SendString("root")
-	})
+	app.Get("/", func(c Ctx) error { return c.SendString("root") })
 
 	apptest.ExpectBody(t, app, "/", 200, "root")
 }
@@ -389,12 +377,8 @@ func Test_Route_Match_Parser(t *testing.T) {
 
 	app := New()
 
-	app.Get("/foo/:ParamName", func(c Ctx) error {
-		return c.SendString(c.Params("ParamName"))
-	})
-	app.Get("/Foobar/*", func(c Ctx) error {
-		return c.SendString(c.Params("*"))
-	})
+	app.Get("/foo/:ParamName", func(c Ctx) error { return c.SendString(c.Params("ParamName")) })
+	app.Get("/Foobar/*", func(c Ctx) error { return c.SendString(c.Params("*")) })
 	apptest.ExpectBody(t, app, "/foo/bar", 200, "bar")
 
 	// with star
@@ -433,9 +417,7 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 	t.Run("disable auto register config", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{DisableHeadAutoRegister: true})
-		app.Get("/", func(c Ctx) error {
-			return c.SendString("Hello")
-		})
+		app.Get("/", func(c Ctx) error { return c.SendString("Hello") })
 
 		routerTestExpect(t, app, apptest.Req(MethodHead, "/"), StatusMethodNotAllowed)
 	})
@@ -485,9 +467,7 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 		require.NoError(t, err)
 
 		app := New()
-		app.Get("/file", func(c Ctx) error {
-			return c.SendFile(file)
-		})
+		app.Get("/file", func(c Ctx) error { return c.SendFile(file) })
 
 		respHead := expectHead(t, app, "/file", StatusOK)
 		require.Equal(t, int64(len(content)), respHead.ContentLength)
@@ -531,9 +511,7 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 	t.Run("route listing includes auto head", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Get("/list", func(c Ctx) error {
-			return c.SendString("list")
-		})
+		app.Get("/list", func(c Ctx) error { return c.SendString("list") })
 
 		app.startupProcess()
 
@@ -556,9 +534,7 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 	t.Run("head mirrors status without body", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Get("/nocontent", func(c Ctx) error {
-			return c.SendStatus(StatusNoContent)
-		})
+		app.Get("/nocontent", func(c Ctx) error { return c.SendStatus(StatusNoContent) })
 
 		expectHead(t, app, "/nocontent", StatusNoContent)
 
@@ -571,9 +547,7 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 
 	app := New(Config{UnescapePath: true})
 
-	app.Use("/créer", func(c Ctx) error {
-		return c.SendString("test")
-	})
+	app.Use("/créer", func(c Ctx) error { return c.SendString("test") })
 
 	apptest.ExpectBody(t, app, "/cr%C3%A9er", StatusOK, "test")
 	// without special chars
@@ -585,9 +559,7 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 
 	// an encoded slash splits the segment only with the flag on
 	app.config.UnescapePath = true
-	app.Use("/cr/éer", func(c Ctx) error {
-		return c.SendString("split")
-	})
+	app.Use("/cr/éer", func(c Ctx) error { return c.SendString("split") })
 	apptest.ExpectBody(t, app, "/cr%2F%C3%A9er", StatusOK, "split")
 
 	app.config.UnescapePath = false
@@ -602,19 +574,11 @@ func Test_Route_Match_NormalizedPath(t *testing.T) {
 
 	newApp := func(cfg Config) *App {
 		app := New(cfg)
-		app.Use("/static/private", func(c Ctx) error {
-			return c.SendStatus(StatusForbidden)
-		})
-		app.Get("/static/*", func(c Ctx) error {
-			return c.SendString(c.Path() + "|" + c.Params("*"))
-		})
-		app.Get("/users/:id", func(c Ctx) error {
-			return c.SendString(c.Params("id"))
-		})
+		app.Use("/static/private", func(c Ctx) error { return c.SendStatus(StatusForbidden) })
+		app.Get("/static/*", func(c Ctx) error { return c.SendString(c.Path() + "|" + c.Params("*")) })
+		app.Get("/users/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
 		// a name outside the unreserved set is routed in its encoded spelling
-		app.Get("/enc/a%7Bb%7D", func(c Ctx) error {
-			return c.SendString(c.Path())
-		})
+		app.Get("/enc/a%7Bb%7D", func(c Ctx) error { return c.SendString(c.Path()) })
 		return app
 	}
 
@@ -791,18 +755,12 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 
 	app := New()
 	// static route and escaped part
-	app.Get("/v1/some/resource/name\\:customVerb", func(c Ctx) error {
-		return c.SendString("static")
-	})
+	app.Get("/v1/some/resource/name\\:customVerb", func(c Ctx) error { return c.SendString("static") })
 	// group route
 	group := app.Group("/v2/\\:firstVerb")
-	group.Get("/\\:customVerb", func(c Ctx) error {
-		return c.SendString("group")
-	})
+	group.Get("/\\:customVerb", func(c Ctx) error { return c.SendString("group") })
 	// route with resource param and escaped part
-	app.Get("/v3/:resource/name\\:customVerb", func(c Ctx) error {
-		return c.SendString(c.Params("resource"))
-	})
+	app.Get("/v3/:resource/name\\:customVerb", func(c Ctx) error { return c.SendString(c.Params("resource")) })
 
 	// check static route
 	apptest.ExpectBody(t, app, "/v1/some/resource/name:customVerb", StatusOK, "static")
@@ -835,9 +793,7 @@ func Test_Route_Match_Middleware_Prefix(t *testing.T) {
 
 			app := New()
 
-			app.Use(tc.prefix, func(c Ctx) error {
-				return c.SendString("middleware")
-			})
+			app.Use(tc.prefix, func(c Ctx) error { return c.SendString("middleware") })
 
 			routerTestExpectPath(t, app, tc.path, tc.status, tc.body)
 		})
@@ -882,13 +838,9 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.config.ErrorHandler = func(_ Ctx, _ error) error {
-		return errors.New("fake error")
-	}
+	app.config.ErrorHandler = func(_ Ctx, _ error) error { return errors.New("fake error") }
 
-	app.Get("/", func(_ Ctx) error {
-		return ErrForbidden
-	})
+	app.Get("/", func(_ Ctx) error { return ErrForbidden })
 
 	c := &fasthttp.RequestCtx{}
 
@@ -911,9 +863,7 @@ func Test_Router_NotFound(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := New()
-			app.Use(func(c Ctx) error {
-				return c.Next()
-			})
+			app.Use(func(c Ctx) error { return c.Next() })
 			appHandler := app.Handler()
 			c := &fasthttp.RequestCtx{}
 
@@ -935,9 +885,7 @@ func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
 	}
 
 	app.Get("/test", func(c Ctx) error {
-		app.Get("/dynamically-defined", func(c Ctx) error {
-			return c.SendStatus(StatusOK)
-		})
+		app.Get("/dynamically-defined", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 		app.RebuildTree()
 
@@ -999,9 +947,7 @@ func Test_App_Remove_Route_A_B_Feature_Testing(t *testing.T) {
 			app.RemoveRoute("/api/feature", MethodGet)
 			app.RebuildTree()
 			// Redefine route
-			app.Get("/api/feature", func(c Ctx) error {
-				return c.SendString("Testing feature-" + feature)
-			})
+			app.Get("/api/feature", func(c Ctx) error { return c.SendString("Testing feature-" + feature) })
 
 			app.RebuildTree()
 			return c.SendStatus(StatusOK)
@@ -1020,9 +966,7 @@ func Test_App_Remove_Route_By_Name(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Get("/api/test", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	}).Name("test")
+	app.Get("/api/test", func(c Ctx) error { return c.SendStatus(StatusOK) }).Name("test")
 
 	app.RemoveRouteByName("test", MethodGet)
 	app.RebuildTree()
@@ -1048,9 +992,7 @@ func Test_App_Remove_Route_Nested(t *testing.T) {
 	api := app.Group("/api")
 
 	v1 := api.Group("/v1")
-	v1.Get("/test", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	v1.Get("/test", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	apptest.Expect(t, app, "/api/v1/test", StatusOK)
 	app.RemoveRoute("/api/v1/test", MethodGet)
@@ -1062,9 +1004,7 @@ func Test_App_Remove_Route_Parameterized(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Get("/test/:id", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	app.Get("/test/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
 	apptest.Expect(t, app, "/test/:id", StatusOK)
 	app.RemoveRoute("/test/:id", MethodGet)
 
@@ -1075,9 +1015,7 @@ func Test_App_Remove_Route(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Get("/test", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	app.Get("/test", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	app.RemoveRoute("/test", MethodGet)
 	app.RebuildTree()
@@ -1129,12 +1067,8 @@ func Test_Use_StrictRoutingBoundary(t *testing.T) {
 					*matched = true
 					return c.Next()
 				})
-				grp.Get("/v1", func(c Ctx) error {
-					return c.SendStatus(StatusOK)
-				})
-				grp.Get("/v1/*", func(c Ctx) error {
-					return c.SendStatus(StatusOK)
-				})
+				grp.Get("/v1", func(c Ctx) error { return c.SendStatus(StatusOK) })
+				grp.Get("/v1/*", func(c Ctx) error { return c.SendStatus(StatusOK) })
 			},
 		},
 	} {
@@ -1173,18 +1107,14 @@ func Test_App_Remove_Route_Concurrent(t *testing.T) {
 	app := New()
 
 	// Add test route
-	app.Get("/test", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	app.Get("/test", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	// Concurrently remove and add routes
 	var wg sync.WaitGroup
 	for range 10 {
 		wg.Go(func() {
 			app.RemoveRoute("/test", MethodGet)
-			app.Get("/test", func(c Ctx) error {
-				return c.SendStatus(StatusOK)
-			})
+			app.Get("/test", func(c Ctx) error { return c.SendStatus(StatusOK) })
 		})
 	}
 	wg.Wait()
@@ -1198,9 +1128,7 @@ func Test_Route_Registration_Prevent_Duplicate_With_Middleware(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	middleware := func(c Ctx) error {
-		return c.Next()
-	}
+	middleware := func(c Ctx) error { return c.Next() }
 
 	registerTreeManipulationRoutes(app, middleware)
 	registerTreeManipulationRoutes(app)
@@ -1347,9 +1275,7 @@ func TestRemoveRoute(t *testing.T) {
 	app.RemoveRoute("/test", "TEST")
 	app.RebuildTree()
 
-	app.RemoveRouteFunc(func(_ *Route) bool {
-		return false
-	}, MethodGet)
+	app.RemoveRouteFunc(func(_ *Route) bool { return false }, MethodGet)
 
 	resp := apptest.Do(t, app, apptest.Req(MethodGet, "/test"))
 
@@ -1410,9 +1336,7 @@ func TestRemoveRoute(t *testing.T) {
 //////////////////////////////////////////////
 
 func registerDummyRoutes(app *App) {
-	h := func(_ Ctx) error {
-		return nil
-	}
+	h := func(_ Ctx) error { return nil }
 	for _, r := range routesFixture.GitHubAPI {
 		app.Add([]string{r.Method}, r.Path, h)
 	}
@@ -1446,9 +1370,7 @@ func Benchmark_App_RebuildTree(b *testing.B) {
 
 func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	app := New()
-	h := func(c Ctx) error {
-		return c.SendString("Hello World!")
-	}
+	h := func(c Ctx) error { return c.SendString("Hello World!") }
 	app.All("/this/is/a/", h)
 	app.Get("/this/is/a/dummy/route/oke", h)
 	appHandler := app.Handler()
@@ -1468,9 +1390,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 func Benchmark_Router_NotFound(b *testing.B) {
 	b.ReportAllocs()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
+	app.Use(func(c Ctx) error { return c.Next() })
 	registerDummyRoutes(app)
 	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
@@ -1552,9 +1472,7 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 
 func Benchmark_Router_Chain(b *testing.B) {
 	app := New()
-	handler := func(c Ctx) error {
-		return c.Next()
-	}
+	handler := func(c Ctx) error { return c.Next() }
 	app.Get("/", handler, handler, handler, handler, handler, handler)
 
 	appHandler := app.Handler()
@@ -1625,9 +1543,7 @@ func Benchmark_Router_Chain_FilteredBucket(b *testing.B) {
 
 func Benchmark_Router_WithCompression(b *testing.B) {
 	app := New()
-	handler := func(c Ctx) error {
-		return c.Next()
-	}
+	handler := func(c Ctx) error { return c.Next() }
 	app.Get("/", handler)
 	app.Get("/", handler)
 	app.Get("/", handler)
@@ -1678,9 +1594,7 @@ func Benchmark_Router_Next(b *testing.B) {
 
 func Benchmark_Router_Next_Default(b *testing.B) {
 	app := New()
-	app.Get("/", func(_ Ctx) error {
-		return nil
-	})
+	app.Get("/", func(_ Ctx) error { return nil })
 
 	h := app.Handler()
 
@@ -1697,9 +1611,7 @@ func Benchmark_Router_Next_Default(b *testing.B) {
 
 func Benchmark_Router_Next_Default_Parallel(b *testing.B) {
 	app := New()
-	app.Get("/", func(_ Ctx) error {
-		return nil
-	})
+	app.Get("/", func(_ Ctx) error { return nil })
 
 	h := app.Handler()
 
@@ -1719,9 +1631,7 @@ func Benchmark_Router_Next_Default_Parallel(b *testing.B) {
 
 func Benchmark_Router_Next_Default_Immutable(b *testing.B) {
 	app := New(Config{Immutable: true})
-	app.Get("/", func(_ Ctx) error {
-		return nil
-	})
+	app.Get("/", func(_ Ctx) error { return nil })
 
 	h := app.Handler()
 
@@ -1738,9 +1648,7 @@ func Benchmark_Router_Next_Default_Immutable(b *testing.B) {
 
 func Benchmark_Router_Next_Default_Parallel_Immutable(b *testing.B) {
 	app := New(Config{Immutable: true})
-	app.Get("/", func(_ Ctx) error {
-		return nil
-	})
+	app.Get("/", func(_ Ctx) error { return nil })
 
 	h := app.Handler()
 
@@ -1774,9 +1682,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
+	route.Handlers = append(route.Handlers, func(_ Ctx) error { return nil })
 	for b.Loop() {
 		match = route.match("/user/keys/1337", "/user/keys/1337", &params, 3)
 	}
@@ -1801,9 +1707,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		Path:   "/user/keys/bla",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
+	route.Handlers = append(route.Handlers, func(_ Ctx) error { return nil })
 
 	for b.Loop() {
 		match = route.match("/user/keys/bla", "/user/keys/bla", &params, 3)
@@ -1829,9 +1733,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		Path:   "/",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
+	route.Handlers = append(route.Handlers, func(_ Ctx) error { return nil })
 
 	for b.Loop() {
 		match = route.match("/", "/", &params, 1)
@@ -1861,9 +1763,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	app := New()
 	app.config.UnescapePath = true
 	registerDummyRoutes(app)
-	app.Delete("/créer", func(_ Ctx) error {
-		return nil
-	})
+	app.Delete("/créer", func(_ Ctx) error { return nil })
 
 	appHandler := app.Handler()
 
@@ -1934,9 +1834,7 @@ type routeJSON struct {
 
 // newCustomApp returns an app that serves every request with a customCtx.
 func newCustomApp(cfg ...Config) *App {
-	return NewWithCustomCtx(func(app *App) CustomCtx {
-		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
-	}, cfg...)
+	return NewWithCustomCtx(func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }, cfg...)
 }
 
 func Test_Next_SkipNonUseRoutesSkipsFallback(t *testing.T) {
@@ -2080,9 +1978,7 @@ func Benchmark_App_RebuildTree_Parallel(b *testing.B) {
 
 func Benchmark_App_MethodNotAllowed_Parallel(b *testing.B) {
 	app := New()
-	h := func(c Ctx) error {
-		return c.SendString("Hello World!")
-	}
+	h := func(c Ctx) error { return c.SendString("Hello World!") }
 	app.All("/this/is/a/", h)
 	app.Get("/this/is/a/dummy/route/oke", h)
 	appHandler := app.Handler()
@@ -2109,9 +2005,7 @@ func Benchmark_App_MethodNotAllowed_Parallel(b *testing.B) {
 func Benchmark_Router_NotFound_Parallel(b *testing.B) {
 	b.ReportAllocs()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
+	app.Use(func(c Ctx) error { return c.Next() })
 	registerDummyRoutes(app)
 	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
@@ -2156,9 +2050,7 @@ func Benchmark_Router_Handler_Strict_Case_Parallel(b *testing.B) {
 
 func Benchmark_Router_Chain_Parallel(b *testing.B) {
 	app := New()
-	handler := func(c Ctx) error {
-		return c.Next()
-	}
+	handler := func(c Ctx) error { return c.Next() }
 	app.Get("/", handler, handler, handler, handler, handler, handler)
 	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
@@ -2173,9 +2065,7 @@ func Benchmark_Router_Chain_Parallel(b *testing.B) {
 
 func Benchmark_Router_WithCompression_Parallel(b *testing.B) {
 	app := New()
-	handler := func(c Ctx) error {
-		return c.Next()
-	}
+	handler := func(c Ctx) error { return c.Next() }
 	app.Get("/", handler)
 	app.Get("/", handler)
 	app.Get("/", handler)
@@ -2234,9 +2124,7 @@ func Benchmark_Router_Next_Parallel(b *testing.B) {
 
 func Benchmark_Router_Next_Default_Immutable_Parallel(b *testing.B) {
 	app := New(Config{Immutable: true})
-	app.Get("/", func(_ Ctx) error {
-		return nil
-	})
+	app.Get("/", func(_ Ctx) error { return nil })
 	h := app.Handler()
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(MethodGet)
@@ -2252,9 +2140,7 @@ func Benchmark_Router_Next_Default_Immutable_Parallel(b *testing.B) {
 func Benchmark_Route_Match_Parallel(b *testing.B) {
 	parsed := parseRoute("/user/keys/:id", regexp.MustCompile)
 	route := &Route{use: false, root: false, star: false, routeParser: parsed, Params: parsed.params, path: "/user/keys/:id", Path: "/user/keys/:id", Method: "DELETE"}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
+	route.Handlers = append(route.Handlers, func(_ Ctx) error { return nil })
 	b.RunParallel(func(pb *testing.PB) {
 		// Each worker gets its own local variables to avoid data races
 		var params [maxParams]string
@@ -2275,9 +2161,7 @@ func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
 	var params [maxParams]string
 	parsed := parseRoute("/*", regexp.MustCompile)
 	route := &Route{use: false, root: false, star: true, routeParser: parsed, Params: parsed.params, path: "/user/keys/bla", Path: "/user/keys/bla", Method: "DELETE"}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
+	route.Handlers = append(route.Handlers, func(_ Ctx) error { return nil })
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			match = route.match("/user/keys/bla", "/user/keys/bla", &params, 3)
@@ -2292,9 +2176,7 @@ func Benchmark_Route_Match_Root_Parallel(b *testing.B) {
 	var params [maxParams]string
 	parsed := parseRoute("/", regexp.MustCompile)
 	route := &Route{use: false, root: true, star: false, path: "/", routeParser: parsed, Params: parsed.params, Path: "/", Method: "DELETE"}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
+	route.Handlers = append(route.Handlers, func(_ Ctx) error { return nil })
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			match = route.match("/", "/", &params, 1)
@@ -2323,9 +2205,7 @@ func Benchmark_Router_Handler_Unescape_Parallel(b *testing.B) {
 	app := New()
 	app.config.UnescapePath = true
 	registerDummyRoutes(app)
-	app.Delete("/créer", func(_ Ctx) error {
-		return nil
-	})
+	app.Delete("/créer", func(_ Ctx) error { return nil })
 	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
 	c.Request.Header.SetMethod(MethodDelete)
@@ -2442,9 +2322,7 @@ func Test_Route_URL(t *testing.T) {
 	t.Run("wildcard parameters preserve slashes", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Get("/files/*", func(c Ctx) error {
-			return c.SendString(c.Params("*"))
-		}).Name("Files")
+		app.Get("/files/*", func(c Ctx) error { return c.SendString(c.Params("*")) }).Name("Files")
 
 		requireURL(t, app, "Files", Map{"*": "docs/index.html"}, "/files/docs/index.html")
 
@@ -3484,14 +3362,10 @@ func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 		require.Len(t, routes, 1)
 		return routes[0]
 	}
-	rejects := func(pattern, path string) bool {
-		return routeFilterRejects(route(pattern), path)
-	}
+	rejects := func(pattern, path string) bool { return routeFilterRejects(route(pattern), path) }
 	// prefixRejects on its own, which routeFilterRejects would hide behind the
 	// scan head's first word: an unfiltered bucket relies on it alone.
-	prefixRejects := func(pattern, path string) bool {
-		return route(pattern).prefixRejects(pathHeadWord(path))
-	}
+	prefixRejects := func(pattern, path string) bool { return route(pattern).prefixRejects(pathHeadWord(path)) }
 
 	require.True(t, rejects("/user/subscriptions/:owner", "/user/keys/1337"))
 	require.True(t, prefixRejects("/user/subscriptions/:owner", "/user/keys/1337"))
@@ -4326,9 +4200,7 @@ func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 	t.Parallel()
 
 	app := New(Config{UnescapePath: true})
-	app.Get("/u/:name", func(c Ctx) error {
-		return c.SendString(c.Params("name") + "|" + c.Path())
-	})
+	app.Get("/u/:name", func(c Ctx) error { return c.SendString(c.Params("name") + "|" + c.Path()) })
 
 	testCases := []struct {
 		path string
@@ -4382,9 +4254,7 @@ func Test_Router_StrayPercent(t *testing.T) {
 	}
 	for _, caseSensitive := range []bool{false, true} {
 		app := New(Config{CaseSensitive: caseSensitive})
-		app.Use(func(c Ctx) error {
-			return c.SendString(c.Path())
-		})
+		app.Use(func(c Ctx) error { return c.SendString(c.Path()) })
 		handler := app.Handler()
 		for _, tc := range testCases {
 			routerTestExpectRawBody(t, handler, routerTestRequestCtx(MethodGet, tc.path), tc.body, "CaseSensitive=%v GET %s", caseSensitive, tc.path)
@@ -4401,9 +4271,7 @@ func Test_Router_StrayPercentParamIsStable(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.Get("/files/:name", func(c Ctx) error {
-		return c.SendString(c.Params("name"))
-	})
+	app.Get("/files/:name", func(c Ctx) error { return c.SendString(c.Params("name")) })
 	handler := app.Handler()
 	for _, disable := range []bool{false, true} {
 		for _, target := range []string{"/files/100%", "/files/./100%", "/files/x/../100%", "/files/%2e/100%"} {
@@ -4475,9 +4343,7 @@ func Test_Router_UnrootedTargetIsRooted(t *testing.T) {
 		c.Path("rewritten")
 		return c.Next()
 	})
-	app.Get("/rewritten", func(c Ctx) error {
-		return c.SendString(c.Path())
-	})
+	app.Get("/rewritten", func(c Ctx) error { return c.SendString(c.Path()) })
 	resp := apptest.Do(t, app, "/original")
 	body := apptest.Body(t, resp)
 	require.Equal(t, StatusOK, resp.StatusCode)
@@ -5451,9 +5317,7 @@ func Test_OptionalParam_ConstraintFailureDoesNotBypassAsEmpty(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.Use("/api/:id<int>?", func(c Ctx) error {
-		return c.SendString("matched")
-	})
+	app.Use("/api/:id<int>?", func(c Ctx) error { return c.SendString("matched") })
 
 	apptest.Expect(t, app, "/api/abc", StatusNotFound)
 
@@ -5493,9 +5357,7 @@ func Test_RouteParser_GreedyWildcardDoesNotYield(t *testing.T) {
 
 	app := New()
 	// Greedy wildcard * must not yield to plus param +
-	app.Get("/*+:x?", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	app.Get("/*+:x?", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	apptest.Expect(t, app, "/-", StatusNotFound)
 }

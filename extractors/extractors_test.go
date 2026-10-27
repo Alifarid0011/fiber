@@ -228,9 +228,7 @@ func extractorsTestFixed(key, value string, err error) Extractor {
 // chain again, a cycle that Extract must refuse with ErrChainCycle.
 func extractorsTestCyclic() Extractor {
 	var cyclic Extractor
-	cyclic = Chain(FromCustom("cycle", func(c fiber.Ctx) (string, error) {
-		return cyclic.Extract(c)
-	}))
+	cyclic = Chain(FromCustom("cycle", func(c fiber.Ctx) (string, error) { return cyclic.Extract(c) }))
 	return cyclic
 }
 
@@ -486,9 +484,7 @@ func Test_Extractor_Chain_Introspection(t *testing.T) {
 func Test_Extractor_Contains(t *testing.T) {
 	t.Parallel()
 
-	isCSRFCookie := func(e Extractor) bool {
-		return e.Source == SourceCookie && e.Key == "CSRF"
-	}
+	isCSRFCookie := func(e Extractor) bool { return e.Source == SourceCookie && e.Key == "CSRF" }
 
 	cyclic := FromHeader("X-Token")
 	cyclic.Chain = make([]Extractor, 1)
@@ -564,9 +560,7 @@ func Test_Extractor_FromCustom(t *testing.T) {
 
 		ctx := apptest.Ctx(t, fiber.New())
 
-		emptyExtractor := FromCustom("empty", func(_ fiber.Ctx) (string, error) {
-			return "", nil
-		})
+		emptyExtractor := FromCustom("empty", func(_ fiber.Ctx) (string, error) { return "", nil })
 
 		token, err := emptyExtractor.Extract(ctx)
 		require.Empty(t, token)
@@ -786,12 +780,8 @@ func Test_Extractor_Chain_Cycle_Prevention(t *testing.T) {
 		t.Parallel()
 
 		var chainA, chainB Extractor
-		chainA = Chain(FromCustom("to-b", func(c fiber.Ctx) (string, error) {
-			return chainB.Extract(c)
-		}))
-		chainB = Chain(FromCustom("to-a", func(c fiber.Ctx) (string, error) {
-			return chainA.Extract(c)
-		}))
+		chainA = Chain(FromCustom("to-b", func(c fiber.Ctx) (string, error) { return chainB.Extract(c) }))
+		chainB = Chain(FromCustom("to-a", func(c fiber.Ctx) (string, error) { return chainA.Extract(c) }))
 
 		extractorsTestExpectErr(t, chainA, apptest.Ctx(t, fiber.New()), ErrChainCycle)
 	})
@@ -1244,9 +1234,7 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		// Full Extract replacement (does not call base): must not peek Chain
 		// children and mis-tag the replacement value as SourceQuery.
 		chain := Chain(FromHeader("X-Missing"), FromQuery("token"))
-		chain.Extract = func(c fiber.Ctx) (string, error) {
-			return FromCookie("session").Extract(c)
-		}
+		chain.Extract = func(c fiber.Ctx) (string, error) { return FromCookie("session").Extract(c) }
 
 		// SourceHeader is the static first-child metadata.
 		extractorsTestExpectResolved(t, chain, ctx, "cookie-value", SourceHeader)
@@ -1262,9 +1250,7 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		// Extract is active; second child would succeed if the cycle were ignored.
 		var chain Extractor
 		chain = Chain(
-			FromCustom("reenter", func(c fiber.Ctx) (string, error) {
-				return chain.Extract(c)
-			}),
+			FromCustom("reenter", func(c fiber.Ctx) (string, error) { return chain.Extract(c) }),
 			FromQuery("token"),
 		)
 

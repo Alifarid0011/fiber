@@ -20,9 +20,7 @@ func Test_RequestID(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World 👋!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World 👋!") })
 
 	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 
@@ -39,9 +37,7 @@ func Test_RequestID(t *testing.T) {
 func Test_RequestID_InvalidHeaderValue(t *testing.T) {
 	t.Parallel()
 
-	rid := sanitizeRequestID("bad\r\nid", func() string {
-		return "clean-generated-id"
-	})
+	rid := sanitizeRequestID("bad\r\nid", func() string { return "clean-generated-id" })
 
 	require.Equal(t, "clean-generated-id", rid)
 }
@@ -54,9 +50,7 @@ func requestidTestID(t *testing.T, generate func() string) string {
 	app := fiber.New()
 	app.Use(New(Config{Generator: generate}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 
@@ -66,9 +60,7 @@ func requestidTestID(t *testing.T, generate func() string) string {
 func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
 	t.Parallel()
 
-	rid := requestidTestID(t, func() string {
-		return "bad\r\nid"
-	})
+	rid := requestidTestID(t, func() string { return "bad\r\nid" })
 
 	require.NotEmpty(t, rid)
 	require.NotContains(t, rid, "\r")
@@ -90,9 +82,7 @@ func Test_RequestID_GeneratorAlwaysInvalid(t *testing.T) {
 func Test_RequestID_CustomGenerator(t *testing.T) {
 	t.Parallel()
 
-	rid := requestidTestID(t, func() string {
-		return "custom-valid-id"
-	})
+	rid := requestidTestID(t, func() string { return "custom-valid-id" })
 
 	require.Equal(t, "custom-valid-id", rid)
 }
@@ -150,9 +140,7 @@ func Test_RequestID_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	resp := apptest.Do(t, app, "/")
@@ -166,9 +154,7 @@ func Test_RequestID_FromContext(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Generator: func() string {
-			return reqID
-		},
+		Generator: func() string { return reqID },
 	}))
 
 	var ctxVal string
@@ -188,17 +174,13 @@ func Test_RequestID_LoggerMiddlewareTag(t *testing.T) {
 	var buf bytes.Buffer
 	app := fiber.New()
 	app.Use(New(Config{
-		Generator: func() string {
-			return "req-42"
-		},
+		Generator: func() string { return "req-42" },
 	}))
 	app.Use(logger.New(logger.Config{
 		Format: "${requestid} ${request-id}",
 		Stream: &buf,
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, "req-42"+" req-42", buf.String())
@@ -211,9 +193,7 @@ func Test_RequestID_LogWithContextFormat(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Generator: func() string {
-			return "req-42"
-		},
+		Generator: func() string { return "req-42" },
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
 		fiberlog.WithContext(c).Info("start")
@@ -246,9 +226,7 @@ func Test_RequestID_FromContext_Types(t *testing.T) {
 
 	app := fiber.New(fiber.Config{PassLocalsToContext: true})
 	app.Use(New(Config{
-		Generator: func() string {
-			return reqID
-		},
+		Generator: func() string { return reqID },
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {

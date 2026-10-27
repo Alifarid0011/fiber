@@ -27,9 +27,7 @@ func Test_App_Mount_PreservesSubAppRegexHandler(t *testing.T) {
 		CaseSensitive: true,
 		RegexHandler:  regexp.MustCompile,
 	})
-	sub.Get("/resource/:id<regex(ALLOW)>", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	sub.Get("/resource/:id<regex(ALLOW)>", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	parent.Use("/mounted", sub)
 
@@ -45,9 +43,7 @@ func Test_App_Mount_PreservesSubAppRegexHandler(t *testing.T) {
 func Test_App_Mount(t *testing.T) {
 	t.Parallel()
 	micro := New()
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	micro.Get("/doe", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	app := New()
 	app.Use("/john", micro)
@@ -62,9 +58,7 @@ func Test_App_Mount_RootPath_Nested(t *testing.T) {
 	apiserver := New()
 
 	apiroutes := apiserver.Group("/v1")
-	apiroutes.Get("/home", func(c Ctx) error {
-		return c.SendString("home")
-	})
+	apiroutes.Get("/home", func(c Ctx) error { return c.SendString("home") })
 
 	dynamic.Use("/api", apiserver)
 	app.Use("/", dynamic)
@@ -84,17 +78,11 @@ func Test_App_Mount_Nested(t *testing.T) {
 	app.Use("/one", one)
 	one.Use("/two", two)
 
-	one.Get("/doe", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	one.Get("/doe", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
-	two.Get("/nested", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	two.Get("/nested", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
-	three.Get("/test", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	three.Get("/test", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	apptest.Expect(t, app, "/one/doe", 200)
 
@@ -107,11 +95,7 @@ func Test_App_Mount_Nested(t *testing.T) {
 
 func Test_App_Mount_Express_Behavior(t *testing.T) {
 	t.Parallel()
-	createTestHandler := func(body string) func(c Ctx) error {
-		return func(c Ctx) error {
-			return c.SendString(body)
-		}
-	}
+	createTestHandler := func(body string) func(c Ctx) error { return func(c Ctx) error { return c.SendString(body) } }
 
 	app := New()
 	subApp := New()
@@ -131,9 +115,7 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 	app.Get("/foo", createTestHandler("app foo!"))
 
 	// 404 Handler
-	app.Use(func(c Ctx) error {
-		return c.SendStatus(StatusNotFound)
-	})
+	app.Use(func(c Ctx) error { return c.SendStatus(StatusNotFound) })
 	// expectation check
 	apptest.ExpectBody(t, app, "/world", StatusOK, "subapp world!")
 	apptest.ExpectBody(t, app, "/hello", StatusOK, "app hello!")
@@ -158,12 +140,8 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 			return c.Next()
 		})
 		app.Use("/subApp1", subApp1)
-		app.Use(func(c Ctx) error {
-			return c.Next()
-		})
-		app.Get("/bar", func(c Ctx) error {
-			return c.SendString("ok")
-		})
+		app.Use(func(c Ctx) error { return c.Next() })
+		app.Get("/bar", func(c Ctx) error { return c.SendString("ok") })
 		app.Use(func(c Ctx) error {
 			// is overwritten when the positioning is not correct
 			c.Locals("world", "hello")
@@ -258,9 +236,7 @@ func Test_App_Mount_ErrorHandler(t *testing.T) {
 			} else {
 				micro = New(Config{ErrorHandler: errorHandler})
 			}
-			micro.Get(tc.route, func(_ Ctx) error {
-				return errors.New(routeErr)
-			})
+			micro.Get(tc.route, func(_ Ctx) error { return errors.New(routeErr) })
 
 			var router Router = app
 			if tc.group != "" {
@@ -276,9 +252,7 @@ func Test_App_Mount_ErrorHandler(t *testing.T) {
 func Test_App_Group_Mount(t *testing.T) {
 	t.Parallel()
 	micro := New()
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	micro.Get("/doe", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	app := New()
 	v1 := app.Group("/v1")
@@ -292,36 +266,24 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	tsf := func(c Ctx, _ error) error {
-		return c.Status(200).SendString("hi, i'm a custom sub fiber error 2")
-	}
+	tsf := func(c Ctx, _ error) error { return c.Status(200).SendString("hi, i'm a custom sub fiber error 2") }
 	tripleSubFiber := New(Config{
 		ErrorHandler: tsf,
 	})
-	tripleSubFiber.Get("/", func(_ Ctx) error {
-		return errors.New("something happened")
-	})
+	tripleSubFiber.Get("/", func(_ Ctx) error { return errors.New("something happened") })
 
-	sf := func(c Ctx, _ error) error {
-		return c.Status(200).SendString("hi, i'm a custom sub fiber error")
-	}
+	sf := func(c Ctx, _ error) error { return c.Status(200).SendString("hi, i'm a custom sub fiber error") }
 	subfiber := New(Config{
 		ErrorHandler: sf,
 	})
-	subfiber.Get("/", func(_ Ctx) error {
-		return errors.New("something happened")
-	})
+	subfiber.Get("/", func(_ Ctx) error { return errors.New("something happened") })
 	subfiber.Use("/third", tripleSubFiber)
 
-	f := func(c Ctx, _ error) error {
-		return c.Status(200).SendString("hi, i'm a custom error")
-	}
+	f := func(c Ctx, _ error) error { return c.Status(200).SendString("hi, i'm a custom error") }
 	fiber := New(Config{
 		ErrorHandler: f,
 	})
-	fiber.Get("/", func(_ Ctx) error {
-		return errors.New("something happened")
-	})
+	fiber.Get("/", func(_ Ctx) error { return errors.New("something happened") })
 	fiber.Use("/sub", subfiber)
 
 	app.Use("/api", fiber)
@@ -451,9 +413,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 		})
 	})
 
-	sub2.Get("/moment", func(c Ctx) error {
-		return c.Render("bruh.tmpl", Map{})
-	})
+	sub2.Get("/moment", func(c Ctx) error { return c.Render("bruh.tmpl", Map{}) })
 
 	sub.Use("/bruh", sub2)
 	app.Use("/hello", sub)
@@ -494,9 +454,7 @@ func Test_App_Mount_FewerRequestMethods(t *testing.T) {
 	t.Parallel()
 
 	micro := New(Config{RequestMethods: []string{MethodGet}})
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendString("doe")
-	})
+	micro.Get("/doe", func(c Ctx) error { return c.SendString("doe") })
 
 	app := New()
 	app.Use("/john", micro)
@@ -510,9 +468,7 @@ func Test_App_Mount_FewerRequestMethodsNested(t *testing.T) {
 	t.Parallel()
 
 	micro := New(Config{RequestMethods: []string{MethodGet}})
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendString("doe")
-	})
+	micro.Get("/doe", func(c Ctx) error { return c.SendString("doe") })
 
 	sub := New()
 	sub.Use("/v1", micro)
@@ -541,12 +497,8 @@ func Test_App_Mount_ReorderedRequestMethods(t *testing.T) {
 	}
 
 	micro := New(Config{RequestMethods: methods})
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendString("get doe")
-	})
-	micro.Post("/doe", func(c Ctx) error {
-		return c.SendString("post doe")
-	})
+	micro.Get("/doe", func(c Ctx) error { return c.SendString("get doe") })
+	micro.Post("/doe", func(c Ctx) error { return c.SendString("post doe") })
 
 	app := New()
 	app.Use("/john", micro)
@@ -642,9 +594,7 @@ func Test_App_Mount_PreservesNestedCustomConstraint(t *testing.T) {
 
 	micro := New()
 	micro.RegisterCustomConstraint(&onlyFooConstraint{})
-	micro.Get("/doe/:name<onlyfoo>", func(c Ctx) error {
-		return c.SendString(c.Params("name"))
-	})
+	micro.Get("/doe/:name<onlyfoo>", func(c Ctx) error { return c.SendString(c.Params("name")) })
 
 	sub := New()
 	sub.Use("/v1", micro)
@@ -664,13 +614,9 @@ func Test_App_Mount_CarriesDomainMount(t *testing.T) {
 	t.Parallel()
 
 	micro := New(Config{
-		ErrorHandler: func(c Ctx, _ error) error {
-			return c.Status(596).SendString("micro error")
-		},
+		ErrorHandler: func(c Ctx, _ error) error { return c.Status(596).SendString("micro error") },
 	})
-	micro.Get("/doe", func(_ Ctx) error {
-		return errors.New("boom")
-	})
+	micro.Get("/doe", func(_ Ctx) error { return errors.New("boom") })
 
 	sub := New()
 	sub.Domain("api.example.com").Use("/v1", micro)
@@ -692,9 +638,7 @@ func Test_App_Mount_AutoHeadKeepsMiddleware(t *testing.T) {
 	t.Parallel()
 
 	micro := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
-	micro.Use(func(c Ctx) error {
-		return c.SendStatus(StatusUnauthorized)
-	})
+	micro.Use(func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
 	micro.Get("/doe", func(c Ctx) error {
 		c.Set("X-Secret", "leaked")
 		return c.SendString("doe")
@@ -720,14 +664,10 @@ func Test_App_Mount_RootMountKeepsParentAutoHead(t *testing.T) {
 	t.Parallel()
 
 	micro := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendString("doe")
-	})
+	micro.Get("/doe", func(c Ctx) error { return c.SendString("doe") })
 
 	app := New()
-	app.Get("/own", func(c Ctx) error {
-		return c.SendString("own")
-	})
+	app.Get("/own", func(c Ctx) error { return c.SendString("own") })
 	app.Use("/", micro)
 
 	resp := apptest.Do(t, app, apptest.Req(MethodHead, "/own"))
@@ -744,9 +684,7 @@ func Test_App_Mount_ParametricPrefix(t *testing.T) {
 	t.Parallel()
 
 	micro := New()
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendString("version=" + c.Params("Version"))
-	})
+	micro.Get("/doe", func(c Ctx) error { return c.SendString("version=" + c.Params("Version")) })
 
 	app := New()
 	app.Use("/v1/:Version", micro)
@@ -760,9 +698,7 @@ func Test_App_Mount_ParametricPrefixNested(t *testing.T) {
 	t.Parallel()
 
 	micro := New()
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendString("version=" + c.Params("version"))
-	})
+	micro.Get("/doe", func(c Ctx) error { return c.SendString("version=" + c.Params("version")) })
 
 	sub := New()
 	sub.Use("/v1/:version", micro)
@@ -781,13 +717,9 @@ func Test_App_Mount_CaseInsensitivePath(t *testing.T) {
 	t.Parallel()
 
 	micro := New(Config{
-		ErrorHandler: func(c Ctx, _ error) error {
-			return c.Status(599).SendString("micro error")
-		},
+		ErrorHandler: func(c Ctx, _ error) error { return c.Status(599).SendString("micro error") },
 	})
-	micro.Get("/doe", func(_ Ctx) error {
-		return errors.New("boom")
-	})
+	micro.Get("/doe", func(_ Ctx) error { return errors.New("boom") })
 
 	app := New()
 	app.Use("/API", micro)
@@ -815,15 +747,11 @@ func Test_App_Mount_ViewsPathOnly(t *testing.T) {
 	require.NoError(t, parentEngine.Load())
 
 	micro := New(Config{Views: subEngine})
-	micro.Get("/view", func(c Ctx) error {
-		return c.Render("bruh.tmpl", Map{})
-	})
+	micro.Get("/view", func(c Ctx) error { return c.Render("bruh.tmpl", Map{}) })
 
 	app := New(Config{Views: parentEngine})
 	app.Use("/john", micro)
-	app.Get("/elsewhere", func(c Ctx) error {
-		return c.Render("index.tmpl", Map{"Title": "parent"})
-	})
+	app.Get("/elsewhere", func(c Ctx) error { return c.Render("index.tmpl", Map{"Title": "parent"}) })
 
 	apptest.ExpectBody(t, app, "/elsewhere?next=/john/view", StatusOK, "<h1>parent</h1>")
 }
@@ -835,9 +763,7 @@ func Test_App_Mount_ParametricPrefixConstraint(t *testing.T) {
 	t.Parallel()
 
 	micro := New()
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendString("name=" + c.Params("name"))
-	})
+	micro.Get("/doe", func(c Ctx) error { return c.SendString("name=" + c.Params("name")) })
 
 	app := New()
 	app.RegisterCustomConstraint(&onlyFooConstraint{})

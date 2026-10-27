@@ -1891,9 +1891,7 @@ func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 		t.Parallel()
 
 		app, store := newStore()
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("prefs", map[string]string{"theme": "dark"})
-		})
+		id := seedSession(t, app, store, func(sess *Session) { sess.Set("prefs", map[string]string{"theme": "dark"}) })
 
 		sess := loadSession(t, app, store, id)
 		prefs, ok := sess.Get("prefs").(map[string]string)
@@ -1909,9 +1907,7 @@ func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 		t.Parallel()
 
 		app, store := newStore()
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("user", "fenny")
-		})
+		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
 		sess := loadSession(t, app, store, id)
 		prefs := map[string]string{"theme": "dark"}
@@ -1989,9 +1985,7 @@ func Test_Session_RetainedSnapshotSurvivesStorageBufferReuse(t *testing.T) {
 	scribbler := &scribbleStorage{Storage: memory.New()}
 	store := NewStore(Config{Storage: scribbler})
 
-	id := seedSession(t, app, store, func(sess *Session) {
-		sess.Set("user", "fenny")
-	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
 	sess := loadSession(t, app, store, id)
 	scribbler.scribble()
@@ -2011,9 +2005,7 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 
 		app := fiber.New()
 		store := NewStore(Config{Storage: memory.New()})
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("user", "fenny")
-		})
+		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
 		sess := loadSession(t, app, store, id)
 		require.NoError(t, sess.Regenerate())
@@ -2034,9 +2026,7 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 
 		app := fiber.New()
 		store := NewStore(Config{Storage: memory.New()})
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("user", "fenny")
-		})
+		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
 		sess := loadSession(t, app, store, id)
 		require.NoError(t, sess.Reset())
@@ -2052,9 +2042,7 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 
 		app := fiber.New()
 		store := NewStore(Config{Storage: memory.New()})
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("user", "fenny")
-		})
+		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
 		sess := loadSession(t, app, store, id)
 		require.NoError(t, sess.Destroy())
@@ -2071,9 +2059,7 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 		app := fiber.New()
 		rec := newRecordingStorage()
 		store := NewStore(Config{Storage: rec})
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("user", "fenny")
-		})
+		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 		rec.reset()
 
 		// GetByID leaves ctx nil, so this also covers saving without a request.
@@ -2097,9 +2083,7 @@ func Test_Session_CleanSave_KeepsAbsoluteExpiration(t *testing.T) {
 	app := fiber.New()
 	store := NewStore(Config{Storage: memory.New(), AbsoluteTimeout: time.Hour})
 
-	id := seedSession(t, app, store, func(sess *Session) {
-		sess.Set("user", "fenny")
-	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
 	first := loadSession(t, app, store, id)
 	deadline := first.absExpiration()

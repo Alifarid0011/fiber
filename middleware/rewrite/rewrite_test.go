@@ -44,9 +44,7 @@ func Test_Rewrite(t *testing.T) {
 	// token rule rewrites into and answers with the two captured IDs.
 	success := func(path string) func(*fiber.App) {
 		return func(app *fiber.App) {
-			app.Get(path, func(c fiber.Ctx) error {
-				return c.SendString("Rewrite Successful")
-			})
+			app.Get(path, func(c fiber.Ctx) error { return c.SendString("Rewrite Successful") })
 		}
 	}
 	orders := func(app *fiber.App) {
@@ -85,9 +83,7 @@ func Test_Rewrite(t *testing.T) {
 			cfg:  Config{Rules: tokens},
 			routes: func(app *fiber.App) {
 				orders(app)
-				app.Use(func(c fiber.Ctx) error {
-					return c.SendStatus(fiber.StatusOK)
-				})
+				app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 			},
 			target: "/not-matching-any-rule", body: "OK",
 		},
@@ -125,12 +121,8 @@ func Test_Rewrite_StartAnchor(t *testing.T) {
 			"/users/*": "/u/$1",
 		},
 	}))
-	app.Get("/u/:id", func(c fiber.Ctx) error {
-		return c.SendString("rewritten:" + c.Params("id"))
-	})
-	app.Get("/api/users/:id", func(c fiber.Ctx) error {
-		return c.SendString("api:" + c.Params("id"))
-	})
+	app.Get("/u/:id", func(c fiber.Ctx) error { return c.SendString("rewritten:" + c.Params("id")) })
+	app.Get("/api/users/:id", func(c fiber.Ctx) error { return c.SendString("api:" + c.Params("id")) })
 
 	// The rule matches from the start of the path and is rewritten.
 	apptest.ExpectBody(t, app, "/users/1", fiber.StatusOK, "rewritten:1")
@@ -150,9 +142,7 @@ func Benchmark_Rewrite(b *testing.B) {
 	// Benchmark: Rewrite with Next function always returns true
 	b.Run("Next always true", func(b *testing.B) {
 		app := createApp(Config{
-			Next: func(fiber.Ctx) bool {
-				return true
-			},
+			Next: func(fiber.Ctx) bool { return true },
 			Rules: map[string]string{
 				"/old": "/new",
 			},
@@ -169,9 +159,7 @@ func Benchmark_Rewrite(b *testing.B) {
 	// Benchmark: Rewrite with Next function always returns false
 	b.Run("Next always false", func(b *testing.B) {
 		app := createApp(Config{
-			Next: func(fiber.Ctx) bool {
-				return false
-			},
+			Next: func(fiber.Ctx) bool { return false },
 			Rules: map[string]string{
 				"/old": "/new",
 			},
@@ -208,9 +196,7 @@ func Benchmark_Rewrite(b *testing.B) {
 				"/users/*/orders/*": "/user/$1/order/$2",
 			},
 		})
-		app.Use(func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusOK)
-		})
+		app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 		reqCtx := &fasthttp.RequestCtx{}
 		reqCtx.Request.SetRequestURI("/not-matching-any-rule")
@@ -248,9 +234,7 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 	// Parallel Benchmark: Rewrite with Next function always returns true
 	b.Run("Next always true", func(b *testing.B) {
 		app := createApp(Config{
-			Next: func(fiber.Ctx) bool {
-				return true
-			},
+			Next: func(fiber.Ctx) bool { return true },
 			Rules: map[string]string{
 				"/old": "/new",
 			},
@@ -270,9 +254,7 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 	// Parallel Benchmark: Rewrite with Next function always returns false
 	b.Run("Next always false", func(b *testing.B) {
 		app := createApp(Config{
-			Next: func(fiber.Ctx) bool {
-				return false
-			},
+			Next: func(fiber.Ctx) bool { return false },
 			Rules: map[string]string{
 				"/old": "/new",
 			},
@@ -315,9 +297,7 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 				"/users/*/orders/*": "/user/$1/order/$2",
 			},
 		})
-		app.Use(func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusOK)
-		})
+		app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 		b.ReportAllocs()
 		b.ResetTimer()
 
@@ -357,9 +337,7 @@ func rewritten(t *testing.T, cfg Config, path string) string {
 
 	app := fiber.New()
 	app.Use(New(cfg))
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendString(c.Path())
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
 
 	return apptest.Body(t, apptest.Do(t, app, path))
 }
@@ -580,9 +558,7 @@ func Test_Rewrite_UnescapePathDecodesOnce(t *testing.T) {
 					app.Use(New(Config{
 						RuleList: []Rule{{From: "/files/*", To: "/public/$1"}},
 					}))
-					app.Use(func(c fiber.Ctx) error {
-						return c.SendString(c.Path())
-					})
+					app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
 
 					want := tc.raw
 					if unescape {

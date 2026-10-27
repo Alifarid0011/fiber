@@ -50,9 +50,7 @@ func TestResponseTimeMiddleware(t *testing.T) {
 			configs := []Config(nil)
 			if tt.skipWithNext {
 				configs = []Config{{
-					Next: func(fiber.Ctx) bool {
-						return true
-					},
+					Next: func(fiber.Ctx) bool { return true },
 				}}
 			}
 

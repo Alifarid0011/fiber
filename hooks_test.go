@@ -91,13 +91,9 @@ func Test_Hook_OnName_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Hooks().OnName(func(_ Route) error {
-		return errors.New("unknown error")
-	})
+	app.Hooks().OnName(func(_ Route) error { return errors.New("unknown error") })
 
-	require.PanicsWithError(t, "unknown error", func() {
-		app.Get("/", testSimpleHandler).Name("index")
-	})
+	require.PanicsWithError(t, "unknown error", func() { app.Get("/", testSimpleHandler).Name("index") })
 }
 
 func Test_Hook_OnGroup(t *testing.T) {
@@ -131,9 +127,7 @@ func Test_Hook_OnGroup_Mount(t *testing.T) {
 	})
 
 	v1 := app.Group("/v1")
-	v1.Get("/doe", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	v1.Get("/doe", func(c Ctx) error { return c.SendStatus(StatusOK) })
 }
 
 func Test_Hook_OnGroupName(t *testing.T) {
@@ -172,13 +166,9 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Hooks().OnGroupName(func(_ Group) error {
-		return errors.New("unknown error")
-	})
+	app.Hooks().OnGroupName(func(_ Group) error { return errors.New("unknown error") })
 
-	require.PanicsWithError(t, "unknown error", func() {
-		_ = app.Group("/x").Name("x.")
-	})
+	require.PanicsWithError(t, "unknown error", func() { _ = app.Group("/x").Name("x.") })
 }
 
 func Test_Hook_OnPreShutdown(t *testing.T) {
@@ -257,9 +247,7 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 		app := New()
 		hookErr := errors.New("hook error")
 
-		app.Hooks().OnPostShutdown(func(_ error) error {
-			return hookErr
-		})
+		app.Hooks().OnPostShutdown(func(_ error) error { return hookErr })
 
 		// Should not panic
 		app.hooks.executeOnPostShutdownHooks(nil)
@@ -605,9 +593,7 @@ func Test_executeOnListenHooks_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Hooks().OnListen(func(_ ListenData) error {
-		return errors.New("listen error")
-	})
+	app.Hooks().OnListen(func(_ ListenData) error { return errors.New("listen error") })
 
 	err := app.hooks.executeOnListenHooks(&ListenData{Host: "127.0.0.1", Port: "0"})
 	require.EqualError(t, err, "listen error")
@@ -641,9 +627,7 @@ func Test_executeOnPreShutdownHooks_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Hooks().OnPreShutdown(func() error {
-		return errors.New("pre error")
-	})
+	app.Hooks().OnPreShutdown(func() error { return errors.New("pre error") })
 
 	var buf bytes.Buffer
 	log.SetOutput(&buf)

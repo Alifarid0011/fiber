@@ -158,9 +158,7 @@ func Test_Static_NotFoundHandler(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/*", New("../../.github", Config{
-		NotFoundHandler: func(c fiber.Ctx) error {
-			return c.SendString("Custom 404")
-		},
+		NotFoundHandler: func(c fiber.Ctx) error { return c.SendString("Custom 404") },
 	}))
 
 	resp := staticTestExpect(t, app, "/not-found", 404, fiber.MIMETextPlainCharsetUTF8)
@@ -292,14 +290,10 @@ func Test_Static_Next(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/*", New("../../.github", Config{
-		Next: func(c fiber.Ctx) bool {
-			return c.Get("X-Custom-Header") == "skip"
-		},
+		Next: func(c fiber.Ctx) bool { return c.Get("X-Custom-Header") == "skip" },
 	}))
 
-	app.Get("/*", func(c fiber.Ctx) error {
-		return c.SendString("You've skipped app.Static")
-	})
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("You've skipped app.Static") })
 
 	tests := []struct {
 		name        string
@@ -805,19 +799,13 @@ func Test_Router_Mount_n_Static(t *testing.T) {
 	app := fiber.New()
 
 	app.Use("/static", New(testCSSDir, Config{Browse: true}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Home")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Home") })
 
 	subApp := fiber.New()
 	app.Use("/mount", subApp)
-	subApp.Get("/test", func(c fiber.Ctx) error {
-		return c.SendString("Hello from /test")
-	})
+	subApp.Get("/test", func(c fiber.Ctx) error { return c.SendString("Hello from /test") })
 
-	app.Use(func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusNotFound).SendString("Not Found")
-	})
+	app.Use(func(c fiber.Ctx) error { return c.Status(fiber.StatusNotFound).SendString("Not Found") })
 
 	apptest.Expect(t, app, "/static/style.css", 200)
 }
@@ -1115,12 +1103,8 @@ func Test_Static_ServesRoutedPath(t *testing.T) {
 				t.Parallel()
 
 				app := fiber.New(fiber.Config{UnescapePath: tc.unescape})
-				app.Use("/static/private", func(c fiber.Ctx) error {
-					return c.SendStatus(fiber.StatusForbidden)
-				})
-				app.Use("/static/private area", func(c fiber.Ctx) error {
-					return c.SendStatus(fiber.StatusForbidden)
-				})
+				app.Use("/static/private", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
+				app.Use("/static/private area", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
 				m.mount(app)
 
 				resp := apptest.Expect(t, app, tc.target, tc.wantStatus)
@@ -1195,9 +1179,7 @@ func Test_Static_RootMount_EmptyFirstSegment(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "index.html"), []byte("INDEX"), 0o600))
 
 	// the file cache is off so the served files are closed when the temp dir is removed
-	config := func(fsys fs.FS) Config {
-		return Config{FS: fsys, CacheDuration: -1, Next: reached}
-	}
+	config := func(fsys fs.FS) Config { return Config{FS: fsys, CacheDuration: -1, Next: reached} }
 
 	// each of these mounts has the root as its prefix
 	mounts := []staticTestMount{
@@ -1207,9 +1189,7 @@ func Test_Static_RootMount_EmptyFirstSegment(t *testing.T) {
 		{name: "get wildcard", mount: func(app *fiber.App) { app.Get("/*", New(root, config(nil))) }},
 		{name: "get bare wildcard", mount: func(app *fiber.App) { app.Get("*", New(root, config(nil))) }},
 		{name: "group root", mount: func(app *fiber.App) { app.Group("/").Use(New(root, config(nil))) }},
-		{name: "fs root", mount: func(app *fiber.App) {
-			app.Use(New("", config(os.DirFS(root))))
-		}},
+		{name: "fs root", mount: func(app *fiber.App) { app.Use(New("", config(os.DirFS(root)))) }},
 		{name: "fs subdirectory root", mount: func(app *fiber.App) {
 			app.Get("/*", New(filepath.Base(root), config(os.DirFS(filepath.Dir(root)))))
 		}},
@@ -1312,9 +1292,7 @@ func Test_Static_RootMount_EmptyFirstSegment(t *testing.T) {
 	for i, m := range mounts {
 		for _, unescape := range modes {
 			app := fiber.New(fiber.Config{UnescapePath: unescape})
-			app.Use("/admin", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusForbidden)
-			})
+			app.Use("/admin", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
 			m.mount(app)
 			handlers[i] = append(handlers[i], app.Handler())
 		}
@@ -1395,9 +1373,7 @@ func Test_Static_RootMount_EmptyFirstSegment_Browse(t *testing.T) {
 
 	for _, unescape := range []bool{false, true} {
 		app := fiber.New(fiber.Config{UnescapePath: unescape})
-		app.Use("/admin", func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusForbidden)
-		})
+		app.Use("/admin", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
 		app.Get("/*", New(root, Config{Browse: true, CacheDuration: -1, Next: reached}))
 		handler := app.Handler()
 
@@ -1497,9 +1473,7 @@ func staticTestShell(t *testing.T, mounts []staticTestMount, requests []staticTe
 	for _, m := range mounts {
 		for _, unescape := range []bool{false, true} {
 			app := fiber.New(fiber.Config{UnescapePath: unescape})
-			app.Use("/admin", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusForbidden)
-			})
+			app.Use("/admin", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
 			m.mount(app)
 			handler := app.Handler()
 
@@ -1732,9 +1706,7 @@ func Test_Static_RawBackslashIsNotASeparator(t *testing.T) {
 
 	for _, unescape := range []bool{false, true} {
 		app := fiber.New(fiber.Config{UnescapePath: unescape})
-		app.Use("/static/private", func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusForbidden)
-		})
+		app.Use("/static/private", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
 		app.Get("/static/*", New(root))
 
 		for _, target := range []string{
@@ -1777,9 +1749,7 @@ func Test_Static_ForgedEscapeCannotBypassGuard(t *testing.T) {
 	for _, unescape := range []bool{false, true} {
 		for _, mount := range []string{"wildcard", "prefix"} {
 			app := fiber.New(fiber.Config{UnescapePath: unescape})
-			app.Use("/static/private", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusForbidden)
-			})
+			app.Use("/static/private", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
 			if mount == "wildcard" {
 				app.Get("/static/*", New(root, Config{CacheDuration: -1}))
 			} else {
@@ -1813,9 +1783,7 @@ func Test_Static_TrailingDotOrSpaceCannotBypassGuard(t *testing.T) {
 
 	for _, unescape := range []bool{false, true} {
 		app := fiber.New(fiber.Config{UnescapePath: unescape})
-		app.Use("/static/private", func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusForbidden)
-		})
+		app.Use("/static/private", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
 		app.Get("/static/*", New(root, Config{CacheDuration: -1}))
 
 		resp := apptest.Do(t, app, "/static/private/secret.txt")
@@ -1899,9 +1867,7 @@ func Test_Static_Download_NotFoundLeavesNoAttachment(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/files*", New("../../.github/testdata/fs", Config{Download: true}))
-	app.Get("/files/users", func(c fiber.Ctx) error {
-		return c.JSON(fiber.Map{"ok": true})
-	})
+	app.Get("/files/users", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"ok": true}) })
 
 	resp := apptest.Expect(t, app, "/files/users", fiber.StatusOK)
 	require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -2055,9 +2021,7 @@ func Test_Static_PartialWildcard_SegmentBoundary(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "x"), []byte("PUBLIC"), 0o600))
 
 	app := fiber.New()
-	app.Use("/static/private", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusForbidden)
-	})
+	app.Use("/static/private", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
 	app.Get("/static*", New(root, Config{CacheDuration: -1}))
 
 	for target, want := range map[string]int{

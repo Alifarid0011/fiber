@@ -15,9 +15,7 @@ func newSharedStateMemoryStorage(t *testing.T) *storagememory.Storage {
 	t.Helper()
 
 	store := storagememory.New()
-	t.Cleanup(func() {
-		require.NoError(t, store.Close())
-	})
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
 
 	return store
 }
@@ -305,25 +303,13 @@ func TestSharedState_StorageErrorsArePropagated(t *testing.T) {
 	expectedErr := errors.New("storage failed")
 	closeErr := errors.New("close failed")
 	app := New(Config{
-		SharedStorage: &errorStorage{err: expectedErr, closeErr: closeErr},
-		MsgPackEncoder: func(any) ([]byte, error) {
-			return []byte("msgpack"), nil
-		},
-		MsgPackDecoder: func([]byte, any) error {
-			return nil
-		},
-		CBOREncoder: func(any) ([]byte, error) {
-			return []byte("cbor"), nil
-		},
-		CBORDecoder: func([]byte, any) error {
-			return nil
-		},
-		XMLEncoder: func(any) ([]byte, error) {
-			return []byte("<xml/>"), nil
-		},
-		XMLDecoder: func([]byte, any) error {
-			return nil
-		},
+		SharedStorage:  &errorStorage{err: expectedErr, closeErr: closeErr},
+		MsgPackEncoder: func(any) ([]byte, error) { return []byte("msgpack"), nil },
+		MsgPackDecoder: func([]byte, any) error { return nil },
+		CBOREncoder:    func(any) ([]byte, error) { return []byte("cbor"), nil },
+		CBORDecoder:    func([]byte, any) error { return nil },
+		XMLEncoder:     func(any) ([]byte, error) { return []byte("<xml/>"), nil },
+		XMLDecoder:     func([]byte, any) error { return nil },
 	})
 
 	stateTestExpectSharedOpsFail(t, app.SharedState(), expectedErr, closeErr)

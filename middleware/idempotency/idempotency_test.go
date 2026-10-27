@@ -70,18 +70,14 @@ func Test_Idempotency(t *testing.T) {
 
 	nextCount := func() func() int {
 		var count atomic.Int32
-		return func() int {
-			return int(count.Add(1))
-		}
+		return func() int { return int(count.Add(1)) }
 	}()
 
 	app.Add([]string{
 		fiber.MethodGet,
 		fiber.MethodPost,
 		fiber.MethodQuery,
-	}, "/", func(c fiber.Ctx) error {
-		return c.SendString(strconv.Itoa(nextCount()))
-	})
+	}, "/", func(c fiber.Ctx) error { return c.SendString(strconv.Itoa(nextCount())) })
 
 	app.Post("/slow", func(c fiber.Ctx) error {
 		time.Sleep(3 * lifetime)
@@ -152,9 +148,7 @@ func Benchmark_Idempotency(b *testing.B) {
 		Lifetime: lifetime,
 	}))
 
-	app.Post("/", func(_ fiber.Ctx) error {
-		return nil
-	})
+	app.Post("/", func(_ fiber.Ctx) error { return nil })
 
 	h := app.Handler()
 
@@ -186,9 +180,7 @@ func Benchmark_Idempotency(b *testing.B) {
 		Lifetime: lifetime,
 		KeyScope: func(c fiber.Ctx) string { return c.Get("X-User") },
 	}))
-	scoped.Post("/", func(_ fiber.Ctx) error {
-		return nil
-	})
+	scoped.Post("/", func(_ fiber.Ctx) error { return nil })
 	hs := scoped.Handler()
 
 	b.Run("scoped hit", func(b *testing.B) {

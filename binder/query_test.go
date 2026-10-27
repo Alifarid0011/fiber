@@ -22,9 +22,7 @@ func Benchmark_QueryBinder_Bind(b *testing.B) {
 	var user User
 
 	req := fasthttp.AcquireRequest()
-	b.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-	})
+	b.Cleanup(func() { fasthttp.ReleaseRequest(req) })
 
 	req.URI().SetQueryString("name=john&age=42&posts=post1,post2,post3")
 

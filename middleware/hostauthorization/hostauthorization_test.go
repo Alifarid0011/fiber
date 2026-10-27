@@ -52,9 +52,7 @@ func Test_ConfigAllowedHostsFuncOnly(t *testing.T) {
 	t.Parallel()
 
 	cfg := configDefault(Config{
-		AllowedHostsFunc: func(host string) bool {
-			return host == "example.com"
-		},
+		AllowedHostsFunc: func(host string) bool { return host == "example.com" },
 	})
 	require.NotNil(t, cfg.AllowedHostsFunc)
 }
@@ -62,9 +60,7 @@ func Test_ConfigAllowedHostsFuncOnly(t *testing.T) {
 func Test_ConfigCustomErrorHandler(t *testing.T) {
 	t.Parallel()
 
-	custom := func(c fiber.Ctx, _ error) error {
-		return c.Status(fiber.StatusTeapot).SendString("nope")
-	}
+	custom := func(c fiber.Ctx, _ error) error { return c.Status(fiber.StatusTeapot).SendString("nope") }
 
 	cfg := configDefault(Config{
 		AllowedHosts: []string{"example.com"},
@@ -256,9 +252,7 @@ func Test_MatchHost(t *testing.T) {
 func hostAuthApp(cfg Config, appCfg ...fiber.Config) *fiber.App {
 	app := fiber.New(appCfg...)
 	app.Use(New(cfg))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("OK")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 	return app
 }
 
@@ -324,13 +318,9 @@ func Test_HostAuthorization_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		AllowedHosts: []string{"example.com"},
-		Next: func(c fiber.Ctx) bool {
-			return c.Path() == "/healthz"
-		},
+		Next:         func(c fiber.Ctx) bool { return c.Path() == "/healthz" },
 	}))
-	app.Get("/healthz", func(c fiber.Ctx) error {
-		return c.SendString("OK")
-	})
+	app.Get("/healthz", func(c fiber.Ctx) error { return c.SendString("OK") })
 
 	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/healthz", apptest.WithHost("evil.com")), fiber.StatusOK)
 }
@@ -499,9 +489,7 @@ func Benchmark_HostAuthorization_ExactMatch(b *testing.B) {
 	app.Use(New(Config{
 		AllowedHosts: []string{"example.com"},
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("OK")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
@@ -526,9 +514,7 @@ func Benchmark_HostAuthorization_Mixed(b *testing.B) {
 			"127.0.0.1",
 		},
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("OK")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "api.myapp.com"
@@ -553,7 +539,5 @@ func FuzzNormalizeHost(f *testing.F) {
 	f.Add("192.168.1.1:443")
 	f.Add("münchen.example.com")
 	f.Add("")
-	f.Fuzz(func(_ *testing.T, input string) {
-		_ = normalizeHost(input)
-	})
+	f.Fuzz(func(_ *testing.T, input string) { _ = normalizeHost(input) })
 }

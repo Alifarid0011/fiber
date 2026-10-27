@@ -27,9 +27,7 @@ func Test_ETag_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
@@ -97,25 +95,19 @@ func Test_ETag_PassThrough(t *testing.T) {
 		status  int
 	}{
 		{
-			name: "skip error",
-			handler: func(_ fiber.Ctx) error {
-				return fiber.ErrForbidden
-			},
-			status: fiber.StatusForbidden,
+			name:    "skip error",
+			handler: func(_ fiber.Ctx) error { return fiber.ErrForbidden },
+			status:  fiber.StatusForbidden,
 		},
 		{
-			name: "not status OK",
-			handler: func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusCreated)
-			},
-			status: fiber.StatusCreated,
+			name:    "not status OK",
+			handler: func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) },
+			status:  fiber.StatusCreated,
 		},
 		{
-			name: "no body",
-			handler: func(_ fiber.Ctx) error {
-				return nil
-			},
-			status: fiber.StatusOK,
+			name:    "no body",
+			handler: func(_ fiber.Ctx) error { return nil },
+			status:  fiber.StatusOK,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -218,9 +210,7 @@ func Benchmark_Etag(b *testing.B) {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
 	h := app.Handler()
 

@@ -63,9 +63,7 @@ func TestCookieSameSiteValidation(t *testing.T) {
 	for _, value := range []string{"", "disabled", "LAX", "Strict", "none"} {
 		t.Run(value, func(t *testing.T) {
 			t.Parallel()
-			require.NotPanics(t, func() {
-				configDefault(Config{CookieSameSite: value})
-			})
+			require.NotPanics(t, func() { configDefault(Config{CookieSameSite: value}) })
 		})
 	}
 

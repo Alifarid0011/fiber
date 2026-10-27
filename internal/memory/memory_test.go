@@ -29,9 +29,7 @@ func Test_Memory(t *testing.T) {
 
 	// Set key with value and ttl
 	store.Set(key, val, exp)
-	require.Eventually(t, func() bool {
-		return store.Get(key) == nil
-	}, 3*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return store.Get(key) == nil }, 3*time.Second, 10*time.Millisecond)
 
 	// Set key with value and no expiration
 	store.Set(key, val, 0)
@@ -115,9 +113,7 @@ func Test_Memory_SubSecondTTLExpires(t *testing.T) {
 	store := New()
 	store.Set("key", "value", 500*time.Millisecond)
 	require.Equal(t, "value", store.Get("key"))
-	require.Eventually(t, func() bool {
-		return store.Get("key") == nil
-	}, 3*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return store.Get("key") == nil }, 3*time.Second, 10*time.Millisecond)
 }
 
 func Benchmark_Memory(b *testing.B) {

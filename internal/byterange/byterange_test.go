@@ -359,9 +359,7 @@ func Test_Wrap_KeepsCallerHeaders(t *testing.T) {
 	t.Parallel()
 
 	handler := newFileServer(t)
-	prepare := func(ctx *fasthttp.RequestCtx) {
-		ctx.Response.Header.Set("X-Request", "kept")
-	}
+	prepare := func(ctx *fasthttp.RequestCtx) { ctx.Response.Header.Set("X-Request", "kept") }
 
 	for name, fields := range map[string]map[string]string{
 		"range served":               {fasthttp.HeaderRange: "bytes=0-4"},

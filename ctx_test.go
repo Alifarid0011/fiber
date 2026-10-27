@@ -450,9 +450,7 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 
 	app := ctxTestACustomApp()
 
-	app.Get("/:id", func(c Ctx) error {
-		return c.SendString(c.Params("id"))
-	})
+	app.Get("/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
 	resp := apptest.Do(t, app, httptest.NewRequest(MethodGet, "/v3", &bytes.Buffer{}))
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -523,9 +521,7 @@ func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
 func Test_Ctx_CustomCtx_JSON_WithMiddleware(t *testing.T) {
 	t.Parallel()
 
-	newCtx := func(app *App) CustomCtx {
-		return &jsonEnvelopeCustomCtx{DefaultCtx: *NewDefaultCtx(app)}
-	}
+	newCtx := func(app *App) CustomCtx { return &jsonEnvelopeCustomCtx{DefaultCtx: *NewDefaultCtx(app)} }
 
 	for _, tc := range []struct {
 		name       string
@@ -540,13 +536,9 @@ func Test_Ctx_CustomCtx_JSON_WithMiddleware(t *testing.T) {
 
 			app := NewWithCustomCtx(newCtx)
 			if tc.middleware {
-				app.Use(func(c Ctx) error {
-					return c.Next()
-				})
+				app.Use(func(c Ctx) error { return c.Next() })
 			}
-			app.Get("/vvv", func(c Ctx) error {
-				return c.JSON(Map{"a": "b"})
-			})
+			app.Get("/vvv", func(c Ctx) error { return c.JSON(Map{"a": "b"}) })
 
 			resp := apptest.Do(t, app, "/vvv")
 			defer func() { require.NoError(t, resp.Body.Close()) }()
@@ -586,9 +578,7 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 	ctxTestAExpectEmptyOK(t, app, apptest.Req("JOHN", "/doe"))
 
 	// Add a new method
-	require.Panics(t, func() {
-		app.Add([]string{"JANE"}, "/jane", testEmptyHandler)
-	})
+	require.Panics(t, func() { app.Add([]string{"JANE"}, "/jane", testEmptyHandler) })
 }
 
 func Test_Ctx_Accepts_EmptyAccept(t *testing.T) {
@@ -1909,9 +1899,7 @@ func Test_Ctx_Format_NilHandler(t *testing.T) {
 			}
 
 			var err error
-			require.NotPanics(t, func() {
-				err = c.Format(tc.formats...)
-			})
+			require.NotPanics(t, func() { err = c.Format(tc.formats...) })
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.wantMediaType)
 			require.Contains(t, err.Error(), tc.wantIndex)
@@ -1980,9 +1968,7 @@ func Benchmark_Ctx_Format(b *testing.B) {
 		require.FailNow(b, "Wrong type chosen")
 		return errors.New("Wrong type chosen")
 	}
-	ok := func(_ Ctx) error {
-		return nil
-	}
+	ok := func(_ Ctx) error { return nil }
 
 	var err error
 	b.Run("with arg allocation", func(b *testing.B) {
@@ -2312,9 +2298,7 @@ func Test_Ctx_FormFile(t *testing.T) {
 
 		f, err := fh.Open()
 		require.NoError(t, err)
-		defer func() {
-			require.NoError(t, f.Close())
-		}()
+		defer func() { require.NoError(t, f.Close()) }()
 
 		b := new(bytes.Buffer)
 		_, err = io.Copy(b, f)
@@ -2958,9 +2942,7 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	t.Parallel()
 
 	// The requests come from 0.0.0.0.
-	trust := func(config TrustProxyConfig) Config {
-		return Config{TrustProxy: true, TrustProxyConfig: config}
-	}
+	trust := func(config TrustProxyConfig) Config { return Config{TrustProxy: true, TrustProxyConfig: config} }
 
 	for _, tc := range []struct {
 		config Config
@@ -3088,9 +3070,7 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Get("/port", func(c Ctx) error {
-		return c.SendString(c.Port())
-	})
+	app.Get("/port", func(c Ctx) error { return c.SendString(c.Port()) })
 
 	apptest.ExpectBody(t, app, "/port", StatusOK, "0")
 }
@@ -3394,9 +3374,7 @@ func Test_Ctx_IP_ProxyHeader_Wire(t *testing.T) {
 			Proxies: []string{"0.0.0.0"},
 		},
 	})
-	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.IP() + "|" + strings.Join(c.IPs(), ","))
-	})
+	app.Get("/", func(c Ctx) error { return c.SendString(c.IP() + "|" + strings.Join(c.IPs(), ",")) })
 
 	for _, tc := range []struct {
 		name   string
@@ -3482,9 +3460,7 @@ func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, unixSocket bool) string {
 		},
 		ProxyHeader: HeaderXForwardedFor,
 	})
-	app.Get("/ip", func(c Ctx) error {
-		return c.SendString(fmt.Sprintf("%t|%s", c.IsProxyTrusted(), c.IP()))
-	})
+	app.Get("/ip", func(c Ctx) error { return c.SendString(fmt.Sprintf("%t|%s", c.IsProxyTrusted(), c.IP())) })
 
 	tmp, err := os.MkdirTemp(os.TempDir(), "fiber-ctx-unix")
 	require.NoError(t, err)
@@ -3498,9 +3474,7 @@ func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, unixSocket bool) string {
 
 		client := &fasthttp.HostClient{
 			Addr: sock,
-			Dial: func(addr string) (net.Conn, error) {
-				return net.Dial(NetworkUnix, addr)
-			},
+			Dial: func(addr string) (net.Conn, error) { return net.Dial(NetworkUnix, addr) },
 		}
 
 		req := &fasthttp.Request{}
@@ -3902,9 +3876,7 @@ func Test_Ctx_Locals_AfterRelease(t *testing.T) {
 		val := ctx.Locals("test")
 		require.Nil(t, val)
 	})
-	require.NotPanics(t, func() {
-		require.Equal(t, "fallback", ctx.Locals("test", "fallback"))
-	})
+	require.NotPanics(t, func() { require.Equal(t, "fallback", ctx.Locals("test", "fallback")) })
 }
 
 func Test_Ctx_SetLocal(t *testing.T) {
@@ -4363,9 +4335,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 func Test_Ctx_InvalidMethod(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(_ Ctx) error {
-		return nil
-	})
+	app.Get("/", func(_ Ctx) error { return nil })
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod("InvalidMethod")
@@ -4505,15 +4475,11 @@ func Test_Ctx_Params_ErrorHandler_Panic_Issue_2832(t *testing.T) {
 	t.Parallel()
 
 	app := New(Config{
-		ErrorHandler: func(c Ctx, _ error) error {
-			return c.SendString(c.Params("user"))
-		},
-		BodyLimit: 1 * 1024,
+		ErrorHandler: func(c Ctx, _ error) error { return c.SendString(c.Params("user")) },
+		BodyLimit:    1 * 1024,
 	})
 
-	app.Get("/test/:user", func(_ Ctx) error {
-		return NewError(StatusInternalServerError, "error")
-	})
+	app.Get("/test/:user", func(_ Ctx) error { return NewError(StatusInternalServerError, "error") })
 
 	largeBody := make([]byte, 2*1024)
 	_, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", bytes.NewReader(largeBody)))
@@ -5053,9 +5019,7 @@ func Test_Ctx_Range_SuffixNormalization(t *testing.T) {
 			}
 
 			resp := apptest.Do(t, app, req)
-			t.Cleanup(func() {
-				require.NoError(t, resp.Body.Close())
-			})
+			t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
 
 			require.Equal(t, tc.statusCode, resp.StatusCode)
 			require.Equal(t, tc.contentRange, resp.Header.Get(HeaderContentRange))
@@ -5234,9 +5198,7 @@ func Test_Ctx_Endpoint_RepeatedAndSkipped(t *testing.T) {
 	app.Get("/other/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
 	// A middleware route registered ahead of the target exercises the use/mount skip.
 	app.Use("/users", func(c Ctx) error { return c.Next() })
-	app.Get("/users/:id", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	}).Name("user.show")
+	app.Get("/users/:id", func(c Ctx) error { return c.SendStatus(StatusOK) }).Name("user.show")
 
 	ctxTestBExpectGet(t, app, "/users/42", StatusOK)
 	require.Equal(t, 1, calls)
@@ -5412,9 +5374,7 @@ func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 		}
 		return c.Next()
 	})
-	app.Get("/items/:id", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	app.Get("/items/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	ctxTestBExpectGet(t, app, "/items/7", StatusOK)
 	require.Equal(t, "/items/:id", path)
@@ -5448,9 +5408,7 @@ func Test_Ctx_Reset_DisablePathNormalizing(t *testing.T) {
 func Test_Ctx_Path_DisablePathNormalizing(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/a/b", func(c Ctx) error {
-		return c.SendString(c.Path())
-	})
+	app.Get("/a/b", func(c Ctx) error { return c.SendString(c.Path()) })
 	for _, tc := range []struct{ mount, override string }{
 		{mount: "/dotted", override: "/a/./b"},
 		{mount: "/plain", override: "/a/b"},
@@ -5548,9 +5506,7 @@ func createMultipartFileHeader(t *testing.T, filename string, data []byte) *mult
 	form, err := multipartReader.ReadForm(int64(len(body.Bytes())))
 	require.NoError(t, err)
 
-	t.Cleanup(func() {
-		require.NoError(t, form.RemoveAll())
-	})
+	t.Cleanup(func() { require.NoError(t, form.RemoveAll()) })
 
 	files := form.File["file"]
 	require.Len(t, files, 1)
@@ -5959,12 +5915,10 @@ func Test_Ctx_Secure(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "direct TLS",
-			app:  New(),
-			configure: func(freq *fasthttp.RequestCtx) {
-				freq.Init2(&tls.Conn{}, nil, true)
-			},
-			expected: true,
+			name:      "direct TLS",
+			app:       New(),
+			configure: func(freq *fasthttp.RequestCtx) { freq.Init2(&tls.Conn{}, nil, true) },
+			expected:  true,
 		},
 		{
 			name: "trusted proxy HTTPS scheme",
@@ -6172,9 +6126,7 @@ func ctxTestBCtxGoSource(t *testing.T) []byte {
 
 	f, err := os.Open("./ctx.go")
 	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, f.Close())
-	}()
+	defer func() { require.NoError(t, f.Close()) }()
 
 	content, err := io.ReadAll(f)
 	require.NoError(t, err)
@@ -6455,9 +6407,7 @@ func Test_Ctx_SendFile_EmbedFS(t *testing.T) {
 func Test_Ctx_SendFile_404(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.SendFile("ctx12.go")
-	})
+	app.Get("/", func(c Ctx) error { return c.SendFile("ctx12.go") })
 
 	apptest.ExpectBody(t, app, "/", StatusNotFound, "sendfile: file ctx12.go not found")
 }
@@ -6483,9 +6433,7 @@ func Test_Ctx_SendFile_NameIsLiteral(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			app := New()
-			app.Get("/", func(c Ctx) error {
-				return c.SendFile(filepath.Join(dir, name))
-			})
+			app.Get("/", func(c Ctx) error { return c.SendFile(filepath.Join(dir, name)) })
 			apptest.ExpectBody(t, app, "/", StatusOK, "content of "+name)
 		})
 	}
@@ -6508,9 +6456,7 @@ func Test_Ctx_SendFile_EncodedSeparatorStaysInDirectory(t *testing.T) {
 
 	for _, unescape := range []bool{false, true} {
 		app := New(Config{UnescapePath: unescape})
-		app.Get("/files/*", func(c Ctx) error {
-			return c.SendFile(filepath.Join(pub, c.Params("*")))
-		})
+		app.Get("/files/*", func(c Ctx) error { return c.SendFile(filepath.Join(pub, c.Params("*"))) })
 
 		resp := apptest.Do(t, app, "/files/ok.txt")
 		require.Equal(t, StatusOK, resp.StatusCode, "unescape=%v", unescape)
@@ -6545,9 +6491,7 @@ func Test_Ctx_SendFile_DirectoryIsNotFound(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name, "index.html"), []byte("INDEX"), 0o600))
 
 		app := New()
-		app.Get("/", func(c Ctx) error {
-			return c.SendFile(filepath.Join(dir, name))
-		})
+		app.Get("/", func(c Ctx) error { return c.SendFile(filepath.Join(dir, name)) })
 		resp := apptest.Do(t, app, "/")
 		require.Equal(t, StatusNotFound, resp.StatusCode, name)
 		require.Empty(t, resp.Header.Get(HeaderLocation), name)
@@ -6749,9 +6693,7 @@ func Test_SendFile_withRoutes(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.Get("/file", func(c Ctx) error {
-		return c.SendFile("ctx.go")
-	})
+	app.Get("/file", func(c Ctx) error { return c.SendFile("ctx.go") })
 
 	app.Get("/file/download", func(c Ctx) error {
 		return c.SendFile("ctx.go", SendFile{
@@ -6785,13 +6727,9 @@ func Test_SendFile_ByteRange(t *testing.T) {
 
 	app := New()
 
-	app.Get("/range", func(c Ctx) error {
-		return c.SendFile(fixture, SendFile{ByteRange: true})
-	})
+	app.Get("/range", func(c Ctx) error { return c.SendFile(fixture, SendFile{ByteRange: true}) })
 
-	app.Get("/norange", func(c Ctx) error {
-		return c.SendFile(fixture)
-	})
+	app.Get("/norange", func(c Ctx) error { return c.SendFile(fixture) })
 
 	// get requests target with the given Range header; the response body is
 	// closed when the subtest ends.
@@ -6943,9 +6881,7 @@ func Test_SendFile_ByteRange_DotSegments(t *testing.T) {
 	fixture := byteRangeFixture(t)
 	dir := filepath.Dir(fixture)
 	app := New()
-	app.Get("/os", func(c Ctx) error {
-		return c.SendFile(dir+"/missing/../fixture.txt", SendFile{ByteRange: true})
-	})
+	app.Get("/os", func(c Ctx) error { return c.SendFile(dir+"/missing/../fixture.txt", SendFile{ByteRange: true}) })
 	app.Get("/fs", func(c Ctx) error {
 		return c.SendFile("a/../../fixture.txt", SendFile{ByteRange: true, FS: os.DirFS(dir)})
 	})
@@ -6974,18 +6910,14 @@ func Test_SendFile_ByteRange_DirectoryIndex(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "index.html"), []byte("0123"), 0o600))
 
 	app := New()
-	app.Get("/os", func(c Ctx) error {
-		return c.SendFile(root+"/missing/../dir/", SendFile{ByteRange: true})
-	})
+	app.Get("/os", func(c Ctx) error { return c.SendFile(root+"/missing/../dir/", SendFile{ByteRange: true}) })
 	app.Get("/fs", func(c Ctx) error {
 		return c.SendFile("a/../../dir/", SendFile{ByteRange: true, FS: os.DirFS(root)})
 	})
 	app.Get("/fs-root", func(c Ctx) error {
 		return c.SendFile("dir/..", SendFile{ByteRange: true, FS: os.DirFS(root)})
 	})
-	app.Get("/os-missing", func(c Ctx) error {
-		return c.SendFile(root+"/missing.txt", SendFile{ByteRange: true})
-	})
+	app.Get("/os-missing", func(c Ctx) error { return c.SendFile(root+"/missing.txt", SendFile{ByteRange: true}) })
 	app.Get("/fs-missing", func(c Ctx) error {
 		return c.SendFile("missing.txt", SendFile{ByteRange: true, FS: os.DirFS(root)})
 	})
@@ -7150,9 +7082,7 @@ func Test_Ctx_MsgPack(t *testing.T) {
 		t.Parallel()
 
 		c := apptest.Ctx(t, New(Config{
-			MsgPackEncoder: func(_ any) ([]byte, error) {
-				return []byte("error"), errors.New("msgpack error")
-			},
+			MsgPackEncoder: func(_ any) ([]byte, error) { return []byte("error"), errors.New("msgpack error") },
 		}))
 
 		err := c.MsgPack(Map{ // map has no order
@@ -7585,9 +7515,7 @@ func Test_Ctx_Location(t *testing.T) {
 func Test_Ctx_Next(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use("/", func(c Ctx) error {
-		return c.Next()
-	})
+	app.Use("/", func(c Ctx) error { return c.Next() })
 	app.Get("/test", func(c Ctx) error {
 		c.Set("X-Next-Result", "Works")
 		return nil
@@ -7723,9 +7651,7 @@ func Test_Ctx_Matched_AfterNext(t *testing.T) {
 		return err
 	})
 
-	app.Get("/one", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	app.Get("/one", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	apptest.Expect(t, app, "/one", StatusOK)
 
@@ -7741,9 +7667,7 @@ func Test_Ctx_Matched_RouteError(t *testing.T) {
 		},
 	})
 
-	app.Get("/", func(_ Ctx) error {
-		return ErrNotFound
-	})
+	app.Get("/", func(_ Ctx) error { return ErrNotFound })
 
 	apptest.Expect(t, app, "/", StatusNotFound)
 }
@@ -8035,17 +7959,13 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/new", func(_ Ctx) error {
-		return nil
-	})
+	app.Get("/new", func(_ Ctx) error { return nil })
 	app.Use(func(c Ctx) error {
 		c.Path("/new")
 		// c.Next() would fail this test as a 404 is returned from the next handler
 		return c.RestartRouting()
 	})
-	app.Use(func(_ Ctx) error {
-		return ErrNotFound
-	})
+	app.Use(func(_ Ctx) error { return ErrNotFound })
 
 	apptest.Expect(t, app, "http://example.com/old", StatusOK)
 }
@@ -8101,9 +8021,7 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	app := New()
 	c := apptest.CtxAs[*DefaultCtx](b, app)
 
-	app.Get("/user/:name", func(c Ctx) error {
-		return c.SendString(c.Params("name"))
-	}).Name("User")
+	app.Get("/user/:name", func(c Ctx) error { return c.SendString(c.Params("name")) }).Name("User")
 
 	var err error
 	var location string
@@ -8442,15 +8360,9 @@ func Test_Ctx_Status_Invalid(t *testing.T) {
 
 	app := New()
 	for _, code := range invalid {
-		app.Get("/status/"+strconv.Itoa(code), func(c Ctx) error {
-			return c.Status(code).SendString("body")
-		})
-		app.Get("/send/"+strconv.Itoa(code), func(c Ctx) error {
-			return c.SendStatus(code)
-		})
-		app.Get("/error/"+strconv.Itoa(code), func(_ Ctx) error {
-			return NewError(code, "failed")
-		})
+		app.Get("/status/"+strconv.Itoa(code), func(c Ctx) error { return c.Status(code).SendString("body") })
+		app.Get("/send/"+strconv.Itoa(code), func(c Ctx) error { return c.SendStatus(code) })
+		app.Get("/error/"+strconv.Itoa(code), func(_ Ctx) error { return NewError(code, "failed") })
 		app.Get("/redirect/"+strconv.Itoa(code), func(c Ctx) error {
 			return c.Redirect().Status(code).To("/elsewhere")
 		})
@@ -9374,14 +9286,10 @@ func Test_Ctx_Drop(t *testing.T) {
 	app := New()
 
 	// Handler that calls Drop
-	app.Get("/block-me", func(c Ctx) error {
-		return c.Drop()
-	})
+	app.Get("/block-me", func(c Ctx) error { return c.Drop() })
 
 	// Additional handler that just calls return
-	app.Get("/no-response", func(_ Ctx) error {
-		return nil
-	})
+	app.Get("/no-response", func(_ Ctx) error { return nil })
 
 	// Test the Drop method
 	ctxTestCNoResponse(t, app, "/block-me", ErrTestGotEmptyResponse)
@@ -9406,9 +9314,7 @@ func Test_Ctx_DropWithMiddleware(t *testing.T) {
 	})
 
 	// Handler that calls Drop
-	app.Get("/block-me", func(c Ctx) error {
-		return c.Drop()
-	})
+	app.Get("/block-me", func(c Ctx) error { return c.Drop() })
 
 	// Test the Drop method
 	ctxTestCNoResponse(t, app, "/block-me", ErrTestGotEmptyResponse)
@@ -9472,9 +9378,7 @@ func Test_Ctx_End_after_drop(t *testing.T) {
 	})
 
 	// Early flushing handler
-	app.Get("/", func(c Ctx) error {
-		return c.Drop()
-	})
+	app.Get("/", func(c Ctx) error { return c.Drop() })
 
 	ctxTestCNoResponse(t, app, "/", ErrTestGotEmptyResponse)
 }
@@ -9579,9 +9483,7 @@ func Test_Ctx_AbandonSkipsReleaseCtx(t *testing.T) {
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // controlled test setup
 	ctx.route = &Route{}
 
-	t.Cleanup(func() {
-		ctx.ForceRelease()
-	})
+	t.Cleanup(func() { ctx.ForceRelease() })
 
 	require.False(t, ctx.IsAbandoned())
 
@@ -10130,12 +10032,8 @@ func Test_Ctx_SendFile_UncomparableFS(t *testing.T) {
 	app := New()
 	first := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}
 	second := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("other")}}
-	app.Get("/", func(c Ctx) error {
-		return c.SendFile("hello.txt", SendFile{FS: first})
-	})
-	app.Get("/other", func(c Ctx) error {
-		return c.SendFile("hello.txt", SendFile{FS: second})
-	})
+	app.Get("/", func(c Ctx) error { return c.SendFile("hello.txt", SendFile{FS: first}) })
+	app.Get("/other", func(c Ctx) error { return c.SendFile("hello.txt", SendFile{FS: second}) })
 
 	for _, tc := range []struct{ path, body string }{
 		{path: "/", body: "hello"},
@@ -10153,9 +10051,7 @@ func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
 	app := New()
 	files := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}
 	open := funcFS(files.Open)
-	app.Get("/", func(c Ctx) error {
-		return c.SendFile("hello.txt", SendFile{FS: open})
-	})
+	app.Get("/", func(c Ctx) error { return c.SendFile("hello.txt", SendFile{FS: open}) })
 
 	for range 10 {
 		apptest.ExpectBody(t, app, "/", StatusOK, "hello")
@@ -10176,9 +10072,7 @@ func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
 		seen = c.Get(HeaderAcceptEncoding)
 		return err
 	})
-	app.Get("/", func(c Ctx) error {
-		return c.SendFile("./ctx.go")
-	})
+	app.Get("/", func(c Ctx) error { return c.SendFile("./ctx.go") })
 
 	resp := apptest.Expect(t, app, apptest.Req(MethodGet, "/", apptest.WithHeader(HeaderAcceptEncoding, "gzip")), StatusOK)
 	require.Equal(t, "gzip", seen)
@@ -10199,9 +10093,7 @@ func Test_Ctx_SendFile_CompressedByMiddleware(t *testing.T) {
 		compressor(c.RequestCtx())
 		return nil
 	})
-	app.Get("/", func(c Ctx) error {
-		return c.SendFile("./ctx.go")
-	})
+	app.Get("/", func(c Ctx) error { return c.SendFile("./ctx.go") })
 
 	resp := apptest.Expect(t, app, apptest.Req(MethodGet, "/", apptest.WithHeader(HeaderAcceptEncoding, "gzip")), StatusOK)
 	require.Equal(t, "gzip", resp.Header.Get(HeaderContentEncoding))
@@ -10211,9 +10103,7 @@ func Test_Ctx_AutoFormat_NoAcceptHeader(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.AutoFormat("Hello, World!")
-	})
+	app.Get("/", func(c Ctx) error { return c.AutoFormat("Hello, World!") })
 
 	testCases := []struct {
 		name        string

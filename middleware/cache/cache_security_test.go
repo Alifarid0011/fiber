@@ -441,9 +441,7 @@ func Test_Cache_Security_CookieKeyedOnEveryFieldLine(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{Expiration: time.Hour, KeyHeaders: []string{"Cookie"}}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("page-for:" + c.Cookies("session"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("page-for:" + c.Cookies("session")) })
 	wire := cacheTestCWire{t: t, app: app}
 
 	cacheTestCRequireReply(t, wire.field("Cookie", "a=1", "session=attacker"), cacheMiss, "page-for:attacker")
@@ -950,9 +948,7 @@ func Test_KeyHeaders_PartitionWithoutHeaderNormalizing(t *testing.T) {
 
 			app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
 			app.Use(New(Config{Expiration: time.Hour, KeyHeaders: []string{"X-Tenant"}}))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("body-for:" + c.Get("X-Tenant"))
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body-for:" + c.Get("X-Tenant")) })
 
 			do := func(tenant string) reply { return cacheTestCGet(t, app, "/", "X-Tenant", tenant) }
 
@@ -1226,9 +1222,7 @@ func Test_Cache_OuterMiddlewareHeaderNamesAreNotDuplicated(t *testing.T) {
 				return c.Next()
 			})
 			app.Use(New(Config{StoreResponseHeaders: true, Expiration: time.Minute}))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("body")
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
 
 			for _, want := range []string{cacheMiss, cacheHit} {
 				resp := cacheTestAExpect(t, app, "/", want)

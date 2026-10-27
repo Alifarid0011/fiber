@@ -67,9 +67,7 @@ func (ts *testServer) stop() {
 func (ts *testServer) dial() func(addr string) (net.Conn, error) {
 	ts.tb.Helper()
 
-	return func(_ string) (net.Conn, error) {
-		return ts.ln.Dial()
-	}
+	return func(_ string) (net.Conn, error) { return ts.ln.Dial() }
 }
 
 func createHelperServer(tb testing.TB) (app *fiber.App, dial func(addr string) (net.Conn, error), start func()) { //nolint:nonamedreturns // gocritic unnamedResult requires explicit result identifiers for helper components
@@ -79,12 +77,8 @@ func createHelperServer(tb testing.TB) (app *fiber.App, dial func(addr string) (
 
 	app = fiber.New()
 
-	dial = func(_ string) (net.Conn, error) {
-		return ln.Dial()
-	}
-	start = func() {
-		require.NoError(tb, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
-	}
+	dial = func(_ string) (net.Conn, error) { return ln.Dial() }
+	start = func() { require.NoError(tb, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }
 
 	return app, dial, start
 }

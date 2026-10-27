@@ -107,10 +107,8 @@ func Test_Redirect_WithFlashMessages(t *testing.T) {
 			want:     flash,
 		},
 		{
-			name: "Route with old input from the query",
-			prepare: func(c *DefaultCtx) {
-				c.Request().URI().SetQueryString("id=1&name=tom")
-			},
+			name:     "Route with old input from the query",
+			prepare:  func(c *DefaultCtx) { c.Request().URI().SetQueryString("id=1&name=tom") },
 			redirect: routeWithInput,
 			location: "/user",
 			want:     flashWithInput,
@@ -302,9 +300,7 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := New()
-			app.Get("/user/:name", func(c Ctx) error {
-				return c.JSON(c.Params("name"))
-			}).Name("user")
+			app.Get("/user/:name", func(c Ctx) error { return c.JSON(c.Params("name")) }).Name("user")
 			c := apptest.Ctx(t, app)
 
 			err := c.Redirect().Route("user", RedirectConfig{
@@ -385,9 +381,7 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := New()
-			app.Get("/*", func(c Ctx) error {
-				return c.JSON(c.Params("*"))
-			}).Name("wildcard")
+			app.Get("/*", func(c Ctx) error { return c.JSON(c.Params("*")) }).Name("wildcard")
 			c := apptest.Ctx(t, app)
 
 			err := c.Redirect().Route("wildcard", RedirectConfig{
@@ -413,9 +407,7 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 func Test_Redirect_Back(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.JSON("Home")
-	}).Name("home")
+	app.Get("/", func(c Ctx) error { return c.JSON("Home") }).Name("home")
 	c := apptest.Ctx(t, app)
 
 	err := c.Redirect().Back("/")
@@ -431,12 +423,8 @@ func Test_Redirect_Back(t *testing.T) {
 func Test_Redirect_Back_WithReferer(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.JSON("Home")
-	}).Name("home")
-	app.Get("/back", func(c Ctx) error {
-		return c.JSON("Back")
-	}).Name("back")
+	app.Get("/", func(c Ctx) error { return c.JSON("Home") }).Name("home")
+	app.Get("/back", func(c Ctx) error { return c.JSON("Back") }).Name("back")
 	c := apptest.Ctx(t, app)
 
 	c.Request().Header.Set(HeaderReferer, "/back")
@@ -627,9 +615,7 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
+	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
 
 	c := apptest.CtxAs[*DefaultCtx](t, app)
 
@@ -855,9 +841,7 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 
 func Benchmark_Redirect_Route(b *testing.B) {
 	app := New()
-	app.Get("/user/:name", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
+	app.Get("/user/:name", func(c Ctx) error { return c.JSON(c.Params("name")) }).Name("user")
 
 	c := apptest.CtxAs[*DefaultCtx](b, app)
 
@@ -880,9 +864,7 @@ func Benchmark_Redirect_Route(b *testing.B) {
 
 func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 	app := New()
-	app.Get("/user/:name", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
+	app.Get("/user/:name", func(c Ctx) error { return c.JSON(c.Params("name")) }).Name("user")
 
 	c := apptest.CtxAs[*DefaultCtx](b, app)
 
@@ -910,9 +892,7 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 
 func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
+	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
 
 	c := apptest.CtxAs[*DefaultCtx](b, app)
 
@@ -1054,9 +1034,7 @@ var testredirectionMsgs = redirectionMsgs{
 
 func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
+	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
 
 	c := apptest.CtxAs[*DefaultCtx](b, app)
 
@@ -1094,9 +1072,7 @@ func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 
 func Benchmark_Redirect_processFlashMessages(b *testing.B) {
 	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
+	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
 
 	c := apptest.CtxAs[*DefaultCtx](b, app)
 
@@ -1123,9 +1099,7 @@ func Benchmark_Redirect_processFlashMessages(b *testing.B) {
 
 func Benchmark_Redirect_Messages(b *testing.B) {
 	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
+	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
 
 	c := apptest.CtxAs[*DefaultCtx](b, app)
 
@@ -1162,9 +1136,7 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 
 func Benchmark_Redirect_OldInputs(b *testing.B) {
 	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
+	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
 
 	c := apptest.CtxAs[*DefaultCtx](b, app)
 
@@ -1195,9 +1167,7 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 
 func Benchmark_Redirect_Message(b *testing.B) {
 	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
+	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
 
 	c := apptest.CtxAs[*DefaultCtx](b, app)
 
@@ -1228,9 +1198,7 @@ func Benchmark_Redirect_Message(b *testing.B) {
 
 func Benchmark_Redirect_OldInput(b *testing.B) {
 	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
+	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
 
 	c := apptest.CtxAs[*DefaultCtx](b, app)
 

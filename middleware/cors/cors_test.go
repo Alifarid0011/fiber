@@ -435,9 +435,7 @@ func Test_CORS_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
+		Next: func(_ fiber.Ctx) bool { return true },
 	}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
@@ -447,9 +445,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New())
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	methods := []string{
 		fiber.MethodGet,
@@ -534,10 +530,8 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc(t *testing.T) {
 	// New fiber instance
 	app := fiber.New()
 	app.Use("/", New(Config{
-		AllowOrigins: []string{"http://example-1.com"},
-		AllowOriginsFunc: func(origin string) bool {
-			return strings.Contains(origin, "example-2")
-		},
+		AllowOrigins:     []string{"http://example-1.com"},
+		AllowOriginsFunc: func(origin string) bool { return strings.Contains(origin, "example-2") },
 	}))
 
 	handler := app.Handler()
@@ -567,9 +561,7 @@ func Test_CORS_AllowOriginsFunc(t *testing.T) {
 	// New fiber instance
 	app := fiber.New()
 	app.Use("/", New(Config{
-		AllowOriginsFunc: func(origin string) bool {
-			return strings.Contains(origin, "example-2")
-		},
+		AllowOriginsFunc: func(origin string) bool { return strings.Contains(origin, "example-2") },
 	}))
 
 	// Get handler pointer
@@ -624,9 +616,7 @@ func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
 			app.Use("/", New(Config{
 				AllowOriginsFunc: func(string) bool { return true },
 			}))
-			app.All("/", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusOK)
-			})
+			app.All("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 			handler := app.Handler()
 
@@ -709,9 +699,7 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 			Name: "AllowOriginsFuncDefined",
 			Config: Config{
 				AllowCredentials: true,
-				AllowOriginsFunc: func(_ string) bool {
-					return true
-				},
+				AllowOriginsFunc: func(_ string) bool { return true },
 			},
 			RequestOrigin: "http://aaa.com",
 			// The AllowOriginsFunc config was defined, should use the real origin of the function
@@ -722,9 +710,7 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 			Name: "fiber-ghsa-fmg4-x8pw-hjhg-wildcard-credentials",
 			Config: Config{
 				AllowCredentials: true,
-				AllowOriginsFunc: func(_ string) bool {
-					return true
-				},
+				AllowOriginsFunc: func(_ string) bool { return true },
 			},
 			RequestOrigin:  "*",
 			ResponseOrigin: "",
@@ -887,9 +873,7 @@ func Test_CORS_Query_RequiresPreflight(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New()) // default config: QUERY is in AllowMethods
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	handler := app.Handler()
 
 	t.Run("QUERY preflight is answered with QUERY allowed", func(t *testing.T) {
@@ -933,9 +917,7 @@ func Benchmark_CORS_NewHandler(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
@@ -966,9 +948,7 @@ func Benchmark_CORS_NewHandler_Parallel(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 
@@ -1003,9 +983,7 @@ func Benchmark_CORS_NewHandlerSingleOrigin(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
@@ -1036,9 +1014,7 @@ func Benchmark_CORS_NewHandlerSingleOrigin_Parallel(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 
@@ -1072,9 +1048,7 @@ func Benchmark_CORS_NewHandlerWildcard(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
@@ -1104,9 +1078,7 @@ func Benchmark_CORS_NewHandlerWildcard_Parallel(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 
@@ -1141,9 +1113,7 @@ func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
@@ -1176,9 +1146,7 @@ func Benchmark_CORS_NewHandlerPreflight_Parallel(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 
@@ -1214,9 +1182,7 @@ func Benchmark_CORS_NewHandlerPreflightSingleOrigin(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
@@ -1248,9 +1214,7 @@ func Benchmark_CORS_NewHandlerPreflightSingleOrigin_Parallel(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 
@@ -1285,9 +1249,7 @@ func Benchmark_CORS_NewHandlerPreflightWildcard(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
@@ -1318,9 +1280,7 @@ func Benchmark_CORS_NewHandlerPreflightWildcard_Parallel(b *testing.B) {
 	})
 
 	app.Use(c)
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	h := app.Handler()
 
@@ -1352,9 +1312,7 @@ func Test_CORS_setSimpleHeaders_NilConfig(t *testing.T) {
 
 	c := apptest.Ctx(t, fiber.New())
 
-	require.NotPanics(t, func() {
-		setSimpleHeaders(c, "https://example.com", nil, nil)
-	})
+	require.NotPanics(t, func() { setSimpleHeaders(c, "https://example.com", nil, nil) })
 	require.Empty(t, string(c.Response().Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }
 
@@ -1383,9 +1341,7 @@ func Test_CORS_setPreflightHeaders_NilConfig(t *testing.T) {
 
 	c := apptest.Ctx(t, fiber.New())
 
-	require.NotPanics(t, func() {
-		setPreflightHeaders(c, "https://example.com", "600", nil, nil)
-	})
+	require.NotPanics(t, func() { setPreflightHeaders(c, "https://example.com", "600", nil, nil) })
 	require.Empty(t, string(c.Response().Header.Peek(fiber.HeaderAccessControlMaxAge)))
 }
 
@@ -1485,9 +1441,7 @@ func Test_CORS_OriginWithoutHeaderNormalizing(t *testing.T) {
 
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 	app.Use(New(Config{AllowOrigins: []string{"http://example.com"}}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 	do := func(header string) *fasthttp.RequestCtx {
 		return corsTestRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+header+"\r\n\r\n")
@@ -1511,9 +1465,7 @@ func Test_CORS_PreflightWithoutHeaderNormalizing(t *testing.T) {
 		AllowOrigins: []string{"http://example.com"},
 		AllowMethods: []string{fiber.MethodGet, fiber.MethodPut},
 	}))
-	app.Put("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	app.Put("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 	raw := "OPTIONS / HTTP/1.1\r\nHost: example.com\r\n" +
 		"origin: http://example.com\r\n" +
@@ -1536,9 +1488,7 @@ func Test_CORS_PreflightSplitRequestHeaders(t *testing.T) {
 		AllowOrigins: []string{"http://example.com"},
 		AllowMethods: []string{fiber.MethodGet, fiber.MethodPut},
 	}))
-	app.Put("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	app.Put("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 	raw := "OPTIONS / HTTP/1.1\r\nHost: example.com\r\n" +
 		"Origin: http://example.com\r\n" +
