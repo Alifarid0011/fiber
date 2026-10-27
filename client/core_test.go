@@ -29,6 +29,29 @@ func clientTestCCore(client *Client) *core {
 	return c
 }
 
+// clientBRecv returns the next value from ch and fails the test with msg when none arrives within timeout.
+func clientBRecv[T any](t *testing.T, ch <-chan T, timeout time.Duration, msg string) T {
+	t.Helper()
+
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(timeout):
+		t.Fatal(msg)
+		panic("unreachable")
+	}
+}
+
+// clientBCore is clientTestCCore with its request released when the test ends.
+func clientBCore(t *testing.T, client *Client) *core {
+	t.Helper()
+
+	c := clientTestCCore(client)
+	t.Cleanup(func() { ReleaseRequest(c.req) })
+
+	return c
+}
+
 // clientTestCExecServer starts an app on an in-memory listener and returns the
 // listener. The app serves the routes the execution tests send requests to: one
 // that answers with the host it was asked for, one that fails, and one that
@@ -119,6 +142,7 @@ func Test_Exec_Func(t *testing.T) {
 	})
 
 	t.Run("cancel drains errChan", func(t *testing.T) {
+		t.Parallel()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -141,31 +165,17 @@ func Test_Exec_Func(t *testing.T) {
 			resultCh <- execResult{resp: resp, err: err}
 		}()
 
-		select {
-		case <-blockingTransport.called:
-		case <-time.After(time.Second):
-			t.Fatal("transport Do was not invoked")
-		}
+		clientBRecv(t, blockingTransport.called, time.Second, "transport Do was not invoked")
 
 		cancel()
 
-		var result execResult
-		select {
-		case result = <-resultCh:
-		case <-time.After(time.Second):
-			t.Fatal("execFunc did not return")
-		}
-
+		result := clientBRecv(t, resultCh, time.Second, "execFunc did not return")
 		require.Nil(t, result.resp)
 		require.ErrorIs(t, result.err, ErrTimeoutOrCancel)
 
 		blockingTransport.release()
 
-		select {
-		case <-blockingTransport.finished:
-		case <-time.After(time.Second):
-			t.Fatal("transport Do did not finish")
-		}
+		clientBRecv(t, blockingTransport.finished, time.Second, "transport Do did not finish")
 	})
 
 	t.Run("timeout snapshots ownership before transport", func(t *testing.T) {
@@ -190,11 +200,7 @@ func Test_Exec_Func(t *testing.T) {
 		require.Nil(t, resp)
 		require.ErrorIs(t, err, ErrTimeoutOrCancel)
 
-		select {
-		case <-transport.finished:
-		case <-time.After(time.Second):
-			t.Fatal("transport Do did not finish")
-		}
+		clientBRecv(t, transport.finished, time.Second, "transport Do did not finish")
 
 		// Let the goroutine build and hand off its response after Do returned.
 		time.Sleep(50 * time.Millisecond)
@@ -320,19 +326,11 @@ func clientTestCConcurrentHooks(t *testing.T, kind string, addHook func(client *
 
 	firstDone := run()
 
-	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("first " + kind + " hook was not invoked")
-	}
+	clientBRecv(t, entered, time.Second, "first "+kind+" hook was not invoked")
 
 	secondDone := run()
 
-	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("second " + kind + " hook execution was serialized by the client lock")
-	}
+	clientBRecv(t, entered, time.Second, "second "+kind+" hook execution was serialized by the client lock")
 
 	close(release)
 
@@ -387,8 +385,7 @@ func Test_PreHooks_ReturnsHookError(t *testing.T) {
 			wantErr := errors.New(tc.msg)
 			tc.add(client, func(_ *Client, _ *Request) error { return wantErr })
 
-			core := clientTestCCore(client)
-			defer ReleaseRequest(core.req)
+			core := clientBCore(t, client)
 			core.req.SetURL("http://example.com")
 
 			require.ErrorIs(t, core.preHooks(), wantErr)
@@ -408,8 +405,7 @@ func Test_PreHooks_AllowsUserHookClientConfigMutation(t *testing.T) {
 		return nil
 	})
 
-	core := clientTestCCore(client)
-	defer ReleaseRequest(core.req)
+	core := clientBCore(t, client)
 	core.req.SetURL("/:resource")
 
 	require.NoError(t, core.preHooks())
@@ -429,8 +425,7 @@ func Test_PreHooks_FinalRequestHookSeesSerializedRequest(t *testing.T) {
 		return nil
 	})
 
-	core := clientTestCCore(client)
-	defer ReleaseRequest(core.req)
+	core := clientBCore(t, client)
 	core.req.SetMethod("POST").SetURL("http://example.com").SetJSON(map[string]string{"name": "fiber"})
 
 	require.NoError(t, core.preHooks())
@@ -449,13 +444,11 @@ func Test_PreHooks_ReleasesClientLockWhenBuiltinHookPanics(t *testing.T) {
 		return nil
 	}}
 
-	firstCore := clientTestCCore(client)
-	defer ReleaseRequest(firstCore.req)
+	firstCore := clientBCore(t, client)
 
 	require.PanicsWithValue(t, "built-in request hook panic", func() { require.NoError(t, firstCore.preHooks()) })
 
-	secondCore := clientTestCCore(client)
-	defer ReleaseRequest(secondCore.req)
+	secondCore := clientBCore(t, client)
 
 	require.NoError(t, secondCore.preHooks())
 	require.Equal(t, 2, callCount)
@@ -470,8 +463,7 @@ func Test_PreHooks_RunsFinalRequestHooksOutsideClientLock(t *testing.T) {
 		return nil
 	})
 
-	core := clientTestCCore(client)
-	defer ReleaseRequest(core.req)
+	core := clientBCore(t, client)
 	core.req.SetURL("http://example.com")
 
 	require.NoError(t, core.preHooks())
@@ -486,8 +478,7 @@ func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
 	wantErr := errors.New("response hook failed")
 	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error { return wantErr })
 
-	core := clientTestCCore(client)
-	defer ReleaseRequest(core.req)
+	core := clientBCore(t, client)
 
 	resp := clientTestBResponse(t)
 
@@ -581,45 +572,33 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 		length int
 	}
 
-	t.Run("request with body stream is properly copied", func(t *testing.T) {
-		t.Parallel()
-		client := clientTestAClient(t, func(app *fiber.App) {
-			app.Post("/echo", func(c fiber.Ctx) error { return c.Send(c.Body()) })
-		})
-
-		streamContent := "this is streamed body content"
-		req := AcquireRequest().SetClient(client).SetURL("http://example.com/echo").SetMethod(fiber.MethodPost).
-			SetRawBody([]byte(streamContent))
-
-		resp, err := req.Send()
-		require.NoError(t, err)
-		defer resp.Close()
-
-		require.Equal(t, streamContent, string(resp.Body()))
-	})
-
-	t.Run("request body stream with content length", func(t *testing.T) {
-		t.Parallel()
-		resultCh := make(chan received, 1)
-		client := clientTestAClient(t, func(app *fiber.App) {
-			app.Post("/check-length", func(c fiber.Ctx) error {
-				resultCh <- received{body: string(c.Body()), length: c.Request().Header.ContentLength()}
-				return c.SendString("ok")
+	for _, tc := range []struct{ name, path, content string }{
+		{name: "request with body stream is properly copied", path: "/echo", content: "this is streamed body content"},
+		{name: "request body stream with content length", path: "/check-length", content: "body with known length"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resultCh := make(chan received, 1)
+			client := clientTestAClient(t, func(app *fiber.App) {
+				app.Post(tc.path, func(c fiber.Ctx) error {
+					resultCh <- received{body: string(c.Body()), length: c.Request().Header.ContentLength()}
+					return c.Send(c.Body())
+				})
 			})
+
+			req := AcquireRequest().SetClient(client).SetURL("http://example.com" + tc.path).
+				SetMethod(fiber.MethodPost).SetRawBody([]byte(tc.content))
+
+			resp, err := req.Send()
+			require.NoError(t, err)
+			defer resp.Close()
+
+			result := <-resultCh
+			require.Equal(t, tc.content, string(resp.Body()))
+			require.Equal(t, tc.content, result.body)
+			require.Equal(t, len(tc.content), result.length)
 		})
-
-		streamContent := "body with known length"
-		req := AcquireRequest().SetClient(client).SetURL("http://example.com/check-length").SetMethod(fiber.MethodPost).
-			SetRawBody([]byte(streamContent))
-
-		resp, err := req.Send()
-		require.NoError(t, err)
-		defer resp.Close()
-
-		result := <-resultCh
-		require.Equal(t, streamContent, result.body)
-		require.Equal(t, len(streamContent), result.length)
-	})
+	}
 
 	t.Run("raw body stream survives CopyTo", func(t *testing.T) {
 		t.Parallel()

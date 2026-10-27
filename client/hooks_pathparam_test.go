@@ -19,43 +19,39 @@ import (
 // as a placeholder, where one ends, and what happens to a value on the way in.
 func Test_SubstitutePathParams(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	type substCase struct {
 		wantErr error
 		params  PathParam
 		name    string
 		uri     string
 		want    string
 		keepEsc bool
-	}{
+	}
+	// valueCase is one value for the single placeholder of a template.
+	type valueCase struct {
+		wantErr error
+		name    string
+		val     string
+		want    string
+		keepEsc bool
+	}
+
+	tests := []substCase{
 		{
-			name:   "plain substitution",
-			uri:    "http://example.com/api/:id",
-			params: PathParam{"id": "5"},
-			want:   "http://example.com/api/5",
+			name: "a longer placeholder is not matched by a shorter name", uri: "http://example.com/api/:idx",
+			params: PathParam{"id": "5"}, want: "http://example.com/api/:idx",
 		},
 		{
-			name:   "a longer placeholder is not matched by a shorter name",
-			uri:    "http://example.com/api/:idx",
-			params: PathParam{"id": "5"},
-			want:   "http://example.com/api/:idx",
+			name: "both names resolve independently", uri: "http://example.com/api/:idx/:id",
+			params: PathParam{"id": "5", "idx": "9"}, want: "http://example.com/api/9/5",
 		},
 		{
-			name:   "both names resolve independently",
-			uri:    "http://example.com/api/:idx/:id",
-			params: PathParam{"id": "5", "idx": "9"},
-			want:   "http://example.com/api/9/5",
+			name: "a dot ends a placeholder, as it does in a route", uri: "http://example.com/api/:id.json",
+			params: PathParam{"id": "5"}, want: "http://example.com/api/5.json",
 		},
 		{
-			name:   "a dot ends a placeholder, as it does in a route",
-			uri:    "http://example.com/api/:id.json",
-			params: PathParam{"id": "5"},
-			want:   "http://example.com/api/5.json",
-		},
-		{
-			name:   "a dash ends a placeholder, as it does in a route",
-			uri:    "http://example.com/api/:id-suffix",
-			params: PathParam{"id": "5"},
-			want:   "http://example.com/api/5-suffix",
+			name: "a dash ends a placeholder, as it does in a route", uri: "http://example.com/api/:id-suffix",
+			params: PathParam{"id": "5"}, want: "http://example.com/api/5-suffix",
 		},
 		{
 			name:   "a name holding a dash resolves, not just its prefix",
@@ -64,46 +60,32 @@ func Test_SubstitutePathParams(t *testing.T) {
 			want:   "http://example.com/api/v2/users",
 		},
 		{
-			name:   "a name holding a dot resolves, not just its prefix",
-			uri:    "http://example.com/api/:v1.0/x",
-			params: PathParam{"v1.0": "beta"},
-			want:   "http://example.com/api/beta/x",
+			name: "a name holding a dot resolves, not just its prefix", uri: "http://example.com/api/:v1.0/x",
+			params: PathParam{"v1.0": "beta"}, want: "http://example.com/api/beta/x",
 		},
 		{
-			name:   "a name holding a colon resolves in the path",
-			uri:    "http://example.com/api/:ns:key",
-			params: PathParam{"ns:key": "v"},
-			want:   "http://example.com/api/v",
+			name: "a name holding a colon resolves in the path", uri: "http://example.com/api/:ns:key",
+			params: PathParam{"ns:key": "v"}, want: "http://example.com/api/v",
 		},
 		{
-			name:   "the longer name wins when both are set",
-			uri:    "http://example.com/api/:id-suffix",
-			params: PathParam{"id": "5", "id-suffix": "full"},
-			want:   "http://example.com/api/full",
+			name: "the longer name wins when both are set", uri: "http://example.com/api/:id-suffix",
+			params: PathParam{"id": "5", "id-suffix": "full"}, want: "http://example.com/api/full",
 		},
 		{
-			name:   "adjacent placeholders",
-			uri:    "http://example.com/api/:a:b",
-			params: PathParam{"a": "1", "b": "2"},
-			want:   "http://example.com/api/12",
+			name: "adjacent placeholders", uri: "http://example.com/api/:a:b",
+			params: PathParam{"a": "1", "b": "2"}, want: "http://example.com/api/12",
 		},
 		{
-			name:   "the same placeholder twice",
-			uri:    "http://example.com/api/:id/sub/:id",
-			params: PathParam{"id": "5"},
-			want:   "http://example.com/api/5/sub/5",
+			name: "the same placeholder twice", uri: "http://example.com/api/:id/sub/:id",
+			params: PathParam{"id": "5"}, want: "http://example.com/api/5/sub/5",
 		},
 		{
-			name:   "an unknown placeholder is left alone",
-			uri:    "http://example.com/api/:missing",
-			params: PathParam{"id": "5"},
-			want:   "http://example.com/api/:missing",
+			name: "an unknown placeholder is left alone", uri: "http://example.com/api/:missing",
+			params: PathParam{"id": "5"}, want: "http://example.com/api/:missing",
 		},
 		{
-			name:   "the scheme separator is not a placeholder",
-			uri:    "http://example.com/api",
-			params: PathParam{"": "x", "//example": "y"},
-			want:   "http://example.com/api",
+			name: "the scheme separator is not a placeholder", uri: "http://example.com/api",
+			params: PathParam{"": "x", "//example": "y"}, want: "http://example.com/api",
 		},
 		{
 			// A digits-only name in the authority is the port. Substituting it
@@ -115,246 +97,40 @@ func Test_SubstitutePathParams(t *testing.T) {
 			want:   "http://example.com:8080/api/5",
 		},
 		{
-			name:   "a host can still be templated",
-			uri:    "http://:tenant.example.com:8080/api/:id",
-			params: PathParam{"tenant": "acme", "id": "5"},
-			want:   "http://acme.example.com:8080/api/5",
+			name: "a host can still be templated", uri: "http://:tenant.example.com:8080/api/:id",
+			params: PathParam{"tenant": "acme", "id": "5"}, want: "http://acme.example.com:8080/api/5",
 		},
 		{
-			name:   "a digits-only name still substitutes in the path",
-			uri:    "http://example.com:8080/api/:8080",
-			params: PathParam{"8080": "9090"},
-			want:   "http://example.com:8080/api/9090",
+			name: "a digits-only name still substitutes in the path", uri: "http://example.com:8080/api/:8080",
+			params: PathParam{"8080": "9090"}, want: "http://example.com:8080/api/9090",
 		},
 		{
-			name:   "a relative URI has no authority to protect",
-			uri:    "/api/:8080",
-			params: PathParam{"8080": "9090"},
-			want:   "/api/9090",
+			name: "a relative URI has no authority to protect", uri: "/api/:8080",
+			params: PathParam{"8080": "9090"}, want: "/api/9090",
 		},
 		{
-			name:   "a port with no matching parameter is left alone",
-			uri:    "http://example.com:8080/api/:id",
-			params: PathParam{"id": "5"},
-			want:   "http://example.com:8080/api/5",
+			name: "a port with no matching parameter is left alone", uri: "http://example.com:8080/api/:id",
+			params: PathParam{"id": "5"}, want: "http://example.com:8080/api/5",
 		},
 		{
-			name:   "an IPv6 host is left intact",
-			uri:    "http://[::1]:8080/api/:id",
-			params: PathParam{"id": "5"},
-			want:   "http://[::1]:8080/api/5",
+			name: "an IPv6 host is left intact", uri: "http://[::1]:8080/api/:id",
+			params: PathParam{"id": "5"}, want: "http://[::1]:8080/api/5",
 		},
 		{
-			name:   "a value cannot open a query",
-			uri:    "http://example.com/api/:id",
-			params: PathParam{"id": "a?b"},
-			want:   "http://example.com/api/a%3Fb",
+			name: "a substituted value is not scanned for placeholders", uri: "http://example.com/api/:id",
+			params: PathParam{"id": ":name", "name": "fiber"}, want: "http://example.com/api/:name",
 		},
 		{
-			name:   "a value cannot open a fragment",
-			uri:    "http://example.com/api/:id",
-			params: PathParam{"id": "a#b"},
-			want:   "http://example.com/api/a%23b",
+			name: "no placeholder, no work", uri: "http://example.com/api/users",
+			params: PathParam{"id": "5"}, want: "http://example.com/api/users",
 		},
 		{
-			// Path normalizing would decode this "%2F" back into a separator,
-			// so the escape only holds when normalizing is off.
-			name:    "a value cannot add a segment",
-			uri:     "http://example.com/api/:id",
-			params:  PathParam{"id": "a/b"},
-			want:    "http://example.com/api/a%2Fb",
-			keepEsc: true,
+			name: "a relative URI with no colon at all short-circuits", uri: "/api/users",
+			params: PathParam{"id": "5"}, want: "/api/users",
 		},
 		{
-			name:    "a separator in a value is rejected when normalizing will decode it",
-			uri:     "http://example.com/api/:id",
-			params:  PathParam{"id": "a/b"},
-			wantErr: ErrPathParamInPath,
-		},
-		{
-			// Normalizing decodes the path before it collapses "..", so this
-			// used to leave the path the template set: "/api/v1/:id/end" with
-			// "../../admin" went out as "/admin/end".
-			name:    "a value cannot traverse out of its segment",
-			uri:     "http://example.com/api/v1/:id/end",
-			params:  PathParam{"id": "../../admin"},
-			wantErr: ErrPathParamInPath,
-		},
-		{
-			name:    "a dot-dot value is rejected",
-			uri:     "http://example.com/api/v1/:id/end",
-			params:  PathParam{"id": ".."},
-			wantErr: ErrPathParamInPath,
-		},
-		{
-			name:    "a dot value is rejected",
-			uri:     "http://example.com/api/v1/:id/end",
-			params:  PathParam{"id": "."},
-			wantErr: ErrPathParamInPath,
-		},
-		{
-			name:    "a backslash in a value is rejected",
-			uri:     "http://example.com/api/:id",
-			params:  PathParam{"id": `a\b`},
-			wantErr: ErrPathParamInPath,
-		},
-		{
-			// Disabling normalizing is a caller asking for the raw path, so the
-			// escape is emitted as written. Whether it survives routing is then
-			// up to the server: one that unescapes paths decodes it again.
-			name:    "traversal is allowed to stay escaped when normalizing is off",
-			uri:     "http://example.com/api/v1/:id/end",
-			params:  PathParam{"id": "../../admin"},
-			want:    "http://example.com/api/v1/..%2F..%2Fadmin/end",
-			keepEsc: true,
-		},
-		{
-			// An escape cannot hide a dot segment: sent as written, "/files/pub/../meta"
-			// is resolved by the server or a proxy to "/files/meta".
-			name:    "a dot-dot value is rejected when normalizing is off",
-			uri:     "http://example.com/files/pub/:name/meta",
-			params:  PathParam{"name": ".."},
-			wantErr: ErrPathParamInPath,
-			keepEsc: true,
-		},
-		{
-			name:    "a dot value is rejected when normalizing is off",
-			uri:     "http://example.com/files/pub/:name/meta",
-			params:  PathParam{"name": "."},
-			wantErr: ErrPathParamInPath,
-			keepEsc: true,
-		},
-		{
-			name:    "a value of three dots is an ordinary segment when normalizing is off",
-			uri:     "http://example.com/files/pub/:name/meta",
-			params:  PathParam{"name": "..."},
-			want:    "http://example.com/files/pub/.../meta",
-			keepEsc: true,
-		},
-		{
-			// A "%2F" the caller typed is escaped to "%252F" and decodes to a
-			// literal "%2F", so it never becomes a separator.
-			name:   "an already-escaped separator in a value is not a separator",
-			uri:    "http://example.com/api/:id",
-			params: PathParam{"id": "a%2Fb"},
-			want:   "http://example.com/api/a%252Fb",
-		},
-		{
-			name:   "a dot inside a longer value is fine",
-			uri:    "http://example.com/api/:id",
-			params: PathParam{"id": "a..b"},
-			want:   "http://example.com/api/a..b",
-		},
-		{
-			name:   "a percent in a value is encoded, not passed through",
-			uri:    "http://example.com/api/:id",
-			params: PathParam{"id": "100%"},
-			want:   "http://example.com/api/100%25",
-		},
-		{
-			name:   "a substituted value is not scanned for placeholders",
-			uri:    "http://example.com/api/:id",
-			params: PathParam{"id": ":name", "name": "fiber"},
-			want:   "http://example.com/api/:name",
-		},
-		{
-			// The "//" this leaves is collapsed by path normalizing, so the
-			// segment disappears and "/api/:id/x" is sent as "/api/x".
-			name:    "an empty value is rejected",
-			uri:     "http://example.com/api/:id/x",
-			params:  PathParam{"id": ""},
-			wantErr: ErrPathParamInPath,
-		},
-		{
-			// Sent as written, "/api//x" is read as "/api/x" by a server that
-			// merges slashes, so the segment is gone there too.
-			name:    "an empty value is rejected when normalizing is off",
-			uri:     "http://example.com/api/:id/x",
-			params:  PathParam{"id": ""},
-			wantErr: ErrPathParamInPath,
-			keepEsc: true,
-		},
-		{
-			name:   "no placeholder, no work",
-			uri:    "http://example.com/api/users",
-			params: PathParam{"id": "5"},
-			want:   "http://example.com/api/users",
-		},
-		{
-			name:   "a relative URI with no colon at all short-circuits",
-			uri:    "/api/users",
-			params: PathParam{"id": "5"},
-			want:   "/api/users",
-		},
-		{
-			// "@" would end a userinfo section and hand the request to
-			// evil.com. Escaping it is not an option — a "%XX" below 0x80 in a
-			// host makes fasthttp abandon the rest of the URI — so the request
-			// fails instead.
-			name:    "a value cannot introduce userinfo in the authority",
-			uri:     "http://:tenant.example.com/api",
-			params:  PathParam{"tenant": "a@evil.com"},
-			wantErr: ErrPathParamInHost,
-		},
-		{
-			name:    "a value cannot introduce a port in the authority",
-			uri:     "http://:tenant.example.com/api",
-			params:  PathParam{"tenant": "evil.com:8080"},
-			wantErr: ErrPathParamInHost,
-		},
-		{
-			name:    "a value that would need escaping in a host is rejected",
-			uri:     "http://:tenant.example.com/api",
-			params:  PathParam{"tenant": "a b"},
-			wantErr: ErrPathParamInHost,
-		},
-		{
-			name:    "a value cannot add a segment to the authority",
-			uri:     "http://:tenant.example.com/api",
-			params:  PathParam{"tenant": "evil.com/"},
-			wantErr: ErrPathParamInHost,
-		},
-		{
-			name:    "an empty authority value is rejected",
-			uri:     "http://:host/api",
-			params:  PathParam{"host": ""},
-			wantErr: ErrPathParamInHost,
-		},
-		{
-			// The sub-delims a host parse keeps verbatim, so they need no
-			// escaping and are not a reason to fail the request.
-			name:   "host-legal sub-delims are allowed in an authority value",
-			uri:    "http://:tenant.example.com/api",
-			params: PathParam{"tenant": "a$b&c+d=e"},
-			want:   "http://a$b&c+d=e.example.com/api",
-		},
-		{
-			// The bytes reach the Host header verbatim, and "\xc0\xaf" is the
-			// overlong encoding of "/" — a separator to a lenient decoder.
-			name:    "malformed UTF-8 in an authority value is rejected",
-			uri:     "http://:tenant.example.com/api",
-			params:  PathParam{"tenant": "\xc0\xaf"},
-			wantErr: ErrPathParamInHost,
-		},
-		{
-			name:    "a lone continuation byte in an authority value is rejected",
-			uri:     "http://:tenant.example.com/api",
-			params:  PathParam{"tenant": "\xff"},
-			wantErr: ErrPathParamInHost,
-		},
-		{
-			name:   "an internationalized host label is passed through",
-			uri:    "http://:tenant.example.com/api",
-			params: PathParam{"tenant": "\u00fcn\u00efcode"},
-			want:   "http://\u00fcn\u00efcode.example.com/api",
-		},
-		{
-			// The same bytes in a path segment are harmless: net/url's
-			// PathEscape leaves them, and nothing in a path reparses them.
-			name:   "the same delimiters are left verbatim in the path",
-			uri:    "http://example.com/api/:id",
-			params: PathParam{"id": "a@b:c"},
-			want:   "http://example.com/api/a@b:c",
+			name: "an empty authority value is rejected", uri: "http://:host/api",
+			params: PathParam{"host": ""}, wantErr: ErrPathParamInHost,
 		},
 		{
 			// The colons in "[2001:db8::1]" are the address, not placeholder
@@ -365,10 +141,8 @@ func Test_SubstitutePathParams(t *testing.T) {
 			want:   "http://[2001:db8::1]/api/5",
 		},
 		{
-			name:   "an IPv6 literal with a port is left intact",
-			uri:    "http://[2001:db8::1]:8080/api/:id",
-			params: PathParam{"db8": "PWN", "8080": "9090", "id": "5"},
-			want:   "http://[2001:db8::1]:8080/api/5",
+			name: "an IPv6 literal with a port is left intact", uri: "http://[2001:db8::1]:8080/api/:id",
+			params: PathParam{"db8": "PWN", "8080": "9090", "id": "5"}, want: "http://[2001:db8::1]:8080/api/5",
 		},
 		{
 			// A digits-only name is the port and is skipped, but a named
@@ -379,12 +153,128 @@ func Test_SubstitutePathParams(t *testing.T) {
 			want:   "http://example.com:8080/api/5",
 		},
 		{
-			name:   "a trailing colon is not a placeholder",
-			uri:    "http://example.com/api/:",
-			params: PathParam{"": "x"},
-			want:   "http://example.com/api/:",
+			name: "a trailing colon is not a placeholder", uri: "http://example.com/api/:",
+			params: PathParam{"": "x"}, want: "http://example.com/api/:",
 		},
 	}
+
+	// add expands the rows of one template into cases, key being its placeholder.
+	add := func(uri, key string, rows []valueCase) {
+		for _, r := range rows {
+			tests = append(tests, substCase{
+				name: r.name, uri: uri, params: PathParam{key: r.val},
+				want: r.want, wantErr: r.wantErr, keepEsc: r.keepEsc,
+			})
+		}
+	}
+
+	add("http://example.com/api/:id", "id", []valueCase{
+		{name: "plain substitution", val: "5", want: "http://example.com/api/5"},
+		{name: "a value cannot open a query", val: "a?b", want: "http://example.com/api/a%3Fb"},
+		{name: "a value cannot open a fragment", val: "a#b", want: "http://example.com/api/a%23b"},
+		{
+			// Path normalizing would decode this "%2F" back into a separator,
+			// so the escape only holds when normalizing is off.
+			name: "a value cannot add a segment", val: "a/b", want: "http://example.com/api/a%2Fb", keepEsc: true,
+		},
+		{
+			name: "a separator in a value is rejected when normalizing will decode it",
+			val:  "a/b", wantErr: ErrPathParamInPath,
+		},
+		{name: "a backslash in a value is rejected", val: `a\b`, wantErr: ErrPathParamInPath},
+		{
+			// A "%2F" the caller typed is escaped to "%252F" and decodes to a
+			// literal "%2F", so it never becomes a separator.
+			name: "an already-escaped separator in a value is not a separator", val: "a%2Fb",
+			want: "http://example.com/api/a%252Fb",
+		},
+		{name: "a dot inside a longer value is fine", val: "a..b", want: "http://example.com/api/a..b"},
+		{
+			name: "a percent in a value is encoded, not passed through",
+			val:  "100%", want: "http://example.com/api/100%25",
+		},
+		{
+			// The same bytes in a path segment are harmless: net/url's
+			// PathEscape leaves them, and nothing in a path reparses them.
+			name: "the same delimiters are left verbatim in the path",
+			val:  "a@b:c", want: "http://example.com/api/a@b:c",
+		},
+	})
+
+	add("http://example.com/api/v1/:id/end", "id", []valueCase{
+		{
+			// Normalizing decodes the path before it collapses "..", so this
+			// used to leave the path the template set: "/api/v1/:id/end" with
+			// "../../admin" went out as "/admin/end".
+			name: "a value cannot traverse out of its segment", val: "../../admin", wantErr: ErrPathParamInPath,
+		},
+		{name: "a dot-dot value is rejected", val: "..", wantErr: ErrPathParamInPath},
+		{name: "a dot value is rejected", val: ".", wantErr: ErrPathParamInPath},
+		{
+			// Disabling normalizing is a caller asking for the raw path, so the
+			// escape is emitted as written. Whether it survives routing is then
+			// up to the server: one that unescapes paths decodes it again.
+			name: "traversal is allowed to stay escaped when normalizing is off", val: "../../admin",
+			want: "http://example.com/api/v1/..%2F..%2Fadmin/end", keepEsc: true,
+		},
+	})
+
+	add("http://example.com/files/pub/:name/meta", "name", []valueCase{
+		{
+			// An escape cannot hide a dot segment: sent as written, "/files/pub/../meta"
+			// is resolved by the server or a proxy to "/files/meta".
+			name: "a dot-dot value is rejected when normalizing is off",
+			val:  "..", wantErr: ErrPathParamInPath, keepEsc: true,
+		},
+		{name: "a dot value is rejected when normalizing is off", val: ".", wantErr: ErrPathParamInPath, keepEsc: true},
+		{
+			name: "a value of three dots is an ordinary segment when normalizing is off", val: "...",
+			want: "http://example.com/files/pub/.../meta", keepEsc: true,
+		},
+	})
+
+	add("http://example.com/api/:id/x", "id", []valueCase{
+		{
+			// The "//" this leaves is collapsed by path normalizing, so the
+			// segment disappears and "/api/:id/x" is sent as "/api/x".
+			name: "an empty value is rejected", val: "", wantErr: ErrPathParamInPath,
+		},
+		{
+			// Sent as written, "/api//x" is read as "/api/x" by a server that
+			// merges slashes, so the segment is gone there too.
+			name: "an empty value is rejected when normalizing is off",
+			val:  "", wantErr: ErrPathParamInPath, keepEsc: true,
+		},
+	})
+
+	add("http://:tenant.example.com/api", "tenant", []valueCase{
+		{
+			// "@" would end a userinfo section and hand the request to
+			// evil.com. Escaping it is not an option — a "%XX" below 0x80 in a
+			// host makes fasthttp abandon the rest of the URI — so the request
+			// fails instead.
+			name: "a value cannot introduce userinfo in the authority", val: "a@evil.com", wantErr: ErrPathParamInHost,
+		},
+		{name: "a value cannot introduce a port in the authority", val: "evil.com:8080", wantErr: ErrPathParamInHost},
+		{name: "a value that would need escaping in a host is rejected", val: "a b", wantErr: ErrPathParamInHost},
+		{name: "a value cannot add a segment to the authority", val: "evil.com/", wantErr: ErrPathParamInHost},
+		{
+			// The sub-delims a host parse keeps verbatim, so they need no
+			// escaping and are not a reason to fail the request.
+			name: "host-legal sub-delims are allowed in an authority value", val: "a$b&c+d=e",
+			want: "http://a$b&c+d=e.example.com/api",
+		},
+		{
+			// The bytes reach the Host header verbatim, and "\xc0\xaf" is the
+			// overlong encoding of "/" — a separator to a lenient decoder.
+			name: "malformed UTF-8 in an authority value is rejected", val: "\xc0\xaf", wantErr: ErrPathParamInHost,
+		},
+		{name: "a lone continuation byte in an authority value is rejected", val: "\xff", wantErr: ErrPathParamInHost},
+		{
+			name: "an internationalized host label is passed through", val: "\u00fcn\u00efcode",
+			want: "http://\u00fcn\u00efcode.example.com/api",
+		},
+	})
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -502,13 +392,7 @@ func startPathRecorder(t *testing.T) *pathRecorder {
 func (r *pathRecorder) next(t *testing.T) string {
 	t.Helper()
 
-	select {
-	case got := <-r.target:
-		return got
-	case <-time.After(5 * time.Second):
-		t.Fatal("the server saw no request")
-		return ""
-	}
+	return clientBRecv(t, r.target, 5*time.Second, "the server saw no request")
 }
 
 // get sends a GET for rawURL through c and returns the request target the
@@ -846,13 +730,20 @@ func Test_Client_DisablePathNormalizing_AfterFirstRequest(t *testing.T) {
 	rec.requireTarget(t, c, "http://example.com/api/:id", "", Config{PathParam: map[string]string{"id": "x/../../admin"}})
 }
 
+// clientBPathParamSeeds are the values the path parameter fuzz targets start from: the ones that have
+// escaped, traversed or reshaped a path before.
+var clientBPathParamSeeds = []string{
+	"", "5", "..", ".", "...", "a/b", "../../admin", "%2e%2e", "..%2f", `a\b`, "a;b", "\r\n", "//", "....//", ".%2e",
+	"%252e%252e", "a?b", "a#b", "\u00fc", "\u00fcn\u00efcode", "100%", ":name", "a b", "%2F", "?#/",
+}
+
 // FuzzPathParamTarget asserts the property that matters at the other end of
 // the wire: whatever the value, the request either fails or targets exactly the
 // path the template names. The string-level fuzz below cannot see this — the
 // escaping is undone again by fasthttp's path normalizing, which is how
 // "../../admin" used to reach "/admin/end".
 func FuzzPathParamTarget(f *testing.F) {
-	for _, seed := range []string{"", "..", ".", "a/b", "../../admin", "%2e%2e", "..%2f", `a\b`, "a;b", "\r\n", "//", "....//", ".%2e", "%252e%252e", "a?b", "a#b", "\u00fc"} {
+	for _, seed := range clientBPathParamSeeds {
 		f.Add(seed)
 	}
 
@@ -866,7 +757,7 @@ func FuzzPathParamTarget(f *testing.F) {
 // path as built. An escape holds a "/" in its segment there, but not a dot
 // segment, which the server resolves however the client writes it.
 func FuzzPathParamTargetAsWritten(f *testing.F) {
-	for _, seed := range []string{"", "..", ".", "...", "a/b", "../../admin", "%2e%2e", "..%2f", `a\b`, "a;b", "\r\n", "//", "....//", ".%2e", "%252e%252e", "a?b", "a#b", "ü"} {
+	for _, seed := range clientBPathParamSeeds {
 		f.Add(seed)
 	}
 
@@ -938,7 +829,7 @@ func FuzzPathParamHost(f *testing.F) {
 // hold: whatever the value contains, it stays one path segment and survives a
 // decode unchanged.
 func FuzzSubstitutePathParams(f *testing.F) {
-	for _, seed := range []string{"", "5", "a/b", "a?b", "a#b", "100%", ":name", "a b", "ünïcode", "%2F", "//", "?#/", ".", "..", "..."} {
+	for _, seed := range clientBPathParamSeeds {
 		f.Add(seed)
 	}
 

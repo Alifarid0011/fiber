@@ -255,30 +255,55 @@ func TestWalkBalancingClientWithBreak(t *testing.T) {
 // which may be a different host than the caller addressed.
 func TestDoRedirectsWithClient_DropsBodyForAnyMethod(t *testing.T) {
 	t.Parallel()
-	for _, status := range []int{fasthttp.StatusMovedPermanently, fasthttp.StatusFound, fasthttp.StatusSeeOther} {
-		for _, method := range []string{fasthttp.MethodPost, fasthttp.MethodPut, fasthttp.MethodPatch, fasthttp.MethodDelete, "QUERY"} {
-			t.Run(strconv.Itoa(status)+"/"+method, func(t *testing.T) {
-				t.Parallel()
-				req, resp := clientTestCReqResp(t)
+	type dropCase struct {
+		name       string
+		method     string
+		wantMethod string
+		status     int
+	}
 
-				req.SetRequestURI("http://example.com/start")
-				req.Header.SetMethod(method)
-				req.Header.SetContentType("application/json")
-				req.Header.Set(fasthttp.HeaderContentEncoding, "gzip")
-				req.Header.Set(fasthttp.HeaderTrailer, "X-Checksum")
-				req.SetBodyString(`{"q":"secret"}`)
-
-				client := clientTestCRedirectStub(status, "http://other.example/next")
-				require.NoError(t, doRedirectsWithClient(req, resp, -1, client))
-
-				require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
-				require.Empty(t, req.Body(), "the body must not reach the redirect target")
-				require.Empty(t, req.Header.ContentType())
-				require.Empty(t, req.Header.Peek(fasthttp.HeaderContentEncoding), "a coding without a body to decode")
-				require.Empty(t, req.Header.Peek(fasthttp.HeaderTrailer), "a Trailer only frames a body that is gone")
-				require.Empty(t, req.Header.Peek(fasthttp.HeaderTransferEncoding))
+	statuses := []int{fasthttp.StatusMovedPermanently, fasthttp.StatusFound, fasthttp.StatusSeeOther}
+	methods := []string{fasthttp.MethodPost, fasthttp.MethodPut, fasthttp.MethodPatch, fasthttp.MethodDelete, "QUERY"}
+	var cases []dropCase
+	for _, status := range statuses {
+		for _, method := range methods {
+			cases = append(cases, dropCase{
+				name:   strconv.Itoa(status) + "/" + method,
+				method: method, status: status, wantMethod: fasthttp.MethodGet,
 			})
 		}
+	}
+	// GET and HEAD keep their method: RFC 9110 Section 15.4.4 says GET *or* HEAD.
+	// The body still goes, or a GET carrying one replays it to the target.
+	for _, method := range []string{fasthttp.MethodGet, fasthttp.MethodHead} {
+		cases = append(cases, dropCase{
+			name: method + " keeps its method but not its body", method: method, wantMethod: method,
+			status: fasthttp.StatusSeeOther,
+		})
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req, resp := clientTestCReqResp(t)
+
+			req.SetRequestURI("http://example.com/start")
+			req.Header.SetMethod(tc.method)
+			req.Header.SetContentType("application/json")
+			req.Header.Set(fasthttp.HeaderContentEncoding, "gzip")
+			req.Header.Set(fasthttp.HeaderTrailer, "X-Checksum")
+			req.SetBodyString(`{"q":"secret"}`)
+
+			client := clientTestCRedirectStub(tc.status, "http://other.example/next")
+			require.NoError(t, doRedirectsWithClient(req, resp, -1, client))
+
+			require.Equal(t, tc.wantMethod, string(req.Header.Method()))
+			require.Empty(t, req.Body(), "the body must not reach the redirect target")
+			require.Empty(t, req.Header.ContentType())
+			require.Empty(t, req.Header.Peek(fasthttp.HeaderContentEncoding), "a coding without a body to decode")
+			require.Empty(t, req.Header.Peek(fasthttp.HeaderTrailer), "a Trailer only frames a body that is gone")
+			require.Empty(t, req.Header.Peek(fasthttp.HeaderTransferEncoding))
+		})
 	}
 
 	// 307 and 308 exist to preserve the method and body, so they are untouched.
@@ -297,27 +322,6 @@ func TestDoRedirectsWithClient_DropsBodyForAnyMethod(t *testing.T) {
 
 			require.Equal(t, fasthttp.MethodPost, string(req.Header.Method()))
 			require.Equal(t, "body-must-survive", string(req.Body()))
-		})
-	}
-
-	// GET and HEAD keep their method: RFC 9110 Section 15.4.4 says GET *or* HEAD.
-	// The body still goes, or a GET carrying one replays it to the target.
-	for _, method := range []string{fasthttp.MethodGet, fasthttp.MethodHead} {
-		t.Run(method+" keeps its method but not its body", func(t *testing.T) {
-			t.Parallel()
-			req, resp := clientTestCReqResp(t)
-
-			req.SetRequestURI("http://example.com/start")
-			req.Header.SetMethod(method)
-			req.Header.SetContentType("application/json")
-			req.SetBodyString(`{"q":"secret"}`)
-
-			client := clientTestCRedirectStub(fasthttp.StatusSeeOther, "http://other.example/next")
-			require.NoError(t, doRedirectsWithClient(req, resp, -1, client))
-
-			require.Equal(t, method, string(req.Header.Method()))
-			require.Empty(t, req.Body(), "the body must not reach the redirect target")
-			require.Empty(t, req.Header.ContentType())
 		})
 	}
 }
@@ -414,15 +418,14 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 // and credentials never leave the TLS boundary.
 func TestComposeRedirectURL_RejectsHTTPSDowngrade(t *testing.T) {
 	t.Parallel()
-	t.Run("HTTPS to HTTP is refused", func(t *testing.T) {
-		t.Parallel()
-		_, _, err := composeRedirectURL("https://example.com/login", []byte("http://example.com/after"), false)
-		require.ErrorIs(t, err, ErrRedirectDowngrade)
-	})
-
 	for _, tc := range []struct {
+		wantErr                                 error
 		name, from, location, wantURL, wantHost string
 	}{
+		{
+			name: "HTTPS to HTTP is refused", from: "https://example.com/login", location: "http://example.com/after",
+			wantErr: ErrRedirectDowngrade,
+		},
 		{
 			name: "same-origin HTTP to HTTP is fine",
 			from: "http://example.com/a", location: "http://example.com/b",
@@ -449,6 +452,10 @@ func TestComposeRedirectURL_RejectsHTTPSDowngrade(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			out, host, err := composeRedirectURL(tc.from, []byte(tc.location), false)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, tc.wantURL, out)
 			require.Equal(t, tc.wantHost, host)

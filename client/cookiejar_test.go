@@ -705,9 +705,7 @@ func Test_CookieJar_SetByHost_DoesNotMutateArgument(t *testing.T) {
 
 	// The stored copy is still normalized, so lookups keep working.
 	got := jar.getByHostAndPath([]byte("sub.example.com"), []byte("/"), false)
-	require.Len(t, got, 1)
-	require.Equal(t, "1", string(got[0].Value()))
-	fasthttp.ReleaseCookie(got[0])
+	require.Equal(t, []string{"a=1"}, clientTestCPairs(got))
 }
 
 // Test_CookieJar_SetByHost_ReplacesOnNormalizedPath pins SetByHost's documented
@@ -766,11 +764,7 @@ func Test_CookieJar_SetUsesURIDefaultPath(t *testing.T) {
 
 		// Sent to a sibling under the same directory...
 		sibling := clientTestCURI(t, "http://example.com/a/other")
-		got := jar.Get(sibling)
-		require.Len(t, got, 1)
-		for _, gc := range got {
-			fasthttp.ReleaseCookie(gc)
-		}
+		require.Len(t, clientTestCPairs(jar.Get(sibling)), 1)
 
 		// ...but not host-wide.
 		root := clientTestCURI(t, "http://example.com/")
@@ -986,10 +980,8 @@ func Test_CookieJar_DefaultPathStaysReachable(t *testing.T) {
 			uri := clientTestCURI(t, rawURL)
 			clientTestCReceive(jar, string(uri.Host()), string(uri.Path()), "k=v")
 
-			got := jar.Get(uri)
-			require.Len(t, got, 1, "cookie must still be sent to the URL that set it")
-			require.Equal(t, "v", string(got[0].Value()))
-			fasthttp.ReleaseCookie(got[0])
+			got := clientTestCPairs(jar.Get(uri))
+			require.Equal(t, []string{"k=v"}, got, "cookie must still be sent to the URL that set it")
 		})
 	}
 }
@@ -1174,11 +1166,8 @@ func Test_CookieJar_BoundsCookiesPerRequest(t *testing.T) {
 	// silently hid cookies that remain in the jar.
 	uri := clientTestCURI(t, "http://"+host+"/")
 
-	got := jar.Get(uri)
+	got := clientTestCPairs(jar.Get(uri))
 	require.Greater(t, len(got), maxCookiesPerRequest, "Get must not apply the per-request wire cap")
-	for _, c := range got {
-		fasthttp.ReleaseCookie(c)
-	}
 }
 
 // Test_CookieJar_AttributesCookiesToRespondingHost asserts that Set-Cookie from
