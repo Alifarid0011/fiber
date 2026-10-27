@@ -21,11 +21,17 @@ type testServer struct {
 	tb  testing.TB
 }
 
-func startTestServer(tb testing.TB, beforeStarting func(app *fiber.App)) *testServer {
+// startTestServer serves the routes beforeStarting registers from an app on an
+// in-memory listener. The app is configured with cfg when it is given.
+func startTestServer(tb testing.TB, beforeStarting func(app *fiber.App), cfg ...fiber.Config) *testServer {
 	tb.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
-	app := fiber.New(fiber.Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal})
+	config := fiber.Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}
+	if len(cfg) > 0 {
+		config = cfg[0]
+	}
+	app := fiber.New(config)
 
 	if beforeStarting != nil {
 		beforeStarting(app)
@@ -126,18 +132,23 @@ func clientTestCServe(t *testing.T, handler fasthttp.RequestHandler) fasthttp.Di
 	return func(string) (net.Conn, error) { return mem.Dial() }
 }
 
+// clientTestPooled returns a value from acquire that release returns to its pool
+// when the test ends.
+func clientTestPooled[T any](t *testing.T, acquire func() T, release func(T)) T {
+	t.Helper()
+
+	v := acquire()
+	t.Cleanup(func() { release(v) })
+	return v
+}
+
 // clientTestCReqResp returns a pooled fasthttp request and response that are
 // released when the test ends.
 func clientTestCReqResp(t *testing.T) (*fasthttp.Request, *fasthttp.Response) {
 	t.Helper()
 
-	req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
-	t.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-		fasthttp.ReleaseResponse(resp)
-	})
-
-	return req, resp
+	return clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest),
+		clientTestPooled(t, fasthttp.AcquireResponse, fasthttp.ReleaseResponse)
 }
 
 // clientTestCRepeat is how many times the testRequest helpers send their

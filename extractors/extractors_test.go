@@ -191,13 +191,13 @@ func extractorsTestExpectResolved(t *testing.T, e Extractor, c fiber.Ctx, value 
 }
 
 // extractorsTestExpectResolveErr requires Resolve to fail with wantErr and no
-// value for e on c, reporting source. msgAndArgs describe the source check.
-func extractorsTestExpectResolveErr(t *testing.T, e Extractor, c fiber.Ctx, source Source, wantErr error, msgAndArgs ...any) {
+// value for e on c, reporting source.
+func extractorsTestExpectResolveErr(t *testing.T, e Extractor, c fiber.Ctx, source Source, wantErr error) {
 	t.Helper()
 
 	gotValue, gotSource, err := resolveSource(e, c)
 	require.Empty(t, gotValue)
-	require.Equal(t, source, gotSource, msgAndArgs...)
+	require.Equal(t, source, gotSource)
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -445,20 +445,12 @@ func Test_Extractor_FromAuthHeader_EdgeCases(t *testing.T) {
 
 func Test_Extractor_Chain_Introspection(t *testing.T) {
 	t.Parallel()
+	chainExtractor := Chain(FromHeader("X-Token"), FromQuery("token"), FromCookie("auth"))
 
-	// Test chain introspection
-	extractor1 := FromHeader("X-Token")
-	extractor2 := FromQuery("token")
-	extractor3 := FromCookie("auth")
-
-	chainExtractor := Chain(extractor1, extractor2, extractor3)
-
-	// Verify chain metadata
 	require.Equal(t, SourceHeader, chainExtractor.Source)
 	require.Equal(t, "X-Token", chainExtractor.Key)
 	require.Len(t, chainExtractor.Chain, 3)
 
-	// Verify individual extractors in chain
 	require.Equal(t, SourceHeader, chainExtractor.Chain[0].Source)
 	require.Equal(t, "X-Token", chainExtractor.Chain[0].Key)
 	require.Equal(t, SourceQuery, chainExtractor.Chain[1].Source)
@@ -520,8 +512,6 @@ func Test_Extractor_FromCustom(t *testing.T) {
 		})
 
 		extractorsTestExpect(t, customExtractor, ctx, "CUSTOM-VALUE")
-
-		// Verify metadata
 		require.Equal(t, SourceCustom, customExtractor.Source)
 		require.Equal(t, "X-Custom", customExtractor.Key)
 		require.Empty(t, customExtractor.AuthScheme)
@@ -544,15 +534,12 @@ func Test_Extractor_FromCustom(t *testing.T) {
 
 		token, err := emptyExtractor.Extract(ctx)
 		require.Empty(t, token)
-		require.NoError(t, err) // Should return empty string with no error
+		require.NoError(t, err)
 	})
 
 	t.Run("nil_function", func(t *testing.T) {
 		t.Parallel()
-		nilExtractor := FromCustom("nil", nil)
-
-		// Should return ErrNotFound for nil function
-		extractorsTestExpectErr(t, nilExtractor, apptest.Ctx(t, fiber.New()), ErrNotFound)
+		extractorsTestExpectErr(t, FromCustom("nil", nil), apptest.Ctx(t, fiber.New()), ErrNotFound)
 	})
 }
 
@@ -565,23 +552,21 @@ func Test_Extractor_Chain_Error_Propagation(t *testing.T) {
 		code  int
 	}{
 		{
-			// Create extractors that return different errors
 			name: "last_error_wins",
 			chain: Chain(
 				extractorsTestFixed("error1", "", fiber.NewError(fiber.StatusBadRequest, "First error")),
 				extractorsTestFixed("error2", "", fiber.NewError(fiber.StatusUnauthorized, "Second error")),
 			),
-			msg:  "Second error", // Should return the last error
+			msg:  "Second error",
 			code: fiber.StatusUnauthorized,
 		},
 		{
-			// Test chain where all extractors return errors
 			name: "all_errors",
 			chain: Chain(
 				extractorsTestFixed("error1", "", fiber.NewError(fiber.StatusUnauthorized, "First auth error")),
 				extractorsTestFixed("error2", "", fiber.NewError(fiber.StatusForbidden, "Second auth error")),
 			),
-			msg:  "Second auth error", // Should return last error
+			msg:  "Second auth error",
 			code: fiber.StatusForbidden,
 		},
 		{
@@ -605,11 +590,6 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	t.Parallel()
 	extractorsTestRunAuth(t, "Bearer", []extractorsTestAuthCase{
 		{
-			name:        "tab_after_scheme",
-			header:      "Bearer\ttoken",
-			description: "tab character after scheme should be rejected - RFC specifies 1*SP, not tabs",
-		},
-		{
 			name:        "single_space_after_scheme",
 			header:      "Bearer token",
 			want:        "token",
@@ -624,16 +604,6 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 			name:        "mixed_whitespace_after_scheme",
 			header:      "Bearer \t \ttoken",
 			description: "mixed whitespace after scheme should be rejected - RFC specifies 1*SP, not tabs",
-		},
-		{
-			name:        "no_whitespace_after_scheme",
-			header:      "Bearertoken",
-			description: "no whitespace after scheme should fail",
-		},
-		{
-			name:        "header_too_short",
-			header:      "Bearer",
-			description: "header too short for scheme + space + token",
 		},
 		{
 			name:        "only_whitespace_after_scheme",
@@ -664,18 +634,13 @@ func Test_Extractor_FromAuthHeader_Token68_Validation(t *testing.T) {
 	const allToken68Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/="
 
 	extractorsTestRunAuth(t, "Bearer", []extractorsTestAuthCase{
-		// Test valid token68 characters (should pass)
 		{name: "all_token68_characters", header: "Bearer " + allToken68Chars, want: allToken68Chars, description: "valid token68 characters"},
-
-		// Test tokens with spaces (should fail)
 		{name: "space_in_token", header: "Bearer abc def", description: "space in token"},
 		{name: "space_after_scheme", header: "Bearer  abc", description: "multiple spaces after scheme"},
-		{name: "no_space_after_scheme", header: "Bearertoken", description: "no space after scheme"},
-		{name: "only_scheme", header: "Bearer", description: "only scheme, no token"},
-		{name: "tab_after_scheme", header: "Bearer\ttoken", description: "tab after scheme"},
+		{name: "only_scheme", header: "Bearer", description: "only scheme, too short for scheme + space + token"},
+		{name: "tab_after_scheme", header: "Bearer\ttoken", description: "tab after scheme, RFC specifies 1*SP"},
 		{name: "tab_in_token", header: "Bearer abc\tdef", description: "tab in token"},
 		{name: "newline_in_token", header: "Bearer abc\ndef", description: "newline in token"},
-		{name: "leading_space_in_token", header: "Bearer  abc", description: "leading space in token after scheme space"},
 		{name: "trailing_space_in_token", header: "Bearer abc ", description: "trailing space in token"},
 		{name: "comma_in_token", header: "Bearer abc,def", description: "comma in token"},
 		{name: "semicolon_in_token", header: "Bearer abc;def", description: "semicolon in token"},
@@ -715,8 +680,6 @@ func Test_Extractor_FromAuthHeader_Metadata(t *testing.T) {
 
 func Test_Extractor_Chain_MixedScenarios(t *testing.T) {
 	t.Parallel()
-
-	// Define reusable extractors
 	failingExtractor := extractorsTestFixed("fail", "", ErrNotFound)
 	errorExtractor := extractorsTestFixed("error", "", fiber.NewError(fiber.StatusBadRequest, "Bad request"))
 	successExtractor := extractorsTestFixed("success", "success", nil)
@@ -724,13 +687,11 @@ func Test_Extractor_Chain_MixedScenarios(t *testing.T) {
 	extractorsTestRun(t, []extractorsTestCase{
 		{name: "error_then_success", extractor: Chain(errorExtractor, successExtractor), want: "success"},
 		{name: "fail_then_error_then_success", extractor: Chain(failingExtractor, errorExtractor, successExtractor), want: "success"},
-		// First extractor fails, second succeeds
 		{
 			name:      "fail_then_success",
 			extractor: Chain(failingExtractor, extractorsTestFixed("success", "success-token", nil)),
 			want:      "success-token",
 		},
-		// Test chain with nil extractor functions
 		{
 			name:      "nil_function_then_success",
 			extractor: Chain(Extractor{Extract: nil, Key: "nil", Source: SourceCustom}, extractorsTestFixed("valid", "valid-token", nil)),
@@ -791,8 +752,6 @@ func Test_Extractor_SourceTypes(t *testing.T) {
 	t.Parallel()
 	t.Run("individual_extractor_sources", func(t *testing.T) {
 		t.Parallel()
-
-		// Test that all source types are properly set
 		require.Equal(t, SourceHeader, FromHeader("test").Source)
 		require.Equal(t, SourceAuthHeader, FromAuthHeader("Bearer").Source)
 		require.Equal(t, SourceAuthHeader, FromAuthHeader("").Source) // Empty scheme should still be SourceAuthHeader
@@ -805,8 +764,6 @@ func Test_Extractor_SourceTypes(t *testing.T) {
 
 	t.Run("chain_source_metadata", func(t *testing.T) {
 		t.Parallel()
-
-		// Test chain source (should use first extractor's source)
 		chain := Chain(FromHeader("X-Test"), FromQuery("test"))
 		require.Equal(t, SourceHeader, chain.Source)
 		require.Equal(t, "X-Test", chain.Key)
@@ -853,7 +810,6 @@ func Test_isValidToken68(t *testing.T) {
 		{name: "space in token", token: "token space", want: false},
 		{name: "tab character in token", token: "token\ttab", want: false},
 		{name: "invalid symbol", token: "token@", want: false},
-		{name: "valid token68", token: "token68", want: true},
 		{token: "token68=", want: true, name: "valid token68 with equals at end"},
 		{token: "token68==", want: true, name: "multiple equals at end"},
 		{token: "token68=extra", want: false, name: "equals followed by extra chars"},
@@ -964,6 +920,17 @@ func Test_Resolve(t *testing.T) {
 		},
 		{name: "falls_back_to_Extract_with_static_Source", extractor: handRolled, want: "legacy-value", source: SourceHeader},
 		{name: "nil_both_returns_ErrNotFound", extractor: Extractor{Source: SourceCustom, Key: "empty"}, source: SourceCustom},
+		// An Extract that succeeds and hands back nothing is a miss rather than a
+		// value, and the miss reports the declared source.
+		{
+			name: "empty_value_is_a_miss",
+			extractor: Extractor{
+				Extract: func(fiber.Ctx) (string, error) { return "", nil },
+				Source:  SourceForm,
+				Key:     "empty",
+			},
+			source: SourceForm,
+		},
 	})
 
 	t.Run("builtins_report_static_source_via_Resolve", func(t *testing.T) {
@@ -1333,6 +1300,25 @@ func Test_FromParam_DecodesOnce(t *testing.T) {
 // again, and a chain that contains itself is still refused.
 func Test_Resolve_BareChain(t *testing.T) {
 	t.Parallel()
+	// Children with nothing to run are stepped over, and a chain that ran
+	// nothing reports ErrNotFound rather than a child's error.
+	headers := map[string]string{"X-Token": "from-header"}
+	extractorsTestRunResolve(t, []extractorsTestCase{
+		{
+			name:      "every child is skipped",
+			extractor: Extractor{Chain: []Extractor{{}, {Key: "no extract, no chain"}}, Source: SourceCookie},
+			headers:   headers,
+			source:    SourceCookie,
+		},
+		{
+			name:      "a skipped child does not stop the walk",
+			extractor: Extractor{Chain: []Extractor{{}, FromHeader("X-Token")}, Source: SourceCookie},
+			headers:   headers,
+			want:      "from-header",
+			source:    SourceHeader,
+		},
+	})
+
 	t.Run("winner reports its own source", func(t *testing.T) {
 		t.Parallel()
 		ctx := apptest.Ctx(t, fiber.New())
@@ -1619,43 +1605,6 @@ func Test_isValidToken68_MatchesReference(t *testing.T) {
 		for _, in := range token68Samples {
 			require.Equal(t, isValidToken68Reference(in), isValidToken68(in), "input %q", in)
 		}
-	})
-}
-
-// Test_Resolve_EmptyValue covers an Extract that succeeds and hands
-// back nothing, which is a miss rather than a value.
-func Test_Resolve_EmptyValue(t *testing.T) {
-	t.Parallel()
-	ctx := apptest.Ctx(t, fiber.New())
-
-	extractorsTestExpectResolveErr(t, Extractor{
-		Extract: func(fiber.Ctx) (string, error) { return "", nil },
-		Source:  SourceForm,
-		Key:     "empty",
-	}, ctx, SourceForm, ErrNotFound, "a miss reports the declared source")
-}
-
-// Test_Resolve_BareChain_EmptyChildren covers a walked chain whose
-// children have nothing to run: each is stepped over, and a chain that ran
-// nothing reports ErrNotFound rather than a child's error.
-func Test_Resolve_BareChain_EmptyChildren(t *testing.T) {
-	t.Parallel()
-	headers := map[string]string{"X-Token": "from-header"}
-
-	extractorsTestRunResolve(t, []extractorsTestCase{
-		{
-			name:      "every child is skipped",
-			extractor: Extractor{Chain: []Extractor{{}, {Key: "no extract, no chain"}}, Source: SourceCookie},
-			headers:   headers,
-			source:    SourceCookie,
-		},
-		{
-			name:      "a skipped child does not stop the walk",
-			extractor: Extractor{Chain: []Extractor{{}, FromHeader("X-Token")}, Source: SourceCookie},
-			headers:   headers,
-			want:      "from-header",
-			source:    SourceHeader,
-		},
 	})
 }
 

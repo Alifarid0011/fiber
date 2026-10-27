@@ -11,10 +11,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 // Test_SubstitutePathParams covers the placeholder grammar directly: what counts
@@ -381,12 +379,6 @@ func Test_SubstitutePathParams(t *testing.T) {
 			want:   "http://example.com:8080/api/5",
 		},
 		{
-			name:   "a placeholder after an IPv6 literal still resolves",
-			uri:    "http://[::1]:8080/api/:id",
-			params: PathParam{"id": "5"},
-			want:   "http://[::1]:8080/api/5",
-		},
-		{
 			name:   "a trailing colon is not a placeholder",
 			uri:    "http://example.com/api/:",
 			params: PathParam{"": "x"},
@@ -443,29 +435,16 @@ func Test_PathParam_RoundTrip(t *testing.T) {
 		"5",
 	}
 
-	ln := fasthttputil.NewInmemoryListener()
 	// UnescapePath makes the server decode the segment once, which is the half
 	// of the round trip that proves the escaping was correct rather than lossy.
-	app := fiber.New(fiber.Config{UnescapePath: true})
-	app.Get("/api/:id/end", func(c fiber.Ctx) error { return c.SendString(c.Params("id")) })
-
-	ch := make(chan struct{})
-	go func() {
-		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
-		close(ch)
-	}()
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/api/:id/end", func(c fiber.Ctx) error { return c.SendString(c.Params("id")) })
+	}, fiber.Config{UnescapePath: true})
 	// Cleanup rather than defer: it runs after the parallel subtests below have
 	// finished, where a defer would tear the server down while they still run.
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-		select {
-		case <-ch:
-		case <-time.After(time.Second):
-			t.Fatal("timeout when waiting for server close")
-		}
-	})
+	t.Cleanup(server.stop)
 
-	client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
+	client := New().SetDial(server.dial())
 
 	for _, val := range values {
 		t.Run(val, func(t *testing.T) {

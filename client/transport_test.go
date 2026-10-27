@@ -95,8 +95,7 @@ func TestStandardClientTransportCoverage(t *testing.T) {
 	t.Parallel()
 	var dialCount atomic.Int32
 	client := &fasthttp.Client{}
-	client.Dial = func(addr string) (net.Conn, error) {
-		_ = addr
+	client.Dial = func(string) (net.Conn, error) {
 		dialCount.Add(1)
 		return nil, errors.New("dial error")
 	}
@@ -160,13 +159,11 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	nestedTLSHost := &fasthttp.HostClient{Addr: "example.net:80", TLSConfig: &tls.Config{ServerName: "example", MinVersion: tls.VersionTLS12}}
 	multiLevelHost := &fasthttp.HostClient{Addr: "example.edu:80"}
 
-	nestedDialHost.Dial = func(addr string) (net.Conn, error) {
-		_ = addr
+	nestedDialHost.Dial = func(string) (net.Conn, error) {
 		return nil, errors.New("original dial")
 	}
 
-	multiLevelHost.Dial = func(addr string) (net.Conn, error) {
-		_ = addr
+	multiLevelHost.Dial = func(string) (net.Conn, error) {
 		return nil, errors.New("multi-level dial")
 	}
 
@@ -200,8 +197,7 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	require.Equal(t, "mutated", transport.TLSConfig().ServerName)
 
 	overrideDialCalled := atomic.Bool{}
-	overrideDial := func(addr string) (net.Conn, error) {
-		_ = addr
+	overrideDial := func(string) (net.Conn, error) {
 		overrideDialCalled.Store(true)
 		return nil, errors.New("override dial")
 	}
@@ -657,15 +653,11 @@ func TestClient_DoRedirects_StripsCredentialsCrossHost(t *testing.T) {
 
 	// Control: a redirect that stays on the issuing host carries them through,
 	// so the cross-host assertion below cannot pass vacuously.
-	sameHost, err := client.Get("http://example.com/same-host", credentials)
-	require.NoError(t, err)
-	defer sameHost.Close()
+	sameHost := clientTestBClientGet(t, client, "http://example.com/same-host", credentials)
 	require.Equal(t, fiber.StatusOK, sameHost.StatusCode())
 	require.Equal(t, "Bearer secret|session=secret", sameHost.String())
 
-	resp, err := client.Get("http://example.com/start", credentials)
-	require.NoError(t, err)
-	defer resp.Close()
+	resp := clientTestBClientGet(t, client, "http://example.com/start", credentials)
 
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "|", resp.String())
@@ -747,22 +739,11 @@ func Test_LBClientTransport_StreamResponseBody(t *testing.T) {
 
 	t.Run("single host client", func(t *testing.T) {
 		t.Parallel()
-		hostClient := &fasthttp.HostClient{Addr: "example.com:80"}
-		lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hostClient}}
-		transport := newLBClientTransport(lbClient)
-
-		// Test default
-		require.False(t, transport.StreamResponseBody())
-
-		// Enable streaming
-		transport.SetStreamResponseBody(true)
-		require.True(t, transport.StreamResponseBody())
-		require.True(t, hostClient.StreamResponseBody)
-
-		// Disable streaming
-		transport.SetStreamResponseBody(false)
-		require.False(t, transport.StreamResponseBody())
-		require.False(t, hostClient.StreamResponseBody)
+		clientTestCRunStreamResponseBody(t, func() (httpClientTransport, func() bool) {
+			hostClient := &fasthttp.HostClient{Addr: "example.com:80"}
+			lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hostClient}}
+			return newLBClientTransport(lbClient), func() bool { return hostClient.StreamResponseBody }
+		})
 	})
 
 	t.Run("multiple host clients", func(t *testing.T) {
@@ -772,13 +753,11 @@ func Test_LBClientTransport_StreamResponseBody(t *testing.T) {
 		lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hostClient1, hostClient2}}
 		transport := newLBClientTransport(lbClient)
 
-		// Enable streaming on all clients
 		transport.SetStreamResponseBody(true)
 		require.True(t, transport.StreamResponseBody())
 		require.True(t, hostClient1.StreamResponseBody)
 		require.True(t, hostClient2.StreamResponseBody)
 
-		// Disable streaming on all clients
 		transport.SetStreamResponseBody(false)
 		require.False(t, transport.StreamResponseBody())
 		require.False(t, hostClient1.StreamResponseBody)
@@ -1085,8 +1064,7 @@ func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 // bodyless follow-up, a strict target answers 417 instead of serving it.
 func Test_DropRequestBody_RemovesExpect(t *testing.T) {
 	t.Parallel()
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	req := clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest)
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.Header.Set(fasthttp.HeaderExpect, "100-continue")
 	req.Header.SetContentType("application/x-www-form-urlencoded")
@@ -1104,8 +1082,7 @@ func Test_DropRequestBody_RemovesExpect(t *testing.T) {
 // the redirected GET.
 func Test_DropRequestBody_ClearsTheParsedForm(t *testing.T) {
 	t.Parallel()
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	req := clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest)
 	req.SetRequestURI("http://example.com/y")
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.Header.SetContentType("application/x-www-form-urlencoded")
@@ -1134,8 +1111,7 @@ func Test_DropRequestBody_ClearsTheParsedForm(t *testing.T) {
 // answers a reused PostArgs with the previous body's values.
 func Test_DropRequestBody_ReusedRequestSendsTheNewBody(t *testing.T) {
 	t.Parallel()
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	req := clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest)
 	req.SetRequestURI("http://example.com/y")
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.Header.SetContentType("application/x-www-form-urlencoded")
@@ -1204,8 +1180,7 @@ func Test_DoRedirects_NilResponse(t *testing.T) {
 
 	transport := newStandardClientTransport(&fasthttp.Client{Dial: dial})
 
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	req := clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest)
 	req.SetRequestURI("http://example.com/start")
 
 	require.NotPanics(t, func() { require.NoError(t, transport.DoRedirects(req, nil, 3)) })

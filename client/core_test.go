@@ -206,7 +206,9 @@ func Test_Exec_Func(t *testing.T) {
 		core.ctx = context.Background()
 
 		core.req.RawRequest.SetRequestURI("http://example.com/panic")
-		core.client.transport = &panicTransport{value: "boom"}
+		core.client.transport = &clientTestCStubTransport{
+			do: func(*fasthttp.Request, *fasthttp.Response) error { panic("boom") },
+		}
 
 		resp, err := core.execFunc()
 
@@ -487,76 +489,64 @@ func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
 	core := clientTestCCore(client)
 	defer ReleaseRequest(core.req)
 
-	resp := AcquireResponse()
-	defer ReleaseResponse(resp)
+	resp := clientTestBResponse(t)
 
 	require.ErrorIs(t, core.afterHooks(resp), wantErr)
 }
 
-// clientTestCNoopTransport has the httpClientTransport methods the stub
-// transports below do nothing with. A stub embeds it and adds its own Do and the
-// variants that call it.
-type clientTestCNoopTransport struct{}
-
-func (clientTestCNoopTransport) CloseIdleConnections() {
+// clientTestCStubTransport is an httpClientTransport that hands every send, by
+// whichever method, to do, and does nothing for the rest of the interface. The
+// stub transports below are built on it.
+type clientTestCStubTransport struct {
+	do func(req *fasthttp.Request, resp *fasthttp.Response) error
 }
 
-func (clientTestCNoopTransport) TLSConfig() *tls.Config {
-	return nil
+func (s *clientTestCStubTransport) Do(req *fasthttp.Request, resp *fasthttp.Response) error {
+	return s.do(req, resp)
 }
 
-func (clientTestCNoopTransport) SetTLSConfig(_ *tls.Config) {
+func (s *clientTestCStubTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+	return s.do(req, resp)
 }
 
-func (clientTestCNoopTransport) SetDial(_ fasthttp.DialFunc) {
+func (s *clientTestCStubTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, _ time.Time) error {
+	return s.do(req, resp)
 }
 
-func (clientTestCNoopTransport) Client() any {
-	return nil
+func (s *clientTestCStubTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+	return s.do(req, resp)
 }
 
-func (clientTestCNoopTransport) StreamResponseBody() bool {
-	return false
-}
-
-func (clientTestCNoopTransport) SetStreamResponseBody(_ bool) {
-}
+func (*clientTestCStubTransport) CloseIdleConnections()      {}
+func (*clientTestCStubTransport) TLSConfig() *tls.Config     { return nil }
+func (*clientTestCStubTransport) SetTLSConfig(*tls.Config)   {}
+func (*clientTestCStubTransport) SetDial(fasthttp.DialFunc)  {}
+func (*clientTestCStubTransport) Client() any                { return nil }
+func (*clientTestCStubTransport) StreamResponseBody() bool   { return false }
+func (*clientTestCStubTransport) SetStreamResponseBody(bool) {}
 
 // delayedTransport completes successfully after a fixed delay, without any
 // synchronization with the caller, mirroring a slow upstream that answers after
 // the client has already given up.
 type delayedTransport struct {
-	clientTestCNoopTransport
+	clientTestCStubTransport
 	finished chan struct{}
-	delay    time.Duration
 }
 
 func newDelayedTransport(delay time.Duration) *delayedTransport {
-	return &delayedTransport{delay: delay, finished: make(chan struct{})}
+	d := &delayedTransport{finished: make(chan struct{})}
+	d.do = func(_ *fasthttp.Request, resp *fasthttp.Response) error {
+		time.Sleep(delay)
+		resp.SetStatusCode(fasthttp.StatusOK)
+		close(d.finished)
+		return nil
+	}
+	return d
 }
 
-func (d *delayedTransport) Do(_ *fasthttp.Request, resp *fasthttp.Response) error {
-	time.Sleep(d.delay)
-	resp.SetStatusCode(fasthttp.StatusOK)
-	close(d.finished)
-	return nil
-}
-
-func (d *delayedTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
-	return d.Do(req, resp)
-}
-
-func (d *delayedTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, _ time.Time) error {
-	return d.Do(req, resp)
-}
-
-func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
-	return d.Do(req, resp)
-}
-
+// blockingErrTransport fails every send with its error, once release lets it.
 type blockingErrTransport struct {
-	clientTestCNoopTransport
-	err error
+	clientTestCStubTransport
 
 	called   chan struct{}
 	unblock  chan struct{}
@@ -568,56 +558,18 @@ type blockingErrTransport struct {
 }
 
 func newBlockingErrTransport(err error) *blockingErrTransport {
-	return &blockingErrTransport{
-		err:      err,
-		called:   make(chan struct{}),
-		unblock:  make(chan struct{}),
-		finished: make(chan struct{}),
+	b := &blockingErrTransport{called: make(chan struct{}), unblock: make(chan struct{}), finished: make(chan struct{})}
+	b.do = func(_ *fasthttp.Request, _ *fasthttp.Response) error {
+		b.calledOnce.Do(func() { close(b.called) })
+		<-b.unblock
+		b.finishedOnce.Do(func() { close(b.finished) })
+		return err
 	}
-}
-
-func (b *blockingErrTransport) Do(_ *fasthttp.Request, _ *fasthttp.Response) error {
-	b.calledOnce.Do(func() { close(b.called) })
-	<-b.unblock
-	b.finishedOnce.Do(func() { close(b.finished) })
-	return b.err
-}
-
-func (b *blockingErrTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
-	return b.Do(req, resp)
-}
-
-func (b *blockingErrTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, _ time.Time) error {
-	return b.Do(req, resp)
-}
-
-func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
-	return b.Do(req, resp)
+	return b
 }
 
 func (b *blockingErrTransport) release() {
 	b.releaseOnce.Do(func() { close(b.unblock) })
-}
-
-type panicTransport struct {
-	clientTestCNoopTransport
-	value any
-}
-
-func (p *panicTransport) Do(_ *fasthttp.Request, _ *fasthttp.Response) error {
-	panic(p.value)
-}
-
-func (p *panicTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
-	return p.Do(req, resp)
-}
-
-func (p *panicTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, _ time.Time) error {
-	return p.Do(req, resp)
-}
-
-func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
-	return p.Do(req, resp)
 }
 
 func Test_Core_RequestBodyStream(t *testing.T) {
@@ -632,18 +584,12 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 	t.Run("request with body stream is properly copied", func(t *testing.T) {
 		t.Parallel()
 		client := clientTestAClient(t, func(app *fiber.App) {
-			app.Post("/echo", func(c fiber.Ctx) error {
-				body := c.Body()
-				return c.Send(body)
-			})
+			app.Post("/echo", func(c fiber.Ctx) error { return c.Send(c.Body()) })
 		})
 
-		// Create a request with a body stream using SetRawBody which properly sets the body
 		streamContent := "this is streamed body content"
-		req := AcquireRequest().SetClient(client)
-		req.SetURL("http://example.com/echo")
-		req.SetMethod(fiber.MethodPost)
-		req.SetRawBody([]byte(streamContent))
+		req := AcquireRequest().SetClient(client).SetURL("http://example.com/echo").SetMethod(fiber.MethodPost).
+			SetRawBody([]byte(streamContent))
 
 		resp, err := req.Send()
 		require.NoError(t, err)
@@ -663,10 +609,8 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 		})
 
 		streamContent := "body with known length"
-		req := AcquireRequest().SetClient(client)
-		req.SetURL("http://example.com/check-length")
-		req.SetMethod(fiber.MethodPost)
-		req.SetRawBody([]byte(streamContent))
+		req := AcquireRequest().SetClient(client).SetURL("http://example.com/check-length").SetMethod(fiber.MethodPost).
+			SetRawBody([]byte(streamContent))
 
 		resp, err := req.Send()
 		require.NoError(t, err)

@@ -14,6 +14,7 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/paramdelim"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -74,10 +75,11 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	// Every case builds its own client and request, so the cases run in parallel.
 	for _, tc := range []struct {
-		client *Client
-		req    *Request
-		name   string
-		want   string
+		client  *Client
+		req     *Request
+		wantErr error // the error the request must fail with; nil for none
+		name    string
+		want    string
 	}{
 		{
 			name:   "client baseurl should be set",
@@ -174,31 +176,6 @@ func Test_Parser_Request_URL(t *testing.T) {
 			req:    AcquireRequest().SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123"),
 			want:   "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123",
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			t.Cleanup(func() { ReleaseRequest(tc.req) })
-
-			require.NoError(t, parserRequestURL(tc.client, tc.req))
-			require.Equal(t, tc.want, tc.req.RawRequest.URI().String())
-		})
-	}
-
-	t.Run("the url is error", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetBaseURL("example.com/api")
-		req := AcquireRequest().SetURL("/v1")
-
-		err := parserRequestURL(client, req)
-		require.Equal(t, ErrURLFormat, err)
-	})
-
-	for _, tc := range []struct {
-		client  *Client
-		req     *Request
-		wantErr error
-		name    string
-	}{
 		{
 			// The wrapped client rewrites the path whatever the request says, so the
 			// request alone cannot make a separator in a value safe.
@@ -232,14 +209,40 @@ func Test_Parser_Request_URL(t *testing.T) {
 			req:     AcquireRequest().SetURL("http://:host/api").SetPathParam("host", "x@evil.com"),
 			wantErr: ErrPathParamInHost,
 		},
+		{
+			name:   "query params from client should be set",
+			client: New().SetParam("foo", "bar"),
+			req:    AcquireRequest().SetURL("http://example.com/api/v1"),
+			want:   "http://example.com/api/v1?foo=bar",
+		},
+		{
+			name:   "query params from request should be set",
+			client: New(),
+			req:    AcquireRequest().SetURL("http://example.com/api/v1").SetParam("bar", "foo"),
+			want:   "http://example.com/api/v1?bar=foo",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			t.Cleanup(func() { ReleaseRequest(tc.req) })
 
-			require.ErrorIs(t, parserRequestURL(tc.client, tc.req), tc.wantErr)
+			err := parserRequestURL(tc.client, tc.req)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, tc.req.RawRequest.URI().String())
 		})
 	}
+
+	t.Run("the url is error", func(t *testing.T) {
+		t.Parallel()
+		client := New().SetBaseURL("example.com/api")
+		req := AcquireRequest().SetURL("/v1")
+
+		require.Equal(t, ErrURLFormat, parserRequestURL(client, req))
+	})
 
 	t.Run("a host path param keeps the rest of the URL intact", func(t *testing.T) {
 		t.Parallel()
@@ -253,34 +256,6 @@ func Test_Parser_Request_URL(t *testing.T) {
 		require.Equal(t, "/api/v1", string(req.RawRequest.URI().Path()))
 		require.Equal(t, "a=b", string(req.RawRequest.URI().QueryString()))
 	})
-
-	for _, tc := range []struct {
-		client *Client
-		req    *Request
-		name   string
-		want   string
-	}{
-		{
-			name:   "query params from client should be set",
-			client: New().SetParam("foo", "bar"),
-			req:    AcquireRequest().SetURL("http://example.com/api/v1"),
-			want:   "foo=bar",
-		},
-		{
-			name:   "query params from request should be set",
-			client: New(),
-			req:    AcquireRequest().SetURL("http://example.com/api/v1").SetParam("bar", "foo"),
-			want:   "bar=foo",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			t.Cleanup(func() { ReleaseRequest(tc.req) })
-
-			require.NoError(t, parserRequestURL(tc.client, tc.req))
-			require.Equal(t, tc.want, string(tc.req.RawRequest.URI().QueryString()))
-		})
-	}
 
 	t.Run("query params should be merged", func(t *testing.T) {
 		t.Parallel()
@@ -314,14 +289,20 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 func Test_Parser_Request_Header(t *testing.T) {
 	t.Parallel()
+	type cookies struct {
+		Foo string `cookie:"foo"`
+		Bar int    `cookie:"bar"`
+	}
 
 	// Every case builds its own client and request, so the cases run in parallel.
 	for _, tc := range []struct {
-		client *Client
-		req    *Request
-		get    func(h *fasthttp.RequestHeader) []byte // reads the header under test
-		name   string
-		want   string
+		client    *Client
+		req       *Request
+		get       func(h *fasthttp.RequestHeader) []byte // reads the header under test, which must be want
+		cookies   map[string]string                      // cookie name -> the value the request header has, "" for none
+		name      string
+		want      string
+		noReferer bool // the request must carry no Referer header at all
 	}{
 		{
 			name:   "client header should be set",
@@ -400,13 +381,49 @@ func Test_Parser_Request_Header(t *testing.T) {
 			get:    (*fasthttp.RequestHeader).Referer,
 			want:   "https://example.com",
 		},
+		// An empty "Referer:" says nothing that a missing header does not, and it
+		// went out on every request that never asked for one.
+		{name: "no referer sends no Referer header", client: New(), req: AcquireRequest(), noReferer: true},
+		{
+			name:      "a Referer set through the headers is replaced, not kept empty",
+			client:    New(),
+			req:       AcquireRequest().SetHeader(fiber.HeaderReferer, "https://header.example"),
+			noReferer: true,
+		},
+		{
+			name: "client cookie should be set",
+			client: New().SetCookie("foo", "bar").SetCookies(map[string]string{"bar": "foo", "bar1": "foo1"}).
+				DelCookies("bar1"),
+			req:     AcquireRequest(),
+			cookies: map[string]string{"foo": "bar", "bar": "foo", "bar1": ""},
+		},
+		{
+			name:    "request cookie should be set",
+			client:  New(),
+			req:     AcquireRequest().SetCookiesWithStruct(&cookies{Foo: "bar", Bar: 67}),
+			cookies: map[string]string{"foo": "bar", "bar": "67", "bar1": ""},
+		},
+		{
+			name:    "request cookie will override client cookie",
+			client:  New().SetCookie("foo", "bar").SetCookies(map[string]string{"bar": "foo", "bar1": "foo1"}),
+			req:     AcquireRequest().SetCookiesWithStruct(&cookies{Foo: "bar", Bar: 67}),
+			cookies: map[string]string{"foo": "bar", "bar": "67", "bar1": "foo1"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			t.Cleanup(func() { ReleaseRequest(tc.req) })
 
 			require.NoError(t, parserRequestHeader(tc.client, tc.req))
-			require.Equal(t, tc.want, string(tc.get(&tc.req.RawRequest.Header)))
+			if tc.get != nil {
+				require.Equal(t, tc.want, string(tc.get(&tc.req.RawRequest.Header)))
+			}
+			if tc.noReferer {
+				require.False(t, hasRefererHeader(&tc.req.RawRequest.Header))
+			}
+			for name, want := range tc.cookies {
+				require.Equal(t, want, string(tc.req.RawRequest.Header.Cookie(name)), "cookie %q", name)
+			}
 		})
 	}
 
@@ -421,27 +438,6 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.Contains(t, string(req.RawRequest.Header.ContentType()), multipartFormData)
 	})
 
-	for _, tc := range []struct {
-		req  *Request
-		name string
-	}{
-		// An empty "Referer:" says nothing that a missing header does not, and it
-		// went out on every request that never asked for one.
-		{name: "no referer sends no Referer header", req: AcquireRequest()},
-		{
-			name: "a Referer set through the headers is replaced, not kept empty",
-			req:  AcquireRequest().SetHeader(fiber.HeaderReferer, "https://header.example"),
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			t.Cleanup(func() { ReleaseRequest(tc.req) })
-
-			require.NoError(t, parserRequestHeader(New(), tc.req))
-			require.False(t, hasRefererHeader(&tc.req.RawRequest.Header))
-		})
-	}
-
 	t.Run("a referer that is no longer set does not linger on a resend", func(t *testing.T) {
 		t.Parallel()
 		client := New()
@@ -455,48 +451,6 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.NoError(t, parserRequestHeader(client, req))
 		require.False(t, hasRefererHeader(&req.RawRequest.Header))
 	})
-
-	type cookies struct {
-		Foo string `cookie:"foo"`
-		Bar int    `cookie:"bar"`
-	}
-
-	for _, tc := range []struct {
-		client *Client
-		req    *Request
-		want   map[string]string // cookie name -> the value the request header has, "" for none
-		name   string
-	}{
-		{
-			name: "client cookie should be set",
-			client: New().SetCookie("foo", "bar").SetCookies(map[string]string{"bar": "foo", "bar1": "foo1"}).
-				DelCookies("bar1"),
-			req:  AcquireRequest(),
-			want: map[string]string{"foo": "bar", "bar": "foo", "bar1": ""},
-		},
-		{
-			name:   "request cookie should be set",
-			client: New(),
-			req:    AcquireRequest().SetCookiesWithStruct(&cookies{Foo: "bar", Bar: 67}),
-			want:   map[string]string{"foo": "bar", "bar": "67", "bar1": ""},
-		},
-		{
-			name:   "request cookie will override client cookie",
-			client: New().SetCookie("foo", "bar").SetCookies(map[string]string{"bar": "foo", "bar1": "foo1"}),
-			req:    AcquireRequest().SetCookiesWithStruct(&cookies{Foo: "bar", Bar: 67}),
-			want:   map[string]string{"foo": "bar", "bar": "67", "bar1": "foo1"},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			t.Cleanup(func() { ReleaseRequest(tc.req) })
-
-			require.NoError(t, parserRequestHeader(tc.client, tc.req))
-			for name, want := range tc.want {
-				require.Equal(t, want, string(tc.req.RawRequest.Header.Cookie(name)), "cookie %q", name)
-			}
-		})
-	}
 }
 
 func Test_Parser_Request_Body(t *testing.T) {
@@ -512,9 +466,10 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 	// Every case builds its own request, so the cases run in parallel.
 	for _, tc := range []struct {
-		req  *Request
-		name string
-		want string
+		req      *Request
+		name     string
+		want     string
+		contains []string // the parts a multipart body, whose boundary varies, must contain instead of want
 	}{
 		{
 			name: "json body",
@@ -533,29 +488,6 @@ func Test_Parser_Request_Body(t *testing.T) {
 			want: "ball=circle+and+square",
 		},
 		{name: "raw body", req: AcquireRequest().SetRawBody([]byte("hello world")), want: "hello world"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			t.Cleanup(func() { ReleaseRequest(tc.req) })
-
-			require.NoError(t, parserRequestBody(New(), tc.req))
-			require.Equal(t, tc.want, string(tc.req.RawRequest.Body()))
-		})
-	}
-
-	t.Run("form data body error", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		req := AcquireRequest().SetFormDataWithMap(map[string]string{"": ""})
-
-		require.NoError(t, parserRequestBody(client, req))
-	})
-
-	for _, tc := range []struct {
-		req      *Request
-		name     string
-		contains []string
-	}{
 		{
 			name:     "file body",
 			req:      AcquireRequest().AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))),
@@ -573,11 +505,22 @@ func Test_Parser_Request_Body(t *testing.T) {
 			t.Cleanup(func() { ReleaseRequest(tc.req) })
 
 			require.NoError(t, parserRequestBody(New(), tc.req))
+			if tc.contains == nil {
+				require.Equal(t, tc.want, string(tc.req.RawRequest.Body()))
+			}
 			for _, part := range tc.contains {
 				require.Contains(t, string(tc.req.RawRequest.Body()), part)
 			}
 		})
 	}
+
+	t.Run("form data body error", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().SetFormDataWithMap(map[string]string{"": ""})
+
+		require.NoError(t, parserRequestBody(client, req))
+	})
 
 	t.Run("file body open error", func(t *testing.T) {
 		t.Parallel()
@@ -620,53 +563,17 @@ func Test_Parser_Request_Body(t *testing.T) {
 	})
 }
 
+// dummyLogger records what the client logs through Debugf, the only method its
+// debug logging calls. Every other method is the nil embedded logger's and
+// panics, so a call the tests do not expect cannot pass unnoticed.
 type dummyLogger struct {
+	log.CommonLogger
 	buf *bytes.Buffer
 }
-
-func (*dummyLogger) Trace(_ ...any) {}
-
-func (*dummyLogger) Debug(_ ...any) {}
-
-func (*dummyLogger) Info(_ ...any) {}
-
-func (*dummyLogger) Warn(_ ...any) {}
-
-func (*dummyLogger) Error(_ ...any) {}
-
-func (*dummyLogger) Fatal(_ ...any) {}
-
-func (*dummyLogger) Panic(_ ...any) {}
-
-func (*dummyLogger) Tracef(_ string, _ ...any) {}
 
 func (l *dummyLogger) Debugf(format string, v ...any) {
 	fmt.Fprintf(l.buf, format, v...)
 }
-
-func (*dummyLogger) Infof(_ string, _ ...any) {}
-
-func (*dummyLogger) Warnf(_ string, _ ...any) {}
-
-func (*dummyLogger) Errorf(_ string, _ ...any) {}
-
-func (*dummyLogger) Fatalf(_ string, _ ...any) {}
-
-func (*dummyLogger) Panicf(_ string, _ ...any) {}
-
-func (*dummyLogger) Tracew(_ string, _ ...any) {}
-
-func (*dummyLogger) Debugw(_ string, _ ...any) {}
-
-func (*dummyLogger) Infow(_ string, _ ...any) {}
-
-func (*dummyLogger) Warnw(_ string, _ ...any) {}
-
-func (*dummyLogger) Errorw(_ string, _ ...any) {}
-
-func (*dummyLogger) Fatalw(_ string, _ ...any) {}
-
-func (*dummyLogger) Panicw(_ string, _ ...any) {}
 
 // clientTestCLoggedGet sends one GET to a loopback server through a client that
 // logs into the returned buffer once debug switched debug logging on or off. It
@@ -792,14 +699,12 @@ func Test_Client_Logger_StreamedBodiesLogHeadersOnly(t *testing.T) {
 	client := New()
 	client.Debug().SetLogger(&dummyLogger{buf: &buf})
 
-	req := AcquireRequest()
-	t.Cleanup(func() { ReleaseRequest(req) })
+	req := clientTestBRequest(t)
 	req.RawRequest.SetRequestURI("http://example.com/")
 	req.RawRequest.Header.SetMethod(fiber.MethodPost)
 	req.RawRequest.SetBodyStream(bytes.NewBufferString("request body"), len("request body"))
 
-	resp := AcquireResponse()
-	t.Cleanup(func() { ReleaseResponse(resp) })
+	resp := clientTestBResponse(t)
 	resp.RawResponse.SetBodyStream(bytes.NewBufferString("response body"), len("response body"))
 
 	require.NoError(t, logger(client, resp, req))
@@ -815,12 +720,12 @@ func Test_Client_Logger_StreamedBodiesLogHeadersOnly(t *testing.T) {
 
 func Test_ParseCookieIgnoringBadAttrs(t *testing.T) {
 	t.Parallel()
+	manyAttrs := "a=1; Expires=bogus" + strings.Repeat("; x", 4_000) + "; Secure"
 	tests := []struct {
 		name     string
 		value    string
 		wantVal  string
 		wantPath string
-		wantErr  bool
 		secure   bool
 		httpOnly bool
 	}{
@@ -830,20 +735,15 @@ func Test_ParseCookieIgnoringBadAttrs(t *testing.T) {
 		{name: "two bad attrs", value: "a=1; Expires=bogus; Path=/p; Max-Age=abc", wantVal: "1", wantPath: "/p"},
 		{name: "no attrs", value: "a=1", wantVal: "1"},
 		{name: "value only", value: "1", wantVal: "1"},
+		{name: "many attributes", value: manyAttrs, wantVal: "1", secure: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			cookie := fasthttp.AcquireCookie()
-			t.Cleanup(func() { fasthttp.ReleaseCookie(cookie) })
+			cookie := clientTestPooled(t, fasthttp.AcquireCookie, fasthttp.ReleaseCookie)
 
-			err := parseCookieIgnoringBadAttrs(cookie, []byte(tc.value))
-			if tc.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
+			require.NoError(t, parseCookieIgnoringBadAttrs(cookie, []byte(tc.value)))
 			require.Equal(t, tc.wantVal, string(cookie.Value()))
 			require.Equal(t, tc.wantPath, string(cookie.Path()))
 			require.Equal(t, tc.secure, cookie.Secure())
@@ -852,29 +752,8 @@ func Test_ParseCookieIgnoringBadAttrs(t *testing.T) {
 	}
 }
 
-func Test_ParseCookieIgnoringBadAttrs_ManyAttributes(t *testing.T) {
-	t.Parallel()
-	value := make([]byte, 0, 16*1024)
-	value = append(value, "a=1; Expires=bogus"...)
-	for range 4_000 {
-		value = append(value, "; x"...)
-	}
-	value = append(value, "; Secure"...)
-
-	cookie := fasthttp.AcquireCookie()
-	t.Cleanup(func() { fasthttp.ReleaseCookie(cookie) })
-
-	require.NoError(t, parseCookieIgnoringBadAttrs(cookie, value))
-	require.Equal(t, "1", string(cookie.Value()))
-	require.True(t, cookie.Secure())
-}
-
 func Benchmark_ParseCookieIgnoringBadAttrs(b *testing.B) {
-	value := make([]byte, 0, 16*1024)
-	value = append(value, "a=1; Max-Age=bogus"...)
-	for range 4_000 {
-		value = append(value, "; x"...)
-	}
+	value := []byte("a=1; Max-Age=bogus" + strings.Repeat("; x", 4_000))
 
 	b.ReportAllocs()
 	b.SetBytes(int64(len(value)))
@@ -892,12 +771,10 @@ func Test_Client_ResponseCookie_UnparsableAttribute(t *testing.T) {
 	t.Parallel()
 	client := New()
 
-	req := AcquireRequest()
-	t.Cleanup(func() { ReleaseRequest(req) })
+	req := clientTestBRequest(t)
 	req.RawRequest.SetRequestURI("http://example.com/")
 
-	resp := AcquireResponse()
-	t.Cleanup(func() { ReleaseResponse(resp) })
+	resp := clientTestBResponse(t)
 	resp.RawResponse.Header.Add("Set-Cookie", "sid=abc; Secure; HttpOnly; Expires=notadate; Path=/api")
 
 	require.NoError(t, parserResponseCookie(client, resp, req))

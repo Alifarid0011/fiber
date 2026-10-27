@@ -27,70 +27,68 @@ import (
 // clientTestBRequest returns a pooled request that is released when the test ends.
 func clientTestBRequest(t *testing.T) *Request {
 	t.Helper()
-
-	req := AcquireRequest()
-	t.Cleanup(func() { ReleaseRequest(req) })
-
-	return req
+	return clientTestPooled(t, AcquireRequest, ReleaseRequest)
 }
 
-// clientTestBMultiValue names the request methods that read and write one kind of
-// multi-valued entry, so headers, query parameters and form fields run the same
-// scenarios. The scenarios chain the calls through the returned request, as the
-// fluent API is used. Headers have no struct or delete form: they leave setStruct
-// and del nil and do not register the scenarios that need them.
-type clientTestBMultiValue struct {
-	add       func(r *Request, key, val string) *Request
-	set       func(r *Request, key, val string) *Request
-	addMany   func(r *Request, m map[string][]string) *Request
-	setMany   func(r *Request, m map[string]string) *Request
-	setStruct func(r *Request, v any) *Request
-	del       func(r *Request, keys ...string) *Request
-	get       func(r *Request, key string) []string
+// clientTestBMultiValue names the methods of a client or a request, T, that read and
+// write one kind of multi-valued entry, so headers, query parameters and form fields
+// run the same scenarios on both. Every scenario starts from a T that fresh returns
+// and chains the calls through the returned T, as the fluent API is used. Kinds with
+// no struct or delete form leave setStruct and del nil and do not register the
+// scenarios that need them.
+type clientTestBMultiValue[T any] struct {
+	fresh     func(t *testing.T) T
+	add       func(r T, key, val string) T
+	set       func(r T, key, val string) T
+	addMany   func(r T, m map[string][]string) T
+	setMany   func(r T, m map[string]string) T
+	setStruct func(r T, v any) T
+	del       func(r T, keys ...string) T
+	get       func(r T, key string) []string
 	noun      string // as in the scenario names: "header", "param" or "form field"
 }
 
 // run registers the scenarios that hold for every kind of entry.
-func (e clientTestBMultiValue) run(t *testing.T) {
+func (e clientTestBMultiValue[T]) run(t *testing.T) {
 	t.Helper()
 
 	t.Run("add "+e.noun, func(t *testing.T) {
 		t.Parallel()
-		req := clientTestBRequest(t)
-		e.add(e.add(req, "foo", "bar"), "foo", "fiber")
+		r := e.fresh(t)
+		e.add(e.add(r, "foo", "bar"), "foo", "fiber")
 
-		require.Equal(t, []string{"bar", "fiber"}, e.get(req, "foo"))
+		require.Equal(t, []string{"bar", "fiber"}, e.get(r, "foo"))
 	})
 
 	t.Run("set "+e.noun, func(t *testing.T) {
 		t.Parallel()
-		req := clientTestBRequest(t)
-		e.set(e.add(req, "foo", "bar"), "foo", "fiber")
+		r := e.fresh(t)
+		e.set(e.add(r, "foo", "bar"), "foo", "fiber")
 
-		require.Equal(t, []string{"fiber"}, e.get(req, "foo"))
+		require.Equal(t, []string{"fiber"}, e.get(r, "foo"))
 	})
 
 	t.Run("add "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-		req := clientTestBRequest(t)
-		e.addMany(e.set(req, "foo", "bar"), map[string][]string{"foo": {"fiber", "buaa"}, "bar": {"foo"}})
+		r := e.fresh(t)
+		e.addMany(e.set(r, "foo", "bar"), map[string][]string{"foo": {"fiber", "buaa"}, "bar": {"foo"}})
 
-		require.Equal(t, []string{"bar", "fiber", "buaa"}, e.get(req, "foo"))
-		require.Equal(t, []string{"foo"}, e.get(req, "bar"))
+		require.Equal(t, []string{"bar", "fiber", "buaa"}, e.get(r, "foo"))
+		require.Equal(t, []string{"foo"}, e.get(r, "bar"))
 	})
 
 	t.Run("set "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-		req := clientTestBRequest(t)
-		e.setMany(e.set(req, "foo", "bar"), map[string]string{"foo": "fiber", "bar": "foo"})
+		r := e.fresh(t)
+		e.setMany(e.set(r, "foo", "bar"), map[string]string{"foo": "fiber", "bar": "foo"})
 
-		require.Equal(t, []string{"fiber"}, e.get(req, "foo"))
-		require.Equal(t, []string{"foo"}, e.get(req, "bar"))
+		require.Equal(t, []string{"fiber"}, e.get(r, "foo"))
+		require.Equal(t, []string{"foo"}, e.get(r, "bar"))
 	})
 }
 
 // runStruct registers the scenario that sets entries from a struct.
-func (e clientTestBMultiValue) runStruct(t *testing.T) {
+func (e clientTestBMultiValue[T]) runStruct(t *testing.T) {
 	t.Helper()
 
 	// The struct carries the tag of every kind: each one reads only its own.
@@ -105,8 +103,8 @@ func (e clientTestBMultiValue) runStruct(t *testing.T) {
 
 	t.Run("set "+e.noun+"s with struct", func(t *testing.T) {
 		t.Parallel()
-		req := clientTestBRequest(t)
-		e.setStruct(req, &args{
+		r := e.fresh(t)
+		e.setStruct(r, &args{
 			TInt:      5,
 			TString:   "string",
 			TFloat:    3.1,
@@ -115,39 +113,39 @@ func (e clientTestBMultiValue) runStruct(t *testing.T) {
 			TIntSlice: []int{1, 2},
 		})
 
-		require.Empty(t, e.get(req, "unexport"))
-		require.Equal(t, []string{"5"}, e.get(req, "TInt"))
-		require.Equal(t, []string{"string"}, e.get(req, "TString"))
-		require.Equal(t, []string{"3.1"}, e.get(req, "TFloat"))
-		require.Equal(t, []string{"true"}, e.get(req, "TBool"))
-		require.Equal(t, []string{"foo", "bar"}, e.get(req, "TSlice"))
-		require.Equal(t, []string{"1", "2"}, e.get(req, "int_slice"))
+		require.Empty(t, e.get(r, "unexport"))
+		require.Equal(t, []string{"5"}, e.get(r, "TInt"))
+		require.Equal(t, []string{"string"}, e.get(r, "TString"))
+		require.Equal(t, []string{"3.1"}, e.get(r, "TFloat"))
+		require.Equal(t, []string{"true"}, e.get(r, "TBool"))
+		require.Equal(t, []string{"foo", "bar"}, e.get(r, "TSlice"))
+		require.Equal(t, []string{"1", "2"}, e.get(r, "int_slice"))
 	})
 }
 
 // runDel registers the scenario that deletes entries.
-func (e clientTestBMultiValue) runDel(t *testing.T) {
+func (e clientTestBMultiValue[T]) runDel(t *testing.T) {
 	t.Helper()
 
 	t.Run("del "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-		req := clientTestBRequest(t)
-		e.del(e.setMany(e.set(req, "foo", "bar"), map[string]string{"foo": "fiber", "bar": "foo"}), "foo", "bar")
+		r := e.fresh(t)
+		e.del(e.setMany(e.set(r, "foo", "bar"), map[string]string{"foo": "fiber", "bar": "foo"}), "foo", "bar")
 
-		require.Empty(t, e.get(req, "foo"))
-		require.Empty(t, e.get(req, "bar"))
+		require.Empty(t, e.get(r, "foo"))
+		require.Empty(t, e.get(r, "bar"))
 	})
 }
 
 // runIter registers the scenarios of the iterator over all entries, which all
-// returns for a request.
-func (e clientTestBMultiValue) runIter(t *testing.T, all func(r *Request) iter.Seq2[string, []string]) {
+// returns for a T.
+func (e clientTestBMultiValue[T]) runIter(t *testing.T, all func(r T) iter.Seq2[string, []string]) {
 	t.Helper()
 
 	t.Run("empty iterator", func(t *testing.T) {
 		t.Parallel()
 		called := false
-		all(clientTestBRequest(t))(func(_ string, _ []string) bool {
+		all(e.fresh(t))(func(_ string, _ []string) bool {
 			called = true
 			return true
 		})
@@ -157,10 +155,10 @@ func (e clientTestBMultiValue) runIter(t *testing.T, all func(r *Request) iter.S
 
 	t.Run("populated iterator", func(t *testing.T) {
 		t.Parallel()
-		req := clientTestBRequest(t)
-		e.addMany(req, map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
+		r := e.fresh(t)
+		e.addMany(r, map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
 
-		got := maps.Collect(all(req))
+		got := maps.Collect(all(r))
 
 		require.Contains(t, got["foo"], "bar")
 		require.Contains(t, got["foo"], "fiber")
@@ -170,20 +168,20 @@ func (e clientTestBMultiValue) runIter(t *testing.T, all func(r *Request) iter.S
 	})
 }
 
-// clientTestBSingleValue names the request methods that read and write one kind of
-// single-valued entry, so cookies and path parameters run the same scenarios. The
-// scenarios chain the calls through the returned request, as the fluent API is used.
-type clientTestBSingleValue struct {
-	get       func(r *Request, key string) string
-	set       func(r *Request, key, val string) *Request
-	setMany   func(r *Request, m map[string]string) *Request
-	setStruct func(r *Request, v any) *Request
-	del       func(r *Request, keys ...string) *Request
+// clientTestBSingleValue is [clientTestBMultiValue] for the kinds of single-valued
+// entry, cookies and path parameters.
+type clientTestBSingleValue[T any] struct {
+	fresh     func(t *testing.T) T
+	get       func(r T, key string) string
+	set       func(r T, key, val string) T
+	setMany   func(r T, m map[string]string) T
+	setStruct func(r T, v any) T
+	del       func(r T, keys ...string) T
 	noun      string // as in the scenario names: "cookie" or "path param"
 }
 
 // run registers the scenarios that hold for every kind of entry.
-func (e clientTestBSingleValue) run(t *testing.T) {
+func (e clientTestBSingleValue[T]) run(t *testing.T) {
 	t.Helper()
 
 	// The struct carries the tag of every kind: each one reads only its own.
@@ -194,48 +192,49 @@ func (e clientTestBSingleValue) run(t *testing.T) {
 
 	t.Run("set "+e.noun, func(t *testing.T) {
 		t.Parallel()
-		req := e.set(clientTestBRequest(t), "foo", "bar")
-		require.Equal(t, "bar", e.get(req, "foo"))
+		r := e.set(e.fresh(t), "foo", "bar")
+		require.Equal(t, "bar", e.get(r, "foo"))
 
-		e.set(req, "foo", "bar1")
-		require.Equal(t, "bar1", e.get(req, "foo"))
+		e.set(r, "foo", "bar1")
+		require.Equal(t, "bar1", e.get(r, "foo"))
 	})
 
 	t.Run("set "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-		req := e.setMany(clientTestBRequest(t), map[string]string{"foo": "bar", "bar": "foo"})
-		require.Equal(t, "bar", e.get(req, "foo"))
-		require.Equal(t, "foo", e.get(req, "bar"))
+		r := e.setMany(e.fresh(t), map[string]string{"foo": "bar", "bar": "foo"})
+		require.Equal(t, "bar", e.get(r, "foo"))
+		require.Equal(t, "foo", e.get(r, "bar"))
 
-		e.setMany(req, map[string]string{"foo": "bar1"})
-		require.Equal(t, "bar1", e.get(req, "foo"))
-		require.Equal(t, "foo", e.get(req, "bar"))
+		e.setMany(r, map[string]string{"foo": "bar1"})
+		require.Equal(t, "bar1", e.get(r, "foo"))
+		require.Equal(t, "foo", e.get(r, "bar"))
 	})
 
 	t.Run("set "+e.noun+"s with struct", func(t *testing.T) {
 		t.Parallel()
-		req := e.setStruct(clientTestBRequest(t), &args{Int: 5, String: "foo"})
+		r := e.setStruct(e.fresh(t), &args{Int: 5, String: "foo"})
 
-		require.Equal(t, "5", e.get(req, "int"))
-		require.Equal(t, "foo", e.get(req, "string"))
+		require.Equal(t, "5", e.get(r, "int"))
+		require.Equal(t, "foo", e.get(r, "string"))
 	})
 
 	t.Run("del "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
-		req := e.setMany(clientTestBRequest(t), map[string]string{"foo": "bar", "bar": "foo"})
-		require.Equal(t, "bar", e.get(req, "foo"))
-		require.Equal(t, "foo", e.get(req, "bar"))
+		r := e.setMany(e.fresh(t), map[string]string{"foo": "bar", "bar": "foo"})
+		require.Equal(t, "bar", e.get(r, "foo"))
+		require.Equal(t, "foo", e.get(r, "bar"))
 
-		e.del(req, "foo")
-		require.Empty(t, e.get(req, "foo"))
-		require.Equal(t, "foo", e.get(req, "bar"))
+		e.del(r, "foo")
+		require.Empty(t, e.get(r, "foo"))
+		require.Equal(t, "foo", e.get(r, "bar"))
 	})
 }
 
 // The kinds of entry a request holds.
 var (
-	clientTestBHeaders = clientTestBMultiValue{
+	clientTestBHeaders = clientTestBMultiValue[*Request]{
 		noun:    "header",
+		fresh:   clientTestBRequest,
 		add:     (*Request).AddHeader,
 		set:     (*Request).SetHeader,
 		addMany: (*Request).AddHeaders,
@@ -243,8 +242,9 @@ var (
 		get:     (*Request).Header,
 	}
 
-	clientTestBParams = clientTestBMultiValue{
+	clientTestBParams = clientTestBMultiValue[*Request]{
 		noun:      "param",
+		fresh:     clientTestBRequest,
 		add:       (*Request).AddParam,
 		set:       (*Request).SetParam,
 		addMany:   (*Request).AddParams,
@@ -254,8 +254,9 @@ var (
 		get:       (*Request).Param,
 	}
 
-	clientTestBFormData = clientTestBMultiValue{
+	clientTestBFormData = clientTestBMultiValue[*Request]{
 		noun:      "form field",
+		fresh:     clientTestBRequest,
 		add:       (*Request).AddFormData,
 		set:       (*Request).SetFormData,
 		addMany:   (*Request).AddFormDataWithMap,
@@ -265,8 +266,9 @@ var (
 		get:       (*Request).FormData,
 	}
 
-	clientTestBCookies = clientTestBSingleValue{
+	clientTestBCookies = clientTestBSingleValue[*Request]{
 		noun:      "cookie",
+		fresh:     clientTestBRequest,
 		get:       (*Request).Cookie,
 		set:       (*Request).SetCookie,
 		setMany:   (*Request).SetCookies,
@@ -274,8 +276,9 @@ var (
 		del:       (*Request).DelCookies,
 	}
 
-	clientTestBPathParams = clientTestBSingleValue{
+	clientTestBPathParams = clientTestBSingleValue[*Request]{
 		noun:      "path param",
+		fresh:     clientTestBRequest,
 		get:       (*Request).PathParam,
 		set:       (*Request).SetPathParam,
 		setMany:   (*Request).SetPathParams,
@@ -716,77 +719,6 @@ func Test_Request_Methods_With_Server(t *testing.T) {
 	}
 }
 
-func Test_Request_Header_With_Server(t *testing.T) {
-	t.Parallel()
-	handler := func(c fiber.Ctx) error {
-		for key, value := range c.Request().Header.All() {
-			if k := string(key); k == "K1" || k == "K2" {
-				_, err := c.Write(key)
-				require.NoError(t, err)
-				_, err = c.Write(value)
-				require.NoError(t, err)
-			}
-		}
-		return nil
-	}
-
-	wrapAgent := func(r *Request) {
-		r.SetHeader("k1", "v1").AddHeader("k1", "v11").AddHeaders(map[string][]string{"k1": {"v22", "v33"}}).
-			SetHeaders(map[string]string{"k2": "v2"}).
-			AddHeader("k2", "v22")
-	}
-
-	testRequest(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")
-}
-
-func Test_Request_UserAgent_With_Server(t *testing.T) {
-	t.Parallel()
-	handler := func(c fiber.Ctx) error { return c.Send(c.Request().Header.UserAgent()) }
-
-	t.Run("default", func(t *testing.T) {
-		t.Parallel()
-		testRequest(t, handler, func(_ *Request) {}, defaultUserAgent, 5)
-	})
-
-	t.Run("custom", func(t *testing.T) {
-		t.Parallel()
-		testRequest(t, handler, func(agent *Request) { agent.SetUserAgent("ua") }, "ua", 5)
-	})
-}
-
-func Test_Request_Cookie_With_Server(t *testing.T) {
-	t.Parallel()
-	handler := func(c fiber.Ctx) error {
-		return c.SendString(c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
-	}
-
-	wrapAgent := func(req *Request) {
-		req.SetCookie("k1", "v1").SetCookies(map[string]string{"k2": "v2", "k3": "v3", "k4": "v4"}).DelCookies("k4")
-	}
-
-	testRequest(t, handler, wrapAgent, "v1v2v3")
-}
-
-func Test_Request_Referer_With_Server(t *testing.T) {
-	t.Parallel()
-	handler := func(c fiber.Ctx) error { return c.Send(c.Request().Header.Referer()) }
-
-	wrapAgent := func(req *Request) { req.SetReferer("http://referer.com") }
-
-	testRequest(t, handler, wrapAgent, "http://referer.com")
-}
-
-func Test_Request_QueryString_With_Server(t *testing.T) {
-	t.Parallel()
-	handler := func(c fiber.Ctx) error { return c.Send(c.Request().URI().QueryString()) }
-
-	wrapAgent := func(req *Request) {
-		req.SetParam("foo", "bar").SetParams(map[string]string{"bar": "baz"})
-	}
-
-	testRequest(t, handler, wrapAgent, "foo=bar&bar=baz")
-}
-
 func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 	t.Helper()
 
@@ -1107,74 +1039,104 @@ func Test_Request_Query_Redirect(t *testing.T) {
 	resp.Close()
 }
 
-func Test_SetValWithStruct(t *testing.T) {
-	t.Parallel()
+// clientTestBStructArgs is what the SetValWithStruct test and benchmark pass, as a
+// value and through a pointer.
+type clientTestBStructArgs struct {
+	TString   string
+	TSlice    []string
+	TIntSlice []int `param:"int_slice"`
+	unexport  int
+	TInt      int
+	TUint     uint
+	TFloat    float64
+	TComplex  complex128
+	TBool     bool
+}
 
-	// test SetValWithStruct via QueryParam struct.
-	type args struct {
-		TString   string
-		TSlice    []string
-		TIntSlice []int `param:"int_slice"`
-		unexport  int
-		TInt      int
-		TUint     uint
-		TFloat    float64
-		TComplex  complex128
-		TBool     bool
+// clientTestBStructParams is what SetValWithStruct must have written: the value a
+// key holds, and values that the list under a key must contain.
+type clientTestBStructParams struct {
+	single map[string]string
+	multi  map[string][]string
+}
+
+// require fails tb unless p holds what w describes.
+func (w clientTestBStructParams) require(tb testing.TB, p *QueryParam) {
+	tb.Helper()
+
+	for key, want := range w.single {
+		require.Equal(tb, want, string(p.Peek(key)), key)
+	}
+	for key, wants := range w.multi {
+		for _, want := range wants {
+			require.Contains(tb, p.PeekMulti(key), []byte(want), key)
+		}
+	}
+}
+
+// What SetValWithStruct writes for the value and for the pointer the test and the
+// benchmark pass.
+var (
+	clientTestBValueParams = clientTestBStructParams{
+		single: map[string]string{
+			"unexport": "", "TInt": "5", "TUint": "5", "TString": "string",
+			"TFloat": "3.1", "TComplex": "(3+4i)", "TBool": "false",
+		},
+		multi: map[string][]string{"TSlice": {"foo", "bar"}, "int_slice": {"0", "1", "2"}},
 	}
 
-	t.Run("the struct should be applied", func(t *testing.T) {
-		t.Parallel()
-		p := &QueryParam{Args: fasthttp.AcquireArgs()}
+	clientTestBPointerParams = clientTestBStructParams{
+		single: map[string]string{"TInt": "5", "TString": "string", "TFloat": "3.1", "TBool": "true"},
+		multi:  map[string][]string{"TSlice": {"foo", "bar"}, "int_slice": {"1", "2"}},
+	}
+)
 
-		SetValWithStruct(p, "param", args{
-			unexport:  5,
-			TInt:      5,
-			TUint:     5,
-			TString:   "string",
-			TFloat:    3.1,
-			TComplex:  3 + 4i,
-			TBool:     false,
-			TSlice:    []string{"foo", "bar"},
-			TIntSlice: []int{0, 1, 2},
+func Test_SetValWithStruct(t *testing.T) {
+	t.Parallel()
+	type args = clientTestBStructArgs
+
+	for _, tc := range []struct {
+		v    any
+		want clientTestBStructParams
+		name string
+	}{
+		{
+			name: "the struct should be applied",
+			v: args{
+				unexport:  5,
+				TInt:      5,
+				TUint:     5,
+				TString:   "string",
+				TFloat:    3.1,
+				TComplex:  3 + 4i,
+				TBool:     false,
+				TSlice:    []string{"foo", "bar"},
+				TIntSlice: []int{0, 1, 2},
+			},
+			want: clientTestBValueParams,
+		},
+		{
+			name: "the pointer of a struct should be applied",
+			v: &args{
+				TInt:      5,
+				TString:   "string",
+				TFloat:    3.1,
+				TBool:     true,
+				TSlice:    []string{"foo", "bar"},
+				TIntSlice: []int{1, 2},
+			},
+			want: clientTestBPointerParams,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := &QueryParam{Args: fasthttp.AcquireArgs()}
+
+			SetValWithStruct(p, "param", tc.v)
+
+			tc.want.require(t, p)
 		})
-
-		require.Empty(t, string(p.Peek("unexport")))
-		require.Equal(t, []byte("5"), p.Peek("TInt"))
-		require.Equal(t, []byte("5"), p.Peek("TUint"))
-		require.Equal(t, []byte("string"), p.Peek("TString"))
-		require.Equal(t, []byte("3.1"), p.Peek("TFloat"))
-		require.Equal(t, []byte("(3+4i)"), p.Peek("TComplex"))
-		require.Equal(t, []byte("false"), p.Peek("TBool"))
-		require.Contains(t, p.PeekMulti("TSlice"), []byte("foo"))
-		require.Contains(t, p.PeekMulti("TSlice"), []byte("bar"))
-		require.Contains(t, p.PeekMulti("int_slice"), []byte("0"))
-		require.Contains(t, p.PeekMulti("int_slice"), []byte("1"))
-		require.Contains(t, p.PeekMulti("int_slice"), []byte("2"))
-	})
-
-	t.Run("the pointer of a struct should be applied", func(t *testing.T) {
-		t.Parallel()
-		p := &QueryParam{Args: fasthttp.AcquireArgs()}
-
-		SetValWithStruct(p, "param", &args{
-			TInt:      5,
-			TString:   "string",
-			TFloat:    3.1,
-			TBool:     true,
-			TSlice:    []string{"foo", "bar"},
-			TIntSlice: []int{1, 2},
-		})
-
-		require.Equal(t, []byte("5"), p.Peek("TInt"))
-		require.Equal(t, []byte("string"), p.Peek("TString"))
-		require.Equal(t, []byte("3.1"), p.Peek("TFloat"))
-		require.Equal(t, "true", string(p.Peek("TBool")))
-		require.Contains(t, p.PeekMulti("TSlice"), []byte("foo"))
-		require.Contains(t, p.PeekMulti("TSlice"), []byte("bar"))
-		require.Contains(t, p.PeekMulti("int_slice"), []byte("1"))
-		require.Contains(t, p.PeekMulti("int_slice"), []byte("2"))
-	})
+	}
 
 	t.Run("error type should ignore", func(t *testing.T) {
 		t.Parallel()
@@ -1185,18 +1147,7 @@ func Test_SetValWithStruct(t *testing.T) {
 }
 
 func Benchmark_SetValWithStruct(b *testing.B) {
-	// test SetValWithStruct via QueryParam struct.
-	type args struct {
-		TString   string
-		TSlice    []string
-		TIntSlice []int `param:"int_slice"`
-		unexport  int
-		TInt      int
-		TUint     uint
-		TFloat    float64
-		TComplex  complex128
-		TBool     bool
-	}
+	type args = clientTestBStructArgs
 
 	b.Run("the struct should be applied", func(b *testing.B) {
 		p := &QueryParam{Args: fasthttp.AcquireArgs()}
@@ -1217,57 +1168,7 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			})
 		}
 
-		require.Empty(b, string(p.Peek("unexport")))
-		require.Equal(b, []byte("5"), p.Peek("TInt"))
-		require.Equal(b, []byte("5"), p.Peek("TUint"))
-		require.Equal(b, []byte("string"), p.Peek("TString"))
-		require.Equal(b, []byte("3.1"), p.Peek("TFloat"))
-		require.Equal(b, []byte("(3+4i)"), p.Peek("TComplex"))
-		require.Equal(b, []byte("false"), p.Peek("TBool"))
-		require.True(b, func() bool {
-			for _, v := range p.PeekMulti("TSlice") {
-				if string(v) == "foo" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(b, func() bool {
-			for _, v := range p.PeekMulti("TSlice") {
-				if string(v) == "bar" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(b, func() bool {
-			for _, v := range p.PeekMulti("int_slice") {
-				if string(v) == "0" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(b, func() bool {
-			for _, v := range p.PeekMulti("int_slice") {
-				if string(v) == "1" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(b, func() bool {
-			for _, v := range p.PeekMulti("int_slice") {
-				if string(v) == "2" {
-					return true
-				}
-			}
-			return false
-		}())
+		clientTestBValueParams.require(b, p)
 	})
 
 	b.Run("the pointer of a struct should be applied", func(b *testing.B) {
@@ -1286,45 +1187,7 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			})
 		}
 
-		require.Equal(b, []byte("5"), p.Peek("TInt"))
-		require.Equal(b, []byte("string"), p.Peek("TString"))
-		require.Equal(b, []byte("3.1"), p.Peek("TFloat"))
-		require.Equal(b, "true", string(p.Peek("TBool")))
-		require.True(b, func() bool {
-			for _, v := range p.PeekMulti("TSlice") {
-				if string(v) == "foo" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(b, func() bool {
-			for _, v := range p.PeekMulti("TSlice") {
-				if string(v) == "bar" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(b, func() bool {
-			for _, v := range p.PeekMulti("int_slice") {
-				if string(v) == "1" {
-					return true
-				}
-			}
-			return false
-		}())
-
-		require.True(b, func() bool {
-			for _, v := range p.PeekMulti("int_slice") {
-				if string(v) == "2" {
-					return true
-				}
-			}
-			return false
-		}())
+		clientTestBPointerParams.require(b, p)
 	})
 
 	b.Run("error type should ignore", func(b *testing.B) {
