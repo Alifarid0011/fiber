@@ -97,9 +97,7 @@ func Test_Session_Middleware(t *testing.T) {
 	}))
 
 	app.Post("/set", withSession(func(c fiber.Ctx, sess *Middleware) error {
-		// get a value from the body
-		value := c.FormValue("value")
-		sess.Set("key", value)
+		sess.Set("key", c.FormValue("value"))
 		return c.SendStatus(fiber.StatusOK)
 	}))
 
@@ -126,17 +124,13 @@ func Test_Session_Middleware(t *testing.T) {
 	app.Post("/regenerate", withSession(func(c fiber.Ctx, sess *Middleware) error {
 		// Set a value to ensure it is preserved after regeneration
 		sess.Set("key", "value")
-
-		// Regenerate the session ID
 		if err := sess.Regenerate(); err != nil {
 			return c.SendStatus(fiber.StatusInternalServerError)
 		}
 		// Ensure the session ID has changed but session data is preserved
-		newID := sess.ID()
-		if newID == "" {
+		if sess.ID() == "" {
 			return c.SendStatus(fiber.StatusInternalServerError)
 		}
-		// Check if the session data is still accessible
 		value, ok := sess.Get("key").(string)
 		if !ok || value != "value" {
 			return c.SendStatus(fiber.StatusInternalServerError)
@@ -163,14 +157,11 @@ func Test_Session_Middleware(t *testing.T) {
 	}))
 
 	app.Post("/keys", withSession(func(c fiber.Ctx, sess *Middleware) error {
-		// get a value from the body
-		value := c.FormValue("keys")
-		for rawKey := range strings.SplitSeq(value, ",") {
+		for rawKey := range strings.SplitSeq(c.FormValue("keys"), ",") {
 			key := utils.TrimSpace(rawKey)
 			if key == "" {
 				continue
 			}
-			// Set each key in the session
 			sess.Set(key, "value_"+key)
 		}
 		return c.SendStatus(fiber.StatusOK)
@@ -189,7 +180,6 @@ func Test_Session_Middleware(t *testing.T) {
 		return c.SendString("keys=" + strings.Join(strKeys, ","))
 	}))
 
-	// Test GET, SET, DELETE, RESET, REGENERATE, DESTROY by sending requests to the respective routes
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
 	var token string
@@ -225,54 +215,34 @@ func Test_Session_Middleware(t *testing.T) {
 	token = sessionTestToken(t, ctx)
 	require.Equal(t, "key not found", string(ctx.Response.Body()))
 
-	// Test POST /set
 	send(fiber.MethodPost, "/set", "value=hello", fiber.StatusOK)
-
-	// Test GET /get to check if the value was set
 	send(fiber.MethodGet, "/get", "", fiber.StatusOK)
 	require.Equal(t, "value=hello", string(ctx.Response.Body()))
 
-	// Test POST /delete to delete the value
 	send(fiber.MethodPost, "/delete", "", fiber.StatusOK)
-
-	// Test GET /get to check if the value was deleted
 	send(fiber.MethodGet, "/get", "", fiber.StatusNotFound)
 	require.Equal(t, "key not found", string(ctx.Response.Body()))
 
-	// Test POST /reset to reset the session
 	send(fiber.MethodPost, "/reset", "", fiber.StatusOK)
-	// verify we have a new session token
 	rotate()
 
-	// Test POST /regenerate to regenerate the session ID
 	send(fiber.MethodPost, "/regenerate", "", fiber.StatusOK)
-	// verify we have a new session token
 	rotate()
 
-	// Test POST /destroy to destroy the session
 	send(fiber.MethodPost, "/destroy", "", fiber.StatusOK)
-
-	// Verify the session cookie has expired
-	setCookieHeader := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-	require.Contains(t, setCookieHeader, "max-age=0")
+	require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderSetCookie)), "max-age=0")
 
 	// Sleep so that the session expires
 	time.Sleep(1 * time.Second)
 
-	// Test GET /get to check if the session was destroyed
+	// the destroyed session is gone: a new session token is issued
 	send(fiber.MethodGet, "/get", "", fiber.StatusNotFound)
-	// check that we have a new session token
 	rotate()
 
-	// Test POST /fresh to check if the session is fresh
 	send(fiber.MethodPost, "/fresh", "", fiber.StatusOK)
-	// check that we have a new session token
 	rotate()
 
-	// Test POST /keys to set multiple keys
 	send(fiber.MethodPost, "/keys", "keys=key1,key2", fiber.StatusOK)
-
-	// Test GET /keys to check if the session has the keys
 	send(fiber.MethodGet, "/keys", "", fiber.StatusOK)
 	body := string(ctx.Response.Body())
 	require.True(t, strings.HasPrefix(body, "keys="))
@@ -299,12 +269,9 @@ func Test_SessionLoggerTagWithOuterLoggerDoesNotPanic(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
 
-	sessionHandler := New()
-	requestLogger := logger.New(logger.Config{Format: "${session-id}", Stream: &buf})
-
 	app := fiber.New()
-	app.Use(requestLogger)
-	app.Use(sessionHandler)
+	app.Use(logger.New(logger.Config{Format: "${session-id}", Stream: &buf})) // outside the session middleware
+	app.Use(New())
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	apptest.Expect(t, app, "/", fiber.StatusOK)
@@ -334,27 +301,18 @@ func Test_Session_NewWithStore(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
-		sess := FromContext(c)
-		id := sess.ID()
-		return c.SendString("value=" + id)
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + FromContext(c).ID()) })
 	app.Post("/", func(c fiber.Ctx) error {
-		sess := FromContext(c)
-		id := sess.ID()
-		c.Cookie(&fiber.Cookie{Name: "session_id", Value: id})
+		c.Cookie(&fiber.Cookie{Name: "session_id", Value: FromContext(c).ID()})
 		return nil
 	})
 
 	h := app.Handler()
 
-	// Test GET request without cookie
 	ctx := sessionTestRequest(t, h, fiber.MethodGet, "", fiber.StatusOK)
-	// Get session cookie
 	token := sessionTestToken(t, ctx)
 	require.Equal(t, "value="+token, string(ctx.Response.Body()))
 
-	// Test GET request with cookie
 	ctx = sessionTestRequest(t, h, fiber.MethodGet, "", fiber.StatusOK, sessionTestCookie("session_id", token))
 	require.Equal(t, "value="+token, string(ctx.Response.Body()))
 }
@@ -400,49 +358,31 @@ func Test_Session_WithConfig(t *testing.T) {
 		KeyGenerator: func() string { return "test" },
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
-		sess := FromContext(c)
-		id := sess.ID()
-		return c.SendString("value=" + id)
-	})
-
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + FromContext(c).ID()) })
 	app.Get("/isFresh", func(c fiber.Ctx) error {
-		sess := FromContext(c)
-		if sess.Fresh() {
+		if FromContext(c).Fresh() {
 			return c.SendStatus(fiber.StatusOK)
 		}
 		return c.SendStatus(fiber.StatusInternalServerError)
 	})
-
 	app.Post("/", func(c fiber.Ctx) error {
-		sess := FromContext(c)
-		id := sess.ID()
-		c.Cookie(&fiber.Cookie{Name: "session_id_test", Value: id})
+		c.Cookie(&fiber.Cookie{Name: "session_id_test", Value: FromContext(c).ID()})
 		return nil
 	})
 
 	h := app.Handler()
 
-	// Test GET request without cookie
 	ctx := sessionTestRequest(t, h, fiber.MethodGet, "", fiber.StatusOK)
-	// Get session cookie
 	token := sessionTestToken(t, ctx)
 	require.Equal(t, "value="+token, string(ctx.Response.Body()))
 
-	// Test GET request with cookie
 	ctx = sessionTestRequest(t, h, fiber.MethodGet, "", fiber.StatusOK, sessionTestCookie("session_id_test", token))
 	require.Equal(t, "value="+token, string(ctx.Response.Body()))
 
-	// Test POST request with cookie
 	sessionTestRequest(t, h, fiber.MethodPost, "", fiber.StatusOK, sessionTestCookie("session_id_test", token))
-
-	// Test POST request without cookie
 	sessionTestRequest(t, h, fiber.MethodPost, "", fiber.StatusOK)
-
-	// Test POST request with wrong key
+	// a cookie under the wrong key, then the right key with the wrong value
 	sessionTestRequest(t, h, fiber.MethodPost, "", fiber.StatusOK, sessionTestCookie("session_id", token))
-
-	// Test POST request with wrong value
 	sessionTestRequest(t, h, fiber.MethodPost, "", fiber.StatusOK, sessionTestCookie("session_id_test", "wrong"))
 
 	// Check idle timeout not expired
@@ -475,15 +415,13 @@ func Test_Session_Next(t *testing.T) {
 		if sess == nil {
 			return c.SendStatus(fiber.StatusInternalServerError)
 		}
-		id := sess.ID()
-		return c.SendString("value=" + id)
+		return c.SendString("value=" + sess.ID())
 	})
 
 	h := app.Handler()
 
 	// Test with Next returning false
 	ctx := sessionTestRequest(t, h, fiber.MethodGet, "", fiber.StatusOK)
-	// Get session cookie
 	token := sessionTestToken(t, ctx)
 	require.Equal(t, "value="+token, string(ctx.Response.Body()))
 
@@ -504,15 +442,12 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	app.Use(handler)
 
 	app.Get("/", func(c fiber.Ctx) error {
-		sess := FromContext(c)
-		st := sess.Store()
-		if st != sessionStore {
+		if FromContext(c).Store() != sessionStore {
 			return c.SendStatus(fiber.StatusInternalServerError)
 		}
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	// Test GET request
 	sessionTestRequest(t, app.Handler(), fiber.MethodGet, "", fiber.StatusOK)
 }
 
@@ -606,13 +541,21 @@ func Test_Session_Middleware_StoreError_CustomErrorHandler(t *testing.T) {
 	require.Equal(t, "session unavailable", string(ctx.Response.Body()))
 }
 
-func Test_Middleware_DestroyWithContext(t *testing.T) {
-	t.Parallel()
+// sessionTestServe serves route at path behind the session middleware on a fresh
+// app and requires a GET for path to be answered 200.
+func sessionTestServe(t *testing.T, path string, route fiber.Handler) {
+	t.Helper()
+
 	handler, _ := NewWithStore()
 	app := fiber.New()
 	app.Use(handler)
+	app.Get(path, route)
+	sessionTestRequest(t, app.Handler(), fiber.MethodGet, path, fiber.StatusOK)
+}
 
-	app.Get("/destroy", func(c fiber.Ctx) error {
+func Test_Middleware_DestroyWithContext(t *testing.T) {
+	t.Parallel()
+	sessionTestServe(t, "/destroy", func(c fiber.Ctx) error {
 		sess := FromContext(c)
 		sess.Set("key", "value")
 		if err := sess.DestroyWithContext(t.Context()); err != nil {
@@ -625,17 +568,11 @@ func Test_Middleware_DestroyWithContext(t *testing.T) {
 		}
 		return c.SendStatus(fiber.StatusOK)
 	})
-
-	sessionTestRequest(t, app.Handler(), fiber.MethodGet, "/destroy", fiber.StatusOK)
 }
 
 func Test_Middleware_ResetWithContext(t *testing.T) {
 	t.Parallel()
-	handler, _ := NewWithStore()
-	app := fiber.New()
-	app.Use(handler)
-
-	app.Get("/reset", func(c fiber.Ctx) error {
+	sessionTestServe(t, "/reset", func(c fiber.Ctx) error {
 		sess := FromContext(c)
 		originalID := sess.ID()
 		sess.Set("key", "value")
@@ -648,21 +585,14 @@ func Test_Middleware_ResetWithContext(t *testing.T) {
 		}
 		return c.SendStatus(fiber.StatusOK)
 	})
-
-	sessionTestRequest(t, app.Handler(), fiber.MethodGet, "/reset", fiber.StatusOK)
 }
 
 func Test_Middleware_RegenerateWithContext(t *testing.T) {
 	t.Parallel()
-	handler, _ := NewWithStore()
-	app := fiber.New()
-	app.Use(handler)
-
-	app.Get("/regenerate", func(c fiber.Ctx) error {
+	sessionTestServe(t, "/regenerate", func(c fiber.Ctx) error {
 		sess := FromContext(c)
 		originalID := sess.ID()
-		err := sess.RegenerateWithContext(t.Context())
-		if err != nil {
+		if err := sess.RegenerateWithContext(t.Context()); err != nil {
 			return err
 		}
 		if sess.ID() == originalID {
@@ -670,8 +600,6 @@ func Test_Middleware_RegenerateWithContext(t *testing.T) {
 		}
 		return c.SendStatus(fiber.StatusOK)
 	})
-
-	sessionTestRequest(t, app.Handler(), fiber.MethodGet, "/regenerate", fiber.StatusOK)
 }
 
 func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
@@ -709,17 +637,14 @@ func Test_Middleware_ResolveContext(t *testing.T) {
 	t.Run("resolve context returns fiber ctx when not nil", func(t *testing.T) {
 		t.Parallel()
 		fctx := apptest.Ctx(t, fiber.New())
-
 		m := &Middleware{ctx: fctx}
-		ctx := m.resolveContext()
-		require.Equal(t, fctx, ctx)
+		require.Equal(t, fctx, m.resolveContext())
 	})
 
 	t.Run("resolve context returns background when ctx is nil", func(t *testing.T) {
 		t.Parallel()
 		m := &Middleware{ctx: nil}
-		ctx := m.resolveContext()
-		require.NotNil(t, ctx)
+		require.NotNil(t, m.resolveContext())
 	})
 }
 

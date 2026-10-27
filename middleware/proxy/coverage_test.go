@@ -3,15 +3,11 @@ package proxy
 import (
 	"errors"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -29,8 +25,6 @@ func (stubConn) SetDeadline(time.Time) error      { return nil }
 func (stubConn) SetReadDeadline(time.Time) error  { return nil }
 func (stubConn) SetWriteDeadline(time.Time) error { return nil }
 
-// Test_Coverage_ResolveAndValidateHost_IPLiteralOK exercises the IP-literal
-// fast path that skips DNS entirely.
 func Test_Coverage_ResolveAndValidateHost_IPLiteralOK(t *testing.T) {
 	t.Parallel()
 	ips, err := resolveAndValidateHost("8.8.8.8", time.Time{})
@@ -39,8 +33,6 @@ func Test_Coverage_ResolveAndValidateHost_IPLiteralOK(t *testing.T) {
 	require.True(t, ips[0].Equal(net.ParseIP("8.8.8.8")))
 }
 
-// Test_Coverage_ResolveAndValidateHost_BlocksIPLiteral covers the
-// post-resolution loop that rejects a blocked IP literal.
 func Test_Coverage_ResolveAndValidateHost_BlocksIPLiteral(t *testing.T) {
 	t.Parallel()
 	_, err := resolveAndValidateHost("127.0.0.1", time.Time{})
@@ -56,8 +48,6 @@ func Test_Coverage_ResolveAndValidateHost_LookupFails(t *testing.T) {
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
-// Test_Coverage_DialValidatedIPs_SuccessOnIPv4 exercises the happy path
-// where dialValidatedIPs returns the first successful connection.
 func Test_Coverage_DialValidatedIPs_SuccessOnIPv4(t *testing.T) {
 	t.Parallel()
 	called := atomic.Bool{}
@@ -107,9 +97,6 @@ func Test_Coverage_DialValidatedIPs_FallsBackOnError(t *testing.T) {
 	require.Equal(t, int32(2), attempts.Load())
 }
 
-// Test_Coverage_DialValidatedIPs_DualStackTriesV6 verifies that when
-// DialDualStack is enabled the IPv6 candidate is dialed instead of
-// skipped.
 func Test_Coverage_DialValidatedIPs_DualStackTriesV6(t *testing.T) {
 	t.Parallel()
 	var addr string
@@ -120,16 +107,6 @@ func Test_Coverage_DialValidatedIPs_DualStackTriesV6(t *testing.T) {
 	_, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("2606:4700:4700::1111")}, "example.test", "443")
 	require.NoError(t, err)
 	require.Equal(t, "[2606:4700:4700::1111]:443", addr)
-}
-
-// Test_Coverage_DialChecked_RejectsLoopbackHostname drives the
-// SplitHostPort → resolveAndValidateHost → blocked-IP rejection branch.
-func Test_Coverage_DialChecked_RejectsLoopbackHostname(t *testing.T) {
-	t.Parallel()
-	dial := newDialGuard(false).dialChecked
-	_, err := dial("localhost:65535")
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
 // Test_Coverage_DialChecked_PassesGuardThenDials covers the post-guard
@@ -159,17 +136,6 @@ func Test_Coverage_ValidateHostForSSRF_PublicHostname(t *testing.T) {
 		t.Skipf("offline DNS, skipping: %v", err)
 	}
 	require.NoError(t, err)
-}
-
-// Test_Coverage_JoinUpstreamPath_PreservesRawPath_BaseHasPercentEncoded
-// exercises the RawPath join path where both base and request have a
-// percent-encoded segment.
-func Test_Coverage_JoinUpstreamPath_PreservesRawPath_BaseHasPercentEncoded(t *testing.T) {
-	t.Parallel()
-	base, err := url.Parse("http://upstream.example/space%20here")
-	require.NoError(t, err)
-	out := joinUpstreamPath(base, "/sub")
-	require.Contains(t, out, "/space%20here/sub")
 }
 
 // Test_Coverage_ConfigDefault_FillsDefaults checks the defaults for a Config with Servers or a Client.
@@ -217,24 +183,6 @@ func Test_Coverage_JoinUpstreamPath_RawPathFallback(t *testing.T) {
 	// fallback must use parsed.Path verbatim while preserving the base's
 	// escaped prefix.
 	require.Contains(t, out, "/a%2Fb/plain")
-}
-
-// Test_Coverage_DomainForward_HostMismatch_DoesNotProxy covers the
-// host-mismatch branch where DomainForward returns nil without calling
-// the upstream. The assertion target is that the proxy was NOT invoked
-// — if it had been, the unreachable port :1 would surface as a 5xx.
-func Test_Coverage_DomainForward_HostMismatch_DoesNotProxy(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(DomainForward("only-this-host.example", "http://127.0.0.1:1"))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/ping", http.NoBody)
-	req.Host = "other-host.example"
-	resp := apptest.Do(t, app, req)
-	// Fiber returns 200 when the middleware returns nil and there is no
-	// downstream handler; the important assertion is that we did NOT get
-	// a 5xx from dialing 127.0.0.1:1.
-	require.NotEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 }
 
 // Test_Coverage_CanFastJoinPath_RepeatedSeparator covers a second '?' or '#' left to the url.Parse path.

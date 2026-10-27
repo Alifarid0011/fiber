@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -31,6 +30,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// failingCSRFStorage is an in-memory fiber.Storage whose operations fail with the
+// error errs holds for "<get|set|del>|<key>", or for "<get|set|del>|*" on any key.
 type failingCSRFStorage struct {
 	data map[string][]byte
 	errs map[string]error
@@ -40,8 +41,16 @@ func newFailingCSRFStorage() *failingCSRFStorage {
 	return &failingCSRFStorage{data: make(map[string][]byte), errs: make(map[string]error)}
 }
 
+// fail returns the error configured for the operation op on key, if any.
+func (s *failingCSRFStorage) fail(op, key string) error {
+	if err := s.errs[op+"|"+key]; err != nil {
+		return err
+	}
+	return s.errs[op+"|*"]
+}
+
 func (s *failingCSRFStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
-	if err, ok := s.errs["get|"+key]; ok && err != nil {
+	if err := s.fail("get", key); err != nil {
 		return nil, err
 	}
 	if val, ok := s.data[key]; ok {
@@ -71,7 +80,7 @@ func (s *failingCSRFStorage) Get(key string) ([]byte, error) {
 }
 
 func (s *failingCSRFStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
-	if err, ok := s.errs["set|"+key]; ok && err != nil {
+	if err := s.fail("set", key); err != nil {
 		return err
 	}
 	s.data[key] = append([]byte(nil), val...)
@@ -83,7 +92,7 @@ func (s *failingCSRFStorage) Set(key string, val []byte, exp time.Duration) erro
 }
 
 func (s *failingCSRFStorage) DeleteWithContext(_ context.Context, key string) error {
-	if err, ok := s.errs["del|"+key]; ok && err != nil {
+	if err := s.fail("del", key); err != nil {
 		return err
 	}
 	delete(s.data, key)
@@ -240,6 +249,32 @@ func csrfTestVisit(t *testing.T, h fasthttp.RequestHandler) (token, cookie strin
 	return token, cookie
 }
 
+// csrfTestPostWith sends a POST for / to example.com through h that carries cookie
+// and, unless it is empty, token in the CSRF header, plus whatever build adds, and
+// returns the status of the answer. Under raw the header names are not normalized.
+//
+//nolint:revive // flag-parameter: raw selects the header-name spelling the caller tests
+func csrfTestPostWith(h fasthttp.RequestHandler, raw bool, cookie, token string, build func(*fasthttp.Request)) int {
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	if raw {
+		req.Header.DisableNormalizing()
+	}
+	req.Header.SetMethod(fiber.MethodPost)
+	req.SetRequestURI("/")
+	req.Header.SetHost("example.com")
+	req.Header.Set(fiber.HeaderCookie, cookie)
+	if token != "" {
+		req.Header.Set(HeaderName, token)
+	}
+	build(req)
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Init(req, nil, nil)
+	h(ctx)
+	return ctx.Response.StatusCode()
+}
+
 // csrfTestTrusted returns the handler of an app that trusts its proxy and guards
 // POST / with the middleware configured by cfg, and a token issued to a client
 // that reached it with the X-Forwarded-Proto proto.
@@ -323,37 +358,21 @@ func Test_CSRF_StorageErrors(t *testing.T) {
 		cookieToken  bool // the request carries the token in the CSRF cookie
 	}{
 		{
-			name:        "get error",
-			failing:     "get|token",
-			method:      fiber.MethodGet,
-			cookieToken: true,
-			want:        "csrf: failed to fetch token from storage",
+			name: "get error", failing: "get|token", method: fiber.MethodGet, cookieToken: true,
+			want: "csrf: failed to fetch token from storage",
 		},
 		{
-			name:         "set error",
-			failing:      "set|token",
-			method:       fiber.MethodGet,
-			keyGenerator: func() string { return "token" },
-			want:         "csrf: failed to store token in storage",
+			name: "set error", failing: "set|token", method: fiber.MethodGet,
+			keyGenerator: func() string { return "token" }, want: "csrf: failed to store token in storage",
 		},
 		{
-			name:        "delete error",
-			failing:     "del|token",
-			method:      fiber.MethodPost,
-			stored:      true,
-			singleUse:   true,
-			headerToken: true,
-			cookieToken: true,
-			want:        "csrf: failed to delete token from storage",
+			name: "delete error", failing: "del|token", method: fiber.MethodPost, stored: true, singleUse: true,
+			headerToken: true, cookieToken: true, want: "csrf: failed to delete token from storage",
 		},
 		// The fetch error path that runs after the double-submit cookie comparison succeeds.
 		{
-			name:        "get error on validation",
-			failing:     "get|token",
-			method:      fiber.MethodPost,
-			headerToken: true,
-			cookieToken: true,
-			want:        "csrf: failed to fetch token from storage",
+			name: "get error on validation", failing: "get|token", method: fiber.MethodPost, headerToken: true,
+			cookieToken: true, want: "csrf: failed to fetch token from storage",
 		},
 	}
 
@@ -409,21 +428,10 @@ func Test_CSRF(t *testing.T) {
 		h(ctx)
 
 		// Without CSRF cookie
-		ctx.Request.Header.Reset()
-		ctx.Request.ResetBody()
-		ctx.Response.Reset()
-		ctx.Request.Header.SetMethod(fiber.MethodPost)
-		h(ctx)
-		require.Equal(t, 403, ctx.Response.StatusCode())
+		csrfTestSessionPost(t, h, ctx, "", "", "", 403)
 
 		// Invalid CSRF token
-		ctx.Request.Header.Reset()
-		ctx.Request.ResetBody()
-		ctx.Response.Reset()
-		ctx.Request.Header.SetMethod(fiber.MethodPost)
-		ctx.Request.Header.Set(HeaderName, "johndoe")
-		h(ctx)
-		require.Equal(t, 403, ctx.Response.StatusCode())
+		csrfTestSessionPost(t, h, ctx, "", "johndoe", "", 403)
 
 		// Valid CSRF token
 		ctx.Request.Header.Reset()
@@ -468,16 +476,9 @@ func Test_CSRF_WithSession(t *testing.T) {
 func Test_CSRF_WithSession_Middleware(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
-	// session mw
 	smh, sstore := session.NewWithStore()
-
-	// csrf mw
-	cmh := New(Config{Session: sstore})
-
 	app.Use(smh)
-
-	app.Use(cmh)
+	app.Use(New(Config{Session: sstore}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		sess := session.FromContext(c)
@@ -520,12 +521,8 @@ func Test_CSRF_ExpiredToken(t *testing.T) {
 
 	h := csrfTestHandler(fiber.New(), &Config{IdleTimeout: idleTimeout})
 	ctx := &fasthttp.RequestCtx{}
-
-	// Generate CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	token := csrfTestToken(t, h, ctx)
-
-	// Use the CSRF token
 	csrfTestPost(t, h, ctx, token, 200)
 
 	// Wait for the token to expire on the cached clock the storage compares against
@@ -538,13 +535,9 @@ func Test_CSRF_ExpiredToken(t *testing.T) {
 func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 	t.Parallel()
 	h, ctx, sessionID := csrfTestSession(t, fiber.New(), &Config{IdleTimeout: 1 * time.Second})
-
-	// Generate CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.SetCookie("_session", sessionID)
 	token := csrfTestToken(t, h, ctx)
-
-	// Use the CSRF token
 	csrfTestSessionPost(t, h, ctx, sessionID, token, token, 200)
 
 	// Wait for the token to expire (session-backed tokens carry a real-clock expiry)
@@ -560,12 +553,8 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// Invalid CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set("X-Csrf-Token", "johndoe")
-	h(ctx)
-	require.Equal(t, 403, ctx.Response.StatusCode())
+	csrfTestSessionPost(t, h, ctx, "", "johndoe", "", 403)
 
-	// Generate CSRF token
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
@@ -582,12 +571,8 @@ func Test_CSRF_SingleUseToken(t *testing.T) {
 	t.Parallel()
 	h := csrfTestHandler(fiber.New(), &Config{SingleUseToken: true})
 	ctx := &fasthttp.RequestCtx{}
-
-	// Generate CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	token := csrfTestToken(t, h, ctx)
-
-	// Use the CSRF token
 	csrfTestPost(t, h, ctx, token, 200)
 	if newToken := csrfTestResponseToken(t, ctx); token == newToken {
 		t.Error("new token should not be the same as the old token")
@@ -659,132 +644,42 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 	token := csrfTestToken(t, h, ctx)
 
 	tests := []struct {
-		name                   string
-		method                 string
-		secFetchSite           string
-		origin                 string
-		expectedStatus         int16
-		https                  bool
-		expectFetchSiteInvalid bool
+		name    string
+		method  string // POST when empty
+		site    string // the Sec-Fetch-Site header, not sent when empty
+		origin  string // not sent when empty
+		status  int
+		https   bool
+		invalid bool // the answer must say ErrFetchSiteInvalid
 	}{
+		{name: "same-origin allowed", site: "same-origin", origin: "http://example.com", status: 200},
+		{name: "none allowed", site: "none", origin: "http://example.com", status: 200},
+		{name: "cross-site with origin allowed", site: "cross-site", origin: "http://example.com", status: 200},
+		{name: "same-site with origin allowed", site: "same-site", origin: "http://example.com", status: 200},
 		{
-			name:           "same-origin allowed",
-			method:         fiber.MethodPost,
-			secFetchSite:   "same-origin",
-			origin:         "http://example.com",
-			expectedStatus: http.StatusOK,
+			name: "cross-site with mismatched origin blocked", site: "cross-site", origin: "https://attacker.example",
+			status: 403,
 		},
+		{name: "same-site with null origin blocked", site: "same-site", origin: "null", status: 403, https: true},
+		{name: "invalid header blocked", site: "weird", origin: "http://example.com", status: 403, invalid: true},
+		{name: "no header with no origin", status: 200},
+		{name: "no header with matching origin", origin: "http://example.com", status: 200},
+		{name: "no header with mismatched origin", origin: "https://attacker.example", status: 403},
+		// Origin comparison is case-insensitive end-to-end: the raw
+		// mixed-case header must be accepted on the same-origin fast path.
+		{name: "no header with mixed-case matching origin", origin: "HTTP://EXAMPLE.COM", status: 200},
+		{name: "no header with null origin", origin: "null", status: 403, https: true},
+		// "null" detection is case-insensitive too. Over plain HTTP an
+		// absent/null origin clears the error (200); a case-sensitive
+		// regression would instead parse "NULL" as a URL and reject with
+		// ErrOriginNoMatch (403), so the outcomes are distinguishable.
+		{name: "no header with uppercase null origin over http", origin: "NULL", status: 200},
+		{name: "GET allowed", method: fiber.MethodGet, site: "cross-site", status: 200},
+		{name: "HEAD allowed", method: fiber.MethodHead, site: "cross-site", status: 200},
+		{name: "OPTIONS allowed", method: fiber.MethodOptions, site: "cross-site", status: 200},
 		{
-			name:           "none allowed",
-			method:         fiber.MethodPost,
-			secFetchSite:   "none",
-			origin:         "http://example.com",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "cross-site with origin allowed",
-			method:         fiber.MethodPost,
-			secFetchSite:   "cross-site",
-			origin:         "http://example.com",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "same-site with origin allowed",
-			method:         fiber.MethodPost,
-			secFetchSite:   "same-site",
-			origin:         "http://example.com",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "cross-site with mismatched origin blocked",
-			method:         fiber.MethodPost,
-			secFetchSite:   "cross-site",
-			origin:         "https://attacker.example",
-			expectedStatus: http.StatusForbidden,
-		},
-		{
-			name:           "same-site with null origin blocked",
-			method:         fiber.MethodPost,
-			secFetchSite:   "same-site",
-			origin:         "null",
-			expectedStatus: http.StatusForbidden,
-			https:          true,
-		},
-		{
-			name:                   "invalid header blocked",
-			method:                 fiber.MethodPost,
-			secFetchSite:           "weird",
-			origin:                 "http://example.com",
-			expectedStatus:         http.StatusForbidden,
-			expectFetchSiteInvalid: true,
-		},
-		{
-			name:           "no header with no origin",
-			method:         fiber.MethodPost,
-			origin:         "",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "no header with matching origin",
-			method:         fiber.MethodPost,
-			origin:         "http://example.com",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "no header with mismatched origin",
-			method:         fiber.MethodPost,
-			origin:         "https://attacker.example",
-			expectedStatus: http.StatusForbidden,
-		},
-		{
-			// Origin comparison is case-insensitive end-to-end: the raw
-			// mixed-case header must be accepted on the same-origin fast path.
-			name:           "no header with mixed-case matching origin",
-			method:         fiber.MethodPost,
-			origin:         "HTTP://EXAMPLE.COM",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "no header with null origin",
-			method:         fiber.MethodPost,
-			origin:         "null",
-			expectedStatus: http.StatusForbidden,
-			https:          true,
-		},
-		{
-			// "null" detection is case-insensitive too. Over plain HTTP an
-			// absent/null origin clears the error (200); a case-sensitive
-			// regression would instead parse "NULL" as a URL and reject with
-			// ErrOriginNoMatch (403), so the outcomes are distinguishable.
-			name:           "no header with uppercase null origin over http",
-			method:         fiber.MethodPost,
-			origin:         "NULL",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "GET allowed",
-			method:         fiber.MethodGet,
-			secFetchSite:   "cross-site",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "HEAD allowed",
-			method:         fiber.MethodHead,
-			secFetchSite:   "cross-site",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "OPTIONS allowed",
-			method:         fiber.MethodOptions,
-			secFetchSite:   "cross-site",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "PUT with mismatched origin blocked",
-			method:         fiber.MethodPut,
-			secFetchSite:   "cross-site",
-			origin:         "https://attacker.example",
-			expectedStatus: http.StatusForbidden,
+			name: "PUT with mismatched origin blocked", method: fiber.MethodPut, site: "cross-site",
+			origin: "https://attacker.example", status: 403,
 		},
 	}
 
@@ -796,7 +691,8 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 			if tt.https {
 				scheme = "https"
 			}
-			c.Request.Header.SetMethod(tt.method)
+			method := cmp.Or(tt.method, fiber.MethodPost)
+			c.Request.Header.SetMethod(method)
 			c.Request.URI().SetScheme(scheme)
 			c.Request.URI().SetHost("example.com")
 			c.Request.Header.SetHost("example.com")
@@ -807,11 +703,11 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 			if tt.origin != "" {
 				c.Request.Header.Set(fiber.HeaderOrigin, tt.origin)
 			}
-			if tt.secFetchSite != "" {
-				c.Request.Header.Set(fiber.HeaderSecFetchSite, tt.secFetchSite)
+			if tt.site != "" {
+				c.Request.Header.Set(fiber.HeaderSecFetchSite, tt.site)
 			}
 
-			safe := tt.method == fiber.MethodGet || tt.method == fiber.MethodHead || tt.method == fiber.MethodOptions || tt.method == fiber.MethodTrace
+			safe := method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodOptions || method == fiber.MethodTrace
 
 			if !safe {
 				c.Request.Header.Set(HeaderName, token)
@@ -819,8 +715,8 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 			}
 
 			h(c)
-			require.Equal(t, int(tt.expectedStatus), c.Response.StatusCode())
-			if tt.expectFetchSiteInvalid {
+			require.Equal(t, tt.status, c.Response.StatusCode())
+			if tt.invalid {
 				require.Equal(t, ErrFetchSiteInvalid.Error(), string(c.Response.Body()))
 			}
 		})
@@ -830,6 +726,7 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 func Test_CSRF_Origin(t *testing.T) {
 	t.Parallel()
 	h, token := csrfTestTrusted(t, &Config{CookieSecure: true}, "http")
+	viaHTTPS := map[string]string{fiber.HeaderXForwardedProto: "https"}
 
 	csrfTestPostCases(t, h, token, []csrfTestPostCase{
 		{name: "Correct Origin with port", scheme: "http", host: "example.com:8080", origin: "http://example.com:8080", status: fiber.StatusOK},
@@ -851,26 +748,18 @@ func Test_CSRF_Origin(t *testing.T) {
 			status: fiber.StatusOK,
 		},
 		{
-			name:    "Origin without default HTTPS port against host with default port",
-			scheme:  "https",
-			host:    "example.com:443",
-			origin:  "https://example.com",
-			headers: map[string]string{fiber.HeaderXForwardedProto: "https"},
-			status:  fiber.StatusOK,
+			name:   "Origin without default HTTPS port against host with default port",
+			scheme: "https", host: "example.com:443", origin: "https://example.com", headers: viaHTTPS,
+			status: fiber.StatusOK,
 		},
 		{
-			name:    "Origin with default HTTPS port against host without port",
-			scheme:  "https",
-			host:    "example.com",
-			origin:  "https://example.com:443",
-			headers: map[string]string{fiber.HeaderXForwardedProto: "https"},
-			status:  fiber.StatusOK,
+			name:   "Origin with default HTTPS port against host without port",
+			scheme: "https", host: "example.com", origin: "https://example.com:443", headers: viaHTTPS,
+			status: fiber.StatusOK,
 		},
 		{
 			name:   "Correct Origin with ReverseProxy Missing X-Forwarded-* Headers",
-			scheme: "http",
-			host:   "10.0.1.42:8080",
-			origin: "http://example.com",
+			scheme: "http", host: "10.0.1.42:8080", origin: "http://example.com",
 			// We need to set this header to make sure c.Protocol() returns http
 			headers: map[string]string{fiber.HeaderXUrlScheme: "http"},
 			status:  fiber.StatusForbidden,
@@ -992,6 +881,12 @@ func Test_CSRF_Referer(t *testing.T) {
 			headers: map[string]string{fiber.HeaderXForwardedProto: "https", fiber.HeaderXForwardedHost: "example.com"},
 			status:  fiber.StatusForbidden,
 		},
+		// An HTTPS request whose Origin downgrades to HTTP for the same host is
+		// rejected: the scheme is part of the origin and must match.
+		{
+			name: "HTTPS request with an HTTP Origin", scheme: "https", host: "example.com",
+			origin: "http://example.com", headers: viaHTTPS, status: fiber.StatusForbidden,
+		},
 	})
 }
 
@@ -1015,7 +910,6 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	}
 	h(ctx)
 
-	// Generate CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	token := csrfTestToken(t, h, ctx)
 
@@ -1034,14 +928,7 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	}
 	h(ctx)
 
-	ctx.Request.Header.Reset()
-	ctx.Request.ResetBody()
-	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set(HeaderName, token)
-	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
-	h(ctx)
-	require.Equal(t, 403, ctx.Response.StatusCode())
+	csrfTestPost(t, h, ctx, token, 403)
 }
 
 func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
@@ -1105,14 +992,7 @@ func Test_CSRF_ErrorHandler_Token(t *testing.T) {
 			ctx.Request.Header.SetMethod(fiber.MethodGet)
 			h(ctx)
 
-			ctx.Request.Reset()
-			ctx.Response.Reset()
-			ctx.Request.Header.SetMethod(fiber.MethodPost)
-			if tc.headerToken != "" {
-				ctx.Request.Header.Set(HeaderName, tc.headerToken)
-			}
-			h(ctx)
-			require.Equal(t, 419, ctx.Response.StatusCode())
+			csrfTestSessionPost(t, h, ctx, "", tc.headerToken, "", 419)
 			require.Equal(t, tc.message, string(ctx.Response.Body()))
 		})
 	}
@@ -1260,7 +1140,6 @@ func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 		h(ctx)
 	}
 
-	// Ensure the GET request returns a 418 status code
 	require.Equal(b, fiber.StatusTeapot, ctx.Response.Header.StatusCode())
 }
 
@@ -1388,7 +1267,6 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 	bodyExtractor := extractors.Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
 			body := string(c.Body())
-			// Generate the correct extractor to get the token from the correct location
 			selectors := strings.Split(body, "=")
 
 			if len(selectors) != 2 || selectors[1] == "" {
@@ -1404,7 +1282,7 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 		Source:  extractors.SourceCustom,
 		Key:     "_csrf",
 	}
-	customHeaderExtractor := extractors.Extractor{
+	customHeader := extractors.Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
 			token := c.Get("X-Custom-CSRF")
 			if token == "" {
@@ -1415,8 +1293,14 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 		Source: extractors.SourceCustom,
 		Key:    "X-Custom-CSRF",
 	}
+	header := extractors.FromHeader("X-Csrf-Token")
+	form := extractors.FromForm("_csrf")
+	query := extractors.FromQuery("csrf_token")
+	queryCSRF := extractors.FromQuery("_csrf")
 	// Chain: try the header first, fall back to the form
-	chain := extractors.Chain(extractors.FromHeader("X-Csrf-Token"), extractors.FromForm("_csrf"))
+	chain := extractors.Chain(header, form)
+	// A chain of a single extractor behaves like that extractor
+	single := extractors.Chain(header)
 
 	// postWithHeader sends the token in the named header and in the cookie.
 	postWithHeader := func(header string) func(ctx *fasthttp.RequestCtx, token string) {
@@ -1426,10 +1310,25 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 			ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 		}
 	}
+	withHeader := postWithHeader("X-Csrf-Token")
 	// postWithCookie sends the token in the cookie only.
 	postWithCookie := func(ctx *fasthttp.RequestCtx, token string) {
 		ctx.Request.Header.SetMethod(fiber.MethodPost)
 		ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	}
+	// postRoot sends the token in the cookie only, to "/".
+	postRoot := func(ctx *fasthttp.RequestCtx, token string) {
+		ctx.Request.Header.SetMethod(fiber.MethodPost)
+		ctx.Request.SetRequestURI("/")
+		ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	}
+	// postQuery sends the token in the query parameter param and in the cookie.
+	postQuery := func(param string) func(ctx *fasthttp.RequestCtx, token string) {
+		return func(ctx *fasthttp.RequestCtx, token string) {
+			ctx.Request.Header.SetMethod(fiber.MethodPost)
+			ctx.Request.SetRequestURI("/?" + param + "=" + token)
+			ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+		}
 	}
 	// postBody sends the token in a body of the given type and in the cookie.
 	postBody := func(contentType string) func(ctx *fasthttp.RequestCtx, token string) {
@@ -1447,180 +1346,94 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 	}
 
 	testCases := []struct {
-		setupRequest func(ctx *fasthttp.RequestCtx, token string)
+		setup        func(ctx *fasthttp.RequestCtx, token string)
 		errorHandler fiber.ErrorHandler
 		name         string
-		expectBody   string
+		body         string // the exact body of the answer, not checked when empty
 		extractor    extractors.Extractor
-		expectStatus int
+		status       int
 	}{
-		{
-			name:         "FromHeader",
-			extractor:    extractors.FromHeader("X-Csrf-Token"),
-			setupRequest: postWithHeader("X-Csrf-Token"),
-			expectStatus: 200,
-		},
-		{
-			name:         "FromHeader_Missing",
-			extractor:    extractors.FromHeader("X-Csrf-Token"),
-			setupRequest: postWithCookie,
-			expectStatus: 403,
-		},
-		{
-			name:         "FromForm",
-			extractor:    extractors.FromForm("_csrf"),
-			setupRequest: postBody(fiber.MIMEApplicationForm),
-			expectStatus: 200,
-		},
+		{name: "FromHeader", extractor: header, setup: withHeader, status: 200},
+		{name: "FromHeader_Missing", extractor: header, setup: postWithCookie, status: 403},
+		{name: "FromForm", extractor: form, setup: postBody(fiber.MIMEApplicationForm), status: 200},
 		{
 			name:      "FromForm_Missing",
-			extractor: extractors.FromForm("_csrf"),
-			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
+			extractor: form,
+			setup: func(ctx *fasthttp.RequestCtx, token string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
 				ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 			},
-			expectStatus: 403,
+			status: 403,
 		},
-		{
-			name:         "FromForm_NoCookieNoToken",
-			extractor:    extractors.FromForm("_csrf"),
-			setupRequest: postEmptyForm,
-			expectStatus: 403,
-		},
-		{
-			name:      "FromQuery",
-			extractor: extractors.FromQuery("csrf_token"),
-			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
-				ctx.Request.Header.SetMethod(fiber.MethodPost)
-				ctx.Request.SetRequestURI("/?csrf_token=" + token)
-				ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
-			},
-			expectStatus: 200,
-		},
-		{
-			name:      "FromQuery_Missing",
-			extractor: extractors.FromQuery("csrf_token"),
-			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
-				ctx.Request.Header.SetMethod(fiber.MethodPost)
-				ctx.Request.SetRequestURI("/")
-				ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
-			},
-			expectStatus: 403,
-		},
+		{name: "FromForm_NoCookieNoToken", extractor: form, setup: postEmptyForm, status: 403},
+		{name: "FromQuery", extractor: query, setup: postQuery("csrf_token"), status: 200},
+		{name: "FromQuery_Missing", extractor: query, setup: postRoot, status: 403},
 		{
 			name:      "FromQuery_InvalidToken",
-			extractor: extractors.FromQuery("_csrf"),
-			setupRequest: func(ctx *fasthttp.RequestCtx, _ string) {
+			extractor: queryCSRF,
+			setup: func(ctx *fasthttp.RequestCtx, _ string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.SetRequestURI("/?_csrf=" + utils.UUIDv4())
 			},
-			expectStatus: 403,
+			status: 403,
 		},
-		{
-			name:      "FromQuery_ValidToken",
-			extractor: extractors.FromQuery("_csrf"),
-			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
-				ctx.Request.SetRequestURI("/?_csrf=" + token)
-				ctx.Request.Header.SetMethod(fiber.MethodPost)
-				ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
-			},
-			expectStatus: 200,
-			expectBody:   "OK",
-		},
+		{name: "FromQuery_ValidToken", extractor: queryCSRF, setup: postQuery("_csrf"), status: 200, body: "OK"},
 		{
 			name:      "FromCustom_NoToken",
 			extractor: bodyExtractor,
-			setupRequest: func(ctx *fasthttp.RequestCtx, _ string) {
+			setup: func(ctx *fasthttp.RequestCtx, _ string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
 			},
-			expectStatus: 403,
+			status: 403,
 		},
-		{
-			name:         "FromCustom",
-			extractor:    bodyExtractor,
-			setupRequest: postBody(fiber.MIMETextPlain),
-			expectStatus: 200,
-		},
+		{name: "FromCustom", extractor: bodyExtractor, setup: postBody(fiber.MIMETextPlain), status: 200},
 		{
 			name:         "FromCustom_EmptyString",
 			extractor:    emptyExtractor,
 			errorHandler: func(c fiber.Ctx, err error) error { return c.Status(403).SendString(err.Error()) },
-			setupRequest: postBody(fiber.MIMETextPlain),
-			expectStatus: 403,
-			expectBody:   ErrTokenNotFound.Error(),
+			setup:        postBody(fiber.MIMETextPlain),
+			status:       403,
+			body:         ErrTokenNotFound.Error(),
 		},
-		{
-			name:         "FromCustomHeader",
-			extractor:    customHeaderExtractor,
-			setupRequest: postWithHeader("X-Custom-CSRF"),
-			expectStatus: 200,
-		},
-		{
-			name:         "FromCustomHeader_Missing",
-			extractor:    customHeaderExtractor,
-			setupRequest: postWithCookie,
-			expectStatus: 403,
-		},
+		{name: "FromCustomHeader", extractor: customHeader, setup: postWithHeader("X-Custom-CSRF"), status: 200},
+		{name: "FromCustomHeader_Missing", extractor: customHeader, setup: postWithCookie, status: 403},
+		// No param is provided: "/" is requested instead of "/:csrf", and the CSRF
+		// middleware on the catch-all route answers 403.
+		{name: "FromParam_Missing", extractor: extractors.FromParam("csrf"), setup: postRoot, status: 403},
 		// Chain: the header is tried first, the form is the fallback
-		{
-			name:         "Chain_TokenInHeader",
-			extractor:    chain,
-			setupRequest: postWithHeader("X-Csrf-Token"),
-			expectStatus: 200,
-		},
-		{
-			name:         "Chain_TokenInForm",
-			extractor:    chain,
-			setupRequest: postBody(fiber.MIMEApplicationForm),
-			expectStatus: 200,
-		},
+		{name: "Chain_TokenInHeader", extractor: chain, setup: withHeader, status: 200},
+		{name: "Chain_TokenInForm", extractor: chain, setup: postBody(fiber.MIMEApplicationForm), status: 200},
 		{
 			name:      "Chain_HeaderTakesPrecedenceOverForm",
 			extractor: chain,
-			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
+			setup: func(ctx *fasthttp.RequestCtx, token string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
 				ctx.Request.Header.Set("X-Csrf-Token", token)
 				ctx.Request.SetBodyString("_csrf=wrong_token")
 				ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 			},
-			expectStatus: 200,
+			status: 200,
 		},
-		{name: "Chain_NoToken", extractor: chain, setupRequest: postEmptyForm, expectStatus: 403},
+		{name: "Chain_NoToken", extractor: chain, setup: postEmptyForm, status: 403},
 		{
 			name:      "Chain_WrongTokenInBothLocations",
 			extractor: chain,
-			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
+			setup: func(ctx *fasthttp.RequestCtx, token string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
 				ctx.Request.Header.Set("X-Csrf-Token", "wrong_token")
 				ctx.Request.SetBodyString("_csrf=also_wrong")
 				ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 			},
-			expectStatus: 403,
+			status: 403,
 		},
 		// An empty chain never finds a token
-		{
-			name:         "Chain_Empty",
-			extractor:    extractors.Chain(),
-			setupRequest: postWithHeader("X-Csrf-Token"),
-			expectStatus: 403,
-		},
-		// A chain of a single extractor behaves like that extractor
-		{
-			name:         "Chain_SingleExtractor_TokenInHeader",
-			extractor:    extractors.Chain(extractors.FromHeader("X-Csrf-Token")),
-			setupRequest: postWithHeader("X-Csrf-Token"),
-			expectStatus: 200,
-		},
-		{
-			name:         "Chain_SingleExtractor_NoToken",
-			extractor:    extractors.Chain(extractors.FromHeader("X-Csrf-Token")),
-			setupRequest: postWithCookie,
-			expectStatus: 403,
-		},
+		{name: "Chain_Empty", extractor: extractors.Chain(), setup: withHeader, status: 403},
+		{name: "Chain_SingleExtractor_TokenInHeader", extractor: single, setup: withHeader, status: 200},
+		{name: "Chain_SingleExtractor_NoToken", extractor: single, setup: postWithCookie, status: 403},
 	}
 
 	for i := range testCases {
@@ -1629,21 +1442,18 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 			t.Parallel()
 			h := csrfTestHandler(fiber.New(), &Config{Extractor: tc.extractor, ErrorHandler: tc.errorHandler})
 			ctx := &fasthttp.RequestCtx{}
-
-			// Generate CSRF token
 			ctx.Request.Header.SetMethod(fiber.MethodGet)
 			ctx.Request.SetRequestURI("/")
 			token := csrfTestToken(t, h, ctx)
 
-			// Test the extractor
 			ctx.Request.Reset()
 			ctx.Response.Reset()
-			tc.setupRequest(ctx, token)
+			tc.setup(ctx, token)
 			h(ctx)
-			require.Equal(t, tc.expectStatus, ctx.Response.StatusCode(),
-				"Test case %s failed: expected %d, got %d", tc.name, tc.expectStatus, ctx.Response.StatusCode())
-			if tc.expectBody != "" {
-				require.Equal(t, tc.expectBody, string(ctx.Response.Body()))
+			require.Equal(t, tc.status, ctx.Response.StatusCode(),
+				"Test case %s failed: expected %d, got %d", tc.name, tc.status, ctx.Response.StatusCode())
+			if tc.body != "" {
+				require.Equal(t, tc.body, string(ctx.Response.Body()))
 			}
 		})
 	}
@@ -1698,12 +1508,10 @@ func Test_CSRF_Param_Extractor(t *testing.T) {
 			h := app.Handler()
 			ctx := &fasthttp.RequestCtx{}
 
-			// Generate CSRF token
 			ctx.Request.Header.SetMethod(fiber.MethodGet)
 			ctx.Request.SetRequestURI("/" + utils.UUIDv4())
 			token := csrfTestToken(t, h, ctx)
 
-			// Test the extractor
 			ctx.Request.Reset()
 			ctx.Response.Reset()
 			tc.setupRequest(ctx, token)
@@ -1717,104 +1525,6 @@ func Test_CSRF_Param_Extractor(t *testing.T) {
 	}
 }
 
-func Test_CSRF_Param_Extractor_Missing(t *testing.T) {
-	t.Parallel()
-
-	// Test the case where no param is provided (should get 403 from CSRF middleware on the catch-all route)
-	// Add a catch-all route with CSRF middleware for missing param case
-	h := csrfTestHandler(fiber.New(), &Config{Extractor: extractors.FromParam("csrf")})
-	ctx := &fasthttp.RequestCtx{}
-
-	// Generate CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
-	ctx.Request.SetRequestURI("/")
-	token := csrfTestToken(t, h, ctx)
-
-	// Test missing param (accessing "/" instead of "/:csrf")
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
-	h(ctx)
-	require.Equal(t, 403, ctx.Response.StatusCode(), "Missing param should return 403")
-}
-
-// flakySessionStorage is a fiber.Storage whose Get/Set/Delete operations can be
-// configured to fail, so the session-backed manager error paths can be
-// exercised deterministically.
-type flakySessionStorage struct {
-	data    map[string][]byte
-	mu      sync.Mutex
-	failGet bool
-	failSet bool
-	failDel bool
-}
-
-func newFlakySessionStorage() *flakySessionStorage {
-	return &flakySessionStorage{data: make(map[string][]byte)}
-}
-
-func (s *flakySessionStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.failGet {
-		return nil, errors.New("get failed")
-	}
-	if val, ok := s.data[key]; ok {
-		return append([]byte(nil), val...), nil
-	}
-	return nil, nil
-}
-
-func (s *flakySessionStorage) Get(key string) ([]byte, error) {
-	return s.GetWithContext(context.Background(), key)
-}
-
-func (s *flakySessionStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.failSet {
-		return errors.New("set failed")
-	}
-	s.data[key] = append([]byte(nil), val...)
-	return nil
-}
-
-func (s *flakySessionStorage) Set(key string, val []byte, exp time.Duration) error {
-	return s.SetWithContext(context.Background(), key, val, exp)
-}
-
-func (s *flakySessionStorage) DeleteWithContext(_ context.Context, key string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.failDel {
-		return errors.New("delete failed")
-	}
-	delete(s.data, key)
-	return nil
-}
-
-func (s *flakySessionStorage) Delete(key string) error {
-	return s.DeleteWithContext(context.Background(), key)
-}
-
-func (s *flakySessionStorage) ResetWithContext(context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data = make(map[string][]byte)
-	return nil
-}
-
-func (s *flakySessionStorage) Reset() error { return s.ResetWithContext(context.Background()) }
-
-func (*flakySessionStorage) Close() error { return nil }
-
-// Test_CSRF_validateExtractorSecurity_NilConfig ensures the nil guard returns
-// without panicking.
-
-// Test_CSRF_DisableValueRedaction_TrustedOrigin verifies that the raw origin
-// value is surfaced in the panic message when redaction is disabled.
 func Test_CSRF_DisableValueRedaction_TrustedOrigin(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -1836,8 +1546,6 @@ func Test_CSRF_DisableValueRedaction_TrustedOrigin(t *testing.T) {
 	}
 }
 
-// Test_CSRF_Extractor_NonNotFoundError ensures that an extractor error which is
-// not ErrNotFound is forwarded to the error handler verbatim.
 func Test_CSRF_Extractor_NonNotFoundError(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("extractor boom")
@@ -1861,65 +1569,57 @@ func Test_CSRF_Extractor_NonNotFoundError(t *testing.T) {
 	require.ErrorIs(t, captured, sentinel)
 }
 
-// Test_CSRF_DeleteToken_NoCookie covers the early return in DeleteToken when no
-// CSRF cookie is present on the request.
-func Test_CSRF_DeleteToken_NoCookie(t *testing.T) {
+// Test_CSRF_DeleteToken_Errors covers the errors DeleteToken returns, which reach
+// the ErrorHandler too: the early return when no CSRF cookie is present on the
+// request, and the storage delete failure, where the cookie is present but
+// removing the token from storage returns an error.
+func Test_CSRF_DeleteToken_Errors(t *testing.T) {
 	t.Parallel()
-	var captured error
-	app := fiber.New()
-	app.Use(New(Config{
-		ErrorHandler: func(_ fiber.Ctx, err error) error {
-			captured = err
-			return err
-		},
-	}))
+	for _, tc := range []struct {
+		wantIs  error // what both errors must match, unless nil
+		name    string
+		wantMsg string // what both errors must contain, unless empty
+		failing bool   // the request carries a cookie for a token that storage fails to delete
+	}{
+		{name: "no cookie", wantIs: ErrTokenNotFound},
+		{name: "storage error", failing: true, wantMsg: "csrf: failed to delete token from storage"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var captured error
+			cfg := Config{ErrorHandler: func(_ fiber.Ctx, err error) error {
+				captured = err
+				return err
+			}}
+			req := apptest.Req(fiber.MethodGet, "/")
+			if tc.failing {
+				storage := newFailingCSRFStorage()
+				storage.data["token"] = []byte("value")
+				storage.errs["del|token"] = errors.New("boom")
+				cfg.Storage = storage
+				req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
+			}
+			app := fiber.New()
+			app.Use(New(cfg))
 
-	var deleteErr error
-	app.Get("/", func(c fiber.Ctx) error {
-		handler := HandlerFromContext(c)
-		require.NotNil(t, handler)
-		deleteErr = handler.DeleteToken(c)
-		return c.SendStatus(fiber.StatusOK)
-	})
+			var deleteErr error
+			app.Get("/", func(c fiber.Ctx) error {
+				handler := HandlerFromContext(c)
+				require.NotNil(t, handler)
+				deleteErr = handler.DeleteToken(c)
+				return c.SendStatus(fiber.StatusOK)
+			})
 
-	apptest.Expect(t, app, "/", fiber.StatusOK)
-	require.ErrorIs(t, deleteErr, ErrTokenNotFound)
-	require.ErrorIs(t, captured, ErrTokenNotFound)
-}
-
-// Test_CSRF_DeleteToken_StorageError covers the storage delete failure path in
-// DeleteToken, where the cookie is present but removing the token from storage
-// returns an error.
-func Test_CSRF_DeleteToken_StorageError(t *testing.T) {
-	t.Parallel()
-	storage := newFailingCSRFStorage()
-	storage.data["token"] = []byte("value")
-	storage.errs["del|token"] = errors.New("boom")
-
-	var captured error
-	app := fiber.New()
-	app.Use(New(Config{
-		Storage: storage,
-		ErrorHandler: func(_ fiber.Ctx, err error) error {
-			captured = err
-			return err
-		},
-	}))
-
-	var deleteErr error
-	app.Get("/", func(c fiber.Ctx) error {
-		handler := HandlerFromContext(c)
-		require.NotNil(t, handler)
-		deleteErr = handler.DeleteToken(c)
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
-
-	apptest.Expect(t, app, req, fiber.StatusOK)
-	require.ErrorContains(t, deleteErr, "csrf: failed to delete token from storage")
-	require.ErrorContains(t, captured, "csrf: failed to delete token from storage")
+			apptest.Expect(t, app, req, fiber.StatusOK)
+			if tc.wantIs != nil {
+				require.ErrorIs(t, deleteErr, tc.wantIs)
+				require.ErrorIs(t, captured, tc.wantIs)
+				return
+			}
+			require.ErrorContains(t, deleteErr, tc.wantMsg)
+			require.ErrorContains(t, captured, tc.wantMsg)
+		})
+	}
 }
 
 // Test_CSRF_DeleteToken_WithSessionMiddleware exercises DeleteToken while the
@@ -1965,8 +1665,6 @@ func Test_CSRF_DeleteToken_WithSessionMiddleware(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 }
 
-// Test_StorageManager_Memory_UnexpectedType covers the defensive type assertion
-// in the memory-backed getRaw.
 func Test_StorageManager_Memory_UnexpectedType(t *testing.T) {
 	t.Parallel()
 	m := newStorageManager(nil, false)
@@ -1977,8 +1675,6 @@ func Test_StorageManager_Memory_UnexpectedType(t *testing.T) {
 	require.ErrorContains(t, err, "unexpected value type")
 }
 
-// Test_StorageManager_Storage_Success covers the success return paths of the
-// storage-backed setRaw and delRaw.
 func Test_StorageManager_Storage_Success(t *testing.T) {
 	t.Parallel()
 	storage := newFailingCSRFStorage()
@@ -1998,11 +1694,12 @@ func Test_StorageManager_Storage_Success(t *testing.T) {
 }
 
 // newFlakySessionManager returns a session manager on a store whose storage
-// fails to load sessions (failGet) or to save them (failSet).
-func newFlakySessionManager(failGet, failSet bool) *sessionManager {
-	storage := newFlakySessionStorage()
-	storage.failGet = failGet
-	storage.failSet = failSet
+// fails the operations ops names: "get" to load sessions, "set" to save them.
+func newFlakySessionManager(ops ...string) *sessionManager {
+	storage := newFailingCSRFStorage()
+	for _, op := range ops {
+		storage.errs[op+"|*"] = errors.New(op + " failed")
+	}
 	return newSessionManager(session.NewStore(session.Config{
 		Storage:   storage,
 		Extractor: extractors.FromCookie("session_id"),
@@ -2022,69 +1719,51 @@ func newSessionCtx(t *testing.T, sessionID string) fiber.Ctx {
 	return apptest.CtxFor(t, fiber.New(), reqCtx)
 }
 
-// Test_SessionManager_GetRaw_StoreError covers the error branch when loading the
-// session from the store fails.
-func Test_SessionManager_GetRaw_StoreError(t *testing.T) {
+// Test_SessionManager_StoreError covers the error branch of each operation when
+// loading the session from the store fails.
+func Test_SessionManager_StoreError(t *testing.T) {
 	t.Parallel()
-	m := newFlakySessionManager(true, false)
-	c := newSessionCtx(t, "abc")
+	t.Run("GetRaw", func(t *testing.T) {
+		t.Parallel()
+		m, c := newFlakySessionManager("get"), newSessionCtx(t, "abc")
+		require.Nil(t, m.getRaw(c, "key", dummyValue))
+	})
 
-	require.Nil(t, m.getRaw(c, "key", dummyValue))
+	t.Run("SetRaw", func(t *testing.T) {
+		t.Parallel()
+		m, c := newFlakySessionManager("get"), newSessionCtx(t, "abc")
+		require.NotPanics(t, func() { m.setRaw(c, "key", dummyValue, time.Minute) })
+	})
+
+	t.Run("DelRaw", func(t *testing.T) {
+		t.Parallel()
+		m, c := newFlakySessionManager("get"), newSessionCtx(t, "abc")
+		require.NotPanics(t, func() { m.delRaw(c) })
+	})
 }
 
-// Test_SessionManager_SetRaw_StoreError covers the error branch when the session
-// store cannot be loaded during setRaw.
-func Test_SessionManager_SetRaw_StoreError(t *testing.T) {
-	t.Parallel()
-	m := newFlakySessionManager(true, false)
-	c := newSessionCtx(t, "abc")
-
-	require.NotPanics(t, func() { m.setRaw(c, "key", dummyValue, time.Minute) })
-}
-
-// Test_SessionManager_SetRaw_SaveError covers the save-failure warning branch of
-// setRaw, where the store loads successfully but persisting it fails. It runs
-// serially because it replaces the output of the package-global logger.
-func Test_SessionManager_SetRaw_SaveError(t *testing.T) {
-	var buf bytes.Buffer
-	fiberlog.SetOutput(&buf)
-	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
-
-	m := newFlakySessionManager(false, true)
-	c := newSessionCtx(t, "")
-
-	m.setRaw(c, "key", dummyValue, time.Minute)
-	require.Contains(t, buf.String(), "failed to save session")
-}
-
-// Test_SessionManager_DelRaw_StoreError covers the error branch when the session
-// store cannot be loaded during delRaw.
-func Test_SessionManager_DelRaw_StoreError(t *testing.T) {
-	t.Parallel()
-	m := newFlakySessionManager(true, false)
-	c := newSessionCtx(t, "abc")
-
-	require.NotPanics(t, func() { m.delRaw(c) })
-}
-
-// Test_SessionManager_DelRaw_SaveError covers the save-failure warning branch of
-// delRaw. It runs serially because it replaces the output of the package-global
+// Test_SessionManager_SaveError covers the save-failure warning branch of setRaw
+// and delRaw, where the store loads successfully but persisting it fails. It and
+// its subtests run serially because they replace the output of the package-global
 // logger.
-func Test_SessionManager_DelRaw_SaveError(t *testing.T) {
-	var buf bytes.Buffer
-	fiberlog.SetOutput(&buf)
-	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+func Test_SessionManager_SaveError(t *testing.T) {
+	for _, tc := range []struct {
+		op   func(m *sessionManager, c fiber.Ctx)
+		name string
+	}{
+		{name: "SetRaw", op: func(m *sessionManager, c fiber.Ctx) { m.setRaw(c, "key", dummyValue, time.Minute) }},
+		{name: "DelRaw", op: func(m *sessionManager, c fiber.Ctx) { m.delRaw(c) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			fiberlog.SetOutput(&buf)
+			t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
 
-	m := newFlakySessionManager(false, true)
-	c := newSessionCtx(t, "")
-
-	m.delRaw(c)
-	require.Contains(t, buf.String(), "failed to save session")
+			tc.op(newFlakySessionManager("set"), newSessionCtx(t, ""))
+			require.Contains(t, buf.String(), "failed to save session")
+		})
+	}
 }
-
-// Test_CSRF_Security_CompareConstantTime verifies the logical behavior of the
-// constant-time comparison helpers used to validate tokens. The functions must
-// only report equality for byte/string-identical inputs.
 
 // Test_CSRF_Security_SecFetchSite_Normalization ensures the Sec-Fetch-Site
 // validation is case-insensitive and tolerant of surrounding whitespace, while
@@ -2231,24 +1910,6 @@ func Test_CSRF_Security_CookieAttributes(t *testing.T) {
 	require.NotEmpty(t, cookie.Value)
 }
 
-// Test_CSRF_Security_SchemeDowngradeRejected ensures that an HTTPS request whose
-// Origin downgrades to HTTP for the same host is rejected: the scheme is part of
-// the origin and must match.
-func Test_CSRF_Security_SchemeDowngradeRejected(t *testing.T) {
-	t.Parallel()
-	h, token := csrfTestTrusted(t, &Config{CookieSecure: true}, "https")
-
-	csrfTestPostCases(t, h, token, []csrfTestPostCase{{
-		// HTTPS host, but the Origin claims plain HTTP for the same host.
-		name:    "HTTPS request with an HTTP Origin",
-		scheme:  "https",
-		host:    "example.com",
-		origin:  "http://example.com",
-		headers: map[string]string{fiber.HeaderXForwardedProto: "https"},
-		status:  fiber.StatusForbidden,
-	}})
-}
-
 // Test_CSRF_Security_TrustedOriginSchemeIsolation ensures that trusting an
 // origin under one scheme does not implicitly trust it under another scheme.
 func Test_CSRF_Security_TrustedOriginSchemeIsolation(t *testing.T) {
@@ -2288,22 +1949,9 @@ func Test_CSRF_OriginCheckIgnoresHeaderNameCase(t *testing.T) {
 			token, cookie := csrfTestVisit(t, h)
 
 			post := func(originHeader, origin string) int {
-				req := fasthttp.AcquireRequest()
-				defer fasthttp.ReleaseRequest(req)
-				if !normalize {
-					req.Header.DisableNormalizing()
-				}
-				req.Header.SetMethod(fiber.MethodPost)
-				req.SetRequestURI("/")
-				req.Header.SetHost("example.com")
-				req.Header.Set(fiber.HeaderCookie, cookie)
-				req.Header.Set(HeaderName, token)
-				req.Header.Set(originHeader, origin)
-
-				ctx := &fasthttp.RequestCtx{}
-				ctx.Init(req, nil, nil)
-				h(ctx)
-				return ctx.Response.StatusCode()
+				return csrfTestPostWith(h, !normalize, cookie, token, func(req *fasthttp.Request) {
+					req.Header.Set(originHeader, origin)
+				})
 			}
 
 			// Same-origin passes under either spelling, so the assertions below
@@ -2341,22 +1989,7 @@ func Test_CSRF_RepeatedOriginIsRefused(t *testing.T) {
 			token, cookie := csrfTestVisit(t, h)
 
 			post := func(build func(*fasthttp.Request)) int {
-				req := fasthttp.AcquireRequest()
-				defer fasthttp.ReleaseRequest(req)
-				if !normalize {
-					req.Header.DisableNormalizing()
-				}
-				req.Header.SetMethod(fiber.MethodPost)
-				req.SetRequestURI("/")
-				req.Header.SetHost("example.com")
-				req.Header.Set(fiber.HeaderCookie, cookie)
-				req.Header.Set(HeaderName, token)
-				build(req)
-
-				ctx := &fasthttp.RequestCtx{}
-				ctx.Init(req, nil, nil)
-				h(ctx)
-				return ctx.Response.StatusCode()
+				return csrfTestPostWith(h, !normalize, cookie, token, build)
 			}
 
 			single := func(name, origin string) int {
@@ -2470,21 +2103,12 @@ func Test_CSRF_TrustedOriginIsAllowedWhenCrossSite(t *testing.T) {
 	token, cookie := csrfTestVisit(t, h)
 
 	post := func(origin, secFetchSite string) int {
-		req := fasthttp.AcquireRequest()
-		defer fasthttp.ReleaseRequest(req)
-		req.Header.SetMethod(fiber.MethodPost)
-		req.SetRequestURI("/")
-		req.Header.SetHost("example.com")
-		req.Header.Set(fiber.HeaderCookie, cookie)
-		req.Header.Set(HeaderName, token)
-		req.Header.Set(fiber.HeaderOrigin, origin)
-		if secFetchSite != "" {
-			req.Header.Set(fiber.HeaderSecFetchSite, secFetchSite)
-		}
-		ctx := &fasthttp.RequestCtx{}
-		ctx.Init(req, nil, nil)
-		h(ctx)
-		return ctx.Response.StatusCode()
+		return csrfTestPostWith(h, false, cookie, token, func(req *fasthttp.Request) {
+			req.Header.Set(fiber.HeaderOrigin, origin)
+			if secFetchSite != "" {
+				req.Header.Set(fiber.HeaderSecFetchSite, secFetchSite)
+			}
+		})
 	}
 
 	require.Equal(t, fiber.StatusOK, post("http://partner.com", "cross-site"),
@@ -2511,28 +2135,13 @@ func Test_CSRF_CrossSiteWithoutOriginOverPlaintext(t *testing.T) {
 	h := csrfTestAccept(fiber.New(), &Config{})
 	token, cookie := csrfTestVisit(t, h)
 
-	post := func(withToken bool) int {
-		req := fasthttp.AcquireRequest()
-		defer fasthttp.ReleaseRequest(req)
-		req.Header.SetMethod(fiber.MethodPost)
-		req.SetRequestURI("/")
-		req.Header.SetHost("example.com")
-		req.Header.Set(fiber.HeaderSecFetchSite, "cross-site")
-		// No Origin, and no Referer either.
-		req.Header.Set(fiber.HeaderCookie, cookie)
-		if withToken {
-			req.Header.Set(HeaderName, token)
-		}
+	// No Origin, and no Referer either.
+	crossSite := func(req *fasthttp.Request) { req.Header.Set(fiber.HeaderSecFetchSite, "cross-site") }
 
-		ctx := &fasthttp.RequestCtx{}
-		ctx.Init(req, nil, nil)
-		h(ctx)
-		return ctx.Response.StatusCode()
-	}
-
-	require.Equal(t, fiber.StatusOK, post(true),
+	require.Equal(t, fiber.StatusOK, csrfTestPostWith(h, false, cookie, token, crossSite),
 		"over plaintext with no Origin, the token is what the request rests on")
-	require.Equal(t, fiber.StatusForbidden, post(false), "and without it nothing else lets the request through")
+	require.Equal(t, fiber.StatusForbidden, csrfTestPostWith(h, false, cookie, "", crossSite),
+		"and without it nothing else lets the request through")
 }
 
 // varyMutatingCtx is a custom context whose Vary rewrites the field list it is

@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"cmp"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -32,11 +33,7 @@ func crossOriginAllowed(t *testing.T, cfg CrossOriginConfig, r *crossOriginReque
 	app.Use(NewCrossOriginProtection(cfg))
 	app.All("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 
-	host := r.host
-	if host == "" {
-		host = "example.com"
-	}
-	req := httptest.NewRequest(r.method, "https://"+host+"/", http.NoBody)
+	req := httptest.NewRequest(r.method, "https://"+cmp.Or(r.host, "example.com")+"/", http.NoBody)
 	for _, value := range r.secFetchSite {
 		req.Header.Add(fiber.HeaderSecFetchSite, value)
 	}

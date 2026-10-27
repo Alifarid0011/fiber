@@ -450,14 +450,7 @@ func Test_Proxy_Balancer_RejectsAuthorityTarget(t *testing.T) {
 
 	for _, unescape := range []bool{false, true} {
 		app := fiber.New(fiber.Config{UnescapePath: unescape})
-		app.Use(Balancer(Config{
-			Servers: []string{addr},
-			ModifyRequest: func(c fiber.Ctx) error {
-				c.Request().Header.SetHost("backend.internal")
-				c.Request().Header.Set(fiber.HeaderAuthorization, "Bearer pinned")
-				return nil
-			},
-		}))
+		app.Use(Balancer(Config{Servers: []string{addr}, ModifyRequest: pinIdentity}))
 
 		before := hits.Load()
 		// Neither raw line holds "://": fasthttp's server would read one that

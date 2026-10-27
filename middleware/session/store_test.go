@@ -27,24 +27,27 @@ func sessionTestResolve(t *testing.T, store *Store, ctx fiber.Ctx) extractors.Re
 func Test_Store_getSessionID(t *testing.T) {
 	t.Parallel()
 	expectedID := "test-session-id"
-
-	// fiber instance
 	app := fiber.New()
+	plantCookie := func(ctx fiber.Ctx, _ string) { ctx.Request().Header.SetCookie("session_id", "abc123") }
+	skipping := extractors.Chain(extractors.Extractor{}, extractors.FromCookie("session_id"))
 
 	for _, tc := range []struct {
 		store *Store
-		plant func(ctx fiber.Ctx, key string) // puts expectedID where the store looks for it
+		plant func(ctx fiber.Ctx, key string) // puts the ID where the store looks for it; key is the extractor key
 		name  string
+		want  string
 	}{
 		{
 			name:  "from cookie",
 			store: NewStore(),
 			plant: func(ctx fiber.Ctx, key string) { ctx.Request().Header.SetCookie(key, expectedID) },
+			want:  expectedID,
 		},
 		{
 			name:  "from header",
 			store: NewStore(Config{Extractor: extractors.FromHeader("session_id")}),
 			plant: func(ctx fiber.Ctx, key string) { ctx.Request().Header.Set(key, expectedID) },
+			want:  expectedID,
 		},
 		{
 			name:  "from url query",
@@ -52,16 +55,28 @@ func Test_Store_getSessionID(t *testing.T) {
 			plant: func(ctx fiber.Ctx, key string) {
 				ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", key, expectedID))
 			},
+			want: expectedID,
 		},
+		// A chain carrying a zero-value child, which Chain skips but the store used
+		// to call straight through, panicking on the nil function.
+		{
+			name:  "skips children without Extract",
+			store: NewStore(Config{Extractor: skipping}),
+			plant: plantCookie,
+			want:  "abc123",
+		},
+		// A Store built directly rather than through NewStore, which would have
+		// replaced the zero-value extractor with the default. There is nothing to
+		// run, so there is no session ID.
+		{name: "without extractor", store: &Store{}, plant: plantCookie},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			// fiber context
 			ctx := apptest.Ctx(t, app)
 			tc.plant(ctx, tc.store.Extractor.Key)
 
 			from := sessionTestResolve(t, tc.store, ctx)
-			require.Equal(t, expectedID, from.Value)
+			require.Equal(t, tc.want, from.Value)
 		})
 	}
 }
@@ -69,19 +84,13 @@ func Test_Store_getSessionID(t *testing.T) {
 // Regression: https://github.com/gofiber/fiber/issues/1408
 // Regression: https://github.com/gofiber/fiber/security/advisories/GHSA-98j2-3j3p-fw2v
 func Test_Store_Get(t *testing.T) {
-	// Regression: https://github.com/gofiber/fiber/security/advisories/GHSA-98j2-3j3p-fw2v
 	t.Parallel()
 	unexpectedID := "test-session-id"
-	// fiber instance
 	app := fiber.New()
 	t.Run("session should be re-generated if it is invalid", func(t *testing.T) {
 		t.Parallel()
-		// session store
 		store := NewStore()
-		// fiber context
 		ctx := apptest.Ctx(t, app)
-
-		// set cookie
 		ctx.Request().Header.SetCookie(store.Extractor.Key, unexpectedID)
 
 		acquiredSession, err := store.Get(ctx)
@@ -93,26 +102,15 @@ func Test_Store_Get(t *testing.T) {
 
 func Test_Store_DeleteSession(t *testing.T) {
 	t.Parallel()
-	// fiber instance
 	app := fiber.New()
-	// session store
 	store := NewStore()
-
-	// fiber context
 	ctx := apptest.Ctx(t, app)
 
-	// Create a new session
 	session, err := store.Get(ctx)
 	require.NoError(t, err)
-
-	// Save the session ID
 	sessionID := session.ID()
+	require.NoError(t, store.Delete(ctx, sessionID))
 
-	// Delete the session
-	err = store.Delete(ctx, sessionID)
-	require.NoError(t, err)
-
-	// Try to get the session again
 	session, err = store.Get(ctx)
 	require.NoError(t, err)
 
@@ -121,29 +119,20 @@ func Test_Store_DeleteSession(t *testing.T) {
 }
 
 func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
-	// Create a new Fiber app
 	app := fiber.New()
-
-	// Create a new context
 	ctx := apptest.Ctx(t, app)
 
 	// Mock middleware and set it in the context
 	middleware := &Middleware{}
 	ctx.Locals(middlewareContextKey, middleware)
 
-	// Create a new store
 	store := &Store{}
-
-	// Call the Get method
 	sess, err := store.Get(ctx)
-
-	// Assert that the error is ErrSessionAlreadyLoadedByMiddleware
 	require.Nil(t, sess)
 	require.Equal(t, ErrSessionAlreadyLoadedByMiddleware, err)
 }
 
 func TestStore_Delete(t *testing.T) {
-	// Create a new store
 	store := NewStore()
 
 	t.Run("delete with empty session ID", func(t *testing.T) {
@@ -159,7 +148,6 @@ func TestStore_Delete(t *testing.T) {
 
 func Test_Store_GetByID(t *testing.T) {
 	t.Parallel()
-	// Create a new store
 	store := NewStore()
 
 	t.Run("empty session ID", func(t *testing.T) {
@@ -180,31 +168,20 @@ func Test_Store_GetByID(t *testing.T) {
 
 	t.Run("valid session ID", func(t *testing.T) {
 		t.Parallel()
-		// Create a new session
 		ctx := apptest.Ctx(t, fiber.New())
 		session, err := store.Get(ctx)
 		defer session.Release()
 		require.NoError(t, err)
-
-		// Save the session ID
 		sessionID := session.ID()
+		require.NoError(t, session.Save())
 
-		// Save the session
-		err = session.Save()
-		require.NoError(t, err)
-
-		// Retrieve the session by ID
 		retrievedSession, err := store.GetByID(context.Background(), sessionID)
 		require.NoError(t, err)
 		require.NotNil(t, retrievedSession)
 		require.Equal(t, sessionID, retrievedSession.ID())
 
-		// Call Save on the retrieved session
 		retrievedSession.Set("key", "value")
-		err = retrievedSession.Save()
-		require.NoError(t, err)
-
-		// Call Other Session methods
+		require.NoError(t, retrievedSession.Save())
 		require.Equal(t, "value", retrievedSession.Get("key"))
 		require.False(t, retrievedSession.Fresh())
 
@@ -214,33 +191,6 @@ func Test_Store_GetByID(t *testing.T) {
 		require.NoError(t, retrievedSession.Regenerate())
 		require.NotPanics(t, func() { retrievedSession.Release() })
 	})
-}
-
-// Test_Store_getSessionID_SkipsChildrenWithoutExtract covers a chain carrying a
-// zero-value child, which Chain skips but the store used to call straight
-// through, panicking on the nil function.
-func Test_Store_getSessionID_SkipsChildrenWithoutExtract(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	store := NewStore(Config{Extractor: extractors.Chain(extractors.Extractor{}, extractors.FromCookie("session_id"))})
-
-	ctx := apptest.Ctx(t, app)
-	ctx.Request().Header.SetCookie("session_id", "abc123")
-
-	from := sessionTestResolve(t, store, ctx)
-	require.Equal(t, "abc123", from.Value)
-}
-
-// Test_Store_getSessionID_WithoutExtractor covers a Store built directly rather
-// than through NewStore, which would have replaced the zero-value extractor
-// with the default. There is nothing to run, so there is no session ID.
-func Test_Store_getSessionID_WithoutExtractor(t *testing.T) {
-	t.Parallel()
-	ctx := apptest.Ctx(t, fiber.New())
-	ctx.Request().Header.SetCookie("session_id", "abc123")
-
-	from := sessionTestResolve(t, &Store{}, ctx)
-	require.Empty(t, from.Value)
 }
 
 // Test_Store_getSessionID_HonorsChainLevelExtract pins that a chain-level

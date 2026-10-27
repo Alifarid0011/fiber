@@ -442,7 +442,6 @@ func Test_Security_JoinUpstreamPath_KeepsTheUpstream(t *testing.T) {
 	}
 }
 
-// Test_Security_JoinUpstreamPath pins the URL a request path joins into.
 func Test_Security_JoinUpstreamPath(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -460,6 +459,16 @@ func Test_Security_JoinUpstreamPath(t *testing.T) {
 		{name: "query", base: "http://upstream.example", target: "/x?y=1&z=2", want: "http://upstream.example/x?y=1&z=2"},
 		// The early return when the inbound request had no path component.
 		{name: "empty path", base: "http://upstream.example", target: "", want: "http://upstream.example"},
+		// The "?" leading-char branch, where the inbound path is just a query string.
+		{
+			name: "query only", base: "http://upstream.example/api", target: "?q=1",
+			want: "http://upstream.example/api?q=1",
+		},
+		// A percent-encoded segment of the base survives the join.
+		{
+			name: "percent-encoded base path", base: "http://upstream.example/space%20here", target: "/sub",
+			want: "http://upstream.example/space%20here/sub",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -541,11 +550,6 @@ func generateLocalhostCert(t *testing.T) (tls.Certificate, error) {
 	return cfg.Certificates[0], nil
 }
 
-// ---------------------------------------------------------------------------
-// Merged from the former security_branches_test.go: branch-coverage and
-// edge-case tests plus their shared redirect-client / URL helpers.
-// ---------------------------------------------------------------------------
-
 // Test_Security_IsBlockedIP_NilReturnsTrue covers the nil-IP guard so we
 // fail closed when callers feed us a parse failure they didn't check.
 func Test_Security_IsBlockedIP_NilReturnsTrue(t *testing.T) {
@@ -561,15 +565,11 @@ func Test_Security_IPv6Helpers_DeclineMalformedAddress(t *testing.T) {
 	require.Nil(t, embeddedIPv4(ip))
 }
 
-// Test_Security_ValidateHostForSSRF_EmptyHost verifies the explicit
-// empty-host short-circuit (the host == "" branch).
 func Test_Security_ValidateHostForSSRF_EmptyHost(t *testing.T) {
 	t.Parallel()
 	require.ErrorIs(t, validateHostForSSRF("", nil), ErrUpstreamHostInvalid)
 }
 
-// Test_Security_ValidateHostForSSRF_PublicIPLiteral exercises the
-// ParseIP success path with a public address.
 func Test_Security_ValidateHostForSSRF_PublicIPLiteral(t *testing.T) {
 	t.Parallel()
 	require.NoError(t, validateHostForSSRF("8.8.8.8", nil))
@@ -634,26 +634,11 @@ func Test_Security_ValidateResolved(t *testing.T) {
 	require.True(t, ips[0].Equal(public.IP))
 }
 
-// Test_Security_JoinUpstreamPath_NilBase guards the nil-base branch
-// that callers should never hit but we still handle.
 func Test_Security_JoinUpstreamPath_NilBase(t *testing.T) {
 	t.Parallel()
 	require.Empty(t, joinUpstreamPath(nil, "/foo"))
 }
 
-// Test_Security_JoinUpstreamPath_QueryOnly covers the "?" leading-char
-// branch where the inbound path is just a query string.
-func Test_Security_JoinUpstreamPath_QueryOnly(t *testing.T) {
-	t.Parallel()
-	base := proxyTestParseUpstream(t, "http://upstream.example/api")
-	out := joinUpstreamPath(base, "?q=1")
-	require.Contains(t, out, "?q=1")
-	require.True(t, strings.HasPrefix(out, "http://upstream.example/"))
-}
-
-// Test_Security_WithSecurityPolicy_EmptyAllowedSchemesGetsDefault
-// covers the branch in WithSecurityPolicy that fills in the default
-// scheme allowlist when the caller leaves it empty.
 func Test_Security_WithSecurityPolicy_EmptyAllowedSchemesGetsDefault(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy and reads it back.
 	prev := WithSecurityPolicy(SecurityPolicy{})
@@ -785,9 +770,6 @@ func Test_Security_FollowRedirects_NegativeMaxBecomesZero(t *testing.T) {
 	require.Equal(t, 1, *hits)
 }
 
-// Test_Security_FollowRedirects_MissingLocation covers the
-// ErrMissingLocation branch when the upstream returns a 3xx but no
-// Location header.
 func Test_Security_FollowRedirects_MissingLocation(t *testing.T) {
 	t.Parallel()
 	client, _ := newCountingRedirectClient(map[string]redirectStep{
@@ -863,8 +845,6 @@ func Test_Security_FollowRedirects_KeepsMultipartForm(t *testing.T) {
 	require.Len(t, form.File["f"], 1)
 }
 
-// Test_Security_FollowRedirects_PropagatesClientError covers the
-// `cli.Do` error path.
 func Test_Security_FollowRedirects_PropagatesClientError(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("dial failure")
@@ -873,37 +853,54 @@ func Test_Security_FollowRedirects_PropagatesClientError(t *testing.T) {
 	require.ErrorIs(t, proxyTestFollow(t, cli, "http://example.com/", 1, DefaultSecurityPolicy()), sentinel)
 }
 
-// Test_Security_DomainForward_HostMismatchPassesThrough covers the
-// host-mismatch branch where the middleware should be a no-op.
+// Test_Security_DomainForward_HostMismatchPassesThrough covers the host-mismatch
+// branch, where the middleware is a no-op: the request goes on to what is
+// behind it, and the upstream is never dialed (the unreachable port 1 would
+// surface as a 500).
 func Test_Security_DomainForward_HostMismatchPassesThrough(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(DomainForward("only-this-host.example", "http://127.0.0.1:1"))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("pass-through") })
+	for _, tc := range []struct {
+		name   string
+		path   string
+		status int
+		route  bool // a route behind the middleware answers the path
+	}{
+		{name: "to the route behind", path: "/", route: true, status: fiber.StatusOK},
+		{name: "with no route behind", path: "/ping", status: fiber.StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(DomainForward("only-this-host.example", "http://127.0.0.1:1"))
+			if tc.route {
+				app.Get(tc.path, func(c fiber.Ctx) error { return c.SendString("pass-through") })
+			}
 
-	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost("other-host.example")), fiber.StatusOK)
+			req := apptest.Req(fiber.MethodGet, tc.path, apptest.WithHost("other-host.example"))
+			apptest.Expect(t, app, req, tc.status)
+		})
+	}
 }
 
-// Test_Security_DomainForward_InvalidUpstreamPanicsAtConstruction
-// verifies that DomainForward now fails fast on misconfiguration —
-// matching Balancer's contract — instead of surfacing the validation
-// error per request.
-func Test_Security_DomainForward_InvalidUpstreamPanicsAtConstruction(t *testing.T) {
+// Test_Security_InvalidUpstreamPanicsAtConstruction verifies that every
+// constructor fails fast on a server that fails validation — DomainForward and
+// BalancerForward matching Balancer's contract — instead of surfacing the
+// validation error per request.
+func Test_Security_InvalidUpstreamPanicsAtConstruction(t *testing.T) {
 	t.Parallel()
-	require.PanicsWithError(t, ErrUpstreamSchemeNotAllowed.Error()+": \"gopher\"", func() {
-		DomainForward("api.example", "gopher://invalid")
-	})
-}
-
-// Test_Security_BalancerForward_InvalidUpstreamPanicsAtConstruction
-// verifies that BalancerForward now fails fast on misconfiguration —
-// matching Balancer's contract — instead of surfacing the validation
-// error per request.
-func Test_Security_BalancerForward_InvalidUpstreamPanicsAtConstruction(t *testing.T) {
-	t.Parallel()
-	require.PanicsWithError(t, ErrUpstreamSchemeNotAllowed.Error()+": \"gopher\"", func() {
-		BalancerForward([]string{"gopher://invalid"})
-	})
+	for _, tc := range []struct {
+		build func()
+		name  string
+	}{
+		{name: "DomainForward", build: func() { DomainForward("api.example", "gopher://invalid") }},
+		{name: "BalancerForward", build: func() { BalancerForward([]string{"gopher://invalid"}) }},
+		{name: "Balancer", build: func() { Balancer(Config{Servers: []string{"gopher://example"}}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.PanicsWithError(t, ErrUpstreamSchemeNotAllowed.Error()+": \"gopher\"", tc.build)
+		})
+	}
 }
 
 // Test_Security_RoundRobin_WrapsAround covers both the normal cyclic
@@ -957,17 +954,6 @@ func Test_Security_RoundRobin_ConcurrentSelection(t *testing.T) {
 	}
 }
 
-// Test_Security_Balancer_PanicsOnInvalidUpstream covers the panic
-// branch when a server fails validation at Config-time.
-func Test_Security_Balancer_PanicsOnInvalidUpstream(t *testing.T) {
-	t.Parallel()
-	require.PanicsWithError(t, ErrUpstreamSchemeNotAllowed.Error()+": \"gopher\"", func() {
-		Balancer(Config{Servers: []string{"gopher://example"}})
-	})
-}
-
-// Test_Security_ValidateUpstream_PublicIPLiteral covers the
-// validateUpstream "no private IP, lookup succeeds" success path.
 func Test_Security_ValidateUpstream_PublicIPLiteral(t *testing.T) {
 	t.Parallel()
 	u, err := validateUpstream("http://8.8.8.8", DefaultSecurityPolicy(), nil)
@@ -975,8 +961,6 @@ func Test_Security_ValidateUpstream_PublicIPLiteral(t *testing.T) {
 	require.Equal(t, "8.8.8.8", u.Host)
 }
 
-// Test_Security_Balancer_ModifyErrorPropagates covers the ModifyRequest and
-// ModifyResponse error branches in Balancer's handler.
 func Test_Security_Balancer_ModifyErrorPropagates(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("modify failed")
@@ -1002,8 +986,6 @@ func Test_Security_Balancer_ModifyErrorPropagates(t *testing.T) {
 	}
 }
 
-// Test_Security_Balancer_BuildsHTTPSHostClient verifies the IsTLS
-// branch flips on for https upstreams.
 func Test_Security_Balancer_BuildsHTTPSHostClient(t *testing.T) {
 	t.Parallel()
 	policy := proxyTestAllowPrivatePolicy()
@@ -1020,13 +1002,14 @@ func Test_Security_Balancer_BuildsHTTPSHostClient(t *testing.T) {
 // connection is made — this is what defeats DNS rebinding.
 func Test_Security_DialChecked_BlocksLoopback(t *testing.T) {
 	t.Parallel()
-	dial := newDialGuard(false).dialChecked
-
-	_, err := dial("127.0.0.1:80")
-	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
-
-	_, err = dial("localhost:80")
-	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+	for _, addr := range []string{"127.0.0.1:80", "localhost:80", "localhost:65535"} {
+		t.Run(addr, func(t *testing.T) {
+			t.Parallel()
+			_, err := newDialGuard(false).dialChecked(addr)
+			require.Error(t, err)
+			require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+		})
+	}
 }
 
 // Test_Security_DialChecked_RejectsMalformedAddr covers the SplitHostPort error, which keeps the reason.
@@ -1125,10 +1108,10 @@ func (f roundTripperFunc) RoundTrip(_ *fasthttp.HostClient, req *fasthttp.Reques
 
 // mustParseTestURL is a shared parse-or-fail helper for tests that pass
 // a *url.URL into followRedirects's initialURL argument.
-func mustParseTestURL(t *testing.T, raw string) *url.URL {
-	t.Helper()
+func mustParseTestURL(tb testing.TB, raw string) *url.URL {
+	tb.Helper()
 	u, err := url.Parse(raw)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	return u
 }
 
