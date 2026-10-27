@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	storagememory "github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,31 +24,6 @@ func newSharedStateMemoryStorage(t *testing.T) *storagememory.Storage {
 type contextCheckingStorage struct {
 	base   Storage
 	ctxKey any
-}
-
-// errorStorage is a Storage whose every operation fails with err, which may be
-// nil, except Close, which records that it ran and fails with closeErr.
-type errorStorage struct {
-	err         error
-	closeErr    error
-	closeCalled atomic.Bool
-}
-
-func (s *errorStorage) GetWithContext(context.Context, string) ([]byte, error) { return nil, s.err }
-func (s *errorStorage) Get(string) ([]byte, error)                             { return nil, s.err }
-func (s *errorStorage) Set(string, []byte, time.Duration) error                { return s.err }
-func (s *errorStorage) DeleteWithContext(context.Context, string) error        { return s.err }
-func (s *errorStorage) Delete(string) error                                    { return s.err }
-func (s *errorStorage) ResetWithContext(context.Context) error                 { return s.err }
-func (s *errorStorage) Reset() error                                           { return s.err }
-
-func (s *errorStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
-	return s.err
-}
-
-func (s *errorStorage) Close() error {
-	s.closeCalled.Store(true)
-	return s.closeErr
 }
 
 func (s *contextCheckingStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
@@ -254,7 +229,7 @@ func TestSharedState_StorageErrorsArePropagated(t *testing.T) {
 	expectedErr := errors.New("storage failed")
 	closeErr := errors.New("close failed")
 	app := New(Config{
-		SharedStorage:  &errorStorage{err: expectedErr, closeErr: closeErr},
+		SharedStorage:  &storagetest.Failing{Err: expectedErr, CloseErr: closeErr},
 		MsgPackEncoder: func(any) ([]byte, error) { return []byte("msgpack"), nil },
 		MsgPackDecoder: func([]byte, any) error { return nil },
 		CBOREncoder:    func(any) ([]byte, error) { return []byte("cbor"), nil },

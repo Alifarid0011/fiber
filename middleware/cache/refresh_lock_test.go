@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,7 +57,7 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	started := make(chan struct{})
 	resume := make(chan struct{})
 	var armed atomic.Bool
-	storage := &hookedStorage{failingCacheStorage: newFailingCacheStorage(), onGet: func(key string) {
+	storage := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) {
 		// The read that restores the entry eviction picked parks until the test lets it go on.
 		if key == oldKey && armed.CompareAndSwap(true, false) {
 			close(started)
@@ -84,7 +85,7 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	}
 	cacheTestBRequireAccounting(t, probe, 8, 2)
 
-	storage.setErr("del", oldKey, errors.New("eviction delete failed"))
+	storage.SetErr("del", oldKey, errors.New("eviction delete failed"))
 	armed.Store(true)
 
 	evictionDone := cacheTestCEvict(app)
@@ -121,10 +122,10 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 	t.Parallel()
 	storage := &blockingFailedEvictionStorage{
-		failingCacheStorage: newFailingCacheStorage(),
-		key:                 cacheKeyVersion + "|GET|/old",
-		started:             make(chan struct{}),
-		continueDelete:      make(chan struct{}),
+		Memory:         storagetest.New(),
+		key:            cacheKeyVersion + "|GET|/old",
+		started:        make(chan struct{}),
+		continueDelete: make(chan struct{}),
 	}
 	probe := &accountingProbe{}
 	var uncacheable atomic.Bool

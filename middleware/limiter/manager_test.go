@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
 	"github.com/tinylib/msgp/msgp"
 )
@@ -81,8 +82,8 @@ func (w *limiterErrWriter) Write(p []byte) (int, error) {
 
 func Test_manager_get_UnmarshalError(t *testing.T) {
 	t.Parallel()
-	storage := newFakeLimiterStorage()
-	storage.data["k"] = []byte{0xff, 0xff, 0xff} // not a valid msgp item
+	storage := storagetest.New()
+	storage.Data["k"] = []byte{0xff, 0xff, 0xff} // not a valid msgp item
 
 	m := newManager(storage, true)
 	_, err := m.get(context.Background(), "k")
@@ -92,7 +93,7 @@ func Test_manager_get_UnmarshalError(t *testing.T) {
 
 func Test_manager_get_RoundTripWithStorage(t *testing.T) {
 	t.Parallel()
-	storage := newFakeLimiterStorage()
+	storage := storagetest.New()
 	m := newManager(storage, false)
 
 	it := m.acquire()

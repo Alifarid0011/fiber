@@ -13,6 +13,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -209,7 +210,7 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 			// Every key the middleware reads, in order and without duplicates.
 			var mu sync.Mutex
 			var lookedUp []string
-			store := &hookedStorage{failingCacheStorage: newFailingCacheStorage(), onGet: func(key string) {
+			store := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) {
 				mu.Lock()
 				defer mu.Unlock()
 				if !slices.Contains(lookedUp, key) {
@@ -405,14 +406,14 @@ func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
 			require.Equal(t, cacheHit, getRoot(t, app, withCookie("")).cache, "an empty cookie is the partition of none")
 
-			external, ok := storage.(*failingCacheStorage)
+			external, ok := storage.(*storagetest.Memory)
 			if !ok {
 				return
 			}
-			external.mu.RLock()
-			defer external.mu.RUnlock()
+			external.Mu.RLock()
+			defer external.Mu.RUnlock()
 			hashed := 0
-			for key := range external.data {
+			for key := range external.Data {
 				require.NotContains(t, key, session)
 				require.NotContains(t, key, other)
 				if strings.Contains(key, "session:sha256:"+authDigest(session)) {

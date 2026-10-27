@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
 	"github.com/tinylib/msgp/msgp"
 	"github.com/valyala/fasthttp"
@@ -441,20 +442,20 @@ func Test_appendAuthHash_DoesNotAllocate(t *testing.T) {
 func Test_manager_get_StorageErrors(t *testing.T) {
 	t.Parallel()
 	// Storage GetWithContext returns an error.
-	storage := newFailingCacheStorage()
-	storage.errs["get|k"] = errors.New("boom")
+	storage := storagetest.New()
+	storage.Errs["get|k"] = errors.New("boom")
 	m := newManager(storage, true)
 	_, err := m.get(context.Background(), "k")
 	require.ErrorContains(t, err, redactedKey)
 
 	// Stored bytes fail to unmarshal.
-	storage2 := newFailingCacheStorage()
-	storage2.data["k"] = []byte{0xff, 0xff, 0xff}
+	storage2 := storagetest.New()
+	storage2.Data["k"] = []byte{0xff, 0xff, 0xff}
 	m2 := newManager(storage2, false)
 	_, err = m2.get(context.Background(), "k")
 	require.ErrorContains(t, err, "unmarshal")
 
-	m3 := newManager(newFailingCacheStorage(), false)
+	m3 := newManager(storagetest.New(), false)
 	_, err = m3.get(context.Background(), "missing")
 	require.ErrorIs(t, err, errCacheMiss)
 
@@ -468,14 +469,14 @@ func Test_manager_get_StorageErrors(t *testing.T) {
 func Test_manager_getRaw_Paths(t *testing.T) {
 	t.Parallel()
 	// Storage error.
-	storage := newFailingCacheStorage()
-	storage.errs["get|k"] = errors.New("boom")
+	storage := storagetest.New()
+	storage.Errs["get|k"] = errors.New("boom")
 	m := newManager(storage, false)
 	_, err := m.getRaw(context.Background(), "k")
 	require.ErrorContains(t, err, "boom")
 
-	storage2 := newFailingCacheStorage()
-	storage2.data["k"] = []byte("raw-value")
+	storage2 := storagetest.New()
+	storage2.Data["k"] = []byte("raw-value")
 	m2 := newManager(storage2, false)
 	raw, err := m2.getRaw(context.Background(), "k")
 	require.NoError(t, err)
@@ -493,15 +494,15 @@ func Test_manager_getRaw_Paths(t *testing.T) {
 	_, err = m4.getRaw(context.Background(), "k")
 	require.ErrorContains(t, err, "unexpected raw entry type")
 
-	m5 := newManager(newFailingCacheStorage(), false)
+	m5 := newManager(storagetest.New(), false)
 	_, err = m5.getRaw(context.Background(), "missing")
 	require.ErrorIs(t, err, errCacheMiss)
 }
 
 func Test_manager_set_StorageError(t *testing.T) {
 	t.Parallel()
-	storage := newFailingCacheStorage()
-	storage.errs["set|k"] = errors.New("boom")
+	storage := storagetest.New()
+	storage.Errs["set|k"] = errors.New("boom")
 	m := newManager(storage, false)
 
 	it := m.acquire()
@@ -513,7 +514,7 @@ func Test_manager_set_StorageError(t *testing.T) {
 
 func Test_manager_get_StorageRoundTrip(t *testing.T) {
 	t.Parallel()
-	storage := newFailingCacheStorage()
+	storage := storagetest.New()
 	m := newManager(storage, false)
 
 	it := m.acquire()
@@ -529,7 +530,7 @@ func Test_manager_get_StorageRoundTrip(t *testing.T) {
 
 func Test_varyManifest_StoreLoad(t *testing.T) {
 	t.Parallel()
-	m := newManager(newFailingCacheStorage(), false)
+	m := newManager(storagetest.New(), false)
 	ctx := context.Background()
 
 	// Empty names is a no-op store.
@@ -555,8 +556,8 @@ func Test_varyManifest_StoreLoad(t *testing.T) {
 	require.Nil(t, names)
 
 	// Storage error propagates.
-	storage := newFailingCacheStorage()
-	storage.errs["get|mk"] = errors.New("boom")
+	storage := storagetest.New()
+	storage.Errs["get|mk"] = errors.New("boom")
 	mErr := newManager(storage, false)
 	_, _, err = loadVaryManifest(ctx, mErr, "mk")
 	require.ErrorContains(t, err, "boom")

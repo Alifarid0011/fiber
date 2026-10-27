@@ -22,6 +22,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	"github.com/gofiber/fiber/v3/internal/redact"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/session"
@@ -29,35 +30,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
-
-// failingCSRFStorage is an in-memory fiber.Storage whose operations fail with the
-// error errs holds for "<get|set|del>|<key>", or for "<get|set|del>|*" on any key.
-type failingCSRFStorage struct {
-	data map[string][]byte
-	errs map[string]error
-}
-
-func newFailingCSRFStorage() *failingCSRFStorage {
-	return &failingCSRFStorage{data: make(map[string][]byte), errs: make(map[string]error)}
-}
-
-// fail returns the error configured for the operation op on key, if any.
-func (s *failingCSRFStorage) fail(op, key string) error {
-	if err := s.errs[op+"|"+key]; err != nil {
-		return err
-	}
-	return s.errs[op+"|*"]
-}
-
-func (s *failingCSRFStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
-	if err := s.fail("get", key); err != nil {
-		return nil, err
-	}
-	if val, ok := s.data[key]; ok {
-		return append([]byte(nil), val...), nil
-	}
-	return nil, nil
-}
 
 var trustedProxyConfig = fiber.Config{
 	TrustProxy:       true,
@@ -74,46 +46,6 @@ func newTrustedRequestCtx() *fasthttp.RequestCtx {
 
 	return ctx
 }
-
-func (s *failingCSRFStorage) Get(key string) ([]byte, error) {
-	return s.GetWithContext(context.Background(), key)
-}
-
-func (s *failingCSRFStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
-	if err := s.fail("set", key); err != nil {
-		return err
-	}
-	s.data[key] = append([]byte(nil), val...)
-	return nil
-}
-
-func (s *failingCSRFStorage) Set(key string, val []byte, exp time.Duration) error {
-	return s.SetWithContext(context.Background(), key, val, exp)
-}
-
-func (s *failingCSRFStorage) DeleteWithContext(_ context.Context, key string) error {
-	if err := s.fail("del", key); err != nil {
-		return err
-	}
-	delete(s.data, key)
-	return nil
-}
-
-func (s *failingCSRFStorage) Delete(key string) error {
-	return s.DeleteWithContext(context.Background(), key)
-}
-
-func (s *failingCSRFStorage) ResetWithContext(context.Context) error {
-	s.data = make(map[string][]byte)
-	s.errs = make(map[string]error)
-	return nil
-}
-
-func (s *failingCSRFStorage) Reset() error {
-	return s.ResetWithContext(context.Background())
-}
-
-func (*failingCSRFStorage) Close() error { return nil }
 
 // csrfTestHandler registers the middleware configured by cfg and a POST / that
 // answers 200 on app, and returns the handler of app.
@@ -379,11 +311,11 @@ func Test_CSRF_StorageErrors(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			storage := newFailingCSRFStorage()
+			storage := storagetest.New()
 			if tc.stored {
-				storage.data["token"] = []byte("value")
+				storage.Data["token"] = []byte("value")
 			}
-			storage.errs[tc.failing] = errors.New("boom")
+			storage.Errs[tc.failing] = errors.New("boom")
 
 			var captured error
 			app := fiber.New()
@@ -1593,9 +1525,9 @@ func Test_CSRF_DeleteToken_Errors(t *testing.T) {
 			}}
 			req := apptest.Req(fiber.MethodGet, "/")
 			if tc.failing {
-				storage := newFailingCSRFStorage()
-				storage.data["token"] = []byte("value")
-				storage.errs["del|token"] = errors.New("boom")
+				storage := storagetest.New()
+				storage.Data["token"] = []byte("value")
+				storage.Errs["del|token"] = errors.New("boom")
 				cfg.Storage = storage
 				req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
 			}
@@ -1677,7 +1609,7 @@ func Test_StorageManager_Memory_UnexpectedType(t *testing.T) {
 
 func Test_StorageManager_Storage_Success(t *testing.T) {
 	t.Parallel()
-	storage := newFailingCSRFStorage()
+	storage := storagetest.New()
 	m := newStorageManager(storage, false)
 
 	require.NoError(t, m.setRaw(context.Background(), "key", []byte("value"), time.Minute))
@@ -1696,9 +1628,9 @@ func Test_StorageManager_Storage_Success(t *testing.T) {
 // newFlakySessionManager returns a session manager on a store whose storage
 // fails the operations ops names: "get" to load sessions, "set" to save them.
 func newFlakySessionManager(ops ...string) *sessionManager {
-	storage := newFailingCSRFStorage()
+	storage := storagetest.New()
 	for _, op := range ops {
-		storage.errs[op+"|*"] = errors.New(op + " failed")
+		storage.Errs[op+"|*"] = errors.New(op + " failed")
 	}
 	return newSessionManager(session.NewStore(session.Config{
 		Storage:   storage,

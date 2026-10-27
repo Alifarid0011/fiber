@@ -11,11 +11,12 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
 )
 
 type blockingManifestStorage struct {
-	*failingCacheStorage
+	*storagetest.Memory
 	blocked      chan struct{}
 	release      chan struct{}
 	manifestSets atomic.Int32
@@ -24,9 +25,9 @@ type blockingManifestStorage struct {
 
 func newBlockingManifestStorage() *blockingManifestStorage {
 	return &blockingManifestStorage{
-		failingCacheStorage: newFailingCacheStorage(),
-		blocked:             make(chan struct{}),
-		release:             make(chan struct{}),
+		Memory:  storagetest.New(),
+		blocked: make(chan struct{}),
+		release: make(chan struct{}),
 	}
 }
 
@@ -38,7 +39,7 @@ func (s *blockingManifestStorage) SetWithContext(ctx context.Context, key string
 		close(s.blocked)
 		<-s.release
 	}
-	return s.failingCacheStorage.SetWithContext(ctx, key, value, exp)
+	return s.Memory.SetWithContext(ctx, key, value, exp)
 }
 
 func (s *blockingManifestStorage) Set(key string, value []byte, exp time.Duration) error {

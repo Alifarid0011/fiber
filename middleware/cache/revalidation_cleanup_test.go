@@ -9,6 +9,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/clocktest"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -29,8 +31,8 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 				}
 				t.Run(kind+"/"+directive+"/"+scenario, func(t *testing.T) {
 					t.Parallel()
-					storage := newFailingCacheStorage()
-					clock := newTestClock(time.Now())
+					storage := storagetest.New()
+					clock := clocktest.NewClock(time.Now())
 					cfg := Config{MaxBytes: 10, clock: clock.Now}
 					if external {
 						cfg.Storage = storage
@@ -63,19 +65,19 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 									return errors.New("nested store failed")
 								}
 							} else if external {
-								storage.mu.Lock()
+								storage.Mu.Lock()
 								switch scenario {
 								case "absent":
-									delete(storage.data, key)
-									delete(storage.data, key+"_body")
+									delete(storage.Data, key)
+									delete(storage.Data, key+"_body")
 								case "readError":
-									storage.errs["get|"+key] = errors.New("verification failed")
+									storage.Errs["get|"+key] = errors.New("verification failed")
 								case "metadataDeleteError":
-									storage.errs["del|"+key] = errors.New("metadata delete failed")
+									storage.Errs["del|"+key] = errors.New("metadata delete failed")
 								case "bodyDeleteError":
-									storage.errs["del|"+key+"_body"] = errors.New("body delete failed")
+									storage.Errs["del|"+key+"_body"] = errors.New("body delete failed")
 								}
-								storage.mu.Unlock()
+								storage.Mu.Unlock()
 							}
 							if directive == "VaryStar" {
 								c.Set(fiber.HeaderVary, "*")
@@ -110,10 +112,10 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 					require.Equal(t, cacheUnreachable, got.cache)
 					preserveManifest := scenario == "replaced" || scenario == "plainNoStoreMiss"
 					if external {
-						storage.mu.Lock()
-						_, manifestPresent := storage.data[manifestKey]
-						storage.errs = make(map[string]error)
-						storage.mu.Unlock()
+						storage.Mu.Lock()
+						_, manifestPresent := storage.Data[manifestKey]
+						storage.Errs = make(map[string]error)
+						storage.Mu.Unlock()
 						require.Equal(t, preserveManifest, manifestPresent)
 					}
 					got = request("b", "")
@@ -217,7 +219,7 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			storage := newFailingCacheStorage()
+			storage := storagetest.New()
 			probe := &accountingProbe{}
 			key := cacheKeyVersion + "|GET|/a"
 			app := cacheTestBPathKeyedApp(&Config{Storage: storage, MaxBytes: 15, accounting: probe.record})
@@ -227,19 +229,19 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 				apptest.BodyBytes(t, apptest.Expect(t, app, path, status))
 			}
 			request("/a", fiber.StatusOK)
-			storage.setErr("del", key+"_body", errors.New("body deletion failed"))
+			storage.SetErr("del", key+"_body", errors.New("body deletion failed"))
 			if failBodyRead {
-				storage.setErr("get", key+"_body", errors.New("body verification failed"))
+				storage.SetErr("get", key+"_body", errors.New("body verification failed"))
 			}
 			request("/b", fiber.StatusInternalServerError)
 			cacheTestBRequireAccounting(t, probe, 10, 1)
-			require.False(t, storage.holds(key), key)
-			require.True(t, storage.holds(key+"_body"), key+"_body")
-			storage.mu.Lock()
-			storage.errs = make(map[string]error)
-			storage.mu.Unlock()
+			require.False(t, storage.Holds(key), key)
+			require.True(t, storage.Holds(key+"_body"), key+"_body")
+			storage.Mu.Lock()
+			storage.Errs = make(map[string]error)
+			storage.Mu.Unlock()
 			request("/c", fiber.StatusOK)
-			require.False(t, storage.holds(key+"_body"), key+"_body")
+			require.False(t, storage.Holds(key+"_body"), key+"_body")
 			cacheTestBRequireAccounting(t, probe, 10, 1)
 		})
 	}

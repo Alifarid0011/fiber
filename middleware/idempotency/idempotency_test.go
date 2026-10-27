@@ -15,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/valyala/fasthttp"
 
 	"github.com/stretchr/testify/assert"
@@ -222,7 +223,7 @@ func Test_configDefault_defaults(t *testing.T) {
 func Test_configDefault_override(t *testing.T) {
 	t.Parallel()
 	l := &stubLock{}
-	s := &stubStorage{}
+	s := &storagetest.Memory{}
 
 	cfg := configDefault(Config{
 		Lifetime:            42 * time.Second,
@@ -279,7 +280,7 @@ func Test_New_NextSkip(t *testing.T) {
 // ends the request with a 500 whose body names the step that failed.
 func Test_New_Errors(t *testing.T) {
 	t.Parallel()
-	secondPassStorage := &stubStorage{}
+	secondPassStorage := &storagetest.Memory{}
 
 	for _, tc := range []struct {
 		name     string
@@ -291,25 +292,25 @@ func Test_New_Errors(t *testing.T) {
 		{
 			name:     "storage get error",
 			key:      validKey,
-			cfg:      []Config{{Storage: &stubStorage{getErr: errors.New("boom")}, Lock: &stubLock{}}},
+			cfg:      []Config{{Storage: storagetest.New().SetErr(storagetest.OpGet, "*", errors.New("boom")), Lock: &stubLock{}}},
 			contains: "failed to write cached response at fastpath",
 		},
 		{
 			name:     "unmarshal error",
 			key:      validKey,
-			cfg:      []Config{{Storage: &stubStorage{data: map[string][]byte{validKey: []byte("bad")}}, Lock: &stubLock{}}},
+			cfg:      []Config{{Storage: &storagetest.Memory{Data: map[string][]byte{validKey: []byte("bad")}}, Lock: &stubLock{}}},
 			contains: "failed to write cached response at fastpath",
 		},
 		{
 			name:     "lock error",
 			key:      validKey,
-			cfg:      []Config{{Lock: &stubLock{lockErr: errors.New("fail")}, Storage: &stubStorage{}}},
+			cfg:      []Config{{Lock: &stubLock{lockErr: errors.New("fail")}, Storage: &storagetest.Memory{}}},
 			contains: "failed to lock",
 		},
 		{
 			name:     "storage set error",
 			key:      validKey,
-			cfg:      []Config{{Storage: &stubStorage{setErr: errors.New("nope")}, Lock: &stubLock{}}},
+			cfg:      []Config{{Storage: storagetest.New().SetErr(storagetest.OpSet, "*", errors.New("nope")), Lock: &stubLock{}}},
 			contains: "failed to save response",
 		},
 		{
@@ -317,7 +318,7 @@ func Test_New_Errors(t *testing.T) {
 			name: "second pass read error",
 			key:  validKey,
 			cfg: []Config{{
-				Lock:    &stubLock{afterLock: func() { secondPassStorage.getErr = errors.New("g") }},
+				Lock:    &stubLock{afterLock: func() { secondPassStorage.SetErr(storagetest.OpGet, "*", errors.New("g")) }},
 				Storage: secondPassStorage,
 			}},
 			contains: "failed to write cached response while locked",
@@ -353,7 +354,7 @@ func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
-			s := &stubStorage{}
+			s := &storagetest.Memory{}
 			app.Use(New(Config{Storage: s, Lock: &stubLock{}, KeepResponseHeaders: tc.keep}))
 			if tc.mutate {
 				tc.keep[0] = "Bar"
@@ -377,7 +378,7 @@ func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
 			require.Equal(t, "foo", resp2.Header.Get("Foo"), "the configured name must match whatever its case")
 			require.Empty(t, resp2.Header.Get("Bar"), "mutating the config slice after New must not change filtering")
 			require.Equal(t, 1, count)
-			require.Equal(t, 1, s.setCount)
+			require.Equal(t, 1, s.Count(storagetest.OpSet))
 		})
 	}
 }
@@ -390,7 +391,7 @@ func Test_New_StoreRetrieve_HeadersWithCommas(t *testing.T) {
 	t.Parallel()
 	app := fiber.New(fiber.Config{EnableSplittingOnParsers: true})
 	app.Use(New(Config{
-		Storage:             &stubStorage{},
+		Storage:             &storagetest.Memory{},
 		Lock:                &stubLock{},
 		KeepResponseHeaders: []string{fiber.HeaderContentDisposition, fiber.HeaderSetCookie},
 	}))
@@ -425,7 +426,7 @@ func Test_New_StoreRetrieve_HeadersWithCommas(t *testing.T) {
 func Test_New_DoesNotReplayCookies(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	s := &stubStorage{}
+	s := &storagetest.Memory{}
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
 
 	var count int
@@ -459,7 +460,7 @@ func Test_New_DoesNotReplayCookies(t *testing.T) {
 	require.Equal(t, 1, count)
 
 	// and nothing in the storage holds them
-	for _, val := range s.data {
+	for _, val := range s.Data {
 		require.NotContains(t, string(val), "ALICE-SESSION")
 	}
 }
@@ -471,7 +472,7 @@ func Test_New_KeepResponseHeaders_NamedCookies(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Storage:             &stubStorage{},
+		Storage:             &storagetest.Memory{},
 		Lock:                &stubLock{},
 		KeepResponseHeaders: []string{"set-cookie", "X-Request"},
 	}))
@@ -499,7 +500,7 @@ func Test_New_KeepResponseHeaders_NamedCookies(t *testing.T) {
 // configuration names it now.
 func Test_New_ReplayDropsStoredCookies(t *testing.T) {
 	t.Parallel()
-	stored := func() *stubStorage {
+	stored := func() *storagetest.Memory {
 		res := response{
 			Headers: map[string][]string{
 				fiber.HeaderSetCookie:  {"sid=ALICE-SESSION; path=/"},
@@ -511,7 +512,7 @@ func Test_New_ReplayDropsStoredCookies(t *testing.T) {
 		}
 		bs, err := res.MarshalMsg(nil)
 		require.NoError(t, err)
-		return &stubStorage{data: map[string][]byte{validKey: bs}}
+		return &storagetest.Memory{Data: map[string][]byte{validKey: bs}}
 	}
 	replay := func(keep []string) *http.Response {
 		app := fiber.New()
@@ -542,7 +543,7 @@ func Test_New_ReplayDropsStoredCookies(t *testing.T) {
 func Test_New_KeyScope(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	s := &stubStorage{}
+	s := &storagetest.Memory{}
 	l := &stubLock{}
 	app.Use(New(Config{
 		Storage:             s,
@@ -580,12 +581,12 @@ func Test_New_KeyScope(t *testing.T) {
 	requireReply("", ":3", 3) // a request without a user is a scope of its own
 	requireReply("", ":3", 3)
 
-	require.Equal(t, 3, s.setCount)
-	require.Len(t, s.data, 3)
+	require.Equal(t, 3, s.Count(storagetest.OpSet))
+	require.Len(t, s.Data, 3)
 	// Each entry holds its own user's cookie and nobody else's, under the key
 	// the scope and the idempotency key digest to.
 	for _, user := range []string{"alice", "bob", ""} {
-		val := string(s.data[scopedKey(user, validKey)])
+		val := string(s.Data[scopedKey(user, validKey)])
 		require.Contains(t, val, "sid="+user+"-session")
 		for _, other := range []string{"alice", "bob"} {
 			if other != user {
@@ -598,7 +599,7 @@ func Test_New_KeyScope(t *testing.T) {
 	// the other.
 	require.Len(t, l.locked, 3)
 	for _, key := range l.locked {
-		require.Contains(t, s.data, key)
+		require.Contains(t, s.Data, key)
 	}
 }
 
@@ -609,7 +610,7 @@ func Test_New_KeyScope_NotConsulted(t *testing.T) {
 	app := fiber.New()
 	var asked int
 	app.Use(New(Config{
-		Storage:  &stubStorage{},
+		Storage:  &storagetest.Memory{},
 		Lock:     &stubLock{},
 		KeyScope: func(fiber.Ctx) string { asked++; return "user" },
 	}))
@@ -665,7 +666,7 @@ func Test_New_Cache_WhenBodyTooLarge(t *testing.T) {
 	t.Parallel()
 	bodyLimit := 8
 	app := fiber.New(fiber.Config{BodyLimit: bodyLimit})
-	s := &stubStorage{}
+	s := &storagetest.Memory{}
 	var wasPut []bool
 
 	app.Use(func(c fiber.Ctx) error {
@@ -691,7 +692,7 @@ func Test_New_Cache_WhenBodyTooLarge(t *testing.T) {
 	}
 
 	require.Equal(t, 1, count)
-	require.Equal(t, 1, s.setCount)
+	require.Equal(t, 1, s.Count(storagetest.OpSet))
 	require.Len(t, wasPut, 2)
 	require.True(t, wasPut[0])
 	require.False(t, wasPut[1])
@@ -700,7 +701,7 @@ func Test_New_Cache_WhenBodyTooLarge(t *testing.T) {
 func Test_New_HandlerError(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	s := &stubStorage{}
+	s := &storagetest.Memory{}
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
 	app.Post("/", func(_ fiber.Ctx) error { return errors.New("boom") })
 
@@ -708,7 +709,7 @@ func Test_New_HandlerError(t *testing.T) {
 		resp, body := idempotencyTestPost(t, app, "/", validKey)
 		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 		require.Equal(t, "boom", body)
-		require.Equal(t, 0, s.setCount)
+		require.Equal(t, 0, s.Count(storagetest.OpSet))
 	}
 }
 
@@ -716,7 +717,7 @@ func Test_New_UnlockError(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	l := &stubLock{unlockErr: errors.New("u")}
-	app.Use(New(Config{Lock: l, Storage: &stubStorage{}}))
+	app.Use(New(Config{Lock: l, Storage: &storagetest.Memory{}}))
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 	resp, body := idempotencyTestPost(t, app, "/", validKey)

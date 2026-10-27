@@ -14,26 +14,27 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
 
 // ttlStorage keeps the TTL each key was last written with.
 type ttlStorage struct {
-	*failingCacheStorage
+	*storagetest.Memory
 	ttls  map[string]time.Duration
 	ttlMu sync.Mutex
 }
 
 func newTTLStorage() *ttlStorage {
-	return &ttlStorage{failingCacheStorage: newFailingCacheStorage(), ttls: map[string]time.Duration{}}
+	return &ttlStorage{Memory: storagetest.New(), ttls: map[string]time.Duration{}}
 }
 
 func (s *ttlStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
 	s.ttlMu.Lock()
 	s.ttls[key] = exp
 	s.ttlMu.Unlock()
-	return s.failingCacheStorage.SetWithContext(ctx, key, val, exp)
+	return s.Memory.SetWithContext(ctx, key, val, exp)
 }
 
 func (s *ttlStorage) ttl(key string) time.Duration {
@@ -332,13 +333,13 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("in a Storage, when the markers of all URLs and of the group say so", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
+		storage := storagetest.New()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		require.False(t, records.mayHold(ctx, c, "base"))
 
 		// Another instance announces a record for the group. It is noticed once the verdict is stale.
-		storage.data[refusalMarker] = []byte{1}
-		storage.data[groupMarkers[groupOf("/page")]] = []byte{1}
+		storage.Data[refusalMarker] = []byte{1}
+		storage.Data[groupMarkers[groupOf("/page")]] = []byte{1}
 		records.all.seen.Store(0)
 		require.True(t, records.mayHold(ctx, c, "base"))
 		require.False(t, records.mayHold(ctx, elsewhere, "base"), "the group of another URL")
@@ -357,33 +358,33 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 	t.Run("in a Storage, a record another instance wrote is noticed within the poll", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
+		storage := storagetest.New()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		records.poll = 10
 		require.False(t, records.mayHold(ctx, c, "base"))
 
-		storage.data[refusalMarker] = []byte{1}
-		storage.data[groupMarkers[groupOf("/page")]] = []byte{1}
+		storage.Data[refusalMarker] = []byte{1}
+		storage.Data[groupMarkers[groupOf("/page")]] = []byte{1}
 		require.Eventually(t, func() bool { return records.mayHold(ctx, c, "base") }, 5*time.Second, time.Millisecond)
 		require.LessOrEqual(t, markerPoll, 250*time.Millisecond, "the window a refusal can go unseen in")
 	})
 
 	t.Run("in a Storage that cannot answer, a record is taken to exist", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
-		storage.errs["get|"+refusalMarker] = errors.New("storage unavailable")
-		storage.errs["get|"+groupMarkers[groupOf("/page")]] = errors.New("storage unavailable")
+		storage := storagetest.New()
+		storage.Errs["get|"+refusalMarker] = errors.New("storage unavailable")
+		storage.Errs["get|"+groupMarkers[groupOf("/page")]] = errors.New("storage unavailable")
 		require.True(t, cacheTestCRecords(&Config{Storage: storage}).mayHold(ctx, c, "base"))
 	})
 
 	t.Run("a record written to a Storage is announced for the other instances", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
+		storage := storagetest.New()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		records.record(ctx, records.group(c, "base"), "base|refused|vary|digest", 0)
-		require.Contains(t, storage.data, "base|refused|vary|digest")
-		require.Contains(t, storage.data, refusalMarker)
-		require.Contains(t, storage.data, groupMarkers[groupOf("/page")])
+		require.Contains(t, storage.Data, "base|refused|vary|digest")
+		require.Contains(t, storage.Data, refusalMarker)
+		require.Contains(t, storage.Data, groupMarkers[groupOf("/page")])
 		require.True(t, records.mayHold(ctx, c, "base"))
 	})
 
@@ -428,12 +429,12 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute, clock: func() time.Time { return now }})
 		group := records.group(c, "base")
 		records.record(ctx, group, "k", uint64(now.Unix())+3600)
-		lapse := lapseOf(storage.data["k"])
+		lapse := lapseOf(storage.Data["k"])
 		require.GreaterOrEqual(t, lapse, uint64(utils.Timestamp())+3598)
 
 		records.record(ctx, group, "k", uint64(now.Unix())+10)
 		require.GreaterOrEqual(t, storage.ttl("k"), 3596*time.Second)
-		require.Equal(t, lapse, lapseOf(storage.data["k"]))
+		require.Equal(t, lapse, lapseOf(storage.Data["k"]))
 	})
 
 	t.Run("a marker announced for later stays", func(t *testing.T) {
@@ -441,20 +442,20 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 		storage := newTTLStorage()
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
 		later := uint64(utils.Timestamp()) + 3600
-		storage.data[refusalMarker] = lapseValue(later) // another instance's, for an hour
+		storage.Data[refusalMarker] = lapseValue(later) // another instance's, for an hour
 		records.record(ctx, records.group(c, "base"), "k", 0)
 		require.GreaterOrEqual(t, storage.ttl(refusalMarker), 3596*time.Second)
-		require.Equal(t, later, lapseOf(storage.data[refusalMarker]))
+		require.Equal(t, later, lapseOf(storage.Data[refusalMarker]))
 		require.GreaterOrEqual(t, records.all.until.Load(), later, "and this instance looks until then")
 	})
 
 	t.Run("a marker is not announced for a second that has passed", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
+		storage := storagetest.New()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		records.all.until.Store(uint64(utils.Timestamp()))
 		records.announce(ctx, &records.all, refusalMarker)
-		require.NotContains(t, storage.data, refusalMarker, "a TTL of zero would mean no expiry")
+		require.NotContains(t, storage.Data, refusalMarker, "a TTL of zero would mean no expiry")
 	})
 
 	t.Run("in a Storage, a marker read says until when to look, so it is not polled again", func(t *testing.T) {
@@ -462,8 +463,8 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 		storage := newRefusalStorage()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		later := uint64(utils.Timestamp()) + 3600
-		storage.data[refusalMarker] = lapseValue(later)
-		storage.data[groupMarkers[groupOf("/page")]] = lapseValue(later)
+		storage.Data[refusalMarker] = lapseValue(later)
+		storage.Data[groupMarkers[groupOf("/page")]] = lapseValue(later)
 		for range 10 {
 			records.all.seen.Store(0)
 			require.True(t, records.mayHold(ctx, c, "base"))
@@ -480,8 +481,8 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 
 		// The last poll looks an hour ahead once the clock is set back by an hour.
 		records.all.seen.Store(time.Now().UnixMilli() + time.Hour.Milliseconds())
-		storage.data[refusalMarker] = []byte{1}
-		storage.data[groupMarkers[groupOf("/page")]] = []byte{1}
+		storage.Data[refusalMarker] = []byte{1}
+		storage.Data[groupMarkers[groupOf("/page")]] = []byte{1}
 		require.True(t, records.mayHold(ctx, c, "base"))
 		require.Equal(t, int32(2), storage.markerReads.Load())
 	})
@@ -489,7 +490,7 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 	t.Run("a write that takes a while keeps hits looking past when the store drops the record", func(t *testing.T) {
 		t.Parallel()
 		var once sync.Once
-		storage := &hookedStorage{failingCacheStorage: newFailingCacheStorage(), onSet: func(string, time.Duration) {
+		storage := &hookedStorage{Memory: storagetest.New(), onSet: func(string, time.Duration) {
 			once.Do(func() { clocktest.SleepPast(t, 3*time.Second) })
 		}}
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
@@ -658,7 +659,7 @@ func Test_refusalRecords_bound(t *testing.T) {
 
 	t.Run("an external Storage keeps every record", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
+		storage := storagetest.New()
 		records := cacheTestCRecords(&Config{Storage: storage, refusalRecordLimit: 2})
 		for _, key := range keys {
 			records.record(ctx, records.group(c, "base"), key, 0)
@@ -679,14 +680,14 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 
 	t.Run("a record that cannot be written is remembered here, and the credential's hits fail closed until it would have lapsed", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
-		storage.errs["set|k"] = failure
+		storage := storagetest.New()
+		storage.Errs["set|k"] = failure
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
 		require.False(t, records.refused(ctx, "k"))
 
 		before := uint64(utils.Timestamp())
 		records.record(ctx, records.group(c, "base"), "k", 0)
-		require.Empty(t, storage.data)
+		require.Empty(t, storage.Data)
 		require.True(t, records.mayHold(ctx, c, "base"), "the gates are open, so hits look")
 		require.True(t, records.refused(ctx, "k"))
 		require.False(t, records.refused(ctx, "other"), "no other credential pays for it")
@@ -698,61 +699,61 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 
 	t.Run("a record or marker that cannot be read before the write is written as if there were none", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
-		storage.errs["get|k"] = failure
-		storage.errs["get|"+refusalMarker] = failure
+		storage := storagetest.New()
+		storage.Errs["get|k"] = failure
+		storage.Errs["get|"+refusalMarker] = failure
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
 		before := uint64(utils.Timestamp())
 		records.record(ctx, records.group(c, "base"), "k", 0)
-		require.Contains(t, storage.data, "k")
-		require.Contains(t, storage.data, refusalMarker)
-		require.GreaterOrEqual(t, lapseOf(storage.data[refusalMarker]), before+62)
+		require.Contains(t, storage.Data, "k")
+		require.Contains(t, storage.Data, refusalMarker)
+		require.GreaterOrEqual(t, lapseOf(storage.Data[refusalMarker]), before+62)
 		require.Empty(t, records.dropped.ring)
 	})
 
 	t.Run("a marker that cannot be written leaves the record and the other marker", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
-		storage.errs["set|"+refusalMarker] = failure
+		storage := storagetest.New()
+		storage.Errs["set|"+refusalMarker] = failure
 		records := cacheTestCRecords(&Config{Storage: storage})
 		records.record(ctx, records.group(c, "base"), "k", 0)
-		require.Contains(t, storage.data, "k")
-		require.NotContains(t, storage.data, refusalMarker)
-		require.Contains(t, storage.data, groupMarkers[groupOf("/page")])
+		require.Contains(t, storage.Data, "k")
+		require.NotContains(t, storage.Data, refusalMarker)
+		require.Contains(t, storage.Data, groupMarkers[groupOf("/page")])
 		require.Empty(t, records.dropped.ring, "the record is there to find")
 	})
 
 	t.Run("a record is announced in the group it is given, not the group of the path now", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
+		storage := storagetest.New()
 		records := cacheTestCRecords(&Config{Storage: storage})
 		require.NotEqual(t, groupOf("/page"), groupOf("/dash"))
 		records.record(ctx, groupOf("/dash"), "k", 0)
-		require.Contains(t, storage.data, groupMarkers[groupOf("/dash")])
-		require.NotContains(t, storage.data, groupMarkers[groupOf("/page")])
+		require.Contains(t, storage.Data, groupMarkers[groupOf("/dash")])
+		require.NotContains(t, storage.Data, groupMarkers[groupOf("/page")])
 	})
 
 	t.Run("a record that cannot be dropped to make room is still remembered as dropped", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
-		storage.errs["del|k1"] = failure
+		storage := storagetest.New()
+		storage.Errs["del|k1"] = failure
 		records := cacheTestCRecords(&Config{Storage: storage})
 		// Only an in-memory store is bounded, and deleting from it cannot fail.
 		records.keys.limit = 1
 		records.record(ctx, records.group(c, "base"), "k1", 0)
 		records.record(ctx, records.group(c, "base"), "k2", 0)
-		require.Contains(t, storage.data, "k1")
+		require.Contains(t, storage.Data, "k1")
 		require.True(t, records.dropped.has("k1", uint64(utils.Timestamp())))
 	})
 
 	t.Run("a record that cannot be cleared stays until the Storage expires it", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
-		storage.errs["del|k"] = failure
+		storage := storagetest.New()
+		storage.Errs["del|k"] = failure
 		records := cacheTestCRecords(&Config{Storage: storage})
 		records.record(ctx, records.group(c, "base"), "k", 0)
 		records.forget(ctx, "k")
-		require.Contains(t, storage.data, "k")
+		require.Contains(t, storage.Data, "k")
 	})
 }
 
@@ -793,7 +794,7 @@ func Test_New_StartsTheTimestampUpdater(t *testing.T) {
 	const child = "FIBER_CACHE_TEST_TIMESTAMP_CHILD"
 	if os.Getenv(child) == "1" {
 		require.Zero(t, utils.Timestamp(), "something else in this process started the updater")
-		New(Config{Storage: newFailingCacheStorage()})
+		New(Config{Storage: storagetest.New()})
 		require.NotZero(t, utils.Timestamp())
 		return
 	}

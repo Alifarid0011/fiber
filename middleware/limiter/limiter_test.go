@@ -23,39 +23,9 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/gofiber/utils/v2"
 )
-
-// testClock is a manually advanced clock that makes window-expiry tests
-// deterministic: instead of sleeping past a window boundary (racy under
-// -race -count -shuffle), tests advance the clock explicitly. It is safe for
-// the concurrent reads performed by the limiter handler.
-type testClock struct {
-	now time.Time
-	mu  sync.Mutex
-}
-
-func newTestClock(start time.Time) *testClock {
-	return &testClock{now: start}
-}
-
-func (c *testClock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.now
-}
-
-func (c *testClock) Add(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.now = c.now.Add(d)
-}
-
-// fakeLimiterStorage ignores TTLs. An operation fails when errs has "get|<key>" or "set|<key>".
-type fakeLimiterStorage struct {
-	data map[string][]byte
-	errs map[string]error
-}
 
 const testLimiterClientKey = "client-key"
 
@@ -84,14 +54,10 @@ func (e *typedNilLimiterError) Error() string {
 	return e.message
 }
 
-func newFakeLimiterStorage() *fakeLimiterStorage {
-	return &fakeLimiterStorage{data: make(map[string][]byte), errs: make(map[string]error)}
-}
-
 // countingFailStorage fails set operations, and optionally get operations,
 // after a specified number of successful calls
 type countingFailStorage struct {
-	*fakeLimiterStorage
+	*storagetest.Memory
 	setFailErr    error
 	getFailErr    error
 	setCount      int
@@ -101,7 +67,7 @@ type countingFailStorage struct {
 }
 
 func newCountingFailStorage(failAfterN int, err error) *countingFailStorage {
-	return &countingFailStorage{fakeLimiterStorage: newFakeLimiterStorage(), failAfterN: failAfterN, setFailErr: err}
+	return &countingFailStorage{Memory: storagetest.New(), failAfterN: failAfterN, setFailErr: err}
 }
 
 func (s *countingFailStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
@@ -109,7 +75,7 @@ func (s *countingFailStorage) GetWithContext(ctx context.Context, key string) ([
 	if s.getFailErr != nil && s.getCount > s.getFailAfterN {
 		return nil, s.getFailErr
 	}
-	return s.fakeLimiterStorage.GetWithContext(ctx, key)
+	return s.Memory.GetWithContext(ctx, key)
 }
 
 func (s *countingFailStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
@@ -117,19 +83,7 @@ func (s *countingFailStorage) SetWithContext(ctx context.Context, key string, va
 	if s.setCount > s.failAfterN {
 		return s.setFailErr
 	}
-	return s.fakeLimiterStorage.SetWithContext(ctx, key, val, exp)
-}
-
-type contextRecord struct {
-	key      string
-	value    string
-	canceled bool
-}
-
-type contextRecorderLimiterStorage struct {
-	*fakeLimiterStorage
-	gets []contextRecord
-	sets []contextRecord
+	return s.Memory.SetWithContext(ctx, key, val, exp)
 }
 
 func sleepForRetryAfter(t *testing.T, resp *http.Response) {
@@ -158,82 +112,24 @@ func sleepForRetryAfter(t *testing.T, resp *http.Response) {
 	clocktest.SleepPast(t, delay)
 }
 
-func newContextRecorderLimiterStorage() *contextRecorderLimiterStorage {
-	return &contextRecorderLimiterStorage{fakeLimiterStorage: newFakeLimiterStorage()}
-}
-
-func contextRecordFrom(ctx context.Context, key string) contextRecord {
-	record := contextRecord{key: key, canceled: errors.Is(ctx.Err(), context.Canceled)}
-	if value, ok := ctx.Value(markerKey).(string); ok {
-		record.value = value
-	}
-	return record
-}
-
-func (s *contextRecorderLimiterStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
-	s.gets = append(s.gets, contextRecordFrom(ctx, key))
-	return s.fakeLimiterStorage.GetWithContext(ctx, key)
-}
-
-func (s *contextRecorderLimiterStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
-	s.sets = append(s.sets, contextRecordFrom(ctx, key))
-	return s.fakeLimiterStorage.SetWithContext(ctx, key, val, exp)
-}
-
-func (s *fakeLimiterStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
-	if err, ok := s.errs["get|"+key]; ok && err != nil {
-		return nil, err
-	}
-	if val, ok := s.data[key]; ok {
-		return append([]byte(nil), val...), nil
-	}
-	return nil, nil
-}
-
-func (s *fakeLimiterStorage) Get(key string) ([]byte, error) {
-	return s.GetWithContext(context.Background(), key)
-}
-
-func (s *fakeLimiterStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
-	if err, ok := s.errs["set|"+key]; ok && err != nil {
-		return err
-	}
-	s.data[key] = append([]byte(nil), val...)
-	return nil
-}
-
-func (s *fakeLimiterStorage) Set(key string, val []byte, exp time.Duration) error {
-	return s.SetWithContext(context.Background(), key, val, exp)
-}
-
-func (*fakeLimiterStorage) DeleteWithContext(context.Context, string) error { return nil }
-
-func (*fakeLimiterStorage) Delete(string) error { return nil }
-
-func (*fakeLimiterStorage) ResetWithContext(context.Context) error { return nil }
-
-func (*fakeLimiterStorage) Reset() error { return nil }
-
-func (*fakeLimiterStorage) Close() error { return nil }
-
 // expiringStorage drops entries once their TTL has passed on the test clock.
 type expiringStorage struct {
-	*fakeLimiterStorage
-	clock   *testClock
+	*storagetest.Memory
+	clock   *clocktest.Clock
 	expires map[string]time.Time
 }
 
 func (s *expiringStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
 	if exp, ok := s.expires[key]; ok && !s.clock.Now().Before(exp) {
-		delete(s.data, key)
+		delete(s.Data, key)
 		delete(s.expires, key)
 	}
-	return s.fakeLimiterStorage.GetWithContext(ctx, key)
+	return s.Memory.GetWithContext(ctx, key)
 }
 
 func (s *expiringStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
 	s.expires[key] = s.clock.Now().Add(exp)
-	return s.fakeLimiterStorage.SetWithContext(ctx, key, val, exp)
+	return s.Memory.SetWithContext(ctx, key, val, exp)
 }
 
 type contextKey string
@@ -278,8 +174,8 @@ func (c *limiterTestCapture) config() fiber.Config {
 // limiterTestClockedApp is limiterTestApp on a clock the test moves by hand: it sets cfg.clock and
 // returns the clock beside the app, so a window ends when the test says so rather than when the
 // wall clock does.
-func limiterTestClockedApp(cfg *Config) (*fiber.App, *testClock) {
-	clock := newTestClock(time.Now().Truncate(time.Second))
+func limiterTestClockedApp(cfg *Config) (*fiber.App, *clocktest.Clock) {
+	clock := clocktest.NewClock(time.Now().Truncate(time.Second))
 	cfg.clock = clock.Now
 	return limiterTestApp(cfg), clock
 }
@@ -395,8 +291,8 @@ func Test_Limiter_StorageErrorMessages(t *testing.T) {
 			for _, disableRedaction := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%s/DisableValueRedaction=%t", strategy.name, step.name, disableRedaction), func(t *testing.T) {
 					t.Parallel()
-					storage := newFakeLimiterStorage()
-					storage.errs[step.name+"|"+testLimiterClientKey] = errors.New("boom")
+					storage := storagetest.New()
+					storage.Errs[step.name+"|"+testLimiterClientKey] = errors.New("boom")
 
 					var captured limiterTestCapture
 					app := limiterTestApp(&Config{
@@ -426,19 +322,19 @@ func Test_Limiter_StorageErrorMessages(t *testing.T) {
 	}
 }
 
-func requireContextRecords(t *testing.T, records []contextRecord, key, wantValue string, wantCanceled bool) {
+func requireContextRecords(t *testing.T, records []storagetest.Record, key, wantValue string, wantCanceled bool) {
 	t.Helper()
 
-	var matched []contextRecord
+	var matched []storagetest.Record
 	for _, rec := range records {
-		if rec.key == key {
+		if rec.Key == key {
 			matched = append(matched, rec)
 		}
 	}
 	require.Len(t, matched, 2)
 	for _, rec := range matched {
-		require.Equal(t, wantValue, rec.value)
-		require.Equal(t, wantCanceled, rec.canceled)
+		require.Equal(t, wantValue, rec.Value)
+		require.Equal(t, wantCanceled, rec.Canceled)
 	}
 }
 
@@ -447,7 +343,7 @@ func Test_Limiter_PropagatesRequestContextToStorage(t *testing.T) {
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-			storage := newContextRecorderLimiterStorage()
+			storage := storagetest.NewRecorder(markerKey)
 
 			app := fiber.New()
 
@@ -477,12 +373,12 @@ func Test_Limiter_PropagatesRequestContextToStorage(t *testing.T) {
 				apptest.Expect(t, app, path, fiber.StatusOK)
 			}
 
-			require.Len(t, storage.gets, 4)
-			require.Len(t, storage.sets, 4)
-			requireContextRecords(t, storage.gets, "/normal", strategy.name+"-normal", false)
-			requireContextRecords(t, storage.gets, "/rollback", strategy.name+"-rollback", true)
-			requireContextRecords(t, storage.sets, "/normal", strategy.name+"-normal", false)
-			requireContextRecords(t, storage.sets, "/rollback", strategy.name+"-rollback", true)
+			require.Len(t, storage.Gets, 4)
+			require.Len(t, storage.Sets, 4)
+			requireContextRecords(t, storage.Gets, "/normal", strategy.name+"-normal", false)
+			requireContextRecords(t, storage.Gets, "/rollback", strategy.name+"-rollback", true)
+			requireContextRecords(t, storage.Sets, "/normal", strategy.name+"-normal", false)
+			requireContextRecords(t, storage.Sets, "/rollback", strategy.name+"-rollback", true)
 		})
 	}
 }
@@ -491,8 +387,8 @@ func Test_Limiter_PropagatesRequestContextToStorage(t *testing.T) {
 // client key fails.
 func limiterTestFailingFirst(op string) func() fiber.Storage {
 	return func() fiber.Storage {
-		st := newFakeLimiterStorage()
-		st.errs[op+"|"+testLimiterClientKey] = errors.New("boom")
+		st := storagetest.New()
+		st.Errs[op+"|"+testLimiterClientKey] = errors.New("boom")
 		return st
 	}
 }
@@ -663,7 +559,7 @@ func Test_Limiter_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
 				Max:               2,
 				Expiration:        10 * time.Second,
 				ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return 2 * time.Second },
-				Storage:           newFakeLimiterStorage(),
+				Storage:           storagetest.New(),
 				LimiterMiddleware: strategy.handler,
 			})
 
@@ -697,7 +593,7 @@ func Test_Limiter_ExpirationFunc_NonPositiveUsesConfiguredExpiration(t *testing.
 		storage func() fiber.Storage
 		name    string
 	}{
-		{name: "fixed", handler: FixedWindow{}, storage: func() fiber.Storage { return newFakeLimiterStorage() }},
+		{name: "fixed", handler: FixedWindow{}, storage: func() fiber.Storage { return storagetest.New() }},
 		{name: "sliding", handler: SlidingWindow{}, storage: func() fiber.Storage { return nil }},
 	}
 
@@ -762,7 +658,7 @@ func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
 		advance time.Duration // how far the clock moves to be admitted again
 	}{
 		// Past the one-second window the client is admitted again.
-		{name: "fixed", handler: FixedWindow{}, storage: func() fiber.Storage { return newFakeLimiterStorage() }, advance: 1300 * time.Millisecond},
+		{name: "fixed", handler: FixedWindow{}, storage: func() fiber.Storage { return storagetest.New() }, advance: 1300 * time.Millisecond},
 		// Two whole windows on, the previous window carries no weight.
 		{name: "sliding", handler: SlidingWindow{}, storage: func() fiber.Storage { return nil }, advance: 2300 * time.Millisecond},
 	} {
@@ -988,7 +884,7 @@ func Test_Limiter_Sliding_Window_SkipFailedRequests_DecrementsPreviousWindow(t *
 
 func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t *testing.T) {
 	t.Parallel()
-	clock := newTestClock(time.Now().Truncate(time.Second))
+	clock := clocktest.NewClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -997,7 +893,7 @@ func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t 
 		SkipSuccessfulRequests: true,
 		LimiterMiddleware:      FixedWindow{},
 		clock:                  clock.Now,
-		Storage:                newFakeLimiterStorage(),
+		Storage:                storagetest.New(),
 	}))
 
 	started := make(chan struct{})
@@ -1135,7 +1031,7 @@ func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-			clock := newTestClock(time.Now().Truncate(time.Second))
+			clock := clocktest.NewClock(time.Now().Truncate(time.Second))
 			app := fiber.New()
 
 			app.Use(New(Config{
@@ -1144,7 +1040,7 @@ func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 				SkipSuccessfulRequests: true,
 				LimiterMiddleware:      strategy.handler,
 				clock:                  clock.Now,
-				Storage:                newFakeLimiterStorage(),
+				Storage:                storagetest.New(),
 			}))
 
 			started := make(chan struct{})
@@ -1289,7 +1185,7 @@ func Test_Limiter_ExpirationFunc_SharedKeyKeepsOpeningWindow(t *testing.T) {
 				Expiration:        30 * time.Second,
 				ExpirationFunc:    limiterTestExpiration("/login", 60*time.Second, 30*time.Second),
 				LimiterMiddleware: strategy.handler,
-				Storage:           newFakeLimiterStorage(),
+				Storage:           storagetest.New(),
 			})
 
 			reset := func(path string) string {
@@ -1354,13 +1250,13 @@ func Test_Limiter_Fixed_ShorterWindowDoesNotShortenTheEntry(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			start := time.Now().Truncate(time.Second)
-			clock := newTestClock(start)
+			clock := clocktest.NewClock(start)
 			cfg := tc.cfg
 			cfg.Max = 2
 			cfg.ExpirationFunc = limiterTestExpiration("/login", time.Minute, 30*time.Second)
 			cfg.LimiterMiddleware = FixedWindow{}
 			cfg.clock = clock.Now
-			cfg.Storage = &expiringStorage{fakeLimiterStorage: newFakeLimiterStorage(), clock: clock, expires: map[string]time.Time{}}
+			cfg.Storage = &expiringStorage{Memory: storagetest.New(), clock: clock, expires: map[string]time.Time{}}
 
 			app := fiber.New()
 			app.Use(New(cfg))
@@ -1384,7 +1280,7 @@ func Test_Limiter_Sliding_MixedWindowsDoNotInflateThePreviousWindow(t *testing.T
 		Expiration:        10 * time.Second,
 		ExpirationFunc:    limiterTestExpiration("/short", 2*time.Second, 10*time.Second),
 		LimiterMiddleware: SlidingWindow{},
-		Storage:           newFakeLimiterStorage(),
+		Storage:           storagetest.New(),
 	})
 
 	apptest.Do(t, app, "/")
@@ -1407,7 +1303,7 @@ var limiterStores = []struct {
 	name    string
 }{
 	{name: "builtin", storage: func() fiber.Storage { return nil }},
-	{name: "keeps_key", storage: func() fiber.Storage { return newFakeLimiterStorage() }},
+	{name: "keeps_key", storage: func() fiber.Storage { return storagetest.New() }},
 }
 
 // keyOverwritingApp serves a handler that overwrites the memory behind the key (c.Get does not copy).
@@ -1652,8 +1548,8 @@ func Test_Limiter_AdmitKeyCopiesWithBuiltInStore(t *testing.T) {
 func Test_Limiter_DisableValueRedaction_ShowsBoundedKey(t *testing.T) {
 	t.Parallel()
 	oversizedKey := strings.Repeat("k", maxKeyLength*2)
-	storage := newFakeLimiterStorage()
-	storage.errs["get|"+boundKey(oversizedKey)] = errors.New("boom")
+	storage := storagetest.New()
+	storage.Errs["get|"+boundKey(oversizedKey)] = errors.New("boom")
 
 	var captured limiterTestCapture
 	app := limiterTestApp(&Config{
@@ -1688,7 +1584,7 @@ func Test_Limiter_StorageRoundTrips(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			storage := newContextRecorderLimiterStorage()
+			storage := storagetest.NewRecorder(markerKey)
 			cfg := tc.cfg
 			cfg.Max = 1
 			cfg.Expiration = time.Second
@@ -1696,8 +1592,8 @@ func Test_Limiter_StorageRoundTrips(t *testing.T) {
 
 			apptest.Expect(t, limiterTestApp(&cfg), "/", fiber.StatusOK)
 
-			require.Len(t, storage.gets, tc.trips)
-			require.Len(t, storage.sets, tc.trips)
+			require.Len(t, storage.Gets, tc.trips)
+			require.Len(t, storage.Sets, tc.trips)
 		})
 	}
 }
@@ -1880,7 +1776,7 @@ func Test_Limiter_SubSecondExpirationFunc(t *testing.T) {
 				Max:            5,
 				ExpirationFunc: func(fiber.Ctx) time.Duration { return 500 * time.Millisecond },
 				// the memory store expires by the real clock, which a slow runner could outrun
-				Storage:           newFakeLimiterStorage(),
+				Storage:           storagetest.New(),
 				LimiterMiddleware: strategy.handler,
 			})
 
@@ -1907,7 +1803,7 @@ func Test_Limiter_OversizedKeyGeneratorIsBounded(t *testing.T) {
 		t.Run(fmt.Sprintf("%T", strategy), func(t *testing.T) {
 			t.Parallel()
 			oversizedKey := strings.Repeat("x", maxKeyLength*4)
-			storage := newFakeLimiterStorage()
+			storage := storagetest.New()
 			app := fiber.New()
 			app.Use(New(Config{
 				Storage:           storage,
@@ -1920,8 +1816,8 @@ func Test_Limiter_OversizedKeyGeneratorIsBounded(t *testing.T) {
 
 			apptest.Expect(t, app, "/", fiber.StatusOK)
 
-			require.Len(t, storage.data, 1, "exactly one bucket should have been written")
-			for storedKey := range storage.data {
+			require.Len(t, storage.Data, 1, "exactly one bucket should have been written")
+			for storedKey := range storage.Data {
 				require.NotEqual(t, oversizedKey, storedKey, "the raw oversized key must never reach storage")
 				require.LessOrEqual(t, len(storedKey), maxKeyLength)
 				require.True(t, strings.HasPrefix(storedKey, hashPrefix))
@@ -1931,7 +1827,7 @@ func Test_Limiter_OversizedKeyGeneratorIsBounded(t *testing.T) {
 			// the next request, so rate limiting keeps working for it rather than
 			// silently exempting it or colliding it with someone else's bucket.
 			apptest.Expect(t, app, "/", fiber.StatusTooManyRequests)
-			require.Len(t, storage.data, 1, "the second request must land in the same bucket, not a new one")
+			require.Len(t, storage.Data, 1, "the second request must land in the same bucket, not a new one")
 		})
 	}
 }

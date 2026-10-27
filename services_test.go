@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/require"
 )
@@ -196,7 +197,7 @@ func Test_InitServices(t *testing.T) {
 
 	// An app made with New has the shutdown hooks registered, which also checks that the app mutex does not deadlock.
 	for _, tc := range []struct {
-		storage  *errorStorage // the shared storage of the app, if it has one
+		storage  *storagetest.Failing // the shared storage of the app, if it has one
 		name     string
 		services []Service
 		contains []string // what the post shutdown hooks log
@@ -216,7 +217,7 @@ func Test_InitServices(t *testing.T) {
 		},
 		{
 			name: "shutdown-hooks/close-shared-state", services: []Service{&mockService{name: "dep1"}},
-			storage: &errorStorage{}, absent: []string{"failed to close sharedState:"},
+			storage: &storagetest.Failing{}, absent: []string{"failed to close sharedState:"},
 		},
 		{
 			name: "shutdown-hooks/close-shared-state-after-service-error",
@@ -224,7 +225,7 @@ func Test_InitServices(t *testing.T) {
 				&mockService{name: "dep1"},
 				&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
 			},
-			storage: &errorStorage{closeErr: errors.New("close error")},
+			storage: &storagetest.Failing{CloseErr: errors.New("close error")},
 			contains: []string{
 				"failed to shutdown services: service dep2 terminate: terminate error 2",
 				"failed to close sharedState: close error",
@@ -247,7 +248,7 @@ func Test_InitServices(t *testing.T) {
 			app.Hooks().executeOnPostShutdownHooks(nil)
 
 			if tc.storage != nil {
-				require.True(t, tc.storage.closeCalled.Load())
+				require.True(t, tc.storage.Closed())
 			}
 			rootMiscBRequireContains(t, buf.String(), tc.contains...)
 			rootMiscBRequireNotContains(t, buf.String(), tc.absent...)

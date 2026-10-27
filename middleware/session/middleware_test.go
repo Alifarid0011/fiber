@@ -21,6 +21,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
@@ -447,56 +448,11 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	sessionTestRequest(t, app.Handler(), fiber.MethodGet, "", fiber.StatusOK)
 }
 
-// failingStorage simulates a session store whose backend is unavailable.
-type failingStorage struct {
-	err error
-}
-
-func (s *failingStorage) GetWithContext(context.Context, string) ([]byte, error) { return nil, s.err }
-
-func (s *failingStorage) Get(string) ([]byte, error) { return nil, s.err }
-
-func (s *failingStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
-	return s.err
-}
-func (s *failingStorage) Set(string, []byte, time.Duration) error         { return s.err }
-func (s *failingStorage) DeleteWithContext(context.Context, string) error { return s.err }
-func (s *failingStorage) Delete(string) error                             { return s.err }
-func (s *failingStorage) ResetWithContext(context.Context) error          { return s.err }
-func (s *failingStorage) Reset() error                                    { return s.err }
-func (*failingStorage) Close() error                                      { return nil }
-
-// contextStorage is a storage that honors context cancellation by returning
-// ctx.Err() from its *WithContext methods. It is used to verify that the
-// session *WithContext variants propagate a canceled/deadline context.
-type contextStorage struct{}
-
-func (*contextStorage) GetWithContext(ctx context.Context, _ string) ([]byte, error) {
-	return nil, ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
-}
-
-func (*contextStorage) Get(string) ([]byte, error) { return nil, nil }
-
-func (*contextStorage) SetWithContext(ctx context.Context, _ string, _ []byte, _ time.Duration) error {
-	return ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
-}
-
-func (*contextStorage) Set(_ string, _ []byte, _ time.Duration) error { return nil }
-func (*contextStorage) DeleteWithContext(ctx context.Context, _ string) error {
-	return ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
-}
-func (*contextStorage) Delete(_ string) error { return nil }
-func (*contextStorage) ResetWithContext(ctx context.Context) error {
-	return ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
-}
-func (*contextStorage) Reset() error { return nil }
-func (*contextStorage) Close() error { return nil }
-
 // Regression: https://github.com/gofiber/fiber/issues/4348
 // A failing session store must result in an error response, not a panic.
 func Test_Session_Middleware_StoreError(t *testing.T) {
 	t.Parallel()
-	storage := &failingStorage{err: errors.New("storage unavailable")}
+	storage := &storagetest.Failing{Err: errors.New("storage unavailable")}
 	app := fiber.New()
 	app.Use(New(Config{Storage: storage}))
 
@@ -511,13 +467,13 @@ func Test_Session_Middleware_StoreError(t *testing.T) {
 	require.NotPanics(t, func() { h(ctx) })
 	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
 	require.Equal(t, "Internal Server Error", string(ctx.Response.Body()))
-	require.NotContains(t, string(ctx.Response.Body()), storage.err.Error())
+	require.NotContains(t, string(ctx.Response.Body()), storage.Err.Error())
 }
 
 func Test_Session_Middleware_StoreError_CustomErrorHandler(t *testing.T) {
 	t.Parallel()
 	storageErr := errors.New("redis dial tcp redis.internal.corp:6379: connect: connection refused")
-	storage := &failingStorage{err: storageErr}
+	storage := &storagetest.Failing{Err: storageErr}
 	app := fiber.New()
 	var handledErr error
 	app.Use(New(Config{
@@ -608,7 +564,7 @@ func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
 
 	t.Run("DestroyWithContext propagates canceled context and marks destroyed", func(t *testing.T) {
 		t.Parallel()
-		m := &Middleware{Session: newSessionWithStorage(t, &contextStorage{})}
+		m := &Middleware{Session: newSessionWithStorage(t, &storagetest.Memory{HonorContext: true})}
 		require.ErrorIs(t, m.DestroyWithContext(canceledCtx()), context.Canceled)
 		require.True(t, m.isDestroyed)
 	})
@@ -623,7 +579,7 @@ func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
 		t.Run(tc.name+" propagates storage error", func(t *testing.T) {
 			t.Parallel()
 			storageErr := errors.New("storage unavailable")
-			m := &Middleware{Session: newSessionWithStorage(t, &failingStorage{err: storageErr})}
+			m := &Middleware{Session: newSessionWithStorage(t, &storagetest.Failing{Err: storageErr})}
 			require.ErrorIs(t, tc.call(m, t.Context()), storageErr)
 		})
 	}

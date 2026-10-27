@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -13,7 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
-	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -1176,7 +1175,7 @@ func Test_Session_SaveWithContext(t *testing.T) {
 		t.Parallel()
 		// Back the session with a storage that errors on any write: a real save
 		// would surface that error, so a nil return proves no write happened.
-		sess := newSessionWithStorage(t, &failingStorage{err: errors.New("Set must not be called")})
+		sess := newSessionWithStorage(t, &storagetest.Failing{Err: errors.New("Set must not be called")})
 		sess.Set("name", "fenny")
 
 		// Simulate the session being in use by the middleware handler.
@@ -1256,7 +1255,7 @@ func Test_Session_WithContext(t *testing.T) {
 	}{
 		{
 			name:    "propagates storage error",
-			storage: func() fiber.Storage { return &failingStorage{err: storageErr} },
+			storage: func() fiber.Storage { return &storagetest.Failing{Err: storageErr} },
 			context: func(t *testing.T) context.Context {
 				t.Helper()
 				return t.Context()
@@ -1264,9 +1263,9 @@ func Test_Session_WithContext(t *testing.T) {
 			err: storageErr,
 		},
 		{
-			// contextStorage honors cancellation by returning ctx.Err().
+			// A Memory with HonorContext honors cancellation by returning ctx.Err().
 			name:    "honors canceled context",
-			storage: func() fiber.Storage { return &contextStorage{} },
+			storage: func() fiber.Storage { return &storagetest.Memory{HonorContext: true} },
 			context: func(*testing.T) context.Context {
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
@@ -1275,11 +1274,11 @@ func Test_Session_WithContext(t *testing.T) {
 			err: context.Canceled,
 		},
 		{
-			// contextStorage honors a deadline by returning ctx.Err(). An already-expired
+			// A Memory with HonorContext honors a deadline by returning ctx.Err(). An already-expired
 			// deadline yields context.DeadlineExceeded, the primary motivation for the
 			// *WithContext variants (bounding slow or unresponsive backends).
 			name:    "honors expired deadline",
-			storage: func() fiber.Storage { return &contextStorage{} },
+			storage: func() fiber.Storage { return &storagetest.Memory{HonorContext: true} },
 			context: func(t *testing.T) context.Context {
 				t.Helper()
 				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Hour))
@@ -1320,47 +1319,6 @@ func Test_Session_WithContext(t *testing.T) {
 			})
 		}
 	}
-}
-
-// recordingStorage logs every Set so a test can assert what a save actually
-// wrote, then delegates to an in-memory backend.
-type recordingStorage struct {
-	fiber.Storage
-	setLog []storageWrite
-	mu     sync.Mutex
-}
-
-type storageWrite struct {
-	key   string
-	value []byte
-	exp   time.Duration
-}
-
-func newRecordingStorage() *recordingStorage {
-	return &recordingStorage{Storage: memory.New()}
-}
-
-func (s *recordingStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
-	s.mu.Lock()
-	s.setLog = append(s.setLog, storageWrite{key: key, value: utils.CopyBytes(val), exp: exp})
-	s.mu.Unlock()
-	return s.Storage.SetWithContext(ctx, key, val, exp)
-}
-
-func (s *recordingStorage) Set(key string, val []byte, exp time.Duration) error {
-	return s.SetWithContext(context.Background(), key, val, exp)
-}
-
-func (s *recordingStorage) writes() []storageWrite {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(s.setLog)
-}
-
-func (s *recordingStorage) reset() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.setLog = nil
 }
 
 // seedSession stores a session through the given store and returns its ID.
@@ -1412,7 +1370,7 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 	const idleTimeout = 2 * time.Hour
 
 	app := fiber.New()
-	rec := newRecordingStorage()
+	rec := storagetest.New()
 	store := NewStore(Config{Storage: rec, IdleTimeout: idleTimeout})
 
 	id := seedSession(t, app, store, func(sess *Session) {
@@ -1420,9 +1378,9 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 		sess.Set("admin", true)
 	})
 
-	seeded := rec.writes()
+	seeded := rec.Calls(storagetest.OpSet)
 	require.Len(t, seeded, 1)
-	rec.reset()
+	rec.ClearCalls()
 
 	sess := loadSession(t, app, store, id)
 	require.Equal(t, "fenny", sess.Get("user"))
@@ -1430,11 +1388,11 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 	sess.data.Data["admin"] = false // bypasses Set, so only a re-encode would persist it
 	require.NoError(t, sess.Save())
 
-	written := rec.writes()
+	written := rec.Calls(storagetest.OpSet)
 	require.Len(t, written, 1, "a clean save must still write to storage")
-	require.Equal(t, id, written[0].key)
-	require.Equal(t, seeded[0].value, written[0].value, "the retained snapshot must be written back verbatim")
-	require.Equal(t, idleTimeout, written[0].exp, "a clean save must slide the idle timeout")
+	require.Equal(t, id, written[0].Key)
+	require.Equal(t, seeded[0].Value, written[0].Value, "the retained snapshot must be written back verbatim")
+	require.Equal(t, idleTimeout, written[0].TTL, "a clean save must slide the idle timeout")
 
 	reloaded := sessionTestStored(t, store, id)
 	require.Equal(t, "fenny", reloaded.Get("user"))
@@ -1608,10 +1566,10 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 	t.Run("a session loaded by ID can take the fast path", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
-		rec := newRecordingStorage()
+		rec := storagetest.New()
 		store := NewStore(Config{Storage: rec})
 		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
-		rec.reset()
+		rec.ClearCalls()
 
 		// GetByID leaves ctx nil, so this also covers saving without a request.
 		sess := sessionTestStored(t, store, id)
@@ -1619,10 +1577,10 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 		sess.data.Data["user"] = "bypassed" // only a re-encode would persist it
 		require.NoError(t, sess.Save())
 
-		written := rec.writes()
+		written := rec.Calls(storagetest.OpSet)
 		require.Len(t, written, 1)
-		require.Equal(t, id, written[0].key)
-		require.NotContains(t, string(written[0].value), "bypassed")
+		require.Equal(t, id, written[0].Key)
+		require.NotContains(t, string(written[0].Value), "bypassed")
 	})
 }
 

@@ -28,7 +28,9 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/gofiber/fiber/v3/middleware/compress"
 	"github.com/gofiber/fiber/v3/middleware/etag"
 	"github.com/gofiber/fiber/v3/middleware/recover"
@@ -37,65 +39,18 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// testClock is a manually advanced clock that makes time-dependent freshness
-// tests deterministic: instead of sleeping past a TTL boundary (which is racy
-// under -race -count -shuffle), tests advance the clock explicitly. It is safe
-// for the concurrent reads performed by the cache handler.
-type testClock struct {
-	now time.Time
-	mu  sync.Mutex
-}
-
-func newTestClock(start time.Time) *testClock {
-	return &testClock{now: start}
-}
-
-func (c *testClock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.now
-}
-
-func (c *testClock) Add(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.now = c.now.Add(d)
-}
-
-// tickingClock advances a second on every read, so any clock read the store
-// phase performs after the Date header was stamped surfaces as phantom age.
-type tickingClock struct {
-	now time.Time
-	mu  sync.Mutex
-}
-
-func (c *tickingClock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.now = c.now.Add(time.Second)
-	return c.now
-}
-
-type failingCacheStorage struct {
-	data map[string][]byte
-	errs map[string]error
-	mu   sync.RWMutex
-}
-
+// mutatingStorage rewrites each value with mutate on its way in, so a test can plant values the cache never writes
+// itself.
 type mutatingStorage struct {
-	data   map[string][]byte
+	*storagetest.Memory
 	mutate func(key string, value []byte) []byte
-}
-
-func newFailingCacheStorage() *failingCacheStorage {
-	return &failingCacheStorage{data: make(map[string][]byte), errs: make(map[string]error)}
 }
 
 var storageKinds = []string{"memory", "external"}
 
 func storageOf(kind string) fiber.Storage {
 	if kind == "external" {
-		return newFailingCacheStorage()
+		return storagetest.New()
 	}
 	return nil
 }
@@ -129,168 +84,29 @@ func getRoot(t *testing.T, app *fiber.App, headers map[string]string) reply {
 }
 
 func newMutatingStorage(mutate func(key string, value []byte) []byte) *mutatingStorage {
-	return &mutatingStorage{data: make(map[string][]byte), mutate: mutate}
+	return &mutatingStorage{Memory: storagetest.New(), mutate: mutate}
 }
 
-func (s *mutatingStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
-	return s.Get(key)
-}
-
-func (s *mutatingStorage) Get(key string) ([]byte, error) {
-	if value, ok := s.data[key]; ok {
-		return value, nil
-	}
-
-	return nil, nil
-}
-
-func (s *mutatingStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
-	return s.Set(key, val, 0)
-}
-
-func (s *mutatingStorage) Set(key string, val []byte, _ time.Duration) error {
+func (s *mutatingStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
 	if key == "" || len(val) == 0 {
 		return nil
 	}
-
-	if s.mutate != nil {
-		val = s.mutate(key, val)
-	}
-
-	s.data[key] = val
-	return nil
+	return s.Memory.SetWithContext(ctx, key, s.mutate(key, val), exp)
 }
 
-func (s *mutatingStorage) DeleteWithContext(_ context.Context, key string) error {
-	return s.Delete(key)
-}
-
-func (s *mutatingStorage) Delete(key string) error {
-	delete(s.data, key)
-	return nil
-}
-
-func (s *mutatingStorage) ResetWithContext(_ context.Context) error {
-	return s.Reset()
-}
-
-func (s *mutatingStorage) Reset() error {
-	s.data = make(map[string][]byte)
-	return nil
-}
-
-func (s *mutatingStorage) Close() error {
-	s.data = nil
-	return nil
-}
-
-func (s *failingCacheStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if err, ok := s.errs["get|"+key]; ok && err != nil {
-		return nil, err
-	}
-	if val, ok := s.data[key]; ok {
-		return append([]byte(nil), val...), nil
-	}
-	return nil, nil
-}
-
-func (s *failingCacheStorage) Get(key string) ([]byte, error) {
-	return s.GetWithContext(context.Background(), key)
-}
-
-func (s *failingCacheStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err, ok := s.errs["set|"+key]; ok && err != nil {
-		return err
-	}
-	s.data[key] = append([]byte(nil), val...)
-	return nil
-}
-
-func (s *failingCacheStorage) Set(key string, val []byte, exp time.Duration) error {
+func (s *mutatingStorage) Set(key string, val []byte, exp time.Duration) error {
 	return s.SetWithContext(context.Background(), key, val, exp)
 }
 
-func (s *failingCacheStorage) DeleteWithContext(_ context.Context, key string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err, ok := s.errs["del|"+key]; ok && err != nil {
-		return err
-	}
-	delete(s.data, key)
-	return nil
-}
-
-func (s *failingCacheStorage) Delete(key string) error {
-	return s.DeleteWithContext(context.Background(), key)
-}
-
-func (s *failingCacheStorage) ResetWithContext(context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data = make(map[string][]byte)
-	s.errs = make(map[string]error)
-	return nil
-}
-
-func (s *failingCacheStorage) Reset() error {
-	return s.ResetWithContext(context.Background())
-}
-
-func (*failingCacheStorage) Close() error { return nil }
-
-// setErr makes op ("get", "set" or "del") on key fail with err, or succeed again when err is nil.
-func (s *failingCacheStorage) setErr(op, key string, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err == nil {
-		delete(s.errs, op+"|"+key)
-		return
-	}
-	s.errs[op+"|"+key] = err
-}
-
-// holds reports whether the storage has a value under key.
-func (s *failingCacheStorage) holds(key string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	_, ok := s.data[key]
-	return ok
-}
-
-// bodyKeys returns the keys under which the storage holds a response body.
-func (s *failingCacheStorage) bodyKeys() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	var keys []string
-	for key := range s.data {
-		if strings.HasSuffix(key, "_body") {
-			keys = append(keys, key)
-		}
-	}
-	return keys
-}
-
-type contextRecord struct {
-	key      string
-	value    string
-	canceled bool
-}
-
-type contextRecorderStorage struct {
-	*failingCacheStorage
-	deletes []contextRecord
-	gets    []contextRecord
-	sets    []contextRecord
+// bodyKeys returns the keys under which storage holds a response body.
+func bodyKeys(storage *storagetest.Memory) []string {
+	return slices.DeleteFunc(storage.Keys(), func(key string) bool { return !strings.HasSuffix(key, "_body") })
 }
 
 // blockingDeleteStorage pauses the first stale metadata deletion while another
 // request replaces that entry and reuses its heap index.
 type blockingDeleteStorage struct {
-	*failingCacheStorage
+	*storagetest.Memory
 	deleteStarted  chan struct{}
 	continueDelete chan struct{}
 	key            string
@@ -302,20 +118,20 @@ func (s *blockingDeleteStorage) DeleteWithContext(ctx context.Context, key strin
 		close(s.deleteStarted)
 		<-s.continueDelete
 	}
-	return s.failingCacheStorage.DeleteWithContext(ctx, key)
+	return s.Memory.DeleteWithContext(ctx, key)
 }
 
 // restoreMutationStorage models a backend change while eviction has dropped
 // the old heap node and its storage deletion fails.
 type restoreMutationStorage struct {
-	*failingCacheStorage
+	*storagetest.Memory
 	key      string
 	mutation string
 	armed    atomic.Bool
 }
 
 type blockingFailedEvictionStorage struct {
-	*failingCacheStorage
+	*storagetest.Memory
 	started        chan struct{}
 	continueDelete chan struct{}
 	key            string
@@ -328,22 +144,22 @@ func (s *blockingFailedEvictionStorage) DeleteWithContext(ctx context.Context, k
 		<-s.continueDelete
 		return errors.New("eviction delete failed")
 	}
-	return s.failingCacheStorage.DeleteWithContext(ctx, key)
+	return s.Memory.DeleteWithContext(ctx, key)
 }
 
 func (s *restoreMutationStorage) DeleteWithContext(ctx context.Context, key string) error {
 	if key != s.key || !s.armed.CompareAndSwap(true, false) {
-		return s.failingCacheStorage.DeleteWithContext(ctx, key)
+		return s.Memory.DeleteWithContext(ctx, key)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 	if s.mutation == "missing" {
-		delete(s.data, key)
-		delete(s.data, key+"_body")
+		delete(s.Data, key)
+		delete(s.Data, key+"_body")
 	} else {
 		var entry item
-		if _, err := entry.UnmarshalMsg(s.data[key]); err != nil {
+		if _, err := entry.UnmarshalMsg(s.Data[key]); err != nil {
 			return err
 		}
 		entry.heapgen += 1000
@@ -351,36 +167,9 @@ func (s *restoreMutationStorage) DeleteWithContext(ctx context.Context, key stri
 		if err != nil {
 			return err
 		}
-		s.data[key] = raw
+		s.Data[key] = raw
 	}
 	return errors.New("eviction delete failed")
-}
-
-func newContextRecorderStorage() *contextRecorderStorage {
-	return &contextRecorderStorage{failingCacheStorage: newFailingCacheStorage()}
-}
-
-func contextRecordFrom(ctx context.Context, key string) contextRecord {
-	record := contextRecord{key: key, canceled: errors.Is(ctx.Err(), context.Canceled)}
-	if value, ok := ctx.Value(markerKey).(string); ok {
-		record.value = value
-	}
-	return record
-}
-
-func (s *contextRecorderStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
-	s.gets = append(s.gets, contextRecordFrom(ctx, key))
-	return s.failingCacheStorage.GetWithContext(ctx, key)
-}
-
-func (s *contextRecorderStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
-	s.sets = append(s.sets, contextRecordFrom(ctx, key))
-	return s.failingCacheStorage.SetWithContext(ctx, key, val, exp)
-}
-
-func (s *contextRecorderStorage) DeleteWithContext(ctx context.Context, key string) error {
-	s.deletes = append(s.deletes, contextRecordFrom(ctx, key))
-	return s.failingCacheStorage.DeleteWithContext(ctx, key)
 }
 
 // cacheTestAKey is the key under which the default key generator stores the
@@ -408,7 +197,7 @@ func TestCacheStorageErrors(t *testing.T) {
 
 	for _, tc := range []struct {
 		name    string
-		errKey  string // the failing storage operation, spelled as failingCacheStorage keys it
+		errKey  string // the failing storage operation, spelled as storagetest.Memory keys it
 		wantErr string
 		expired bool // the storage already holds an expired entry for the request
 	}{
@@ -418,14 +207,14 @@ func TestCacheStorageErrors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			storage := newFailingCacheStorage()
-			storage.errs[tc.errKey] = errors.New("boom")
+			storage := storagetest.New()
+			storage.Errs[tc.errKey] = errors.New("boom")
 
 			if tc.expired {
 				// Use an obviously expired timestamp without relying on time-based conversions
 				raw, err := (&item{exp: 1}).MarshalMsg(nil)
 				require.NoError(t, err)
-				storage.data[key] = raw
+				storage.Data[key] = raw
 			}
 
 			var failures cacheTestAFailures
@@ -456,7 +245,7 @@ func canceledContextWithMarker(label string) context.Context {
 
 func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 	t.Parallel()
-	storage := newContextRecorderStorage()
+	storage := storagetest.NewRecorder(markerKey)
 	app := fiber.New()
 
 	app.Use(func(c fiber.Ctx) error {
@@ -480,14 +269,14 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 
 	apptest.Expect(t, app, "/second", fiber.StatusOK)
 
-	records := storage.deletes
+	records := storage.Deletes
 	require.Len(t, records, 2)
 
 	var keys []string
 	for _, rec := range records {
-		keys = append(keys, rec.key)
-		require.Equal(t, "evict", rec.value)
-		require.True(t, rec.canceled)
+		keys = append(keys, rec.Key)
+		require.Equal(t, "evict", rec.Value)
+		require.True(t, rec.Canceled)
 	}
 
 	require.ElementsMatch(t, []string{cacheTestAKey("/first"), cacheTestAKey("/first") + "_body"}, keys)
@@ -495,8 +284,8 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 
 func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 	t.Parallel()
-	storage := newContextRecorderStorage()
-	storage.errs["set|"+cacheTestAKey("/")] = errors.New("boom")
+	storage := storagetest.NewRecorder(markerKey)
+	storage.Errs["set|"+cacheTestAKey("/")] = errors.New("boom")
 
 	var failures cacheTestAFailures
 	app := failures.app()
@@ -514,16 +303,16 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 	require.Error(t, failures.err)
 	require.ErrorContains(t, failures.err, "cache: failed to store key")
 
-	records := storage.deletes
+	records := storage.Deletes
 	require.Len(t, records, 1)
-	require.Equal(t, cacheTestAKey("/")+"_body", records[0].key)
-	require.Equal(t, "cleanup", records[0].value)
-	require.True(t, records[0].canceled)
+	require.Equal(t, cacheTestAKey("/")+"_body", records[0].Key)
+	require.Equal(t, "cleanup", records[0].Value)
+	require.True(t, records[0].Canceled)
 }
 
 func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 	t.Parallel()
-	storage := newContextRecorderStorage()
+	storage := storagetest.NewRecorder(markerKey)
 	app := fiber.New()
 
 	app.Use(func(c fiber.Ctx) error {
@@ -552,29 +341,29 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 
 	entryKey := cacheTestAKey("/cache")
 
-	setRecords := storage.sets
+	setRecords := storage.Sets
 	require.Len(t, setRecords, 2)
 	for _, rec := range setRecords {
-		require.Contains(t, []string{entryKey, entryKey + "_body"}, rec.key)
-		require.Equal(t, "store", rec.value)
-		require.True(t, rec.canceled)
+		require.Contains(t, []string{entryKey, entryKey + "_body"}, rec.Key)
+		require.Equal(t, "store", rec.Value)
+		require.True(t, rec.Canceled)
 	}
 
-	getRecords := storage.gets
+	getRecords := storage.Gets
 	require.NotEmpty(t, getRecords)
 
 	var fetchEntry, fetchBody bool
 	for _, rec := range getRecords {
-		if rec.value != "fetch" {
+		if rec.Value != "fetch" {
 			continue
 		}
 
-		if rec.key == entryKey {
-			require.True(t, rec.canceled)
+		if rec.Key == entryKey {
+			require.True(t, rec.Canceled)
 			fetchEntry = true
 		}
-		if rec.key == entryKey+"_body" {
-			require.True(t, rec.canceled)
+		if rec.Key == entryKey+"_body" {
+			require.True(t, rec.Canceled)
 			fetchBody = true
 		}
 	}
@@ -991,7 +780,7 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 
 	t.Run("long paths are bounded in storage keys", func(t *testing.T) {
 		t.Parallel()
-		storage := newMutatingStorage(nil)
+		storage := storagetest.New()
 		oversizedPath := "/" + strings.Repeat("a", maxKeyDimensionSegmentLength+1)
 		app := fiber.New()
 		app.Use(New(Config{Expiration: 1 * time.Hour, Storage: storage}))
@@ -1005,7 +794,7 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 
 		expectedPrefix := cacheKeyVersion + "|" + fiber.MethodGet + "|scheme=http|host=example.com|" + expectedBoundedPath
 		foundBoundedKey := false
-		for key := range storage.data {
+		for key := range storage.Data {
 			require.NotContains(t, key, oversizedPath)
 			if strings.HasPrefix(key, expectedPrefix) {
 				foundBoundedKey = true
@@ -1559,7 +1348,7 @@ func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
 			payload := strings.Repeat("x", 12)
 
 			probe := &accountingProbe{}
-			clock := newTestClock(time.Unix(1_700_000_000, 0))
+			clock := clocktest.NewClock(time.Unix(1_700_000_000, 0))
 			var invalidations atomic.Int64
 			cfg := Config{
 				Storage:    storageOf(storage),
@@ -1753,7 +1542,7 @@ func Test_Cache_FailedRefresh(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			storage := newFailingCacheStorage()
+			storage := storagetest.New()
 			probe := &accountingProbe{}
 			app := fiber.New()
 			app.Use(New(Config{Storage: storage, MaxBytes: 1500, Expiration: time.Hour, accounting: probe.record}))
@@ -1764,7 +1553,7 @@ func Test_Cache_FailedRefresh(t *testing.T) {
 			require.NotZero(t, counted)
 			require.Equal(t, 1, nodes)
 
-			storage.setErr("set", tc.failedKey, errors.New("boom"))
+			storage.SetErr("set", tc.failedKey, errors.New("boom"))
 
 			apptest.Expect(t, app, cacheTestAGetCC("/", noCache), fiber.StatusInternalServerError)
 
@@ -2092,7 +1881,7 @@ func Test_CacheStoreAndServe(t *testing.T) {
 
 func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 	t.Parallel()
-	storage := newFailingCacheStorage()
+	storage := storagetest.New()
 
 	app, _ := cacheTestAOrigin(New(Config{
 		Expiration:   30 * time.Second,
@@ -2104,8 +1893,8 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 
 	for i := 1; i <= 3; i++ {
 		cacheTestAExpectBody(t, app, "/", cacheMiss, "body"+strconv.Itoa(i))
-		require.Contains(t, storage.data, expectedKey)
-		require.Contains(t, storage.data, expectedKey+"_body")
+		require.Contains(t, storage.Data, expectedKey)
+		require.Contains(t, storage.Data, expectedKey+"_body")
 	}
 }
 
@@ -2125,7 +1914,8 @@ func Test_CacheStoreDoesNotAgeItsOwnResponse(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			clock := &tickingClock{now: time.Now().Truncate(time.Second)}
+			clock := clocktest.NewClock(time.Now().Truncate(time.Second))
+			clock.Step = time.Second
 			app := fiber.New()
 			app.Use(New(Config{clock: clock.Now}))
 
@@ -2177,7 +1967,7 @@ func Test_CacheSMaxAgeOverridesMaxAge(t *testing.T) {
 			// Drive freshness from a manually advanced clock so the checks never straddle
 			// a whole-second boundary (the previous time.Sleep based version flaked under
 			// -race -count -shuffle).
-			clock := newTestClock(time.Now().Truncate(time.Second))
+			clock := clocktest.NewClock(time.Now().Truncate(time.Second))
 			app, _ := cacheTestAOrigin(New(Config{clock: clock.Now}), "", fiber.HeaderCacheControl, tc.cacheControl)
 			for _, s := range tc.steps {
 				clock.Add(s.advance)
@@ -2455,7 +2245,7 @@ func Test_CacheClampsFutureStoredDate(t *testing.T) {
 
 func Test_CacheAgeClockStepsBackwards(t *testing.T) {
 	t.Parallel()
-	clock := newTestClock(time.Now().Truncate(time.Second))
+	clock := clocktest.NewClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
 	app.Use(New(Config{clock: clock.Now}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("cached") })
@@ -2616,7 +2406,7 @@ func Test_CacheRespectsUpstreamAgeForFreshness(t *testing.T) {
 	t.Parallel()
 	// Manually advanced like the s-maxage tests: with one second of lifetime
 	// left, a tick of the real clock would expire the entry before the hit.
-	clock := newTestClock(time.Now().Truncate(time.Second))
+	clock := clocktest.NewClock(time.Now().Truncate(time.Second))
 	app, _ := cacheTestAOrigin(New(Config{
 		clock:        clock.Now,
 		KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|age-remaining" },
@@ -2668,7 +2458,7 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 	for _, directive := range []string{"private", "no-cache", "no-store", "vary-star"} {
 		t.Run(directive, func(t *testing.T) {
 			t.Parallel()
-			storage := newContextRecorderStorage()
+			storage := storagetest.NewRecorder(markerKey)
 			var returnUncacheable atomic.Bool
 
 			app := cacheTestBPathKeyedApp(&Config{
@@ -2694,23 +2484,23 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 
 			key := cacheKeyVersion + "|GET|/cached"
 			bodyKey := key + "_body"
-			require.True(t, storage.holds(key), key)
-			require.True(t, storage.holds(bodyKey), bodyKey)
+			require.True(t, storage.Holds(key), key)
+			require.True(t, storage.Holds(bodyKey), bodyKey)
 
 			returnUncacheable.Store(true)
 			cacheTestBExpectNewer(t, app, "/cached?invalidate=true")
-			require.False(t, storage.holds(key), key)
-			require.False(t, storage.holds(bodyKey), bodyKey)
+			require.False(t, storage.Holds(key), key)
+			require.False(t, storage.Holds(bodyKey), bodyKey)
 
-			require.Equal(t, []contextRecord{{key: key}, {key: bodyKey}}, storage.deletes)
-			for _, get := range storage.gets {
-				require.NotEqual(t, bodyKey, get.key, "revalidation must not fetch the stale body")
+			require.Equal(t, []storagetest.Record{{Key: key}, {Key: bodyKey}}, storage.Deletes)
+			for _, get := range storage.Gets {
+				require.NotEqual(t, bodyKey, get.Key, "revalidation must not fetch the stale body")
 			}
 
 			// If heap accounting retained the deleted entry, caching /next would
 			// try to evict it and encounter these sentinel errors.
-			storage.setErr("del", key, errors.New("stale metadata remained in heap"))
-			storage.setErr("del", bodyKey, errors.New("stale body remained in heap"))
+			storage.SetErr("del", key, errors.New("stale metadata remained in heap"))
+			storage.SetErr("del", bodyKey, errors.New("stale body remained in heap"))
 
 			cacheTestAExpect(t, app, "/next", cacheMiss)
 			cacheTestAExpect(t, app, "/next", cacheHit)
@@ -2756,15 +2546,15 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 	for _, tt := range []struct {
 		name              string
 		failedKeySuffix   string
-		wantDeletes       []contextRecord
+		wantDeletes       []storagetest.Record
 		metadataRemaining bool
 	}{
-		{name: "metadata", metadataRemaining: true, wantDeletes: []contextRecord{{key: key}}},
-		{name: "body", failedKeySuffix: "_body", wantDeletes: []contextRecord{{key: key}, {key: bodyKey}}},
+		{name: "metadata", metadataRemaining: true, wantDeletes: []storagetest.Record{{Key: key}}},
+		{name: "body", failedKeySuffix: "_body", wantDeletes: []storagetest.Record{{Key: key}, {Key: bodyKey}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			storage := newContextRecorderStorage()
+			storage := storagetest.NewRecorder(markerKey)
 			var returnNoCache atomic.Bool
 
 			app := cacheTestBPathKeyedApp(&Config{
@@ -2777,24 +2567,24 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 
 			cacheTestAExpect(t, app, "/cached", cacheMiss)
 
-			storage.setErr("del", key+tt.failedKeySuffix, errors.New("delete failed"))
+			storage.SetErr("del", key+tt.failedKeySuffix, errors.New("delete failed"))
 			returnNoCache.Store(true)
 
 			cacheTestBExpectNewer(t, app, "/cached?invalidate=true")
-			require.Equal(t, tt.metadataRemaining, storage.holds(key))
-			require.True(t, storage.holds(bodyKey))
+			require.Equal(t, tt.metadataRemaining, storage.Holds(key))
+			require.True(t, storage.Holds(bodyKey))
 
-			require.Equal(t, tt.wantDeletes, storage.deletes)
-			for _, get := range storage.gets {
-				require.NotEqual(t, bodyKey, get.key, "revalidation must not fetch the stale body")
+			require.Equal(t, tt.wantDeletes, storage.Deletes)
+			for _, get := range storage.Gets {
+				require.NotEqual(t, bodyKey, get.Key, "revalidation must not fetch the stale body")
 			}
 
 			// The old heap entry remains tracked after a deletion error so a later
 			// eviction can retry cleanup and restore byte accounting.
-			storage.setErr("del", key+tt.failedKeySuffix, nil)
+			storage.SetErr("del", key+tt.failedKeySuffix, nil)
 			cacheTestAExpect(t, app, "/next", cacheMiss)
-			require.False(t, storage.holds(key), key)
-			require.False(t, storage.holds(bodyKey), bodyKey)
+			require.False(t, storage.Holds(key), key)
+			require.False(t, storage.Holds(bodyKey), bodyKey)
 		})
 	}
 }
@@ -2813,21 +2603,21 @@ func Test_CacheStorage_UncacheableRevalidationPrecheckFailuresReturnOrigin(t *te
 	for _, missing := range []bool{false, true} {
 		t.Run(fmt.Sprintf("metadataMissing=%t", missing), func(t *testing.T) {
 			t.Parallel()
-			storage := newFailingCacheStorage()
+			storage := storagetest.New()
 			probe := &accountingProbe{}
 			key := cacheKeyVersion + "|GET|/cached"
 			var revalidate atomic.Bool
 			app := cacheTestBPathKeyedApp(&Config{MaxBytes: 5, Storage: storage, accounting: probe.record})
 			app.Get("/cached", func(c fiber.Ctx) error {
 				if revalidate.Load() {
-					storage.mu.Lock()
+					storage.Mu.Lock()
 					if missing {
-						delete(storage.data, key)
-						delete(storage.data, key+"_body")
+						delete(storage.Data, key)
+						delete(storage.Data, key+"_body")
 					} else {
-						storage.errs["get|"+key] = errors.New("metadata lookup failed")
+						storage.Errs["get|"+key] = errors.New("metadata lookup failed")
 					}
-					storage.mu.Unlock()
+					storage.Mu.Unlock()
 					c.Set(fiber.HeaderCacheControl, "no-cache")
 					return c.SendString("newer")
 				}
@@ -2854,9 +2644,9 @@ func Test_CacheStorage_EvictionRestoreDropsAbsentOrReplacedEntry(t *testing.T) {
 		t.Run(mutation, func(t *testing.T) {
 			t.Parallel()
 			storage := &restoreMutationStorage{
-				failingCacheStorage: newFailingCacheStorage(),
-				key:                 cacheKeyVersion + "|GET|/old",
-				mutation:            mutation,
+				Memory:   storagetest.New(),
+				key:      cacheKeyVersion + "|GET|/old",
+				mutation: mutation,
 			}
 			probe := &accountingProbe{}
 			app := cacheTestBPathKeyedApp(&Config{MaxBytes: 5, Storage: storage, accounting: probe.record})
@@ -2923,10 +2713,10 @@ func (p *cacheTestBParked) finish(t *testing.T) *http.Response {
 func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *testing.T) {
 	t.Parallel()
 	storage := &blockingFailedEvictionStorage{
-		failingCacheStorage: newFailingCacheStorage(),
-		key:                 cacheKeyVersion + "|GET|/old",
-		started:             make(chan struct{}),
-		continueDelete:      make(chan struct{}),
+		Memory:         storagetest.New(),
+		key:            cacheKeyVersion + "|GET|/old",
+		started:        make(chan struct{}),
+		continueDelete: make(chan struct{}),
 	}
 	probe := &accountingProbe{}
 	app := cacheTestBPathKeyedApp(&Config{MaxBytes: 10, Storage: storage, accounting: probe.record})
@@ -2951,12 +2741,12 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 	oldResp := evicting.finish(t)
 	require.Equal(t, fiber.StatusInternalServerError, oldResp.StatusCode)
 	cacheTestBRequireAccounting(t, probe, 0, 1)
-	require.True(t, storage.holds(storage.key), "the replacement is stored")
+	require.True(t, storage.Holds(storage.key), "the replacement is stored")
 }
 
 func Test_CacheStorage_MinFreshUncacheableRevalidationCleansEntry(t *testing.T) {
 	t.Parallel()
-	storage := newFailingCacheStorage()
+	storage := storagetest.New()
 	probe := &accountingProbe{}
 	var uncacheable atomic.Bool
 	app := cacheTestBPathKeyedApp(&Config{MaxBytes: 5, Storage: storage, accounting: probe.record})
@@ -2967,7 +2757,7 @@ func Test_CacheStorage_MinFreshUncacheableRevalidationCleansEntry(t *testing.T) 
 	uncacheable.Store(true)
 	cacheTestBExpectNewer(t, app, cacheTestAGetCC("/cached", "min-fresh=10"))
 	cacheTestBRequireAccounting(t, probe, 0, 0)
-	require.False(t, storage.holds(cacheKeyVersion+"|GET|/cached"), "the metadata is gone")
+	require.False(t, storage.Holds(cacheKeyVersion+"|GET|/cached"), "the metadata is gone")
 }
 
 func Test_Cache_InMemoryUncacheableRevalidationRemovesStaleEntry(t *testing.T) {
@@ -3024,7 +2814,7 @@ func Test_Cache_InvalidExpiresMemoryRevalidationCleansEntry(t *testing.T) {
 
 func Test_CacheStorage_ExpiredMetadataRemovesMatchingHeapEntry(t *testing.T) {
 	t.Parallel()
-	storage := newFailingCacheStorage()
+	storage := storagetest.New()
 	probe := &accountingProbe{}
 	var originCalls atomic.Int32
 	app := cacheTestBPathKeyedApp(&Config{MaxBytes: 5, Storage: storage, accounting: probe.record})
@@ -3036,15 +2826,15 @@ func Test_CacheStorage_ExpiredMetadataRemovesMatchingHeapEntry(t *testing.T) {
 	cacheTestAExpect(t, app, "/cached", cacheMiss)
 
 	key := cacheKeyVersion + "|GET|/cached"
-	storage.mu.Lock()
+	storage.Mu.Lock()
 	var entry item
-	_, err := entry.UnmarshalMsg(storage.data[key])
+	_, err := entry.UnmarshalMsg(storage.Data[key])
 	if err == nil {
 		entry.ttl = 0
 		entry.exp = 1
-		storage.data[key], err = entry.MarshalMsg(nil)
+		storage.Data[key], err = entry.MarshalMsg(nil)
 	}
-	storage.mu.Unlock()
+	storage.Mu.Unlock()
 	require.NoError(t, err)
 
 	cacheTestAExpectBody(t, app, "/cached", cacheMiss, "00002")
@@ -3120,10 +2910,10 @@ func (r *cacheTestBRace) finish(t *testing.T) {
 func Test_Cache_ConcurrentUncacheableCleanupPreservesReplacementAccounting(t *testing.T) {
 	t.Parallel()
 	storage := &blockingDeleteStorage{
-		failingCacheStorage: newFailingCacheStorage(),
-		deleteStarted:       make(chan struct{}),
-		continueDelete:      make(chan struct{}),
-		key:                 cacheKeyVersion + "|GET|/cached",
+		Memory:         storagetest.New(),
+		deleteStarted:  make(chan struct{}),
+		continueDelete: make(chan struct{}),
+		key:            cacheKeyVersion + "|GET|/cached",
 	}
 	probe := &accountingProbe{}
 	app := cacheTestBPathKeyedApp(&Config{MaxBytes: 20, Storage: storage, accounting: probe.record})
@@ -3169,7 +2959,7 @@ func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *
 			t.Parallel()
 			originStarted := make(chan struct{})
 			continueOrigin := make(chan struct{})
-			storage := newFailingCacheStorage()
+			storage := storagetest.New()
 			probe := &accountingProbe{}
 			app := cacheTestBPathKeyedApp(&Config{MaxBytes: tt.maxBytes, Storage: storage, accounting: probe.record})
 			app.Get("/cached", cacheTestBVersionedOrigin(originStarted, continueOrigin))
@@ -3186,10 +2976,10 @@ func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *
 			}
 
 			key := cacheKeyVersion + "|GET|/cached"
-			storage.mu.RLock()
-			require.Contains(t, storage.data, key)
-			require.Equal(t, []byte("newer!"), storage.data[key+"_body"])
-			storage.mu.RUnlock()
+			storage.Mu.RLock()
+			require.Contains(t, storage.Data, key)
+			require.Equal(t, []byte("newer!"), storage.Data[key+"_body"])
+			storage.Mu.RUnlock()
 
 			cacheTestAExpectBody(t, app, "/cached", cacheHit, "newer!")
 		})
@@ -3201,7 +2991,7 @@ func Test_CacheStorage_NoStoreRevalidationCleansVaryManifest(t *testing.T) {
 	for _, failDelete := range []bool{false, true} {
 		t.Run(fmt.Sprintf("deleteFailure=%t", failDelete), func(t *testing.T) {
 			t.Parallel()
-			storage := newFailingCacheStorage()
+			storage := storagetest.New()
 			var noStore atomic.Bool
 			app := cacheTestBPathKeyedApp(&Config{Storage: storage})
 			app.Get("/cached", cacheTestBFlipping(&noStore, "public, max-age=60", "no-store", fiber.HeaderVary, "Accept"))
@@ -3210,16 +3000,16 @@ func Test_CacheStorage_NoStoreRevalidationCleansVaryManifest(t *testing.T) {
 			cacheTestAExpect(t, app, apptest.Req(fiber.MethodGet, "/cached", accepting), cacheMiss)
 
 			manifestKey := cacheKeyVersion + "|GET|/cached|vary"
-			require.True(t, storage.holds(manifestKey), "the manifest is stored")
+			require.True(t, storage.Holds(manifestKey), "the manifest is stored")
 			if failDelete {
-				storage.setErr("del", manifestKey, errors.New("manifest delete failed"))
+				storage.SetErr("del", manifestKey, errors.New("manifest delete failed"))
 			}
 
 			noStore.Store(true)
 			reload := cacheTestAGetCC("/cached", "max-age=0")
 			reload.Header.Set(fiber.HeaderAccept, "application/json")
 			cacheTestBExpectNewer(t, app, reload)
-			require.Equal(t, failDelete, storage.holds(manifestKey))
+			require.Equal(t, failDelete, storage.Holds(manifestKey))
 		})
 	}
 }
@@ -3253,7 +3043,7 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 	t.Parallel()
 	const cacheHeader = "X-Test-Cache"
 
-	storage := newMutatingStorage(nil)
+	storage := storagetest.New()
 	app := fiber.New()
 	app.Use(New(Config{CacheHeader: cacheHeader, Expiration: time.Hour, Storage: storage}))
 
@@ -3283,7 +3073,7 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 	require.Equal(t, int32(1), originCalls.Load())
 
 	metadataKey := ""
-	for key, value := range storage.data {
+	for key, value := range storage.Data {
 		if strings.HasSuffix(key, "_body") {
 			continue
 		}
@@ -3292,7 +3082,7 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 		_, err := cached.UnmarshalMsg(value)
 		require.NoError(t, err)
 		cached.shareable = false
-		storage.data[key], err = cached.MarshalMsg(nil)
+		storage.Data[key], err = cached.MarshalMsg(nil)
 		require.NoError(t, err)
 		metadataKey = key
 	}
@@ -3306,8 +3096,8 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 		refused := apptest.Expect(t, app, newAuthorizationRequest(cacheControl, pragma), fiber.StatusGatewayTimeout)
 		require.Equal(t, cacheUnreachable, refused.Header.Get(cacheHeader))
 		require.Equal(t, int32(1), originCalls.Load())
-		require.Contains(t, storage.data, metadataKey)
-		require.Contains(t, storage.data, metadataKey+"_body")
+		require.Contains(t, storage.Data, metadataKey)
+		require.Contains(t, storage.Data, metadataKey+"_body")
 	}
 	expectRefused("only-if-cached", "")
 	expectRefused("no-cache, only-if-cached", "")
@@ -3317,8 +3107,8 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
 	require.Equal(t, "origin-2", apptest.Body(t, resp))
 	require.Equal(t, int32(2), originCalls.Load())
-	require.Contains(t, storage.data, metadataKey)
-	require.Contains(t, storage.data, metadataKey+"_body")
+	require.Contains(t, storage.Data, metadataKey)
+	require.Contains(t, storage.Data, metadataKey+"_body")
 }
 
 func TestCacheSeparatesAuthorizationValues(t *testing.T) {
@@ -3763,30 +3553,30 @@ func Test_Cache_MaxBytes_InsufficientSpace(t *testing.T) {
 
 func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 	t.Parallel()
-	storage := newFailingCacheStorage()
+	storage := storagetest.New()
 	app := fiber.New()
 	app.Use(New(Config{MaxBytes: 4, Expiration: 1 * time.Hour, Storage: storage}))
 	app.Get("/:name", func(c fiber.Ctx) error { return c.SendString("data") })
 
 	cacheTestAExpect(t, app, "/first", cacheMiss)
 
-	storage.mu.Lock()
-	t.Logf("stored keys after first cache: %v", slices.Collect(maps.Keys(storage.data)))
-	for key := range storage.data {
+	storage.Mu.Lock()
+	t.Logf("stored keys after first cache: %v", slices.Collect(maps.Keys(storage.Data)))
+	for key := range storage.Data {
 		if strings.Contains(key, "/first") {
-			storage.errs["del|"+key] = errors.New("delete failed")
+			storage.Errs["del|"+key] = errors.New("delete failed")
 		}
 	}
-	storage.mu.Unlock()
+	storage.Mu.Unlock()
 
 	// Next request triggers eviction; deletion failure should surface an error
 	rsp := apptest.Do(t, app, "/second")
 	require.Equal(t, fiber.StatusInternalServerError, rsp.StatusCode)
 	require.Contains(t, apptest.Body(t, rsp), "failed to delete key")
-	storage.mu.Lock()
-	t.Logf("stored keys after deletion failure: %v", slices.Collect(maps.Keys(storage.data)))
-	storage.errs = make(map[string]error)
-	storage.mu.Unlock()
+	storage.Mu.Lock()
+	t.Logf("stored keys after deletion failure: %v", slices.Collect(maps.Keys(storage.Data)))
+	storage.Errs = make(map[string]error)
+	storage.Mu.Unlock()
 
 	// Another request should succeed and be cacheable after restoring heap tracking
 	cacheTestAExpect(t, app, "/third", cacheMiss)
@@ -3985,15 +3775,15 @@ func Test_Cache_VaryAndAuth(t *testing.T) {
 	t.Parallel()
 	t.Run("storeVaryManifest failure", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
-		storage.errs["set|manifest"] = errors.New("storage fail")
+		storage := storagetest.New()
+		storage.Errs["set|manifest"] = errors.New("storage fail")
 		manager := &manager{storage: storage}
 		require.Error(t, storeVaryManifest(context.Background(), manager, "manifest", []string{"Accept"}, 3600*time.Second))
 	})
 
 	t.Run("loadVaryManifest not found", func(t *testing.T) {
 		t.Parallel()
-		manager := &manager{storage: newFailingCacheStorage()}
+		manager := &manager{storage: storagetest.New()}
 		varyNames, found, err := loadVaryManifest(context.Background(), manager, "nonexistent")
 		require.NoError(t, err)
 		require.False(t, found)
@@ -4138,13 +3928,13 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 
 	t.Run("external storage with body key", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
+		storage := storagetest.New()
 		app := fiber.New()
 		app.Use(New(Config{Expiration: 1 * time.Hour, Storage: storage}))
 		app.Get("/test", func(c fiber.Ctx) error { return c.SendString("test content") })
 
 		cacheTestAExpect(t, app, "/test", cacheMiss)
-		require.NotEmpty(t, storage.bodyKeys(), "the body is stored under a key of its own")
+		require.NotEmpty(t, bodyKeys(storage), "the body is stored under a key of its own")
 	})
 
 	t.Run("only-if-cached with cache miss", func(t *testing.T) {
@@ -4436,16 +4226,16 @@ func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
 	for _, maxBytes := range []uint{0, 4096} {
 		t.Run(fmt.Sprintf("maxbytes-%d", maxBytes), func(t *testing.T) {
 			t.Parallel()
-			storage := newFailingCacheStorage()
+			storage := storagetest.New()
 			cfg := Config{Storage: storage, Expiration: time.Hour, MaxBytes: maxBytes}
 			app, _ := cacheTestAOrigin(New(cfg), "response-")
 
 			cacheTestAExpect(t, app, "/", cacheMiss)
-			bodies := storage.bodyKeys()
+			bodies := bodyKeys(storage)
 			require.Len(t, bodies, 1)
-			storage.mu.Lock()
-			delete(storage.data, bodies[0])
-			storage.mu.Unlock()
+			storage.Mu.Lock()
+			delete(storage.Data, bodies[0])
+			storage.Mu.Unlock()
 
 			resp := cacheTestAExpectStatus(t, app, "/", cacheMiss, fiber.StatusOK)
 			require.Equal(t, "response-2", apptest.Body(t, resp))
@@ -4457,34 +4247,34 @@ func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
 func Test_Cache_BodyFetchFailure(t *testing.T) {
 	t.Parallel()
 	// prime returns an app whose entry for / is stored in storage, and the key of that entry.
-	prime := func(t *testing.T, storage *failingCacheStorage) (*fiber.App, string) {
+	prime := func(t *testing.T, storage *storagetest.Memory) (*fiber.App, string) {
 		t.Helper()
 
 		app := fiber.New()
 		app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString("cached") })
 		cacheTestAExpect(t, app, "/", cacheMiss)
-		bodies := storage.bodyKeys()
+		bodies := bodyKeys(storage)
 		require.NotEmpty(t, bodies)
 		return app, strings.TrimSuffix(bodies[0], "_body")
 	}
 
 	t.Run("body read fails", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
+		storage := storagetest.New()
 		app, key := prime(t, storage)
-		storage.setErr("get", key+"_body", errors.New("boom"))
+		storage.SetErr("get", key+"_body", errors.New("boom"))
 		apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 	})
 
 	t.Run("orphaned metadata delete fails", func(t *testing.T) {
 		t.Parallel()
-		storage := newFailingCacheStorage()
+		storage := storagetest.New()
 		app, key := prime(t, storage)
-		storage.mu.Lock()
-		delete(storage.data, key+"_body")
-		storage.errs["del|"+key] = errors.New("boom")
-		storage.mu.Unlock()
+		storage.Mu.Lock()
+		delete(storage.Data, key+"_body")
+		storage.Errs["del|"+key] = errors.New("boom")
+		storage.Mu.Unlock()
 		apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 	})
 }
@@ -4492,7 +4282,7 @@ func Test_Cache_BodyFetchFailure(t *testing.T) {
 func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 	t.Parallel()
 	const body = "0123456789abcdef"
-	storage := newFailingCacheStorage()
+	storage := storagetest.New()
 	app := fiber.New()
 	app.Use(New(Config{Storage: storage, Expiration: time.Hour, MaxBytes: 2 * uint(len(body))}))
 	app.Get("/:name", func(c fiber.Ctx) error {
@@ -4501,9 +4291,9 @@ func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 	})
 
 	manifestKey := cacheKeyVersion + "|GET|scheme=http|host=example.com|/a|q=|h=accept:0|accept-encoding:0|accept-language:0|vary"
-	storage.setErr("set", manifestKey, errors.New("boom"))
+	storage.SetErr("set", manifestKey, errors.New("boom"))
 	apptest.Expect(t, app, "/a", fiber.StatusInternalServerError)
-	storage.setErr("set", manifestKey, nil)
+	storage.SetErr("set", manifestKey, nil)
 
 	// The abandoned reservation must be gone, or the second entry evicts the first.
 	for _, want := range []string{cacheMiss, cacheHit} {
@@ -4629,7 +4419,7 @@ func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 			t.Parallel()
 			// A fixed clock, so the delta-seconds written on the hit is the whole
 			// lifetime rather than whatever the wall clock left of it.
-			clock := newTestClock(time.Unix(1_700_000_000, 0))
+			clock := clocktest.NewClock(time.Unix(1_700_000_000, 0))
 			cfg := tc.cfg
 			cfg.Expiration = time.Minute
 			cfg.clock = clock.Now
@@ -4801,7 +4591,7 @@ func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			storage := newFailingCacheStorage()
+			storage := storagetest.New()
 			cfg := tc.cfg
 			cfg.Storage = storage
 			app := fiber.New()
@@ -4818,10 +4608,10 @@ func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {
 			require.Equal(t, cacheHit, get(token))
 			require.Equal(t, cacheMiss, get(otherToken))
 
-			storage.mu.RLock()
-			defer storage.mu.RUnlock()
-			require.NotEmpty(t, storage.data)
-			for key := range storage.data {
+			storage.Mu.RLock()
+			defer storage.Mu.RUnlock()
+			require.NotEmpty(t, storage.Data)
+			for key := range storage.Data {
 				require.NotContains(t, key, token)
 				require.NotContains(t, key, otherToken)
 			}
@@ -4851,7 +4641,7 @@ func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			clock := newTestClock(time.Unix(1_700_000_000, 0))
+			clock := clocktest.NewClock(time.Unix(1_700_000_000, 0))
 			cfg := Config{Expiration: time.Minute, clock: clock.Now, KeyGenerator: pathKey}
 			if tc.declared {
 				cfg.KeyCredentialHeaders = []string{"X-Company-Token"}
