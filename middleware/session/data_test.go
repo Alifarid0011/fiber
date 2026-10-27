@@ -3,6 +3,7 @@ package session
 import (
 	"reflect"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,19 +51,11 @@ func TestKeys(t *testing.T) {
 		t.Parallel()
 		d := sessionTestData(t, "key1", "value1", "key2", "value2", "key3", "value3")
 
-		done := make(chan bool)
-		go func() {
-			keys := d.Keys()
-			assert.Len(t, keys, 3, "Expected three keys")
-			done <- true
-		}()
-		go func() {
-			keys := d.Keys()
-			assert.Len(t, keys, 3, "Expected three keys")
-			done <- true
-		}()
-		<-done
-		<-done
+		var wg sync.WaitGroup
+		for range 2 {
+			wg.Go(func() { assert.Len(t, d.Keys(), 3, "Expected three keys") })
+		}
+		wg.Wait()
 	})
 }
 
@@ -79,19 +72,11 @@ func TestData_Len(t *testing.T) {
 		t.Parallel()
 		d := sessionTestData(t, "key1", "value1", "key2", "value2", "key3", "value3")
 
-		done := make(chan bool, 2) // Buffered channel with size 2
-		go func() {
-			length := d.Len()
-			assert.Equal(t, 3, length, "Expected length to be 3 during concurrent access")
-			done <- true
-		}()
-		go func() {
-			length := d.Len()
-			assert.Equal(t, 3, length, "Expected length to be 3 during concurrent access")
-			done <- true
-		}()
-		<-done
-		<-done
+		var wg sync.WaitGroup
+		for range 2 {
+			wg.Go(func() { assert.Equal(t, 3, d.Len(), "Expected length to be 3 during concurrent access") })
+		}
+		wg.Wait()
 	})
 }
 

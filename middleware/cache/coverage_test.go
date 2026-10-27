@@ -241,15 +241,19 @@ func Test_cachedHeader_Decode_UnknownAndLimits(t *testing.T) {
 		require.Equal(t, []byte("X-Test"), dec.key)
 	})
 
-	t.Run("key over the 512-byte limit", func(t *testing.T) {
-		t.Parallel()
-		cacheTestCRequireLimitExceeded[cachedHeader](t, cacheTestCBytesField("key", 513))
-	})
-
-	t.Run("value over the 16384-byte limit", func(t *testing.T) {
-		t.Parallel()
-		cacheTestCRequireLimitExceeded[cachedHeader](t, cacheTestCBytesField("value", 16385))
-	})
+	for _, tc := range []struct {
+		name  string
+		field string
+		size  int
+	}{
+		{name: "key over the 512-byte limit", field: "key", size: 513},
+		{name: "value over the 16384-byte limit", field: "value", size: 16385},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cacheTestCRequireLimitExceeded[cachedHeader](t, cacheTestCBytesField(tc.field, tc.size))
+		})
+	}
 }
 
 // Test_item_Decode_FieldLimits covers the per-field ErrLimitExceeded branches
@@ -586,16 +590,12 @@ func Test_appendVaryKey(t *testing.T) {
 // Vary exists to prevent.
 func Test_appendVaryKey_RepeatedFieldLines(t *testing.T) {
 	t.Parallel()
-	fn := func(names []string, hdr *fasthttp.RequestHeader, normalized bool) string {
-		return string(appendVaryKey(nil, names, hdr, normalized))
-	}
-
 	key := func(values ...string) string {
 		var hdr fasthttp.RequestHeader
 		for _, v := range values {
 			hdr.Add("X-Tenant", v)
 		}
-		return fn([]string{"x-tenant"}, &hdr, true)
+		return string(appendVaryKey(nil, []string{"x-tenant"}, &hdr, true))
 	}
 
 	both := key("public", "acme-private")

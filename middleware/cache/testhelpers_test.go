@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
@@ -80,6 +81,27 @@ type cacheTestCWire struct {
 	// exactNames reads the header names as they were written, which is what
 	// DisableHeaderNormalizing is for.
 	exactNames bool
+}
+
+// cacheTestCWireOf returns a wire to an app that serves GET / through the cache middleware configured by cfg,
+// from route.
+func cacheTestCWireOf(t *testing.T, cfg *Config, route fiber.Handler) cacheTestCWire {
+	t.Helper()
+
+	app := fiber.New()
+	app.Use(New(*cfg))
+	app.Get("/", route)
+	return cacheTestCWire{t: t, app: app}
+}
+
+// cacheTestCExactWire is cacheTestCWireOf for an app that keeps the header names as written, caching for an hour.
+func cacheTestCExactWire(t *testing.T, route fiber.Handler) cacheTestCWire {
+	t.Helper()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", route)
+	return cacheTestCWire{t: t, app: app, exactNames: true}
 }
 
 // get sends GET / for example.com with the header field lines, each written

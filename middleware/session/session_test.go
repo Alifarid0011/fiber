@@ -23,23 +23,14 @@ func Test_Session(t *testing.T) {
 	t.Parallel()
 	store := NewStore()
 	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	sess, err := store.Get(ctx)
-	require.NoError(t, err)
+	sess, _ := sessionTestFresh(t, store)
 	require.True(t, sess.Fresh())
 	token := sess.ID()
 	require.NoError(t, sess.Save())
 
-	sess.Release()
-	app.ReleaseCtx(ctx)
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
 	// set session using default cookie extractor
-	ctx.Request().Header.SetCookie("session_id", token)
-
-	sess, err = store.Get(ctx)
-	require.NoError(t, err)
+	sess = loadSession(t, app, store, token)
 	require.False(t, sess.Fresh())
 	require.Equal(t, []any{}, sess.Keys())
 	require.Nil(t, sess.Get("name"))
@@ -57,31 +48,17 @@ func Test_Session(t *testing.T) {
 
 	// save the old session first
 	require.NoError(t, sess.Save())
-	sess.Release()
-	app.ReleaseCtx(ctx)
 
 	// requesting entirely new context to prevent falsy tests
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	sess, err = store.Get(ctx)
-	require.NoError(t, err)
+	sess, _ = sessionTestFresh(t, store)
 	require.True(t, sess.Fresh())
 
 	// this id should be randomly generated as session key was deleted
 	require.Len(t, sess.ID(), 43)
 
-	sess.Release()
-
 	// when we use the original session for the second time
 	// the session be should be same if the session is not expired
-	app.ReleaseCtx(ctx)
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-
-	ctx.Request().Header.SetCookie("session_id", id)
-	sess, err = store.Get(ctx)
-	defer sess.Release()
-	require.NoError(t, err)
+	sess = loadSession(t, app, store, id)
 	require.False(t, sess.Fresh())
 	require.Equal(t, sess.id, id)
 }
@@ -449,11 +426,8 @@ func Test_Session_Save_IdleTimeout(t *testing.T) {
 		const sessionDuration = 5 * time.Second
 		store := NewStore()
 		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
 
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
+		sess, _ := sessionTestFresh(t, store)
 		sess.Set("name", "john")
 		token := sess.ID()
 
@@ -461,14 +435,8 @@ func Test_Session_Save_IdleTimeout(t *testing.T) {
 		sess.SetIdleTimeout(sessionDuration)
 		require.NoError(t, sess.Save())
 
-		sess.Release()
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
 		// here you need to get the old session yet
-		ctx.Request().Header.SetCookie("session_id", token)
-		sess, err = store.Get(ctx)
-		require.NoError(t, err)
+		sess = loadSession(t, app, store, token)
 		require.Equal(t, token, sess.ID(), "session ID should match before expiration")
 		require.Equal(t, "john", sess.Get("name"), "session should contain the saved value before expiration")
 
@@ -476,17 +444,8 @@ func Test_Session_Save_IdleTimeout(t *testing.T) {
 		// wall clock, or a late timestamp updater keeps the session alive.
 		clocktest.SleepPast(t, sessionDuration)
 
-		sess.Release()
-
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
 		// here you should get a new session
-		ctx.Request().Header.SetCookie("session_id", token)
-		sess, err = store.Get(ctx)
-		defer sess.Release()
-		require.NoError(t, err)
+		sess = loadSession(t, app, store, token)
 		require.Nil(t, sess.Get("name"))
 		require.NotEqual(t, sess.ID(), token)
 	})
@@ -503,37 +462,21 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 		store.IdleTimeout = 10 * time.Second
 
 		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
 
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
+		sess, _ := sessionTestFresh(t, store)
 		sess.Set("name", "john")
 		token := sess.ID()
 		require.NoError(t, sess.Save())
 
-		sess.Release()
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
 		// here you need to get the old session yet
-		ctx.Request().Header.SetCookie("session_id", token)
-		sess, err = store.Get(ctx)
-		require.NoError(t, err)
+		sess = loadSession(t, app, store, token)
 		require.Equal(t, "john", sess.Get("name"))
 
 		// just to make sure the session has been expired
 		time.Sleep(absoluteTimeout + (200 * time.Millisecond))
 
-		sess.Release()
-
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
 		// here you should get a new session
-		ctx.Request().Header.SetCookie("session_id", token)
-		sess, err = store.Get(ctx)
-		require.NoError(t, err)
+		sess = loadSession(t, app, store, token)
 		require.Nil(t, sess.Get("name"))
 		require.NotEqual(t, sess.ID(), token)
 		require.True(t, sess.Fresh())
@@ -543,13 +486,10 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 		sess.Set("name", "john")
 		require.NoError(t, sess.Save())
 
-		sess.Release()
-		app.ReleaseCtx(ctx)
-
 		// just to make sure the session has been expired
 		time.Sleep(absoluteTimeout + (200 * time.Millisecond))
 
-		sess, err = store.GetByID(ctx, token)
+		sess, err := store.GetByID(t.Context(), token)
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
 		require.Nil(t, sess)
@@ -771,20 +711,13 @@ func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
 			store := newSessionStore()
 			app := fiber.New()
 
-			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-			sess, err := store.Get(ctx)
-			require.NoError(t, err)
+			sess, _ := sessionTestFresh(t, store)
 			require.True(t, sess.Fresh())
 			sess.Set("name", "john")
 			require.NoError(t, sess.Save())
 			token := sess.ID()
-			sess.Release()
-			app.ReleaseCtx(ctx)
 
-			ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-			ctx.Request().Header.SetCookie("session_id", token)
-			sess, err = store.Get(ctx)
-			require.NoError(t, err)
+			sess = loadSession(t, app, store, token)
 			require.False(t, sess.Fresh())
 			require.NoError(t, tc.rotate(sess))
 			require.NotEqual(t, token, sess.ID())
@@ -792,17 +725,10 @@ func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
 			sess.Set("name", "jane")
 			require.NoError(t, sess.Save())
 			token = sess.ID()
-			sess.Release()
-			app.ReleaseCtx(ctx)
 
 			time.Sleep(absoluteTimeout + 200*time.Millisecond)
 
-			ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(ctx)
-			ctx.Request().Header.SetCookie("session_id", token)
-			sess, err = store.Get(ctx)
-			require.NoError(t, err)
-			defer sess.Release()
+			sess = loadSession(t, app, store, token)
 			require.True(t, sess.Fresh(), "the rotated session must expire absolutely")
 			require.Nil(t, sess.Get("name"))
 			require.NotEqual(t, token, sess.ID())
@@ -1097,26 +1023,19 @@ func Test_Session_CSRF_Scenario(t *testing.T) {
 	app := fiber.New()
 
 	// Simulate: First GET request creates session
-	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	sess1, err := store.Get(ctx1)
-	require.NoError(t, err)
+	sess1, _ := sessionTestFresh(t, store)
 	require.True(t, sess1.Fresh())
 	firstSessionID := sess1.ID()
 
 	// Store some data (simulating CSRF token storage)
 	sess1.Set("csrf_token", "token-123")
 	require.NoError(t, sess1.Save())
-	sess1.Release()
-	app.ReleaseCtx(ctx1)
 
 	// Small delay to ensure save completes
 	time.Sleep(10 * time.Millisecond)
 
 	// Simulate: POST request with valid session (before expiration)
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	ctx2.Request().Header.SetCookie("session_id", firstSessionID)
-	sess2, err := store.Get(ctx2)
-	require.NoError(t, err)
+	sess2 := loadSession(t, app, store, firstSessionID)
 	require.False(t, sess2.Fresh(), "Session should not be fresh - it exists")
 	require.Equal(t, firstSessionID, sess2.ID(), "Session ID should remain the same")
 	require.Equal(t, "token-123", sess2.Get("csrf_token"))
@@ -1124,23 +1043,16 @@ func Test_Session_CSRF_Scenario(t *testing.T) {
 	// Simulate CSRF validation failure (session is accessed but request fails)
 	// Session should still maintain the same ID
 	require.Equal(t, firstSessionID, sess2.ID())
-	sess2.Release()
-	app.ReleaseCtx(ctx2)
 
 	// Wait for session to expire on the cached clock the storage compares against
 	clocktest.SleepPast(t, idleTimeout)
 
 	// Simulate: POST request with expired session
 	// This is the scenario the user reported - session data is gone
-	ctx3 := apptest.Ctx(t, app)
-	ctx3.Request().Header.SetCookie("session_id", firstSessionID)
-	sess3, err := store.Get(ctx3)
-	require.NoError(t, err)
+	sess3 := loadSession(t, app, store, firstSessionID)
 	require.True(t, sess3.Fresh(), "Session should be fresh - old data expired")
 	require.NotEqual(t, firstSessionID, sess3.ID(), "Should have generated new session ID (expected behavior)")
 	require.Nil(t, sess3.Get("csrf_token"), "Old session data should be gone")
-
-	sess3.Release()
 }
 
 // This test ensures that calling getSession() multiple times within the same

@@ -302,10 +302,6 @@ func Test_Session_NewWithStore(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + FromContext(c).ID()) })
-	app.Post("/", func(c fiber.Ctx) error {
-		c.Cookie(&fiber.Cookie{Name: "session_id", Value: FromContext(c).ID()})
-		return nil
-	})
 
 	h := app.Handler()
 
@@ -617,19 +613,20 @@ func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
 		require.True(t, m.isDestroyed)
 	})
 
-	t.Run("ResetWithContext propagates storage error", func(t *testing.T) {
-		t.Parallel()
-		storageErr := errors.New("storage unavailable")
-		m := &Middleware{Session: newSessionWithStorage(t, &failingStorage{err: storageErr})}
-		require.ErrorIs(t, m.ResetWithContext(t.Context()), storageErr)
-	})
-
-	t.Run("RegenerateWithContext propagates storage error", func(t *testing.T) {
-		t.Parallel()
-		storageErr := errors.New("storage unavailable")
-		m := &Middleware{Session: newSessionWithStorage(t, &failingStorage{err: storageErr})}
-		require.ErrorIs(t, m.RegenerateWithContext(t.Context()), storageErr)
-	})
+	for _, tc := range []struct {
+		call func(*Middleware, context.Context) error
+		name string
+	}{
+		{name: "ResetWithContext", call: (*Middleware).ResetWithContext},
+		{name: "RegenerateWithContext", call: (*Middleware).RegenerateWithContext},
+	} {
+		t.Run(tc.name+" propagates storage error", func(t *testing.T) {
+			t.Parallel()
+			storageErr := errors.New("storage unavailable")
+			m := &Middleware{Session: newSessionWithStorage(t, &failingStorage{err: storageErr})}
+			require.ErrorIs(t, tc.call(m, t.Context()), storageErr)
+		})
+	}
 }
 
 func Test_Middleware_ResolveContext(t *testing.T) {

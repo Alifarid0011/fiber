@@ -2035,19 +2035,7 @@ func Test_CSRF_RepeatedSecFetchSiteAndRefererAreRefused(t *testing.T) {
 	// Trusted-proxy app: Ctx.Scheme reads X-Forwarded-Proto only from a trusted
 	// peer, and the Referer check runs only on HTTPS.
 	h := csrfTestAccept(newTrustedApp(), &Config{})
-
-	get := &fasthttp.RequestCtx{}
-	get.Request.Header.SetMethod(fiber.MethodGet)
-	get.Request.SetRequestURI("/")
-	get.Request.URI().SetScheme("https")
-	get.Request.Header.SetProtocol("https")
-	get.Request.Header.SetHost("example.com")
-	h(get)
-
-	token := string(get.Response.Body())
-	require.NotEmpty(t, token)
-	cookie, _, _ := strings.Cut(string(get.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
-	require.NotEmpty(t, cookie)
+	token, cookie := csrfTestVisit(t, h)
 
 	post := func(build func(*fasthttp.RequestCtx)) int {
 		ctx := &fasthttp.RequestCtx{}

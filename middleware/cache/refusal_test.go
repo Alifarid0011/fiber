@@ -1491,16 +1491,13 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) 
 				base.errs["del|"+key] = errors.New("storage unavailable")
 			}
 
-			var captured error
-			app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, err error) error {
-				captured = err
-				return c.SendStatus(fiber.StatusInternalServerError)
-			}})
+			var failures cacheTestAFailures
+			app := failures.app()
 			app.Use(New(cfg))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 			require.Equal(t, fiber.StatusInternalServerError, getRoot(t, app, nil).status)
-			require.ErrorContains(t, captured, tc.want)
+			require.ErrorContains(t, failures.err, tc.want)
 		})
 	}
 }

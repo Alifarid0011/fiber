@@ -188,14 +188,7 @@ func Test_Cache_Security_KeyValuesStayDistinct(t *testing.T) {
 // Concurrent requests whose query has more parameters than the key spells out.
 func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Expiration: 1 * time.Hour}))
-
-	var count atomic.Int32
-	app.Get("/", func(c fiber.Ctx) error {
-		count.Add(1)
-		return c.SendString("response")
-	})
+	app, count := cacheTestAOrigin(New(Config{Expiration: 1 * time.Hour}), "response")
 
 	url := cacheTestCQuery(200, "p%[1]d=v%[1]d")
 	const numRequests = 100
@@ -299,15 +292,12 @@ func Test_Cache_Security_KeyHeaderRepeatedFieldLines(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New()
-			app.Use(New(tc.cfg))
-			app.Get("/", func(c fiber.Ctx) error {
+			wire := cacheTestCWireOf(t, &tc.cfg, func(c fiber.Ctx) error {
 				if tc.vary {
 					c.Set("Vary", "X-Tenant")
 				}
 				return cacheTestCEchoTenants(c)
 			})
-			wire := cacheTestCWire{t: t, app: app}
 			twoLines := []string{"public", "acme-private"}
 
 			cacheTestCRequireReply(t, wire.field("X-Tenant", twoLines...), cacheMiss, "tenant:public;acme-private;")
@@ -421,10 +411,8 @@ func Test_JoinedHeader(t *testing.T) {
 // one's page.
 func Test_Cache_Security_CookieKeyedOnEveryFieldLine(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Expiration: time.Hour, KeyHeaders: []string{"Cookie"}}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("page-for:" + c.Cookies("session")) })
-	wire := cacheTestCWire{t: t, app: app}
+	wire := cacheTestCWireOf(t, &Config{Expiration: time.Hour, KeyHeaders: []string{"Cookie"}},
+		func(c fiber.Ctx) error { return c.SendString("page-for:" + c.Cookies("session")) })
 
 	cacheTestCRequireReply(t, wire.field("Cookie", "a=1", "session=attacker"), cacheMiss, "page-for:attacker")
 	cacheTestCRequireReply(t, wire.field("Cookie", "a=1"), cacheMiss, "page-for:",
@@ -586,14 +574,7 @@ func Test_Cache_BoundKeySegment_ReservedPrefixHashed(t *testing.T) {
 // contains the literal bytes "a\p" repeated.
 func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Expiration: 1 * time.Hour, Methods: []string{fiber.MethodQuery}}))
-
-	var count atomic.Int32
-	app.Query("/", func(c fiber.Ctx) error {
-		count.Add(1)
-		return c.SendString("response")
-	})
+	app, count := cacheTestAOrigin(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodQuery}}), "response")
 
 	// bodyA: 130 raw bytes (<=192, takes the verbatim branch); escapes to
 	// "a\p" x65 = 195 bytes (>192), so it is hashed over the RAW "a|" x65.
@@ -660,14 +641,11 @@ func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T)
 // entry.
 func Test_VaryCookie_KeyIsStableAcrossCookieCollection(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Expiration: time.Hour}))
-	app.Get("/", func(c fiber.Ctx) error {
+	wire := cacheTestCWireOf(t, &Config{Expiration: time.Hour}, func(c fiber.Ctx) error {
 		c.Response().Header.Set(fiber.HeaderVary, fiber.HeaderCookie)
 		// Reading a cookie is what forces collection mid-request.
 		return c.SendString("page-for:" + c.Cookies("session"))
 	})
-	wire := cacheTestCWire{t: t, app: app}
 
 	cacheTestCRequireReply(t, wire.field("Cookie", "a=1", "session=alice"), cacheMiss, "page-for:alice")
 	cacheTestCRequireReply(t, wire.field("Cookie", "a=1", "session=alice"), cacheHit, "page-for:alice",
@@ -717,10 +695,8 @@ func Test_RequestHeader_SecondFieldLine(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New()
-			app.Use(New(Config{Expiration: time.Hour}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
-			wire := cacheTestCWire{t: t, app: app}
+			wire := cacheTestCWireOf(t, &Config{Expiration: time.Hour},
+				func(c fiber.Ctx) error { return c.SendString("body") })
 
 			// Prime an anonymous entry.
 			require.Equal(t, cacheMiss, wire.get().cache)
@@ -737,9 +713,7 @@ func Test_RequestHeader_SecondFieldLine(t *testing.T) {
 // other's response.
 func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Expiration: time.Hour}))
-	app.Get("/", func(c fiber.Ctx) error {
+	wire := cacheTestCWireOf(t, &Config{Expiration: time.Hour}, func(c fiber.Ctx) error {
 		// Opt in to shared caching so an authorized response is stored at all,
 		// which is what lets the key partition be observed.
 		c.Set(fiber.HeaderCacheControl, "public")
@@ -753,7 +727,6 @@ func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
 		}
 		return c.SendString("body for:" + last)
 	})
-	wire := cacheTestCWire{t: t, app: app}
 
 	// Both principals share the first field line and differ only on the second.
 	cacheTestCRequireReply(t, wire.field("Authorization", "Bearer shared", "Bearer alice"), cacheMiss, "body for:Bearer alice")
@@ -942,16 +915,13 @@ func Test_CachedRedirectKeepsItsLocation(t *testing.T) {
 // and all.
 func Test_Authorization_DetectedWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
-	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
-	app.Use(New(Config{Expiration: time.Hour}))
-	app.Get("/", func(c fiber.Ctx) error {
+	wire := cacheTestCExactWire(t, func(c fiber.Ctx) error {
 		// With normalizing off a handler reads the name as it arrived.
 		if tok := c.Get("authorization"); tok != "" {
 			return c.SendString("PRIVATE for " + tok)
 		}
 		return c.SendString("PUBLIC")
 	})
-	wire := cacheTestCWire{t: t, app: app, exactNames: true}
 
 	cacheTestCRequireReply(t, wire.get("authorization: Bearer alice-secret"), cacheUnreachable, "PRIVATE for Bearer alice-secret",
 		"an authorized response must not enter the shared store")
@@ -964,10 +934,7 @@ func Test_Authorization_DetectedWithoutHeaderNormalizing(t *testing.T) {
 // "cache-control: no-store" was ignored outright.
 func Test_RequestDirectives_HonoredWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
-	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
-	app.Use(New(Config{Expiration: time.Hour}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
-	wire := cacheTestCWire{t: t, app: app, exactNames: true}
+	wire := cacheTestCExactWire(t, func(c fiber.Ctx) error { return c.SendString("body") })
 
 	require.Equal(t, cacheMiss, wire.get().cache)
 	require.Equal(t, cacheHit, wire.get().cache)
@@ -986,9 +953,7 @@ func Test_RequestDirectives_HonoredWithoutHeaderNormalizing(t *testing.T) {
 // in the anonymous partition.
 func Test_Authorization_MixedCaseFieldLines(t *testing.T) {
 	t.Parallel()
-	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
-	app.Use(New(Config{Expiration: time.Hour}))
-	app.Get("/", func(c fiber.Ctx) error {
+	wire := cacheTestCExactWire(t, func(c fiber.Ctx) error {
 		tok := c.Get("Authorization")
 		if tok == "" {
 			tok = c.Get("authorization")
@@ -998,7 +963,6 @@ func Test_Authorization_MixedCaseFieldLines(t *testing.T) {
 		}
 		return c.SendString("PRIVATE for " + tok)
 	})
-	wire := cacheTestCWire{t: t, app: app, exactNames: true}
 
 	// The canonical line is present but empty, so the byte-for-byte lookup
 	// succeeds and would have stopped there.
@@ -1553,14 +1517,7 @@ func Test_Cache_LegacyAnonymousEntryIsNotRead(t *testing.T) {
 
 	// Seed what the previous version wrote for alice: the anonymous key, holding
 	// her authenticated body.
-	legacy := &item{
-		body:   []byte("alice's private page"),
-		ctype:  []byte(fiber.MIMETextPlainCharsetUTF8),
-		status: fiber.StatusOK,
-		exp:    uint64(time.Now().Add(time.Minute).Unix()),
-		ttl:    uint64(time.Minute / time.Second),
-	}
-	raw, err := legacy.MarshalMsg(nil)
+	raw, err := cacheTestALegacyItem("alice's private page").MarshalMsg(nil)
 	require.NoError(t, err)
 	require.NoError(t, storage.Set("GET|/me", raw, time.Minute))
 

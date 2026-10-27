@@ -150,21 +150,22 @@ func Test_Store_GetByID(t *testing.T) {
 	t.Parallel()
 	store := NewStore()
 
-	t.Run("empty session ID", func(t *testing.T) {
-		t.Parallel()
-		sess, err := store.GetByID(context.Background(), "")
-		require.Error(t, err)
-		require.Nil(t, sess)
-		require.Equal(t, ErrEmptySessionID, err)
-	})
-
-	t.Run("nonexistent session ID", func(t *testing.T) {
-		t.Parallel()
-		sess, err := store.GetByID(context.Background(), "nonexistent-session-id")
-		require.Error(t, err)
-		require.Nil(t, sess)
-		require.Equal(t, ErrSessionIDNotFoundInStore, err)
-	})
+	for _, tc := range []struct {
+		err  error
+		name string
+		id   string
+	}{
+		{name: "empty session ID", err: ErrEmptySessionID},
+		{name: "nonexistent session ID", id: "nonexistent-session-id", err: ErrSessionIDNotFoundInStore},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sess, err := store.GetByID(context.Background(), tc.id)
+			require.Error(t, err)
+			require.Nil(t, sess)
+			require.Equal(t, tc.err, err)
+		})
+	}
 
 	t.Run("valid session ID", func(t *testing.T) {
 		t.Parallel()
