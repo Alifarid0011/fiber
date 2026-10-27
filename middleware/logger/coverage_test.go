@@ -62,15 +62,12 @@ func Test_customLoggerWriter_InvalidLevel(t *testing.T) {
 	require.Zero(t, n)
 }
 
-// Test_loadTimestamp_Empty verifies loadTimestamp returns an empty string when
-// the atomic value has never been stored.
 func Test_loadTimestamp_Empty(t *testing.T) {
 	t.Parallel()
 	var v atomic.Value
 	require.Empty(t, loadTimestamp(&v))
 }
 
-// Test_UnknownTagError_WithHint covers the Hint branch of Error().
 func Test_UnknownTagError_WithHint(t *testing.T) {
 	t.Parallel()
 	err := &UnknownTagError{Tag: "method", Hint: "did you mean ${method}?"}
@@ -78,8 +75,6 @@ func Test_UnknownTagError_WithHint(t *testing.T) {
 	require.Contains(t, err.Error(), `"method"`)
 }
 
-// Test_RegisterContextTag verifies that a context tag registered through the
-// public helper renders in a logger format and panics on invalid input.
 func Test_RegisterContextTag(t *testing.T) {
 	t.Parallel()
 	const tagName = "cov-ctx-tag"
@@ -91,8 +86,6 @@ func Test_RegisterContextTag(t *testing.T) {
 	require.Panics(t, func() { RegisterContextTag("name", nil) })
 }
 
-// Test_RegisterContextTag_EmptyValue ensures the empty-return path of the
-// registered renderer writes nothing.
 func Test_RegisterContextTag_EmptyValue(t *testing.T) {
 	t.Parallel()
 	const tagName = "cov-ctx-empty"

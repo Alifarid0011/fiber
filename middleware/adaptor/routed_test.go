@@ -336,28 +336,16 @@ func Test_FiberHandler_ConnectAuthorityForm(t *testing.T) {
 		wantHost string
 	}{
 		{
-			name:     "authority form",
-			handler:  FiberHandler(h),
-			target:   "backend.internal:443",
-			wantPath: "backend.internal:443",
-			wantHost: "backend.internal:443",
+			name: "authority form", handler: FiberHandler(h), target: "backend.internal:443",
+			wantPath: "backend.internal:443", wantHost: "backend.internal:443",
 		},
 		{
 			// A rewrite of the authority is routed like one of the path.
-			name:     "rewritten authority",
-			handler:  retarget(FiberHandler(h)),
-			target:   "backend.internal:443",
-			wantPath: "other.internal:8443",
-			wantHost: "other.internal:8443",
+			name: "rewritten authority", handler: retarget(FiberHandler(h)), target: "backend.internal:443",
+			wantPath: "other.internal:8443", wantHost: "other.internal:8443",
 		},
-		{
-			// The net/rpc form, a CONNECT with a path, is routed by that path.
-			name:     "net/rpc form",
-			handler:  FiberHandler(h),
-			target:   "/rpc",
-			wantPath: "rpc",
-			wantHost: "example.com",
-		},
+		// The net/rpc form, a CONNECT with a path, is routed by that path.
+		{name: "net/rpc form", handler: FiberHandler(h), target: "/rpc", wantPath: "rpc", wantHost: "example.com"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

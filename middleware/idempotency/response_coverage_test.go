@@ -59,8 +59,6 @@ func Test_response_MarshalUnmarshal_Populated(t *testing.T) {
 	require.Equal(t, v.StatusCode, out.StatusCode)
 }
 
-// Test_response_EncodeDecode_Populated exercises the streaming EncodeMsg /
-// DecodeMsg paths with non-empty data.
 func Test_response_EncodeDecode_Populated(t *testing.T) {
 	t.Parallel()
 	v := populatedResponse()
@@ -139,13 +137,6 @@ func Test_response_Decode_LimitExceeded(t *testing.T) {
 	bigMap = msgp.AppendString(bigMap, "hs")
 	bigMap = msgp.AppendMapHeader(bigMap, 1025)
 
-	var out response
-	_, err := out.UnmarshalMsg(bigMap)
-	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
-
-	var dec response
-	require.ErrorIs(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(bigMap))), msgp.ErrLimitExceeded)
-
 	// Per-header value array header exceeds the 1024 limit.
 	var bigArr []byte
 	bigArr = msgp.AppendMapHeader(bigArr, 1)
@@ -154,12 +145,14 @@ func Test_response_Decode_LimitExceeded(t *testing.T) {
 	bigArr = msgp.AppendString(bigArr, "key")
 	bigArr = msgp.AppendArrayHeader(bigArr, 1025)
 
-	var out2 response
-	_, err = out2.UnmarshalMsg(bigArr)
-	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
+	for name, raw := range map[string][]byte{"headers map": bigMap, "value array": bigArr} {
+		var out response
+		_, err := out.UnmarshalMsg(raw)
+		require.ErrorIs(t, err, msgp.ErrLimitExceeded, name)
 
-	var dec2 response
-	require.ErrorIs(t, dec2.DecodeMsg(msgp.NewReader(bytes.NewReader(bigArr))), msgp.ErrLimitExceeded)
+		var dec response
+		require.ErrorIs(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(raw))), msgp.ErrLimitExceeded, name)
+	}
 }
 
 // Test_response_EncodeMsg_WriterErrors drives the error-return branches of

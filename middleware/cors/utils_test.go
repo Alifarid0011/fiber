@@ -14,36 +14,16 @@ func Test_isOriginSerializedOrNull(t *testing.T) {
 		expectedSerialized bool
 		expectedNull       bool
 	}{
-		{
-			name:               "literal null origin",
-			origin:             "null",
-			expectedSerialized: false,
-			expectedNull:       true,
-		},
-		{
-			name:               "valid http origin",
-			origin:             "https://example.com",
-			expectedSerialized: true,
-			expectedNull:       false,
-		},
+		{name: "literal null origin", origin: "null", expectedSerialized: false, expectedNull: true},
+		{name: "valid http origin", origin: "https://example.com", expectedSerialized: true, expectedNull: false},
 		{
 			name:               "valid origin with port",
 			origin:             "http://example.com:8080",
 			expectedSerialized: true,
 			expectedNull:       false,
 		},
-		{
-			name:               "invalid origin",
-			origin:             "not-an-origin",
-			expectedSerialized: false,
-			expectedNull:       false,
-		},
-		{
-			name:               "empty string",
-			origin:             "",
-			expectedSerialized: false,
-			expectedNull:       false,
-		},
+		{name: "invalid origin", origin: "not-an-origin", expectedSerialized: false, expectedNull: false},
+		{name: "empty string", origin: "", expectedSerialized: false, expectedNull: false},
 		{
 			name:               "origin with path is invalid",
 			origin:             "https://example.com/path",

@@ -41,7 +41,6 @@ func (s *stubStorage) Get(key string) ([]byte, error) {
 }
 
 func (s *stubStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
-	// Call Get method to avoid code duplication
 	return s.Get(key)
 }
 
@@ -58,7 +57,6 @@ func (s *stubStorage) Set(key string, val []byte, _ time.Duration) error {
 }
 
 func (s *stubStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
-	// Call Set method to avoid code duplication
 	return s.Set(key, val, 0)
 }
 
@@ -70,7 +68,6 @@ func (s *stubStorage) Delete(key string) error {
 }
 
 func (s *stubStorage) DeleteWithContext(_ context.Context, key string) error {
-	// Call Delete method to avoid code duplication
 	return s.Delete(key)
 }
 
@@ -80,7 +77,6 @@ func (s *stubStorage) Reset() error {
 }
 
 func (s *stubStorage) ResetWithContext(_ context.Context) error {
-	// Call Reset method to avoid code duplication
 	return s.Reset()
 }
 

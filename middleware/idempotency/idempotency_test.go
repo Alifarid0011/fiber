@@ -145,11 +145,19 @@ func Benchmark_Idempotency(b *testing.B) {
 
 	h := app.Handler()
 
-	b.Run("hit", func(b *testing.B) {
+	// post returns a context holding a POST / with the header pairs kv.
+	post := func(kv ...string) *fasthttp.RequestCtx {
 		c := &fasthttp.RequestCtx{}
 		c.Request.Header.SetMethod(fiber.MethodPost)
 		c.Request.SetRequestURI("/")
-		c.Request.Header.Set("X-Idempotency-Key", "00000000-0000-0000-0000-000000000000")
+		for i := 0; i+1 < len(kv); i += 2 {
+			c.Request.Header.Set(kv[i], kv[i+1])
+		}
+		return c
+	}
+
+	b.Run("hit", func(b *testing.B) {
+		c := post("X-Idempotency-Key", "00000000-0000-0000-0000-000000000000")
 
 		b.ReportAllocs()
 		for b.Loop() {
@@ -158,9 +166,7 @@ func Benchmark_Idempotency(b *testing.B) {
 	})
 
 	b.Run("skip", func(b *testing.B) {
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod(fiber.MethodPost)
-		c.Request.SetRequestURI("/")
+		c := post()
 
 		b.ReportAllocs()
 		for b.Loop() {
@@ -174,11 +180,7 @@ func Benchmark_Idempotency(b *testing.B) {
 	hs := scoped.Handler()
 
 	b.Run("scoped hit", func(b *testing.B) {
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod(fiber.MethodPost)
-		c.Request.SetRequestURI("/")
-		c.Request.Header.Set("X-Idempotency-Key", "00000000-0000-0000-0000-000000000000")
-		c.Request.Header.Set("X-User", "alice")
+		c := post("X-Idempotency-Key", "00000000-0000-0000-0000-000000000000", "X-User", "alice")
 
 		b.ReportAllocs()
 		for b.Loop() {
@@ -205,18 +207,13 @@ func Test_configDefault_defaults(t *testing.T) {
 	require.Nil(t, cfg.KeyScope)
 
 	app := fiber.New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(fiber.MethodGet)
-	ctx := app.AcquireCtx(fctx)
-	require.True(t, cfg.Next(ctx))
-	app.ReleaseCtx(ctx)
-
-	fctx = &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx = app.AcquireCtx(fctx)
-	require.False(t, cfg.Next(ctx))
-	app.ReleaseCtx(ctx)
+	for method, skipped := range map[string]bool{fiber.MethodGet: true, fiber.MethodPost: false} {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(method)
+		ctx := app.AcquireCtx(fctx)
+		require.Equal(t, skipped, cfg.Next(ctx), method)
+		app.ReleaseCtx(ctx)
+	}
 
 	require.NoError(t, cfg.KeyHeaderValidate(validKey))
 	require.Error(t, cfg.KeyHeaderValidate("short"))
@@ -339,63 +336,50 @@ func Test_New_Errors(t *testing.T) {
 	}
 }
 
+// Test_New_StoreRetrieve_FilterHeaders pins the keep-header filter: a replay carries only the headers
+// KeepResponseHeaders names. Configured names match response header names ASCII case-insensitively
+// (fasthttp reports canonical case like "Foo"), and the name list is snapshotted at New() time, so
+// mutating the caller's slice afterwards cannot change an already-built handler.
 func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	s := &stubStorage{}
-	app.Use(New(Config{Storage: s, Lock: &stubLock{}, KeepResponseHeaders: []string{"Foo"}}))
+	for _, tc := range []struct {
+		name   string
+		keep   []string
+		mutate bool // the slice names "Bar" instead once New has returned
+	}{
+		{name: "exact name", keep: []string{"Foo"}},
+		{name: "case insensitive snapshot", keep: []string{"fOO"}, mutate: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			s := &stubStorage{}
+			app.Use(New(Config{Storage: s, Lock: &stubLock{}, KeepResponseHeaders: tc.keep}))
+			if tc.mutate {
+				tc.keep[0] = "Bar"
+			}
 
-	var count int
-	app.Post("/", func(c fiber.Ctx) error {
-		count++
-		c.Set("Foo", "foo")
-		c.Set("Bar", "bar")
-		return c.SendString(fmt.Sprintf("resp%d", count))
-	})
+			var count int
+			app.Post("/", func(c fiber.Ctx) error {
+				count++
+				c.Set("Foo", "foo")
+				c.Set("Bar", "bar")
+				return c.SendString(fmt.Sprintf("resp%d", count))
+			})
 
-	resp, body := idempotencyTestPost(t, app, "/", validKey)
-	require.Equal(t, "resp1", body)
-	require.Equal(t, "foo", resp.Header.Get("Foo"))
-	require.Equal(t, "bar", resp.Header.Get("Bar"))
+			resp, body := idempotencyTestPost(t, app, "/", validKey)
+			require.Equal(t, "resp1", body)
+			require.Equal(t, "foo", resp.Header.Get("Foo"))
+			require.Equal(t, "bar", resp.Header.Get("Bar"))
 
-	resp2, body2 := idempotencyTestPost(t, app, "/", validKey)
-	require.Equal(t, "resp1", body2)
-	require.Equal(t, "foo", resp2.Header.Get("Foo"))
-	require.Empty(t, resp2.Header.Get("Bar"))
-	require.Equal(t, 1, count)
-	require.Equal(t, 1, s.setCount)
-}
-
-// Test_New_StoreRetrieve_FilterHeadersCaseInsensitiveSnapshot pins two
-// properties of the keep-header filter: configured names match response
-// header names ASCII case-insensitively (fasthttp reports canonical case like
-// "Foo"), and the name list is snapshotted at New() time, so mutating the
-// caller's slice afterwards cannot change an already-built handler.
-func Test_New_StoreRetrieve_FilterHeadersCaseInsensitiveSnapshot(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	s := &stubStorage{}
-	keep := []string{"fOO"}
-	app.Use(New(Config{Storage: s, Lock: &stubLock{}, KeepResponseHeaders: keep}))
-	// Post-construction mutation must not affect the handler.
-	keep[0] = "Bar"
-
-	var count int
-	app.Post("/", func(c fiber.Ctx) error {
-		count++
-		c.Set("Foo", "foo")
-		c.Set("Bar", "bar")
-		return c.SendString(fmt.Sprintf("resp%d", count))
-	})
-
-	_, body := idempotencyTestPost(t, app, "/", validKey)
-	require.Equal(t, "resp1", body)
-
-	resp2, body2 := idempotencyTestPost(t, app, "/", validKey)
-	require.Equal(t, "resp1", body2)
-	require.Equal(t, "foo", resp2.Header.Get("Foo"), "differently-cased configured name must still match")
-	require.Empty(t, resp2.Header.Get("Bar"), "mutating the config slice after New must not change filtering")
-	require.Equal(t, 1, count)
+			resp2, body2 := idempotencyTestPost(t, app, "/", validKey)
+			require.Equal(t, "resp1", body2)
+			require.Equal(t, "foo", resp2.Header.Get("Foo"), "the configured name must match whatever its case")
+			require.Empty(t, resp2.Header.Get("Bar"), "mutating the config slice after New must not change filtering")
+			require.Equal(t, 1, count)
+			require.Equal(t, 1, s.setCount)
+		})
+	}
 }
 
 // Test_New_StoreRetrieve_HeadersWithCommas pins that a replayed response
@@ -540,15 +524,13 @@ func Test_New_ReplayDropsStoredCookies(t *testing.T) {
 		return resp
 	}
 
-	resp := replay(nil)
-	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
-	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie2))
+	for _, keep := range [][]string{nil, {"X-Request"}} {
+		resp := replay(keep)
+		require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie), keep)
+		require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie2), keep)
+	}
 
-	resp = replay([]string{"X-Request"})
-	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
-	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie2))
-
-	resp = replay([]string{"X-Request", fiber.HeaderSetCookie})
+	resp := replay([]string{"X-Request", fiber.HeaderSetCookie})
 	require.Equal(t, []string{"sid=ALICE-SESSION; path=/"}, resp.Header.Values(fiber.HeaderSetCookie))
 	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie2))
 }
@@ -702,13 +684,11 @@ func Test_New_Cache_WhenBodyTooLarge(t *testing.T) {
 		return c.SendString(oversized)
 	})
 
-	resp1, body1 := idempotencyTestPost(t, app, "/", validKey)
-	require.Equal(t, fiber.StatusOK, resp1.StatusCode)
-	require.Equal(t, oversized, body1)
-
-	resp2, body2 := idempotencyTestPost(t, app, "/", validKey)
-	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
-	require.Equal(t, oversized, body2)
+	for range 2 {
+		resp, body := idempotencyTestPost(t, app, "/", validKey)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		require.Equal(t, oversized, body)
+	}
 
 	require.Equal(t, 1, count)
 	require.Equal(t, 1, s.setCount)
@@ -724,15 +704,12 @@ func Test_New_HandlerError(t *testing.T) {
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
 	app.Post("/", func(_ fiber.Ctx) error { return errors.New("boom") })
 
-	resp, body := idempotencyTestPost(t, app, "/", validKey)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Equal(t, "boom", body)
-	require.Equal(t, 0, s.setCount)
-
-	resp2, body2 := idempotencyTestPost(t, app, "/", validKey)
-	require.Equal(t, fiber.StatusInternalServerError, resp2.StatusCode)
-	require.Equal(t, "boom", body2)
-	require.Equal(t, 0, s.setCount)
+	for range 2 {
+		resp, body := idempotencyTestPost(t, app, "/", validKey)
+		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+		require.Equal(t, "boom", body)
+		require.Equal(t, 0, s.setCount)
+	}
 }
 
 func Test_New_UnlockError(t *testing.T) {
