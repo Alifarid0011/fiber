@@ -227,23 +227,19 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 				apptest.BodyBytes(t, apptest.Expect(t, app, path, status))
 			}
 			request("/a", fiber.StatusOK)
-			storage.mu.Lock()
-			storage.errs["del|"+key+"_body"] = errors.New("body deletion failed")
+			storage.setErr("del", key+"_body", errors.New("body deletion failed"))
 			if failBodyRead {
-				storage.errs["get|"+key+"_body"] = errors.New("body verification failed")
+				storage.setErr("get", key+"_body", errors.New("body verification failed"))
 			}
-			storage.mu.Unlock()
 			request("/b", fiber.StatusInternalServerError)
 			cacheTestBRequireAccounting(t, probe, 10, 1)
+			require.False(t, storage.holds(key), key)
+			require.True(t, storage.holds(key+"_body"), key+"_body")
 			storage.mu.Lock()
-			require.NotContains(t, storage.data, key)
-			require.Contains(t, storage.data, key+"_body")
 			storage.errs = make(map[string]error)
 			storage.mu.Unlock()
 			request("/c", fiber.StatusOK)
-			storage.mu.RLock()
-			require.NotContains(t, storage.data, key+"_body")
-			storage.mu.RUnlock()
+			require.False(t, storage.holds(key+"_body"), key+"_body")
 			cacheTestBRequireAccounting(t, probe, 10, 1)
 		})
 	}

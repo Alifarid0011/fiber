@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -69,20 +70,12 @@ func buildKeygenCtx(tc *keygenCase) (fiber.Ctx, *Config) {
 	// Method must be set before AcquireCtx (fiber caches it); URI/body/headers are
 	// read live from the request afterwards.
 	fctx := &fasthttp.RequestCtx{}
-	method := tc.method
-	if method == "" {
-		method = fiber.MethodGet
-	}
-	fctx.Request.Header.SetMethod(method)
+	fctx.Request.Header.SetMethod(cmp.Or(tc.method, fiber.MethodGet))
 	c := app.AcquireCtx(fctx)
 	c.Request().SetRequestURI(tc.uri)
 	// The authority is read live as well; a request without one is not what
 	// the key is built for, so the fixtures carry the host httptest would set.
-	host := tc.host
-	if host == "" {
-		host = "example.com"
-	}
-	c.Request().SetHost(host)
+	c.Request().SetHost(cmp.Or(tc.host, "example.com"))
 	if tc.body != "" {
 		c.Request().SetBody([]byte(tc.body))
 	}
@@ -213,7 +206,6 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			// Every key the middleware reads, in order and without duplicates.
 			var mu sync.Mutex
 			var lookedUp []string
@@ -405,14 +397,10 @@ func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 			app.Use(New(Config{Storage: storage, KeyCookies: []string{"session"}}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("for:" + c.Cookies("session")) })
 
-			first := getRoot(t, app, withCookie(session))
-			require.Equal(t, cacheMiss, first.cache)
-			require.Equal(t, "for:"+session, first.body)
+			cacheTestCRequireReply(t, getRoot(t, app, withCookie(session)), cacheMiss, "for:"+session)
 			require.Equal(t, cacheHit, getRoot(t, app, withCookie(session)).cache)
 
-			second := getRoot(t, app, withCookie(other))
-			require.Equal(t, cacheMiss, second.cache)
-			require.Equal(t, "for:"+other, second.body)
+			cacheTestCRequireReply(t, getRoot(t, app, withCookie(other)), cacheMiss, "for:"+other)
 
 			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
 			require.Equal(t, cacheHit, getRoot(t, app, withCookie("")).cache, "an empty cookie is the partition of none")

@@ -89,7 +89,7 @@ func cacheTestCStartReloads(t *testing.T, storage fiber.Storage, varyOn string) 
 	})
 
 	r := &cacheTestCReloads{app: app, probe: probe, calls: calls, varyOn: varyOn}
-	cacheTestBExpect(t, app, r.request(""), cacheMiss)
+	cacheTestAExpect(t, app, r.request(""), cacheMiss)
 	r.first = cacheTestBPark(t, app, r.request("max-age=0"), firstEntered, releaseFirst)
 	r.second = cacheTestBPark(t, app, r.request("max-age=0"), secondEntered, releaseSecond)
 	return r
@@ -116,7 +116,7 @@ func (r *cacheTestCReloads) requireSettled(t *testing.T) {
 
 	cacheTestBRequireAccounting(t, r.probe, 100, 1)
 
-	cacheTestBExpect(t, r.app, r.request(""), cacheHit)
+	cacheTestAExpect(t, r.app, r.request(""), cacheHit)
 	require.Equal(t, int32(3), r.calls.Load())
 }
 

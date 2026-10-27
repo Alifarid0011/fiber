@@ -80,13 +80,11 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	})
 
 	for _, path := range []string{"/old", "/hot"} {
-		cacheTestBExpect(t, app, path, cacheMiss)
+		cacheTestAExpect(t, app, path, cacheMiss)
 	}
 	cacheTestBRequireAccounting(t, probe, 8, 2)
 
-	storage.mu.Lock()
-	storage.errs["del|"+oldKey] = errors.New("eviction delete failed")
-	storage.mu.Unlock()
+	storage.setErr("del", oldKey, errors.New("eviction delete failed"))
 	armed.Store(true)
 
 	evictionDone := cacheTestCEvict(app)
@@ -159,7 +157,7 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 	defer release()
 	cacheTestCWait(t, storage.started, "eviction did not reach blocked deletion")
 
-	cacheTestBExpect(t, app, "/slot", cacheMiss)
+	cacheTestAExpect(t, app, "/slot", cacheMiss)
 	release()
 	require.NoError(t, cacheTestCWait(t, evictionDone, "eviction did not finish"))
 	cacheTestBRequireAccounting(t, probe, 5, 2)

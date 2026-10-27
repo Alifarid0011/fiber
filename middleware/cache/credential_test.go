@@ -46,20 +46,9 @@ func Test_carriesCredential(t *testing.T) {
 	t.Parallel()
 	cfg := configDefault(Config{KeyCredentialHeaders: []string{"X-Company-Token"}})
 	for name, want := range map[string]bool{
-		"Authorization":       true,
-		"authorization":       true,
-		"COOKIE":              true,
-		"Proxy-Authorization": true,
-		"X-API-Key":           true,
-		"x-auth-token":        true,
-		"X-Access-Token":      true,
-		"X-Company-Token":     true,
-		"x-company-token":     true,
-		"X-Tenant":            false,
-		"Accept-Language":     false,
-		"Set-Cookie":          false,
-		"X-Authorization":     false,
-		"":                    false,
+		"Authorization": true, "authorization": true, "COOKIE": true, "Proxy-Authorization": true, "X-API-Key": true,
+		"x-auth-token": true, "X-Access-Token": true, "X-Company-Token": true, "x-company-token": true,
+		"X-Tenant": false, "Accept-Language": false, "Set-Cookie": false, "X-Authorization": false, "": false,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -769,47 +758,30 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 
 func Test_refusesCredential(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		status int
-		want   bool
-	}{
-		{status: fiber.StatusUnauthorized, want: true},
-		{status: fiber.StatusForbidden, want: true},
-		{status: fiber.StatusProxyAuthRequired, want: true},
-		{status: fiber.StatusOK},
-		{status: fiber.StatusFound},
-		{status: fiber.StatusNotFound},
-		{status: fiber.StatusTooManyRequests},
-		{status: fiber.StatusServiceUnavailable},
+	for status, want := range map[int]bool{
+		fiber.StatusUnauthorized: true, fiber.StatusForbidden: true, fiber.StatusProxyAuthRequired: true,
+		fiber.StatusOK: false, fiber.StatusFound: false, fiber.StatusNotFound: false,
+		fiber.StatusTooManyRequests: false, fiber.StatusServiceUnavailable: false,
 	} {
-		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, refusesCredential(tc.status))
+			require.Equal(t, want, refusesCredential(status))
 		})
 	}
 }
 
 func Test_acceptsCredential(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		status int
-		want   bool
-	}{
-		{status: fiber.StatusOK, want: true},
-		{status: fiber.StatusNoContent, want: true},
-		{status: fiber.StatusNotModified, want: true},
+	for status, want := range map[int]bool{
+		fiber.StatusOK: true, fiber.StatusNoContent: true, fiber.StatusNotModified: true,
 		// A redirect is how an app sends an ended session to its login page.
-		{status: fiber.StatusMovedPermanently},
-		{status: fiber.StatusFound},
-		{status: fiber.StatusSeeOther},
-		{status: fiber.StatusTemporaryRedirect},
-		{status: fiber.StatusUnauthorized},
-		{status: fiber.StatusNotFound},
-		{status: fiber.StatusServiceUnavailable},
+		fiber.StatusMovedPermanently: false, fiber.StatusFound: false, fiber.StatusSeeOther: false,
+		fiber.StatusTemporaryRedirect: false, fiber.StatusUnauthorized: false, fiber.StatusNotFound: false,
+		fiber.StatusServiceUnavailable: false,
 	} {
-		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, acceptsCredential(tc.status))
+			require.Equal(t, want, acceptsCredential(status))
 		})
 	}
 }
@@ -834,7 +806,6 @@ func Test_New_StartsTheTimestampUpdater(t *testing.T) {
 
 func Test_errorRefusesCredential(t *testing.T) {
 	t.Parallel()
-
 	// A nil *fiber.Error held in an error matches errors.As, and must not be read.
 	var typedNil *fiber.Error
 

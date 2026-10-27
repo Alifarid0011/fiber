@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/tinylib/msgp/msgp"
 	"github.com/valyala/fasthttp"
@@ -173,7 +172,6 @@ func Test_item_Decode_UnknownField(t *testing.T) {
 
 func Test_item_Decode_LimitExceeded(t *testing.T) {
 	t.Parallel()
-
 	// headers array exceeds the configured limit of 1024.
 	var raw []byte
 	raw = msgp.AppendMapHeader(raw, 1)
@@ -279,9 +277,8 @@ func Test_indexedHeap_PushAndOps(t *testing.T) {
 	t.Parallel()
 	h := &indexedHeap{}
 
-	// put inserts entries and returns tracking indices.
-	idxA := h.put("a", 30, 1)
-	idxB := h.put("b", 10, 2)
+	h.put("a", 30, 1)
+	h.put("b", 10, 2)
 	idxC := h.put("c", 20, 3)
 	require.Equal(t, 3, h.Len())
 
@@ -289,11 +286,8 @@ func Test_indexedHeap_PushAndOps(t *testing.T) {
 	key, _ := h.removeFirst()
 	require.Equal(t, "b", key)
 
-	// Remove an arbitrary tracked entry.
 	key, _ = h.remove(idxC)
 	require.Equal(t, "c", key)
-	_ = idxA
-	_ = idxB
 
 	// Directly exercise the heap.Interface Push method (not used by put()).
 	h2 := &indexedHeap{indices: []int{0}}
@@ -351,7 +345,6 @@ func Test_allowsSharedCacheStorage(t *testing.T) {
 
 func Test_secondsConversions_Overflow(t *testing.T) {
 	t.Parallel()
-
 	// secondsToTime clamps values beyond math.MaxInt64.
 	require.Equal(t, time.Unix(math.MaxInt64, 0).UTC(), secondsToTime(math.MaxUint64))
 	require.Equal(t, time.Unix(5, 0).UTC(), secondsToTime(5))
@@ -421,7 +414,6 @@ func Test_appendAuthHash_FramingSizes(t *testing.T) {
 
 func Test_framedLen(t *testing.T) {
 	t.Parallel()
-
 	// Each length is a uvarint: a byte more at 128, at 16384, and so on.
 	for _, n := range []int{0, 1, 126, 127, 128, 254, 255, 16383, 16384} {
 		line := make([]byte, n)
@@ -444,7 +436,6 @@ func Test_appendAuthHash_DoesNotAllocate(t *testing.T) {
 
 func Test_manager_get_StorageErrors(t *testing.T) {
 	t.Parallel()
-
 	// Storage GetWithContext returns an error.
 	storage := newFailingCacheStorage()
 	storage.errs["get|k"] = errors.New("boom")
@@ -459,7 +450,6 @@ func Test_manager_get_StorageErrors(t *testing.T) {
 	_, err = m2.get(context.Background(), "k")
 	require.ErrorContains(t, err, "unmarshal")
 
-	// Cache miss.
 	m3 := newManager(newFailingCacheStorage(), false)
 	_, err = m3.get(context.Background(), "missing")
 	require.ErrorIs(t, err, errCacheMiss)
@@ -473,7 +463,6 @@ func Test_manager_get_StorageErrors(t *testing.T) {
 
 func Test_manager_getRaw_Paths(t *testing.T) {
 	t.Parallel()
-
 	// Storage error.
 	storage := newFailingCacheStorage()
 	storage.errs["get|k"] = errors.New("boom")
@@ -481,7 +470,6 @@ func Test_manager_getRaw_Paths(t *testing.T) {
 	_, err := m.getRaw(context.Background(), "k")
 	require.ErrorContains(t, err, "boom")
 
-	// Storage hit.
 	storage2 := newFailingCacheStorage()
 	storage2.data["k"] = []byte("raw-value")
 	m2 := newManager(storage2, false)
@@ -489,7 +477,6 @@ func Test_manager_getRaw_Paths(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("raw-value"), raw)
 
-	// Memory hit.
 	m3 := newManager(nil, false)
 	require.NoError(t, m3.setRaw(context.Background(), "k", []byte("mem"), time.Minute))
 	raw, err = m3.getRaw(context.Background(), "k")
@@ -502,7 +489,6 @@ func Test_manager_getRaw_Paths(t *testing.T) {
 	_, err = m4.getRaw(context.Background(), "k")
 	require.ErrorContains(t, err, "unexpected raw entry type")
 
-	// Miss.
 	m5 := newManager(newFailingCacheStorage(), false)
 	_, err = m5.getRaw(context.Background(), "missing")
 	require.ErrorIs(t, err, errCacheMiss)
@@ -518,7 +504,6 @@ func Test_manager_set_StorageError(t *testing.T) {
 	it.status = 200
 	require.ErrorContains(t, m.set(context.Background(), "k", it, time.Minute), "boom")
 
-	// setRaw storage error.
 	require.ErrorContains(t, m.setRaw(context.Background(), "k", []byte("v"), time.Minute), "boom")
 }
 
@@ -552,7 +537,6 @@ func Test_varyManifest_StoreLoad(t *testing.T) {
 	require.False(t, ok)
 	require.Nil(t, names)
 
-	// Store and load a real manifest.
 	require.NoError(t, storeVaryManifest(ctx, m, "mk", []string{"accept", "accept-encoding"}, time.Minute))
 	names, ok, err = loadVaryManifest(ctx, m, "mk")
 	require.NoError(t, err)
@@ -631,26 +615,4 @@ func Test_appendVaryKey_RepeatedFieldLines(t *testing.T) {
 	require.NotEqual(t, key("a", "bb", "c"), key("aa", "b", "c"))
 	// Same input, same key.
 	require.Equal(t, both, key("public", "acme-private"))
-}
-
-// Test_Cache_VaryRepeatedFieldLines is the end-to-end form: a request that
-// sends one field line must not be served the entry stored for a request that
-// sent two.
-func Test_Cache_VaryRepeatedFieldLines(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Expiration: time.Minute}))
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Set("Vary", "X-Tenant")
-		return cacheTestCEchoTenants(c)
-	})
-	wire := cacheTestCWire{t: t, app: app}
-
-	cacheTestCRequireReply(t, wire.field("X-Tenant", "public", "acme-private"), cacheMiss, "tenant:public;acme-private;")
-	cacheTestCRequireReply(t, wire.field("X-Tenant", "public"), cacheMiss, "tenant:public;",
-		"the single-line request must not hit the two-line entry")
-
-	// Each variant still caches on its own key.
-	cacheTestCRequireReply(t, wire.field("X-Tenant", "public", "acme-private"), cacheHit, "tenant:public;acme-private;")
-	cacheTestCRequireReply(t, wire.field("X-Tenant", "public"), cacheHit, "tenant:public;")
 }

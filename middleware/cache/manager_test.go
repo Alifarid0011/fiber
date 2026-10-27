@@ -34,11 +34,8 @@ func Test_manager_get(t *testing.T) {
 
 func Test_manager_logKey(t *testing.T) {
 	t.Parallel()
-	redactedManager := newManager(nil, true)
-	assert.Equal(t, redactedKey, redactedManager.logKey("secret"))
-
-	plainManager := newManager(nil, false)
-	assert.Equal(t, "secret", plainManager.logKey("secret"))
+	assert.Equal(t, redactedKey, newManager(nil, true).logKey("secret"))
+	assert.Equal(t, "secret", newManager(nil, false).logKey("secret"))
 }
 
 // Test_manager_release_ResetsEveryField pins that an item handed back to the
