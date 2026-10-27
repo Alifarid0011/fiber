@@ -517,25 +517,32 @@ func TestSharedState_UsesAppCodec(t *testing.T) {
 
 func TestSharedState_UnconfiguredCodecsReturnErrorInsteadOfPanic(t *testing.T) {
 	t.Parallel()
-	app := New(Config{SharedStorage: newSharedStateMemoryStorage(t)})
+	for _, tc := range []struct {
+		set     func(*SharedState, string, any, time.Duration) error
+		get     func(*SharedState, string, any) ([]byte, bool, error)
+		name    string
+		wantErr string
+	}{
+		{
+			name: "MsgPack", set: (*SharedState).SetMsgPack, get: (*SharedState).GetMsgPack,
+			wantErr: "shared state msgpack",
+		},
+		{name: "CBOR", set: (*SharedState).SetCBOR, get: (*SharedState).GetCBOR, wantErr: "shared state cbor"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			state := New(Config{SharedStorage: newSharedStateMemoryStorage(t)}).SharedState()
 
-	err := app.SharedState().SetMsgPack("codec", Map{"ignored": true}, time.Minute)
-	require.ErrorContains(t, err, "shared state msgpack")
+			require.ErrorContains(t, tc.set(state, "codec", Map{"ignored": true}, time.Minute), tc.wantErr)
 
-	require.NoError(t, app.SharedState().Set("msgpack-payload", []byte("payload"), time.Minute))
+			require.NoError(t, state.Set("payload", []byte("payload"), time.Minute))
 
-	var out Map
-	_, found, err := app.SharedState().GetMsgPack("msgpack-payload", &out)
-	require.False(t, found)
-	require.ErrorContains(t, err, "shared state msgpack")
-
-	require.ErrorContains(t, app.SharedState().SetCBOR("codec", Map{"ignored": true}, time.Minute), "shared state cbor")
-
-	require.NoError(t, app.SharedState().Set("cbor-payload", []byte("payload"), time.Minute))
-
-	_, found, err = app.SharedState().GetCBOR("cbor-payload", &out)
-	require.False(t, found)
-	require.ErrorContains(t, err, "shared state cbor")
+			var out Map
+			_, found, err := tc.get(state, "payload", &out)
+			require.False(t, found)
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }
 
 func TestSharedState_EmptyKeyBehavior(t *testing.T) {

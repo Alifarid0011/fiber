@@ -114,7 +114,6 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 	subApp1 := New()
 	subApp2 := New()
 	app.Use(func(c Ctx) error {
-		// set initial value
 		c.Locals("world", "world")
 		return c.Next()
 	})
@@ -234,18 +233,12 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	tsf := func(c Ctx, _ error) error { return c.Status(200).SendString("hi, i'm a custom sub fiber error 2") }
-	tripleSubFiber := New(Config{ErrorHandler: tsf})
-	tripleSubFiber.Get("/", func(_ Ctx) error { return errors.New("something happened") })
+	tripleSubFiber := domainTestFailingApp(200, "hi, i'm a custom sub fiber error 2", "/")
 
-	sf := func(c Ctx, _ error) error { return c.Status(200).SendString("hi, i'm a custom sub fiber error") }
-	subfiber := New(Config{ErrorHandler: sf})
-	subfiber.Get("/", func(_ Ctx) error { return errors.New("something happened") })
+	subfiber := domainTestFailingApp(200, "hi, i'm a custom sub fiber error", "/")
 	subfiber.Use("/third", tripleSubFiber)
 
-	f := func(c Ctx, _ error) error { return c.Status(200).SendString("hi, i'm a custom error") }
-	fiber := New(Config{ErrorHandler: f})
-	fiber.Get("/", func(_ Ctx) error { return errors.New("something happened") })
+	fiber := domainTestFailingApp(200, "hi, i'm a custom error", "/")
 	fiber.Use("/sub", subfiber)
 
 	app.Use("/api", fiber)
@@ -312,11 +305,7 @@ func Test_Mount_Route_Names(t *testing.T) {
 
 func Test_Ctx_Render_Mount(t *testing.T) {
 	t.Parallel()
-	engine := &testTemplateEngine{}
-	require.NoError(t, engine.Load())
-
-	sub := New(Config{Views: engine})
-
+	sub := New(Config{Views: domainTestEngine(t, "")})
 	sub.Get("/:name", func(c Ctx) error { return c.Render("hello_world.tmpl", Map{"Name": c.Params("name")}) })
 
 	app := New()
@@ -327,16 +316,9 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 
 func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	t.Parallel()
-	engine := &testTemplateEngine{}
-	require.NoError(t, engine.Load())
-	engine2 := &testTemplateEngine{path: "testdata2"}
-	require.NoError(t, engine2.Load())
-	engine3 := &testTemplateEngine{path: "testdata3"}
-	require.NoError(t, engine3.Load())
-
-	sub := New(Config{Views: engine3})
-	sub2 := New(Config{Views: engine2})
-	app := New(Config{Views: engine})
+	sub := New(Config{Views: domainTestEngine(t, "testdata3")})
+	sub2 := New(Config{Views: domainTestEngine(t, "testdata2")})
+	app := New(Config{Views: domainTestEngine(t, "")})
 	app.Get("/test", func(c Ctx) error { return c.Render("index.tmpl", Map{"Title": "Hello, World!"}) })
 	sub.Get("/world/:name", func(c Ctx) error { return c.Render("hello_world.tmpl", Map{"Name": c.Params("name")}) })
 	sub2.Get("/moment", func(c Ctx) error { return c.Render("bruh.tmpl", Map{}) })
@@ -350,11 +332,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 
 func Test_Ctx_Render_MountGroup(t *testing.T) {
 	t.Parallel()
-	engine := &testTemplateEngine{}
-	require.NoError(t, engine.Load())
-
-	micro := New(Config{Views: engine})
-
+	micro := New(Config{Views: domainTestEngine(t, "")})
 	micro.Get("/doe", func(c Ctx) error { return c.Render("hello_world.tmpl", Map{"Name": "doe"}) })
 
 	app := New()
@@ -517,8 +495,7 @@ func Test_App_Mount_PreservesNestedCustomConstraint(t *testing.T) {
 // included.
 func Test_App_Mount_CarriesDomainMount(t *testing.T) {
 	t.Parallel()
-	micro := New(Config{ErrorHandler: func(c Ctx, _ error) error { return c.Status(596).SendString("micro error") }})
-	micro.Get("/doe", func(_ Ctx) error { return errors.New("boom") })
+	micro := domainTestFailingApp(596, "micro error", "/doe")
 
 	sub := New()
 	sub.Domain("api.example.com").Use("/v1", micro)
@@ -533,28 +510,53 @@ func Test_App_Mount_CarriesDomainMount(t *testing.T) {
 	apptest.Expect(t, app, apptest.Req(MethodGet, "/john/v1/doe", apptest.WithHost("www.example.com")), StatusNotFound)
 }
 
+// routerMountVariants are the two ways a test mounts an app: plainly under /john, and through a domain router under
+// /api on api.example.com. host is the Host that reaches the mount.
+var routerMountVariants = []struct {
+	mount  func(app, micro *App)
+	host   apptest.Option
+	name   string
+	prefix string
+}{
+	{
+		name: "plain", prefix: "/john", host: apptest.WithHost("example.com"),
+		mount: func(app, micro *App) { app.Use("/john", micro) },
+	},
+	{
+		name: "domain", prefix: "/api", host: apptest.WithHost("api.example.com"),
+		mount: func(app, micro *App) { app.Domain("api.example.com").Use("/api", micro) },
+	},
+}
+
 // Test_App_Mount_AutoHeadKeepsMiddleware verifies that a mounted app which does
 // not serve HEAD gets no synthesized HEAD routes once its routes are expanded
-// into the parent — they would run without the middleware it registered.
+// into the parent, directly or through a domain router — they would run without
+// the middleware it registered.
 func Test_App_Mount_AutoHeadKeepsMiddleware(t *testing.T) {
 	t.Parallel()
-	micro := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
-	micro.Use(func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
-	micro.Get("/doe", func(c Ctx) error {
-		c.Set("X-Secret", "leaked")
-		return c.SendString("doe")
-	})
+	for _, tc := range routerMountVariants {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			micro := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
+			micro.Use(func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+			micro.Get("/doe", func(c Ctx) error {
+				c.Set("X-Secret", "leaked")
+				return c.SendString("doe")
+			})
 
-	app := New()
-	app.Use("/john", micro)
+			app := New()
+			tc.mount(app, micro)
+			target := tc.prefix + "/doe"
 
-	apptest.Expect(t, app, "/john/doe", StatusUnauthorized)
+			apptest.Expect(t, app, apptest.Req(MethodGet, target, tc.host), StatusUnauthorized)
 
-	// Twice: app.Test runs the startup process on every call, and the second
-	// pass sees the mount already expanded into the parent's stack.
-	for range 2 {
-		resp := apptest.Expect(t, app, apptest.Req(MethodHead, "/john/doe"), StatusMethodNotAllowed)
-		require.Empty(t, resp.Header.Get("X-Secret"))
+			// Twice: app.Test runs the startup process on every call, and the second
+			// pass sees the mount already expanded into the parent's stack.
+			for range 2 {
+				resp := apptest.Expect(t, app, apptest.Req(MethodHead, target, tc.host), StatusMethodNotAllowed)
+				require.Empty(t, resp.Header.Get("X-Secret"))
+			}
+		})
 	}
 }
 
@@ -570,11 +572,10 @@ func Test_App_Mount_RootMountKeepsParentAutoHead(t *testing.T) {
 	app.Get("/own", func(c Ctx) error { return c.SendString("own") })
 	app.Use("/", micro)
 
-	resp := apptest.Do(t, app, apptest.Req(MethodHead, "/own"))
-	require.Equal(t, StatusOK, resp.StatusCode, "the app's own route keeps its HEAD route")
-
-	resp = apptest.Do(t, app, apptest.Req(MethodHead, "/doe"))
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "the mounted app serves no HEAD")
+	// the app's own route keeps its HEAD route
+	apptest.Expect(t, app, apptest.Req(MethodHead, "/own"), StatusOK)
+	// the mounted app serves no HEAD
+	apptest.Expect(t, app, apptest.Req(MethodHead, "/doe"), StatusMethodNotAllowed)
 }
 
 // Test_App_Mount_ParametricPrefix verifies that a mount prefix carrying a
@@ -613,8 +614,7 @@ func Test_App_Mount_ParametricPrefix(t *testing.T) {
 // error handler has to answer for it too.
 func Test_App_Mount_CaseInsensitivePath(t *testing.T) {
 	t.Parallel()
-	micro := New(Config{ErrorHandler: func(c Ctx, _ error) error { return c.Status(599).SendString("micro error") }})
-	micro.Get("/doe", func(_ Ctx) error { return errors.New("boom") })
+	micro := domainTestFailingApp(599, "micro error", "/doe")
 
 	app := New()
 	app.Use("/API", micro)
@@ -631,23 +631,24 @@ func Test_App_Mount_CaseInsensitivePath(t *testing.T) {
 }
 
 // Test_App_Mount_ViewsPathOnly verifies that a mounted app's views are chosen
-// by the request path, not by its mount path appearing anywhere in the URL.
+// by the request path, not by its mount path appearing anywhere in the URL — a
+// query string carrying it must not select them.
 func Test_App_Mount_ViewsPathOnly(t *testing.T) {
 	t.Parallel()
-	subEngine := &testTemplateEngine{path: "testdata2"}
-	require.NoError(t, subEngine.Load())
+	for _, tc := range routerMountVariants {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			micro := New(Config{Views: domainTestEngine(t, "testdata2")})
+			micro.Get("/view", func(c Ctx) error { return c.Render("bruh.tmpl", Map{}) })
 
-	parentEngine := &testTemplateEngine{}
-	require.NoError(t, parentEngine.Load())
+			app := New(Config{Views: domainTestEngine(t, "")})
+			tc.mount(app, micro)
+			app.Get("/elsewhere", func(c Ctx) error { return c.Render("index.tmpl", Map{"Title": "parent"}) })
 
-	micro := New(Config{Views: subEngine})
-	micro.Get("/view", func(c Ctx) error { return c.Render("bruh.tmpl", Map{}) })
-
-	app := New(Config{Views: parentEngine})
-	app.Use("/john", micro)
-	app.Get("/elsewhere", func(c Ctx) error { return c.Render("index.tmpl", Map{"Title": "parent"}) })
-
-	apptest.ExpectBody(t, app, "/elsewhere?next=/john/view", StatusOK, "<h1>parent</h1>")
+			req := apptest.Req(MethodGet, "/elsewhere?next="+tc.prefix+"/view", tc.host)
+			apptest.ExpectBody(t, app, req, StatusOK, "<h1>parent</h1>")
+		})
+	}
 }
 
 // Test_App_Mount_ParametricPrefixConstraint verifies that a constraint named in
@@ -663,9 +664,8 @@ func Test_App_Mount_ParametricPrefixConstraint(t *testing.T) {
 	app.Use("/:name<onlyfoo>", micro)
 
 	apptest.Expect(t, app, "/foo/doe", StatusOK)
-
-	resp := apptest.Do(t, app, "/bar/doe")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "the prefix constraint still rejects")
+	// the prefix constraint still rejects
+	apptest.Expect(t, app, "/bar/doe", StatusNotFound)
 }
 
 func Test_App_Mount_StrictRouting(t *testing.T) {

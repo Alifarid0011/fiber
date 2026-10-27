@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"fmt"
-	"net/http"
 	"reflect"
 	"regexp"
 	"slices"
@@ -164,9 +163,7 @@ func Test_Route_OptionalParamDoesNotSwallowSlash(t *testing.T) {
 		return c.SendString("day=" + c.Params("day") + " month=" + c.Params("month"))
 	})
 
-	req, err := http.NewRequest(MethodGet, "/api/1-/-", http.NoBody)
-	require.NoError(t, err)
-	apptest.Expect(t, app, req, StatusNotFound)
+	apptest.Expect(t, app, "/api/1-/-", StatusNotFound)
 }
 
 // Test_Path_ParameterEndChars_MatchesRouteGrammar pins the shared set against
@@ -381,55 +378,40 @@ func Test_Utils_RemoveEscapeChar(t *testing.T) {
 
 func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 	t.Parallel()
+	bad := func(handler ConstraintHandler, name string, data ...string) Constraint {
+		return *newConstraint(handler, name, data)
+	}
 	testCases := []struct {
 		name       string
 		param      string
 		constraint Constraint
 	}{
 		{
-			name:       "minLen invalid metadata",
-			constraint: *newConstraint(minLenConstraintType{}, ConstraintMinLen, []string{"abc"}),
-			param:      "abcd",
+			name: "minLen invalid metadata", param: "abcd",
+			constraint: bad(minLenConstraintType{}, ConstraintMinLen, "abc"),
 		},
 		{
-			name:       "maxLen invalid metadata",
-			constraint: *newConstraint(maxLenConstraintType{}, ConstraintMaxLen, []string{"abc"}),
-			param:      "abcd",
+			name: "maxLen invalid metadata", param: "abcd",
+			constraint: bad(maxLenConstraintType{}, ConstraintMaxLen, "abc"),
+		},
+		{name: "len invalid metadata", param: "abcd", constraint: bad(lenConstraintType{}, ConstraintLen, "abc")},
+		{
+			name: "betweenLen invalid first metadata", param: "abcd",
+			constraint: bad(betweenLenConstraintType{}, ConstraintBetweenLen, "abc", "5"),
 		},
 		{
-			name:       "len invalid metadata",
-			constraint: *newConstraint(lenConstraintType{}, ConstraintLen, []string{"abc"}),
-			param:      "abcd",
+			name: "betweenLen invalid second metadata", param: "abcd",
+			constraint: bad(betweenLenConstraintType{}, ConstraintBetweenLen, "1", "abc"),
+		},
+		{name: "min invalid metadata", param: "10", constraint: bad(minConstraintType{}, ConstraintMin, "abc")},
+		{name: "max invalid metadata", param: "10", constraint: bad(maxConstraintType{}, ConstraintMax, "abc")},
+		{
+			name: "range invalid first metadata", param: "7",
+			constraint: bad(rangeConstraintType{}, ConstraintRange, "abc", "10"),
 		},
 		{
-			name:       "betweenLen invalid first metadata",
-			constraint: *newConstraint(betweenLenConstraintType{}, ConstraintBetweenLen, []string{"abc", "5"}),
-			param:      "abcd",
-		},
-		{
-			name:       "betweenLen invalid second metadata",
-			constraint: *newConstraint(betweenLenConstraintType{}, ConstraintBetweenLen, []string{"1", "abc"}),
-			param:      "abcd",
-		},
-		{
-			name:       "min invalid metadata",
-			constraint: *newConstraint(minConstraintType{}, ConstraintMin, []string{"abc"}),
-			param:      "10",
-		},
-		{
-			name:       "max invalid metadata",
-			constraint: *newConstraint(maxConstraintType{}, ConstraintMax, []string{"abc"}),
-			param:      "10",
-		},
-		{
-			name:       "range invalid first metadata",
-			constraint: *newConstraint(rangeConstraintType{}, ConstraintRange, []string{"abc", "10"}),
-			param:      "7",
-		},
-		{
-			name:       "range invalid second metadata",
-			constraint: *newConstraint(rangeConstraintType{}, ConstraintRange, []string{"1", "abc"}),
-			param:      "7",
+			name: "range invalid second metadata", param: "7",
+			constraint: bad(rangeConstraintType{}, ConstraintRange, "1", "abc"),
 		},
 	}
 
@@ -471,7 +453,6 @@ func Benchmark_Path_matchParams(t *testing.B) {
 			t.Run(testCollection.pattern+"_"+state+"_"+c.url, func(b *testing.B) {
 				for b.Loop() {
 					if match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck); match {
-						// Get testCases from the original path
 						matchRes = true
 					}
 				}
@@ -562,7 +543,6 @@ func Benchmark_RoutePatternMatch(t *testing.B) {
 			t.Run(testCollection.pattern+"_"+state+"_"+c.url, func(b *testing.B) {
 				for b.Loop() {
 					if match := RoutePatternMatch(c.url, testCollection.pattern); match {
-						// Get testCases from the original path
 						matchRes = true
 					}
 				}

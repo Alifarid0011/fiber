@@ -384,8 +384,13 @@ func TestState_MustGetService(t *testing.T) {
 // stateBenchKeys is how many keys stateBenchFill puts in a State.
 const stateBenchKeys = 1000
 
-// stateBenchFill returns a State holding stateBenchKeys keys, "key0" onwards, each key i set to value(i).
-func stateBenchFill(value func(i int) any) *State {
+// stateBenchFill reports allocations and returns a State holding stateBenchKeys keys, "key0" onwards, each key i set
+// to value(i).
+func stateBenchFill(b *testing.B, value func(i int) any) *State {
+	b.Helper()
+
+	b.ReportAllocs()
+
 	st := newState()
 	for i := range stateBenchKeys {
 		st.Set("key"+strconv.Itoa(i), value(i))
@@ -407,10 +412,8 @@ func BenchmarkState_Set(b *testing.B) {
 }
 
 func BenchmarkState_Get(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return i })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return i })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -419,10 +422,8 @@ func BenchmarkState_Get(b *testing.B) {
 }
 
 func BenchmarkState_GetString(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return strconv.Itoa(i) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return strconv.Itoa(i) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -431,10 +432,8 @@ func BenchmarkState_GetString(b *testing.B) {
 }
 
 func BenchmarkState_GetInt(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return i })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return i })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -443,10 +442,8 @@ func BenchmarkState_GetInt(b *testing.B) {
 }
 
 func BenchmarkState_GetBool(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return i%2 == 0 })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return i%2 == 0 })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -455,10 +452,8 @@ func BenchmarkState_GetBool(b *testing.B) {
 }
 
 func BenchmarkState_GetFloat64(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return float64(i) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return float64(i) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -467,10 +462,8 @@ func BenchmarkState_GetFloat64(b *testing.B) {
 }
 
 func BenchmarkState_MustGet(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return i })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return i })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -479,10 +472,8 @@ func BenchmarkState_MustGet(b *testing.B) {
 }
 
 func BenchmarkState_GetStateGeneric(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return i })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return i })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -491,10 +482,8 @@ func BenchmarkState_GetStateGeneric(b *testing.B) {
 }
 
 func BenchmarkState_MustGetStateGeneric(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return i })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return i })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -503,10 +492,8 @@ func BenchmarkState_MustGetStateGeneric(b *testing.B) {
 }
 
 func BenchmarkState_GetStateWithDefault(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return i })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return i })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -515,10 +502,8 @@ func BenchmarkState_GetStateWithDefault(b *testing.B) {
 }
 
 func BenchmarkState_Has(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return i })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return i })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		st.Has("key" + strconv.Itoa(i%n))
@@ -540,7 +525,6 @@ func BenchmarkState_Reset(b *testing.B) {
 
 	for b.Loop() {
 		st := newState()
-		// add a fixed number of keys before clearing
 		for j := range 100 {
 			st.Set("key"+strconv.Itoa(j), j)
 		}
@@ -549,26 +533,22 @@ func BenchmarkState_Reset(b *testing.B) {
 }
 
 func BenchmarkState_Keys(b *testing.B) {
-	b.ReportAllocs()
-	st := stateBenchFill(func(i int) any { return i })
+	st := stateBenchFill(b, func(i int) any { return i })
 	for b.Loop() {
 		_ = st.Keys()
 	}
 }
 
 func BenchmarkState_Len(b *testing.B) {
-	b.ReportAllocs()
-	st := stateBenchFill(func(i int) any { return i })
+	st := stateBenchFill(b, func(i int) any { return i })
 	for b.Loop() {
 		_ = st.Len()
 	}
 }
 
 func BenchmarkState_GetUint(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return uint(i) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return uint(i) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -577,10 +557,8 @@ func BenchmarkState_GetUint(b *testing.B) {
 }
 
 func BenchmarkState_GetInt8(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return int8(i % 128) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return int8(i % 128) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -589,10 +567,8 @@ func BenchmarkState_GetInt8(b *testing.B) {
 }
 
 func BenchmarkState_GetInt16(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return int16(i) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return int16(i) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -601,10 +577,8 @@ func BenchmarkState_GetInt16(b *testing.B) {
 }
 
 func BenchmarkState_GetInt32(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return int32(i) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return int32(i) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -613,10 +587,8 @@ func BenchmarkState_GetInt32(b *testing.B) {
 }
 
 func BenchmarkState_GetInt64(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return int64(i) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return int64(i) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -625,10 +597,8 @@ func BenchmarkState_GetInt64(b *testing.B) {
 }
 
 func BenchmarkState_GetUint8(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return uint8(i % 256) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return uint8(i % 256) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -637,10 +607,8 @@ func BenchmarkState_GetUint8(b *testing.B) {
 }
 
 func BenchmarkState_GetUint16(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return uint16(i) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return uint16(i) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -649,10 +617,8 @@ func BenchmarkState_GetUint16(b *testing.B) {
 }
 
 func BenchmarkState_GetUint32(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return uint32(i) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return uint32(i) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -661,10 +627,8 @@ func BenchmarkState_GetUint32(b *testing.B) {
 }
 
 func BenchmarkState_GetUint64(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return uint64(i) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return uint64(i) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -673,10 +637,8 @@ func BenchmarkState_GetUint64(b *testing.B) {
 }
 
 func BenchmarkState_GetUintptr(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return uintptr(i) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return uintptr(i) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -685,10 +647,8 @@ func BenchmarkState_GetUintptr(b *testing.B) {
 }
 
 func BenchmarkState_GetFloat32(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return float32(i) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return float32(i) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -697,10 +657,8 @@ func BenchmarkState_GetFloat32(b *testing.B) {
 }
 
 func BenchmarkState_GetComplex64(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return complex(float32(i), float32(i)) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return complex(float32(i), float32(i)) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)
@@ -709,10 +667,8 @@ func BenchmarkState_GetComplex64(b *testing.B) {
 }
 
 func BenchmarkState_GetComplex128(b *testing.B) {
-	b.ReportAllocs()
-	n := stateBenchKeys
-	st := stateBenchFill(func(i int) any { return complex(float64(i), float64(i)) })
-	i := 0
+	st := stateBenchFill(b, func(i int) any { return complex(float64(i), float64(i)) })
+	n, i := stateBenchKeys, 0
 	for b.Loop() {
 		i++
 		key := "key" + strconv.Itoa(i%n)

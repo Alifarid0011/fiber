@@ -139,6 +139,20 @@ func Test_ConstraintExecute(t *testing.T) {
 			name: "regex compiled", handler: regexConstraintType{}, data: []any{re}, valid: []string{"123"},
 			invalid: []string{"abc"},
 		},
+		// A constraint rejects every parameter when its data is missing or unusable instead of panicking.
+		{name: "datetime nil data", handler: datetimeConstraintType{}, invalid: []string{"2024-01-15"}},
+		{
+			name: "datetime empty layout", handler: datetimeConstraintType{}, data: []any{""},
+			invalid: []string{"2024-01-15"},
+		},
+		{name: "minLen nil data", handler: minLenConstraintType{}, invalid: []string{"hello"}},
+		{name: "maxLen nil data", handler: maxLenConstraintType{}, invalid: []string{"hello"}},
+		{name: "len nil data", handler: lenConstraintType{}, invalid: []string{"hello"}},
+		{name: "betweenLen nil data", handler: betweenLenConstraintType{}, invalid: []string{"hello"}},
+		{name: "min nil data", handler: minConstraintType{}, invalid: []string{"10"}},
+		{name: "max nil data", handler: maxConstraintType{}, invalid: []string{"10"}},
+		{name: "range nil data", handler: rangeConstraintType{}, invalid: []string{"5"}},
+		{name: "regex nil data", handler: regexConstraintType{}, invalid: []string{"hello"}},
 	}
 
 	for _, tc := range testCases {
@@ -154,54 +168,35 @@ func Test_ConstraintExecute(t *testing.T) {
 	}
 }
 
-// Test_ConstraintExecute_InvalidData pins that a constraint rejects every
-// parameter when its data is missing or unusable instead of panicking.
-func Test_ConstraintExecute_InvalidData(t *testing.T) {
+func Test_FindConstraintHandler(t *testing.T) {
 	t.Parallel()
-	testCases := []struct {
-		handler ConstraintHandler
-		name    string
-		param   string
-		data    []any
+	for _, tc := range []struct {
+		name     string
+		lookup   string
+		wantName string // checked when set
+		custom   []CustomConstraint
+		found    bool
 	}{
-		{name: "datetime nil data", handler: datetimeConstraintType{}, param: "2024-01-15"},
-		{name: "datetime empty layout", handler: datetimeConstraintType{}, param: "2024-01-15", data: []any{""}},
-		{name: "minLen nil data", handler: minLenConstraintType{}, param: "hello"},
-		{name: "maxLen nil data", handler: maxLenConstraintType{}, param: "hello"},
-		{name: "len nil data", handler: lenConstraintType{}, param: "hello"},
-		{name: "betweenLen nil data", handler: betweenLenConstraintType{}, param: "hello"},
-		{name: "min nil data", handler: minConstraintType{}, param: "10"},
-		{name: "max nil data", handler: maxConstraintType{}, param: "10"},
-		{name: "range nil data", handler: rangeConstraintType{}, param: "5"},
-		{name: "regex nil data", handler: regexConstraintType{}, param: "hello"},
-	}
-
-	for _, tc := range testCases {
+		{
+			name: "CustomPriority", lookup: "customTest", found: true,
+			custom: []CustomConstraint{&testCustomConstraintForCoverage{allowed: "x"}},
+		},
+		{name: "Builtin", lookup: "int", wantName: "int", found: true},
+		{name: "Unknown", lookup: "nonexistent"},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.False(t, tc.handler.Execute(tc.param, tc.data))
+			handler := findConstraintHandler(tc.lookup, nil, tc.custom)
+			if !tc.found {
+				require.Nil(t, handler)
+				return
+			}
+			require.NotNil(t, handler)
+			if tc.wantName != "" {
+				require.Equal(t, tc.wantName, handler.Name())
+			}
 		})
 	}
-}
-
-func Test_FindConstraintHandler_CustomPriority(t *testing.T) {
-	t.Parallel()
-	custom := &testCustomConstraintForCoverage{allowed: "x"}
-	handler := findConstraintHandler("customTest", nil, []CustomConstraint{custom})
-	require.NotNil(t, handler)
-}
-
-func Test_FindConstraintHandler_Builtin(t *testing.T) {
-	t.Parallel()
-	handler := findConstraintHandler("int", nil, nil)
-	require.NotNil(t, handler)
-	require.Equal(t, "int", handler.Name())
-}
-
-func Test_FindConstraintHandler_Unknown(t *testing.T) {
-	t.Parallel()
-	handler := findConstraintHandler("nonexistent", nil, nil)
-	require.Nil(t, handler)
 }
 
 type testCustomConstraintForCoverage struct {
