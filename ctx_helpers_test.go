@@ -335,41 +335,30 @@ func Test_Req_IfNoneMatch(t *testing.T) {
 	app := New()
 
 	tests := []struct {
-		name   string
-		header string
-		want   []string
+		name  string
+		lines []string // the If-None-Match field lines
+		want  []string
 	}{
 		{name: "absent"},
-		{name: "single", header: `"abc"`, want: []string{`"abc"`}},
-		{name: "list", header: `"a", W/"b"`, want: []string{`"a"`, `W/"b"`}},
-		{name: "wildcard", header: "*", want: []string{"*"}},
-		{name: "comma inside tag", header: `"v1,v2"`, want: []string{`"v1,v2"`}},
+		{name: "single", lines: []string{`"abc"`}, want: []string{`"abc"`}},
+		{name: "list", lines: []string{`"a", W/"b"`}, want: []string{`"a"`, `W/"b"`}},
+		{name: "wildcard", lines: []string{"*"}, want: []string{"*"}},
+		{name: "comma inside tag", lines: []string{`"v1,v2"`}, want: []string{`"v1,v2"`}},
+		{name: "multiple field lines", lines: []string{`"a"`, `"b"`}, want: []string{`"a"`, `"b"`}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			fctx := &fasthttp.RequestCtx{}
-			if tc.header != "" {
-				fctx.Request.Header.Set(HeaderIfNoneMatch, tc.header)
+			for _, line := range tc.lines {
+				fctx.Request.Header.Add(HeaderIfNoneMatch, line)
 			}
 			c := apptest.CtxFor(t, app, fctx)
 
 			require.Equal(t, tc.want, c.Req().IfNoneMatch())
 		})
 	}
-}
-
-func Test_Req_IfNoneMatch_MultipleFieldLines(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.Add(HeaderIfNoneMatch, `"a"`)
-	fctx.Request.Header.Add(HeaderIfNoneMatch, `"b"`)
-	c := apptest.CtxFor(t, app, fctx)
-
-	require.Equal(t, []string{`"a"`, `"b"`}, c.Req().IfNoneMatch())
 }
 
 func Test_Req_IfModifiedSince(t *testing.T) {
@@ -669,11 +658,8 @@ func Test_Res_NoContent_OverHTTP(t *testing.T) {
 	app := New()
 	app.Delete("/item", func(c Ctx) error { return c.Res().NoContent() })
 
-	resp := apptest.Expect(t, app, apptest.Req(MethodDelete, "/item"), StatusNoContent)
+	resp := apptest.ExpectBody(t, app, apptest.Req(MethodDelete, "/item"), StatusNoContent, "")
 	require.Empty(t, resp.Header.Get(HeaderContentType))
-
-	body := apptest.BodyBytes(t, resp)
-	require.Empty(t, body)
 }
 
 func Test_Res_NoContent_DiffersFromSendStatus(t *testing.T) {
@@ -1065,9 +1051,7 @@ func Test_Res_SendStatus_DropsDeclaredContentLength(t *testing.T) {
 
 	get := func(path string) []string {
 		resp := apptest.Do(t, app, path)
-
-		body := apptest.BodyBytes(t, resp)
-		require.Empty(t, body, path)
+		require.Empty(t, apptest.BodyBytes(t, resp), path)
 		require.NotContains(t, resp.Header.Values(HeaderContentLength), "42", path)
 		return resp.Header.Values(HeaderContentLength)
 	}
@@ -1228,42 +1212,36 @@ func Test_Req_Res_AccessorsImmutable(t *testing.T) {
 		// Immutable says, so the buffer it was read from cannot be observed.
 		alwaysCopies bool
 	}{
-		{
-			name: "UserAgent", header: HeaderUserAgent, value: "agent-one", want: "agent-one",
-			read: func(c Ctx) string { return c.UserAgent() },
-		},
+		{name: "UserAgent", header: HeaderUserAgent, value: "agent-one", want: "agent-one", read: Ctx.UserAgent},
 		{
 			name: "Referer", header: HeaderReferer, value: "https://ref.example/a", want: "https://ref.example/a",
-			read: func(c Ctx) string { return c.Referer() },
+			read: Ctx.Referer,
 		},
 		{
 			name: "Origin", header: HeaderOrigin, value: "https://origin.example", want: "https://origin.example",
-			read: func(c Ctx) string { return c.Origin() },
+			read: Ctx.Origin,
 		},
 		{
 			name: "AcceptLanguage", header: HeaderAcceptLanguage, value: "en-GB,en;q=0.8", want: "en-GB,en;q=0.8",
-			read: func(c Ctx) string { return c.AcceptLanguage() },
+			read: Ctx.AcceptLanguage,
 		},
 		{
 			name: "AcceptEncoding", header: HeaderAcceptEncoding, value: "gzip, br", want: "gzip, br",
-			read: func(c Ctx) string { return c.AcceptEncoding() },
+			read: Ctx.AcceptEncoding,
 		},
 		{
 			name: "ContentType", header: HeaderContentType, value: "text/plain; charset=iso-8859-1", want: "text/plain; charset=iso-8859-1",
-			read: func(c Ctx) string { return c.ContentType() },
+			read: Ctx.ContentType,
 		},
 		{
 			name: "MediaType", header: HeaderContentType, value: "text/plain; charset=iso-8859-1", want: "text/plain",
-			read: func(c Ctx) string { return c.MediaType() },
+			read: Ctx.MediaType,
 		},
 		{
 			name: "Charset", header: HeaderContentType, value: "text/plain; charset=iso-8859-1", want: "iso-8859-1",
-			read: func(c Ctx) string { return c.Charset() },
+			read: Ctx.Charset,
 		},
-		{
-			name: "Bearer", header: HeaderAuthorization, value: "Bearer tok-123", want: "tok-123",
-			read: func(c Ctx) string { return c.Bearer() },
-		},
+		{name: "Bearer", header: HeaderAuthorization, value: "Bearer tok-123", want: "tok-123", read: Ctx.Bearer},
 		{
 			name: "Authorization", header: HeaderAuthorization, value: "Basic Y3JlZA==", want: "Y3JlZA==",
 			read: func(c Ctx) string {
