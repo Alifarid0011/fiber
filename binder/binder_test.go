@@ -1,6 +1,7 @@
 package binder
 
 import (
+	"mime/multipart"
 	"reflect"
 	"strconv"
 	"testing"
@@ -29,124 +30,104 @@ func Test_GetAndPutToThePool(t *testing.T) {
 	_ = GetFromThePool[*MsgPackBinding](&MsgPackBinderPool)
 }
 
+// Test_Binders_ErrorPaths pins that a key with an unmatched bracket is an error
+// from the binders that rewrite bracket notation, and so is a multipart request
+// without a body.
 func Test_Binders_ErrorPaths(t *testing.T) {
-	t.Run("query binder invalid key", func(t *testing.T) {
-		b := &QueryBinding{}
-		req := newQueryRequest(t, "invalid[%3Dval&name=john")
-		err := b.Bind(req, &struct{}{})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "unmatched brackets")
-	})
+	t.Parallel()
+	for _, tc := range []struct {
+		src   source
+		name  string
+		input string
+	}{
+		{name: "query binder invalid key", src: pairSources[0], input: "invalid[%3Dval&name=john"},
+		{name: "form binder invalid key", src: pairSources[1], input: "invalid[=val"},
+		{name: "multipart binder invalid key", src: pairSources[2], input: "invalid[=val"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.ErrorContains(t, tc.src.bind(t, tc.input, false, &struct{}{}), "unmatched brackets")
+		})
+	}
 
-	t.Run("form binder invalid key", func(t *testing.T) {
-		b := &FormBinding{}
-		req := newFormRequest(t, "invalid[=val")
-		err := b.Bind(req, &struct{}{})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "unmatched brackets")
+	t.Run("multipart binder invalid file key", func(t *testing.T) {
+		t.Parallel()
+		req := newMultipartRequestWith(t, func(mw *multipart.Writer) {
+			writeFormFile(t, mw, "invalid[", "file.txt", "content")
+		})
+		require.ErrorContains(t, (&FormBinding{}).Bind(req, &struct{}{}), "unmatched brackets")
 	})
 
 	t.Run("form binder bad multipart", func(t *testing.T) {
-		b := &FormBinding{}
+		t.Parallel()
 		req := acquireRequest(t)
 		req.Header.SetContentType(MIMEMultipartForm)
-		require.Error(t, b.Bind(req, &struct{}{}))
+		require.Error(t, (&FormBinding{}).Bind(req, &struct{}{}))
 	})
 }
 
-// resettable is what the name and reset checks need of a binder.
-type resettable interface {
-	Name() string
-	Reset()
-}
-
-// requireNameAndReset requires b to report name, and Reset to clear the
-// splitting flag that points into b.
-func requireNameAndReset(t *testing.T, b resettable, name string, splitting *bool) {
-	t.Helper()
-
-	require.Equal(t, name, b.Name())
-
-	b.Reset()
-	require.False(t, *splitting)
-}
-
+// Test_Binders_NameAndReset requires each binder to report its name, and Reset
+// to clear its splitting flag.
 func Test_Binders_NameAndReset(t *testing.T) {
 	t.Parallel()
-	t.Run("query", func(t *testing.T) {
-		t.Parallel()
-		b := &QueryBinding{EnableSplitting: true}
-		requireNameAndReset(t, b, "query", &b.EnableSplitting)
-	})
-
-	t.Run("form", func(t *testing.T) {
-		t.Parallel()
-		b := &FormBinding{EnableSplitting: true}
-		requireNameAndReset(t, b, "form", &b.EnableSplitting)
-	})
-
-	t.Run("header", func(t *testing.T) {
-		t.Parallel()
-		b := &HeaderBinding{EnableSplitting: true}
-		requireNameAndReset(t, b, "header", &b.EnableSplitting)
-	})
-
-	t.Run("resp header", func(t *testing.T) {
-		t.Parallel()
-		b := &RespHeaderBinding{EnableSplitting: true}
-		requireNameAndReset(t, b, "respHeader", &b.EnableSplitting)
-	})
-
-	t.Run("cookie", func(t *testing.T) {
-		t.Parallel()
-		b := &CookieBinding{EnableSplitting: true}
-		requireNameAndReset(t, b, "cookie", &b.EnableSplitting)
-	})
-}
-
-func Test_GetFieldCache_Panic(t *testing.T) {
-	t.Parallel()
-	require.Panics(t, func() { getFieldCache("unknown") })
+	query, form := &QueryBinding{EnableSplitting: true}, &FormBinding{EnableSplitting: true}
+	header, respHeader := &HeaderBinding{EnableSplitting: true}, &RespHeaderBinding{EnableSplitting: true}
+	cookie := &CookieBinding{EnableSplitting: true}
+	for _, tc := range []struct {
+		b interface {
+			Name() string
+			Reset()
+		}
+		splitting *bool
+		subtest   string
+		name      string
+	}{
+		{subtest: "query", b: query, splitting: &query.EnableSplitting, name: "query"},
+		{subtest: "form", b: form, splitting: &form.EnableSplitting, name: "form"},
+		{subtest: "header", b: header, splitting: &header.EnableSplitting, name: "header"},
+		{subtest: "resp header", b: respHeader, splitting: &respHeader.EnableSplitting, name: "respHeader"},
+		{subtest: "cookie", b: cookie, splitting: &cookie.EnableSplitting, name: "cookie"},
+	} {
+		t.Run(tc.subtest, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.name, tc.b.Name())
+			tc.b.Reset()
+			require.False(t, *tc.splitting)
+		})
+	}
 }
 
 func Test_parseToMap_defaultCase(t *testing.T) {
 	t.Parallel()
 	m := map[string]int{}
-	err := parseToMap(reflect.ValueOf(m), map[string][]string{"a": {"1"}})
-	require.NoError(t, err)
+	require.NoError(t, parseToMap(reflect.ValueOf(m), map[string][]string{"a": {"1"}}))
 	require.Empty(t, m)
 
 	m2 := map[string]string{}
-	err = parseToMap(reflect.ValueOf(m2), map[string][]string{"empty": {}})
-	require.NoError(t, err)
+	require.NoError(t, parseToMap(reflect.ValueOf(m2), map[string][]string{"empty": {}}))
 	require.Empty(t, m2["empty"])
 
 	var zeroStringMap map[string]string
-	err = parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), map[string][]string{"name": {"john"}})
-	require.NoError(t, err)
+	require.NoError(t, parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), map[string][]string{"name": {"john"}}))
 	require.Equal(t, "john", zeroStringMap["name"])
 }
 
 func Test_parse_function_maps(t *testing.T) {
 	t.Parallel()
 	m := map[string][]string{}
-	err := parse("query", &m, map[string][]string{"a": {"b"}})
-	require.NoError(t, err)
+	require.NoError(t, parse("query", &m, map[string][]string{"a": {"b"}}))
 	require.Equal(t, []string{"b"}, m["a"])
 
 	m2 := map[string]string{}
-	err = parse("query", &m2, map[string][]string{"a": {"b"}})
-	require.NoError(t, err)
+	require.NoError(t, parse("query", &m2, map[string][]string{"a": {"b"}}))
 	require.Equal(t, "b", m2["a"])
 
 	var zeroStringMap map[string]string
-	err = parse("query", &zeroStringMap, map[string][]string{"foo": {"bar", "baz"}})
-	require.NoError(t, err)
+	require.NoError(t, parse("query", &zeroStringMap, map[string][]string{"foo": {"bar", "baz"}}))
 	require.Equal(t, "baz", zeroStringMap["foo"])
 
 	var zeroSliceMap map[string][]string
-	err = parse("query", &zeroSliceMap, map[string][]string{"foo": {"bar", "baz"}})
-	require.NoError(t, err)
+	require.NoError(t, parse("query", &zeroSliceMap, map[string][]string{"foo": {"bar", "baz"}}))
 	require.Equal(t, []string{"bar", "baz"}, zeroSliceMap["foo"])
 }
 

@@ -7,6 +7,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// xmlUserDoc is the document the XML binder test and benchmark bind.
+const xmlUserDoc = `
+		<user>
+			<name>john</name>
+			<age>42</age>
+			<ignore>ignore</ignore>
+			<posts>
+				<post>
+					<title>post1</title>
+				</post>
+				<post>
+					<title>post2</title>
+				</post>
+			</posts>
+		</user>
+	`
+
 func Test_XMLBinding_Bind(t *testing.T) {
 	t.Parallel()
 	b := &XMLBinding{XMLDecoder: xml.Unmarshal}
@@ -25,28 +42,10 @@ func Test_XMLBinding_Bind(t *testing.T) {
 	}
 
 	user := new(User)
-	require.NoError(t, b.Bind([]byte(`
-		<user>
-			<name>john</name>
-			<age>42</age>
-			<ignore>ignore</ignore>
-			<posts>
-				<post>
-					<title>post1</title>
-				</post>
-				<post>
-					<title>post2</title>
-				</post>
-			</posts>
-		</user>
-	`), user))
-	require.Equal(t, "john", user.Name)
-	require.Equal(t, 42, user.Age)
-	require.Empty(t, user.Ignore)
-
-	require.Len(t, user.Posts, 2)
-	require.Equal(t, "post1", user.Posts[0].Title)
-	require.Equal(t, "post2", user.Posts[1].Title)
+	require.NoError(t, b.Bind([]byte(xmlUserDoc), user))
+	post := xml.Name{Local: "post"}
+	posts := []Posts{{XMLName: post, Title: "post1"}, {XMLName: post, Title: "post2"}}
+	require.Equal(t, User{Name: "john", Posts: posts, Age: 42}, *user)
 
 	b.Reset()
 	require.Nil(t, b.XMLDecoder)
@@ -90,21 +89,7 @@ func Benchmark_XMLBinding_Bind(b *testing.B) {
 	}
 
 	user := new(User)
-	data := []byte(`
-		<user>
-			<name>john</name>
-			<age>42</age>
-			<ignore>ignore</ignore>
-			<posts>
-				<post>
-					<title>post1</title>
-				</post>
-				<post>
-					<title>post2</title>
-				</post>
-			</posts>
-		</user>
-	`)
+	data := []byte(xmlUserDoc)
 
 	var err error
 	for b.Loop() {

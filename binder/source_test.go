@@ -13,28 +13,28 @@ import (
 // acquireRequest returns a pooled request that goes back to the pool when the
 // test ends. What a binder binds can alias the request's buffers, so the
 // request has to outlive the assertions made on the result.
-func acquireRequest(t *testing.T) *fasthttp.Request {
-	t.Helper()
+func acquireRequest(tb testing.TB) *fasthttp.Request {
+	tb.Helper()
 
 	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	tb.Cleanup(func() { fasthttp.ReleaseRequest(req) })
 	return req
 }
 
 // newQueryRequest returns a pooled request whose query string is query.
-func newQueryRequest(t *testing.T, query string) *fasthttp.Request {
-	t.Helper()
+func newQueryRequest(tb testing.TB, query string) *fasthttp.Request {
+	tb.Helper()
 
-	req := acquireRequest(t)
+	req := acquireRequest(tb)
 	req.URI().SetQueryString(query)
 	return req
 }
 
 // newFormRequest returns a pooled request carrying body as a urlencoded form.
-func newFormRequest(t *testing.T, body string) *fasthttp.Request {
-	t.Helper()
+func newFormRequest(tb testing.TB, body string) *fasthttp.Request {
+	tb.Helper()
 
-	req := acquireRequest(t)
+	req := acquireRequest(tb)
 	req.SetBodyString(body)
 	req.Header.SetContentType("application/x-www-form-urlencoded")
 	return req
@@ -42,15 +42,15 @@ func newFormRequest(t *testing.T, body string) *fasthttp.Request {
 
 // newMultipartRequestWith returns a pooled request carrying the multipart form
 // that write fills in.
-func newMultipartRequestWith(t *testing.T, write func(mw *multipart.Writer)) *fasthttp.Request {
-	t.Helper()
+func newMultipartRequestWith(tb testing.TB, write func(mw *multipart.Writer)) *fasthttp.Request {
+	tb.Helper()
 
 	body := new(bytes.Buffer)
 	mw := multipart.NewWriter(body)
 	write(mw)
-	require.NoError(t, mw.Close())
+	require.NoError(tb, mw.Close())
 
-	req := acquireRequest(t)
+	req := acquireRequest(tb)
 	req.SetBody(body.Bytes())
 	req.Header.SetContentType(mw.FormDataContentType())
 
@@ -65,6 +65,17 @@ func writeFormFile(t *testing.T, mw *multipart.Writer, field, filename, content 
 	require.NoError(t, err)
 	_, err = part.Write([]byte(content))
 	require.NoError(t, err)
+}
+
+// requireJohn42 requires that a benchmark's last bind succeeded and filled in
+// the user the benchmarks bind: john, aged 42, with the posts post1 to post3.
+func requireJohn42(tb testing.TB, err error, name string, age int, posts []string) {
+	tb.Helper()
+
+	require.NoError(tb, err)
+	require.Equal(tb, "john", name)
+	require.Equal(tb, 42, age)
+	require.Equal(tb, []string{"post1", "post2", "post3"}, posts)
 }
 
 // pairsOf splits a urlencoded string into its name/value pairs, in order.

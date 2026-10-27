@@ -34,17 +34,8 @@ func Test_CBORBinder_Bind(t *testing.T) {
 	body, err := cbor.Marshal(wantedUser)
 	require.NoError(t, err)
 
-	err = b.Bind(body, &user)
-
-	require.NoError(t, err)
-	require.Equal(t, "john", user.Name)
-	require.Equal(t, 42, user.Age)
-	require.Len(t, user.Posts, 3)
-	require.Equal(t, "post1", user.Posts[0].Title)
-	require.Equal(t, "post2", user.Posts[1].Title)
-	require.Equal(t, "post3", user.Posts[2].Title)
-	require.Contains(t, user.Names, "john")
-	require.Contains(t, user.Names, "doe")
+	require.NoError(t, b.Bind(body, &user))
+	require.Equal(t, wantedUser, user)
 
 	b.Reset()
 	require.Nil(t, b.CBORDecoder)

@@ -21,22 +21,25 @@ func Test_SetLogger(t *testing.T) {
 	require.Equal(t, logger, setLog)
 }
 
+// logLevelCases are the levels Test_Fiberlog_SetLevel sets, under the name it gives each
+// and the name the SetLevel benchmarks give it.
+var logLevelCases = []struct {
+	name, bench string
+	level       Level
+}{
+	{name: "debug", bench: "Test case 1", level: LevelDebug},
+	{name: "info", bench: "Test case 2", level: LevelInfo},
+	{name: "warn", bench: "Test case 3", level: LevelWarn},
+	{name: "error", bench: "Test case 4", level: LevelError},
+	{name: "fatal", bench: "Test case 5", level: LevelFatal},
+}
+
+// Test_Fiberlog_SetLevel runs serially because SetLogger swaps the package-global logger.
 func Test_Fiberlog_SetLevel(t *testing.T) {
 	mockLogger := &defaultLogger{}
 	SetLogger(mockLogger)
 
-	testCases := []struct {
-		name  string
-		level Level
-	}{
-		{name: "debug", level: LevelDebug},
-		{name: "info", level: LevelInfo},
-		{name: "warn", level: LevelWarn},
-		{name: "error", level: LevelError},
-		{name: "fatal", level: LevelFatal},
-	}
-
-	for _, tc := range testCases {
+	for _, tc := range logLevelCases {
 		t.Run(tc.name, func(t *testing.T) {
 			SetLevel(tc.level)
 			require.Equal(t, tc.level, mockLogger.level)
@@ -64,22 +67,9 @@ func Benchmark_Fiberlog_SetLevel(b *testing.B) {
 	mockLogger := &defaultLogger{}
 	SetLogger(mockLogger)
 
-	// Test cases
-	testCases := []struct {
-		name     string
-		level    Level
-		expected Level
-	}{
-		{name: "Test case 1", level: LevelDebug, expected: LevelDebug},
-		{name: "Test case 2", level: LevelInfo, expected: LevelInfo},
-		{name: "Test case 3", level: LevelWarn, expected: LevelWarn},
-		{name: "Test case 4", level: LevelError, expected: LevelError},
-		{name: "Test case 5", level: LevelFatal, expected: LevelFatal},
-	}
-
-	for _, tc := range testCases {
+	for _, tc := range logLevelCases {
 		b.ReportAllocs()
-		b.Run(tc.name, func(b *testing.B) {
+		b.Run(tc.bench, func(b *testing.B) {
 			for b.Loop() {
 				SetLevel(tc.level)
 			}
@@ -113,21 +103,8 @@ func Benchmark_Fiberlog_SetLevel_Parallel(b *testing.B) {
 	mockLogger := &defaultLogger{}
 	SetLogger(mockLogger)
 
-	// Test cases
-	testCases := []struct {
-		name     string
-		level    Level
-		expected Level
-	}{
-		{name: "Test case 1", level: LevelDebug, expected: LevelDebug},
-		{name: "Test case 2", level: LevelInfo, expected: LevelInfo},
-		{name: "Test case 3", level: LevelWarn, expected: LevelWarn},
-		{name: "Test case 4", level: LevelError, expected: LevelError},
-		{name: "Test case 5", level: LevelFatal, expected: LevelFatal},
-	}
-
-	for _, tc := range testCases {
-		b.Run(tc.name+"_Parallel", func(bb *testing.B) {
+	for _, tc := range logLevelCases {
+		b.Run(tc.bench+"_Parallel", func(bb *testing.B) {
 			bb.ReportAllocs()
 			bb.ResetTimer()
 			bb.RunParallel(func(pb *testing.PB) {

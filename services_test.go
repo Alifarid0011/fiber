@@ -34,15 +34,6 @@ type mockService struct {
 	terminateDelay time.Duration
 }
 
-type shutdownHookStorage struct {
-	closeErr    error
-	closeCalled atomic.Bool
-}
-
-type stringsLogger struct {
-	strings.Builder
-}
-
 var servicesTestLogOutputMu sync.Mutex
 
 func withCapturedLogOutput(t *testing.T, writer io.Writer) {
@@ -64,43 +55,6 @@ func withCapturedLogOutput(t *testing.T, writer io.Writer) {
 	cleanupRegistered = true
 
 	log.SetOutput(writer)
-}
-
-func (*shutdownHookStorage) GetWithContext(context.Context, string) ([]byte, error) {
-	return nil, nil
-}
-
-func (*shutdownHookStorage) Get(string) ([]byte, error) {
-	return nil, nil
-}
-
-func (*shutdownHookStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
-	return nil
-}
-
-func (*shutdownHookStorage) Set(string, []byte, time.Duration) error {
-	return nil
-}
-
-func (*shutdownHookStorage) DeleteWithContext(context.Context, string) error {
-	return nil
-}
-
-func (*shutdownHookStorage) Delete(string) error {
-	return nil
-}
-
-func (*shutdownHookStorage) ResetWithContext(context.Context) error {
-	return nil
-}
-
-func (*shutdownHookStorage) Reset() error {
-	return nil
-}
-
-func (s *shutdownHookStorage) Close() error {
-	s.closeCalled.Store(true)
-	return s.closeErr
 }
 
 func (m *mockService) Start(ctx context.Context) error {
@@ -200,17 +154,16 @@ func rootMiscAStartedServicesApp(services ...Service) *App {
 }
 
 func Test_HasConfiguredServices(t *testing.T) {
-	testHasConfiguredServicesFn := func(t *testing.T, app *App, expected bool) {
-		t.Helper()
-
-		result := app.hasConfiguredServices()
-		require.Equal(t, expected, result)
-	}
-
-	t.Run("no-services", func(t *testing.T) { testHasConfiguredServicesFn(t, &App{configured: Config{}}, false) })
+	t.Parallel()
+	t.Run("no-services", func(t *testing.T) {
+		t.Parallel()
+		require.False(t, (&App{configured: Config{}}).hasConfiguredServices())
+	})
 
 	t.Run("has-services", func(t *testing.T) {
-		testHasConfiguredServicesFn(t, &App{configured: Config{Services: []Service{&mockService{name: "test-dep"}}}}, true)
+		t.Parallel()
+		app := &App{configured: Config{Services: []Service{&mockService{name: "test-dep"}}}}
+		require.True(t, app.hasConfiguredServices())
 	})
 }
 
@@ -252,7 +205,7 @@ func Test_InitServices(t *testing.T) {
 
 		require.NotPanics(t, app.initServices)
 
-		var buf stringsLogger
+		var buf strings.Builder
 		log.SetOutput(&buf)
 
 		app.Hooks().executeOnPostShutdownHooks(nil)
@@ -272,7 +225,7 @@ func Test_InitServices(t *testing.T) {
 
 		require.NotPanics(t, app.initServices)
 
-		var buf stringsLogger
+		var buf strings.Builder
 		log.SetOutput(&buf)
 
 		app.Hooks().executeOnPostShutdownHooks(nil)
@@ -282,12 +235,12 @@ func Test_InitServices(t *testing.T) {
 
 	t.Run("shutdown-hooks/close-shared-state", func(t *testing.T) {
 		t.Parallel()
-		storage := &shutdownHookStorage{}
+		storage := &errorStorage{}
 		app := New(Config{Services: []Service{&mockService{name: "dep1"}}, SharedStorage: storage})
 
 		require.NotPanics(t, app.initServices)
 
-		var buf stringsLogger
+		var buf strings.Builder
 		withCapturedLogOutput(t, &buf)
 
 		app.Hooks().executeOnPostShutdownHooks(nil)
@@ -298,7 +251,7 @@ func Test_InitServices(t *testing.T) {
 
 	t.Run("shutdown-hooks/close-shared-state-after-service-error", func(t *testing.T) {
 		t.Parallel()
-		storage := &shutdownHookStorage{closeErr: errors.New("close error")}
+		storage := &errorStorage{closeErr: errors.New("close error")}
 		app := New(Config{
 			Services: []Service{
 				&mockService{name: "dep1"},
@@ -309,7 +262,7 @@ func Test_InitServices(t *testing.T) {
 
 		require.NotPanics(t, app.initServices)
 
-		var buf stringsLogger
+		var buf strings.Builder
 		withCapturedLogOutput(t, &buf)
 
 		app.Hooks().executeOnPostShutdownHooks(nil)
@@ -352,8 +305,6 @@ func Test_StartServices(t *testing.T) {
 	t.Run("context", func(t *testing.T) {
 		t.Run("already-canceled", func(t *testing.T) {
 			app := rootMiscAServicesApp(&mockService{name: "dep1"})
-
-			// Create a context that is already canceled
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 
@@ -362,16 +313,11 @@ func Test_StartServices(t *testing.T) {
 		})
 
 		t.Run("cancellation", func(t *testing.T) {
-			// Create a service that takes some time to start
-			slowDep := &mockService{name: "slow-dep", startDelay: 200 * time.Millisecond}
-
-			app := rootMiscAServicesApp(slowDep)
-
-			// Create a context that will be canceled immediately
+			// The service takes longer to start than the context lasts.
+			app := rootMiscAServicesApp(&mockService{name: "slow-dep", startDelay: 200 * time.Millisecond})
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 
-			// Start services with a delay that is longer than the timeout
 			require.ErrorIs(t, app.startServices(ctx), context.DeadlineExceeded)
 			require.Zero(t, app.state.ServicesLen())
 		})
@@ -387,7 +333,6 @@ func Test_ShutdownServices(t *testing.T) {
 	})
 
 	t.Run("successful-shutdown", func(t *testing.T) {
-		// Both services have been started
 		app := rootMiscAStartedServicesApp(&mockService{name: "dep1"}, &mockService{name: "dep2"})
 
 		require.NoError(t, app.shutdownServices(context.Background()))
@@ -398,8 +343,6 @@ func Test_ShutdownServices(t *testing.T) {
 		srv1 := &mockService{name: "dep1", terminateError: errors.New(terminateErrorMessage + " 1")}
 		srv2 := &mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")}
 		srv3 := &mockService{name: "dep3"}
-
-		// All three services have been started
 		app := rootMiscAStartedServicesApp(srv1, srv2, srv3)
 
 		err := app.shutdownServices(context.Background())
@@ -411,10 +354,7 @@ func Test_ShutdownServices(t *testing.T) {
 
 	t.Run("context", func(t *testing.T) {
 		t.Run("already-canceled", func(t *testing.T) {
-			// The service has been started
 			app := rootMiscAStartedServicesApp(&mockService{name: "dep1"})
-
-			// Create a context that is already canceled
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 
@@ -426,17 +366,11 @@ func Test_ShutdownServices(t *testing.T) {
 		})
 
 		t.Run("cancellation", func(t *testing.T) {
-			// Create a service that takes some time to terminate
-			slowDep := &mockService{name: "slow-dep", terminateDelay: 200 * time.Millisecond}
-
-			// The service has been started
-			app := rootMiscAStartedServicesApp(slowDep)
-
-			// Create a new context for shutdown
+			// The service takes longer to terminate than the context lasts.
+			app := rootMiscAStartedServicesApp(&mockService{name: "slow-dep", terminateDelay: 200 * time.Millisecond})
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 
-			// Shutdown services with canceled context
 			require.ErrorIs(t, app.shutdownServices(ctx), context.DeadlineExceeded)
 			require.Equal(t, 1, app.state.ServicesLen())
 		})
@@ -445,19 +379,13 @@ func Test_ShutdownServices(t *testing.T) {
 
 func Test_LogServices(t *testing.T) {
 	t.Parallel()
-	// Service with successful State
 	runningService := &mockService{name: "running", started: true}
-	// Service with State error
 	errorService := &mockService{name: "error", stateError: errors.New("state error")}
-
 	app := rootMiscAStartedServicesApp(runningService, errorService)
 
 	var buf bytes.Buffer
-
 	colors := Colors{Green: "\033[32m", Reset: "\033[0m", Blue: "\033[34m", Red: "\033[31m"}
-
-	err := app.logServices(context.Background(), &buf, &colors)
-	require.NoError(t, err)
+	require.NoError(t, app.logServices(context.Background(), &buf, &colors))
 
 	output := buf.String()
 
@@ -503,6 +431,27 @@ func Test_ServiceContextProviders(t *testing.T) {
 	})
 }
 
+// serviceBenchSets runs run as the sub-benchmarks no-services, single-service and
+// multiple-services, and, given delayed, as multiple-services-with-delays on dep1
+// to dep3 built by delayed with a delay of 1 to 3ms.
+func serviceBenchSets(b *testing.B, run func(*testing.B, []Service), delayed func(string, time.Duration) Service) {
+	b.Helper()
+	b.Run("no-services", func(b *testing.B) { run(b, []Service{}) })
+	b.Run("single-service", func(b *testing.B) { run(b, []Service{&mockService{name: "dep1"}}) })
+	b.Run("multiple-services", func(b *testing.B) {
+		run(b, []Service{&mockService{name: "dep1"}, &mockService{name: "dep2"}, &mockService{name: "dep3"}})
+	})
+	if delayed != nil {
+		b.Run("multiple-services-with-delays", func(b *testing.B) {
+			run(b, []Service{
+				delayed("dep1", 1*time.Millisecond),
+				delayed("dep2", 2*time.Millisecond),
+				delayed("dep3", 3*time.Millisecond),
+			})
+		})
+	}
+}
+
 func Benchmark_StartServices(b *testing.B) {
 	benchmarkFn := func(b *testing.B, services []Service) {
 		b.Helper()
@@ -517,22 +466,8 @@ func Benchmark_StartServices(b *testing.B) {
 		}
 	}
 
-	b.Run("no-services", func(b *testing.B) { benchmarkFn(b, []Service{}) })
-
-	b.Run("single-service", func(b *testing.B) {
-		benchmarkFn(b, []Service{&mockService{name: "dep1"}})
-	})
-
-	b.Run("multiple-services", func(b *testing.B) {
-		benchmarkFn(b, []Service{&mockService{name: "dep1"}, &mockService{name: "dep2"}, &mockService{name: "dep3"}})
-	})
-
-	b.Run("multiple-services-with-delays", func(b *testing.B) {
-		benchmarkFn(b, []Service{
-			&mockService{name: "dep1", startDelay: 1 * time.Millisecond},
-			&mockService{name: "dep2", startDelay: 2 * time.Millisecond},
-			&mockService{name: "dep3", startDelay: 3 * time.Millisecond},
-		})
+	serviceBenchSets(b, benchmarkFn, func(name string, d time.Duration) Service {
+		return &mockService{name: name, startDelay: d}
 	})
 }
 
@@ -550,22 +485,8 @@ func Benchmark_ShutdownServices(b *testing.B) {
 		}
 	}
 
-	b.Run("no-services", func(b *testing.B) { benchmarkFn(b, []Service{}) })
-
-	b.Run("single-service", func(b *testing.B) {
-		benchmarkFn(b, []Service{&mockService{name: "dep1"}})
-	})
-
-	b.Run("multiple-services", func(b *testing.B) {
-		benchmarkFn(b, []Service{&mockService{name: "dep1"}, &mockService{name: "dep2"}, &mockService{name: "dep3"}})
-	})
-
-	b.Run("multiple-services-with-delays", func(b *testing.B) {
-		benchmarkFn(b, []Service{
-			&mockService{name: "dep1", terminateDelay: 1 * time.Millisecond},
-			&mockService{name: "dep2", terminateDelay: 2 * time.Millisecond},
-			&mockService{name: "dep3", terminateDelay: 3 * time.Millisecond},
-		})
+	serviceBenchSets(b, benchmarkFn, func(name string, d time.Duration) Service {
+		return &mockService{name: name, terminateDelay: d}
 	})
 }
 
@@ -703,15 +624,7 @@ func Benchmark_ServicesMemory(b *testing.B) {
 		require.NoError(b, err)
 	}
 
-	b.Run("no-services", func(b *testing.B) { benchmarkFn(b, []Service{}) })
-
-	b.Run("single-service", func(b *testing.B) {
-		benchmarkFn(b, []Service{&mockService{name: "dep1"}})
-	})
-
-	b.Run("multiple-services", func(b *testing.B) {
-		benchmarkFn(b, []Service{&mockService{name: "dep1"}, &mockService{name: "dep2"}, &mockService{name: "dep3"}})
-	})
+	serviceBenchSets(b, benchmarkFn, nil)
 }
 
 // orderedService records the order in which services are terminated.

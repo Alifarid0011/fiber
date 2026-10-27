@@ -25,11 +25,8 @@ func Test_PairSources_Bind(t *testing.T) {
 			t.Parallel()
 			var user pairUser
 			require.NoError(t, src.bind(t, "name=john&names=john,doe&age=42&posts=post1,post2,post3", true, &user))
-			require.Equal(t, "john", user.Name)
-			require.Equal(t, 42, user.Age)
-			require.Equal(t, []string{"post1", "post2", "post3"}, user.Posts)
-			require.Contains(t, user.Names, "john")
-			require.Contains(t, user.Names, "doe")
+			posts := []string{"post1", "post2", "post3"}
+			require.Equal(t, pairUser{Name: "john", Names: []string{"john", "doe"}, Posts: posts, Age: 42}, user)
 		})
 	}
 }
@@ -65,14 +62,8 @@ func Test_FormSources_Bind(t *testing.T) {
 			t.Parallel()
 			var user User
 			require.NoError(t, src.bind(t, "name=john&names=john,doe&age=42&posts[0][title]=post1&posts[1][title]=post2&posts[2][title]=post3", true, &user))
-			require.Equal(t, "john", user.Name)
-			require.Equal(t, 42, user.Age)
-			require.Len(t, user.Posts, 3)
-			require.Equal(t, "post1", user.Posts[0].Title)
-			require.Equal(t, "post2", user.Posts[1].Title)
-			require.Equal(t, "post3", user.Posts[2].Title)
-			require.Contains(t, user.Names, "john")
-			require.Contains(t, user.Names, "doe")
+			posts := []Post{{Title: "post1"}, {Title: "post2"}, {Title: "post3"}}
+			require.Equal(t, User{Name: "john", Names: []string{"john", "doe"}, Posts: posts, Age: 42}, user)
 		})
 	}
 }

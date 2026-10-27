@@ -112,18 +112,14 @@ func Test_parseToMap(t *testing.T) {
 
 	// Test map[string]string
 	m := make(map[string]string)
-	err := parseToMap(reflect.ValueOf(m), inputMap)
-	require.NoError(t, err)
-
+	require.NoError(t, parseToMap(reflect.ValueOf(m), inputMap))
 	require.Equal(t, "value2", m["key1"])
 	require.Equal(t, "value3", m["key2"])
 	require.Equal(t, "value4", m["key3"])
 
 	// Test map[string][]string
 	m2 := make(map[string][]string)
-	err = parseToMap(reflect.ValueOf(m2), inputMap)
-	require.NoError(t, err)
-
+	require.NoError(t, parseToMap(reflect.ValueOf(m2), inputMap))
 	require.Len(t, m2["key1"], 2)
 	require.Contains(t, m2["key1"], "value1")
 	require.Contains(t, m2["key1"], "value2")
@@ -132,22 +128,18 @@ func Test_parseToMap(t *testing.T) {
 
 	// Test map[string]any
 	m3 := make(map[string]any)
-	err = parseToMap(reflect.ValueOf(m3), inputMap)
-	require.NoError(t, err)
+	require.NoError(t, parseToMap(reflect.ValueOf(m3), inputMap))
 	require.Empty(t, m3)
 
 	var zeroStringMap map[string]string
-	err = parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), inputMap)
-	require.NoError(t, err)
+	require.NoError(t, parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), inputMap))
 	require.Equal(t, "value2", zeroStringMap["key1"])
 
 	var zeroSliceMap map[string][]string
-	err = parseToMap(reflect.ValueOf(&zeroSliceMap).Elem(), inputMap)
-	require.NoError(t, err)
+	require.NoError(t, parseToMap(reflect.ValueOf(&zeroSliceMap).Elem(), inputMap))
 	require.Len(t, zeroSliceMap["key1"], 2)
 
-	err = parseToMap(reflect.ValueOf(map[string]string(nil)), inputMap)
-	require.ErrorIs(t, err, ErrMapNilDestination)
+	require.ErrorIs(t, parseToMap(reflect.ValueOf(map[string]string(nil)), inputMap), ErrMapNilDestination)
 }
 
 func Test_FilterFlags(t *testing.T) {
@@ -176,10 +168,8 @@ func Benchmark_FilterFlags(b *testing.B) {
 	b.ReportAllocs()
 
 	cases := []string{
-		"text/javascript; charset=utf-8",
-		"application/json",
-		"text/plain; charset=utf-8; foo=bar",
-		"text/javascript charset=utf-8",
+		"text/javascript; charset=utf-8", "application/json",
+		"text/plain; charset=utf-8; foo=bar", "text/javascript charset=utf-8",
 	}
 
 	for i := 0; i < b.N; i++ {
@@ -255,10 +245,7 @@ func Test_parseToStruct_MismatchedData(t *testing.T) {
 	}
 
 	data := map[string][]string{"name": {"John"}, "age": {"invalidAge"}}
-
-	err := parseToStruct("query", &User{}, data)
-	require.Error(t, err)
-	require.EqualError(t, err, "schema: error converting value for \"age\"")
+	require.EqualError(t, parseToStruct("query", &User{}, data), "schema: error converting value for \"age\"")
 }
 
 func Test_decoderBuilder(t *testing.T) {
@@ -292,17 +279,14 @@ func Test_parseToMap_Extended(t *testing.T) {
 	data := map[string][]string{"empty": {}, "key1": {"value1"}}
 
 	m := make(map[string]string)
-	err := parseToMap(reflect.ValueOf(m), data)
-	require.NoError(t, err)
+	require.NoError(t, parseToMap(reflect.ValueOf(m), data))
 	require.Empty(t, m["empty"])
 
 	m2 := make(map[string][]int)
-	err = parseToMap(reflect.ValueOf(m2), data)
-	require.ErrorIs(t, err, ErrMapNotConvertible)
+	require.ErrorIs(t, parseToMap(reflect.ValueOf(m2), data), ErrMapNotConvertible)
 
 	m3 := make(map[string]int)
-	err = parseToMap(reflect.ValueOf(m3), data)
-	require.NoError(t, err)
+	require.NoError(t, parseToMap(reflect.ValueOf(m3), data))
 }
 
 func Test_decoderPoolMapInit(t *testing.T) {

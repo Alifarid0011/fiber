@@ -47,22 +47,35 @@ func TestDefaultCtx_ScheduleReclaim_HappyPath(t *testing.T) {
 }
 
 // TestDefaultCtx_ScheduleReclaim_ReleaseBeforeHandlerDone covers the reverse
-// ordering: ReleaseCtx is called first, then handlerDone closes. The reclaim
-// goroutine must still wait on handlerDone before pooling.
+// ordering: the context is released first, then handlerDone closes. The reclaim
+// goroutine must still wait on handlerDone before pooling. Both release entry
+// points fire the latch: ReleaseCtx, the public CustomCtx path, and the internal
+// releaseDefaultCtx, which defaultRequestHandler's defer calls.
 func TestDefaultCtx_ScheduleReclaim_ReleaseBeforeHandlerDone(t *testing.T) {
 	t.Parallel()
-	app, c := acquireReclaimTestCtx(t)
+	for _, tc := range []struct {
+		release func(app *App, c *DefaultCtx)
+		name    string
+	}{
+		{name: "ReleaseCtx", release: func(app *App, c *DefaultCtx) { app.ReleaseCtx(c) }},
+		{name: "releaseDefaultCtx", release: (*App).releaseDefaultCtx},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, c := acquireReclaimTestCtx(t)
 
-	handlerDone := make(chan struct{})
-	c.ScheduleReclaim(handlerDone, nil)
+			handlerDone := make(chan struct{})
+			c.ScheduleReclaim(handlerDone, nil)
 
-	app.ReleaseCtx(c)
-	require.True(t, c.IsAbandoned(), "ctx must stay abandoned until handlerDone closes")
+			tc.release(app, c)
+			require.True(t, c.IsAbandoned(), "an abandoned ctx must not be pooled until handlerDone closes")
 
-	close(handlerDone)
-	require.Eventually(t, func() bool {
-		return !c.IsAbandoned()
-	}, time.Second, 5*time.Millisecond, "ctx must be reclaimed after handlerDone closes")
+			close(handlerDone)
+			require.Eventually(t, func() bool {
+				return !c.IsAbandoned()
+			}, time.Second, 5*time.Millisecond, "the release must wire signalReleased into the latch")
+		})
+	}
 }
 
 // TestDefaultCtx_ScheduleReclaim_CancelInvoked verifies the cancel hook fires
@@ -115,7 +128,7 @@ func TestDefaultCtx_signalReleased_NoReclaim(t *testing.T) {
 // if the request release path fires multiple times, the latch must close once.
 func TestDefaultCtx_signalReleased_Idempotent(t *testing.T) {
 	t.Parallel()
-	app, c := acquireReclaimTestCtx(t)
+	_, c := acquireReclaimTestCtx(t)
 
 	handlerDone := make(chan struct{})
 	c.ScheduleReclaim(handlerDone, nil)
@@ -130,28 +143,6 @@ func TestDefaultCtx_signalReleased_Idempotent(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return !c.IsAbandoned()
 	}, time.Second, 5*time.Millisecond, "ctx must still be reclaimed exactly once")
-
-	_ = app
-}
-
-// TestApp_releaseDefaultCtx_AbandonedSignalsReclaim exercises the internal
-// releaseDefaultCtx path (called by defaultRequestHandler's defer) for an
-// abandoned, reclaim-armed context. It mirrors what ReleaseCtx does for the
-// public CustomCtx path and ensures both release entry points fire the latch.
-func TestApp_releaseDefaultCtx_AbandonedSignalsReclaim(t *testing.T) {
-	t.Parallel()
-	app, c := acquireReclaimTestCtx(t)
-
-	handlerDone := make(chan struct{})
-	c.ScheduleReclaim(handlerDone, nil)
-
-	app.releaseDefaultCtx(c)
-	require.True(t, c.IsAbandoned(), "abandoned ctx must not be pooled by releaseDefaultCtx")
-
-	close(handlerDone)
-	require.Eventually(t, func() bool {
-		return !c.IsAbandoned()
-	}, time.Second, 5*time.Millisecond, "releaseDefaultCtx must wire signalReleased into the latch")
 }
 
 // TestApp_releaseDefaultCtx_NotAbandonedPools verifies the non-abandoned branch

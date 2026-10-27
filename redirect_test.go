@@ -33,17 +33,47 @@ func assertFlashCookieCleared(t *testing.T, setCookie string) {
 	require.Contains(t, setCookie, "path=/")
 }
 
+// redirFlashCookie returns the Cookie header that hands testredirectionMsgs to a request as its flash messages.
+func redirFlashCookie(tb testing.TB) string {
+	tb.Helper()
+
+	val, err := testredirectionMsgs.MarshalMsg(nil)
+	require.NoError(tb, err)
+	return FlashCookieName + "=" + hex.EncodeToString(val)
+}
+
+// redirFlashCookieMsgs returns the flash messages in the cookie that c's response sets, decoded the
+// way the next request decodes them.
+func redirFlashCookieMsgs(tb testing.TB, c *DefaultCtx) redirectionMsgs {
+	tb.Helper()
+
+	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+	decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
+	require.NoError(tb, err)
+	var msgs redirectionMsgs
+	_, err = msgs.UnmarshalMsg(decoded)
+	require.NoError(tb, err)
+	return msgs
+}
+
+// redirBenchCtx returns a context borrowed from an app with a GET route named "user" at path.
+func redirBenchCtx(b *testing.B, path string) *DefaultCtx {
+	b.Helper()
+
+	app := New()
+	app.Get(path, func(c Ctx) error { return c.SendString("user") }).Name("user")
+	return apptest.CtxAs[*DefaultCtx](b, app)
+}
+
 func Test_Redirect_To(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
 
-	err := c.Redirect().To("http://default.com")
-	require.NoError(t, err)
+	require.NoError(t, c.Redirect().To("http://default.com"))
 	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
 	require.Equal(t, "http://default.com", string(c.Response().Header.Peek(HeaderLocation)))
 
-	err = c.Redirect().Status(301).To("http://example.com")
-	require.NoError(t, err)
+	require.NoError(t, c.Redirect().Status(301).To("http://example.com"))
 	require.Equal(t, 301, c.Response().StatusCode())
 	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -54,12 +84,7 @@ func Test_Redirect_To(t *testing.T) {
 func Test_Redirect_WithFlashMessages(t *testing.T) {
 	t.Parallel()
 	flash := redirectionMsgs{{key: "success", value: "1"}, {key: "message", value: "test"}}
-	flashWithInput := redirectionMsgs{
-		{key: "success", value: "1"},
-		{key: "message", value: "test"},
-		{key: "id", value: "1", isOldInput: true},
-		{key: "name", value: "tom", isOldInput: true},
-	}
+	flashWithInput := testredirectionMsgs // the old input is the request's id=1 and name=tom
 	routeWithInput := func(r *Redirect) error {
 		return r.With("success", "1").With("message", "test").WithInput().Route("user")
 	}
@@ -147,16 +172,7 @@ func Test_Redirect_WithFlashMessages(t *testing.T) {
 
 			// What the redirect collected, and then what the cookie carries to the next request.
 			require.ElementsMatch(t, tc.want, c.redirect.messages)
-
-			c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
-
-			var msgs redirectionMsgs
-			decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
-			require.NoError(t, err)
-			_, err = msgs.UnmarshalMsg(decoded)
-			require.NoError(t, err)
-
-			require.ElementsMatch(t, tc.want, msgs)
+			require.ElementsMatch(t, tc.want, redirFlashCookieMsgs(t, c))
 		})
 	}
 }
@@ -330,8 +346,7 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 			app.Get("/*", func(c Ctx) error { return c.JSON(c.Params("*")) }).Name("wildcard")
 			c := apptest.Ctx(t, app)
 
-			err := c.Redirect().Route("wildcard", RedirectConfig{Params: Map{"*": tc.param}})
-			require.NoError(t, err)
+			require.NoError(t, c.Redirect().Route("wildcard", RedirectConfig{Params: Map{"*": tc.param}}))
 			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
 
 			// The same question asked the other two ways. A caller who puts
@@ -354,12 +369,11 @@ func Test_Redirect_Back(t *testing.T) {
 	app.Get("/", func(c Ctx) error { return c.JSON("Home") }).Name("home")
 	c := apptest.Ctx(t, app)
 
-	err := c.Redirect().Back("/")
-	require.NoError(t, err)
+	require.NoError(t, c.Redirect().Back("/"))
 	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
 	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 
-	err = c.Redirect().Back()
+	err := c.Redirect().Back()
 	require.Equal(t, 500, c.Response().StatusCode())
 	require.ErrorIs(t, err, ErrRedirectBackNoFallback)
 }
@@ -467,44 +481,32 @@ func Test_Redirect_Back_RejectsEmptyAuthorityReferer(t *testing.T) {
 	}
 }
 
-func Test_Redirect_Back_RejectsBrowserNormalizedReferer(t *testing.T) {
+// Test_Redirect_Back_BrowserNormalizedReferer pins that Back judges and
+// returns a referer the way a browser resolves it.
+func Test_Redirect_Back_BrowserNormalizedReferer(t *testing.T) {
 	t.Parallel()
-
-	// Referer values that net/url reports as ordinary relative paths but that a
-	// browser resolves to another origin, because it folds backslashes onto
-	// forward slashes, drops ASCII tab/newline, and treats any leading run of
-	// slashes as the start of an authority.
-	crossOrigin := []string{
-		`/\evil.com`,
-		`/\/evil.com`,
-		`\\evil.com`,
-		`\/evil.com`,
-		"/\t/evil.com",
-		"\t//evil.com",
-		` //evil.com`,
-		`///evil.com`,
-		`/////evil.com`,
-		`https:///evil.com`,
-	}
-
-	for _, referer := range crossOrigin {
-		t.Run(referer, func(t *testing.T) {
-			t.Parallel()
-			rootMiscBExpectBackTo(t, referer, "/fallback", "/fallback")
-		})
-	}
-}
-
-func Test_Redirect_Back_NormalizesSameOriginReferer(t *testing.T) {
-	t.Parallel()
-
-	// A same-origin referer is redirected to in its browser-normalized form, so
-	// a client that does not fold backslashes cannot resolve a different origin
-	// than the one that was validated.
 	tests := []struct {
 		referer  string
 		expected string
 	}{
+		// Referer values that net/url reports as ordinary relative paths but that a
+		// browser resolves to another origin, because it folds backslashes onto
+		// forward slashes, drops ASCII tab/newline, and treats any leading run of
+		// slashes as the start of an authority.
+		{referer: `/\evil.com`, expected: "/fallback"},
+		{referer: `/\/evil.com`, expected: "/fallback"},
+		{referer: `\\evil.com`, expected: "/fallback"},
+		{referer: `\/evil.com`, expected: "/fallback"},
+		{referer: "/\t/evil.com", expected: "/fallback"},
+		{referer: "\t//evil.com", expected: "/fallback"},
+		{referer: ` //evil.com`, expected: "/fallback"},
+		{referer: `///evil.com`, expected: "/fallback"},
+		{referer: `/////evil.com`, expected: "/fallback"},
+		{referer: `https:///evil.com`, expected: "/fallback"},
+
+		// A same-origin referer is redirected to in its browser-normalized form, so
+		// a client that does not fold backslashes cannot resolve a different origin
+		// than the one that was validated.
 		{referer: `/back`, expected: `/back`},
 		{referer: `back`, expected: `back`},
 		{referer: `/a\b`, expected: `/a/b`},
@@ -554,43 +556,24 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 
 	c := apptest.CtxAs[*DefaultCtx](t, app)
 
-	msgs := redirectionMsgs{
-		{key: "success", value: "1"},
-		{key: "message", value: "test"},
-		{key: "name", value: "tom", isOldInput: true},
-		{key: "id", value: "1", isOldInput: true},
-	}
-
-	val, err := msgs.MarshalMsg(nil)
-	require.NoError(t, err)
-
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
-
+	c.Request().Header.Set(HeaderCookie, redirFlashCookie(t))
 	c.Redirect().parseAndClearFlashMessages()
 
 	require.Equal(t, FlashMessage{Key: "success", Value: "1", Level: 0}, c.Redirect().Message("success"))
-
 	require.Equal(t, FlashMessage{Key: "message", Value: "test", Level: 0}, c.Redirect().Message("message"))
-
 	require.Equal(t, FlashMessage{}, c.Redirect().Message("success"))
 	require.Equal(t, FlashMessage{}, c.Redirect().Message("not_message"))
-
 	require.Empty(t, c.Redirect().Messages())
 
 	require.Equal(t, OldInputData{Key: "id", Value: "1"}, c.Redirect().OldInput("id"))
-
 	require.Equal(t, OldInputData{Key: "name", Value: "tom"}, c.Redirect().OldInput("name"))
-
 	require.Equal(t, OldInputData{}, c.Redirect().OldInput("not_name"))
-
 	require.Equal(t, []OldInputData{{Key: "name", Value: "tom"}, {Key: "id", Value: "1"}}, c.Redirect().OldInputs())
 
 	assertFlashCookieCleared(t, string(c.Response().Header.Peek(HeaderSetCookie)))
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=test")
-
 	c.Redirect().parseAndClearFlashMessages()
-
 	require.Empty(t, c.Redirect().messages)
 }
 
@@ -617,11 +600,7 @@ func Test_Redirect_release_ZeroesMessages(t *testing.T) {
 func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {
 	t.Parallel()
 	c := apptest.CtxAs[*DefaultCtx](t, New())
-
-	val, err := testredirectionMsgs.MarshalMsg(nil)
-	require.NoError(t, err)
-
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
+	c.Request().Header.Set(HeaderCookie, redirFlashCookie(t))
 	c.Redirect().parseAndClearFlashMessages()
 
 	require.Equal(t, []FlashMessage{
@@ -671,8 +650,6 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := New()
-
-			// The source handler sets the flash messages and redirects to the target.
 			app.Get(tc.source, func(c Ctx) error {
 				r := c.Redirect()
 				for key, value := range tc.flash {
@@ -680,8 +657,6 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 				}
 				return r.To(tc.target)
 			})
-
-			// The target handler receives the flash messages and returns them as a JSON response.
 			app.Get(tc.target, func(c Ctx) error {
 				received := make(map[string]string, len(tc.flash))
 				for key := range tc.flash {
@@ -690,7 +665,6 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 				return c.JSON(received)
 			})
 
-			// Step 1: make the initial request to the source route, which sets the flash cookie.
 			resp := apptest.Expect(t, app, tc.source, StatusSeeOther)
 			require.Equal(t, tc.target, resp.Header.Get(HeaderLocation))
 
@@ -703,12 +677,10 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 			}
 			require.NotNil(t, flashCookie, "Flash cookie should be set")
 
-			// Step 2: make the second request to the target route with the cookie, which the target consumes.
 			req := apptest.Req(MethodGet, tc.target, apptest.WithHeader(HeaderCookie, flashCookie.Name+"="+flashCookie.Value))
 			resp = apptest.Expect(t, app, req, StatusOK)
 			assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
 
-			// Every flash message was received correctly.
 			var received map[string]string
 			require.NoError(t, json.Unmarshal(apptest.BodyBytes(t, resp), &received))
 			require.Equal(t, tc.flash, received)
@@ -717,15 +689,9 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 }
 
 func Benchmark_Redirect_Route(b *testing.B) {
-	app := New()
-	app.Get("/user/:name", func(c Ctx) error { return c.JSON(c.Params("name")) }).Name("user")
-
-	c := apptest.CtxAs[*DefaultCtx](b, app)
-
+	c := redirBenchCtx(b, "/user/:name")
 	b.ReportAllocs()
-
 	var err error
-
 	for b.Loop() {
 		err = c.Redirect().Route("user", RedirectConfig{Params: Map{"name": "fiber"}})
 	}
@@ -736,15 +702,9 @@ func Benchmark_Redirect_Route(b *testing.B) {
 }
 
 func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
-	app := New()
-	app.Get("/user/:name", func(c Ctx) error { return c.JSON(c.Params("name")) }).Name("user")
-
-	c := apptest.CtxAs[*DefaultCtx](b, app)
-
+	c := redirBenchCtx(b, "/user/:name")
 	b.ReportAllocs()
-
 	var err error
-
 	for b.Loop() {
 		err = c.Redirect().Route("user", RedirectConfig{
 			Params:  Map{"name": "fiber"},
@@ -762,15 +722,9 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 }
 
 func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
-	app := New()
-	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
-
-	c := apptest.CtxAs[*DefaultCtx](b, app)
-
+	c := redirBenchCtx(b, "/user")
 	b.ReportAllocs()
-
 	var err error
-
 	for b.Loop() {
 		err = c.Redirect().With("success", "1").With("message", "test").Route("user")
 	}
@@ -779,14 +733,7 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	require.Equal(b, StatusSeeOther, c.Response().StatusCode())
 	require.Equal(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
-
-	var msgs redirectionMsgs
-	decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
-	require.NoError(b, err)
-	_, err = msgs.UnmarshalMsg(decoded)
-	require.NoError(b, err)
-
+	msgs := redirFlashCookieMsgs(b, c)
 	require.Contains(b, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
 	require.Contains(b, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
 }
@@ -796,9 +743,7 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 // neither read nor expired, and the accessors report nothing.
 func Test_Redirect_DisableFlashMessages(t *testing.T) {
 	t.Parallel()
-	payload, err := testredirectionMsgs.MarshalMsg(nil)
-	require.NoError(t, err)
-	incoming := FlashCookieName + "=" + hex.EncodeToString(payload)
+	incoming := redirFlashCookie(t)
 
 	apps := []struct {
 		newApp func(cfg Config) *App
@@ -888,76 +833,44 @@ var testredirectionMsgs = redirectionMsgs{
 }
 
 func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
-	app := New()
-	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
-
-	c := apptest.CtxAs[*DefaultCtx](b, app)
-
-	val, err := testredirectionMsgs.MarshalMsg(nil)
-	require.NoError(b, err)
-
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
+	c := redirBenchCtx(b, "/user")
+	c.Request().Header.Set(HeaderCookie, redirFlashCookie(b))
 
 	b.ReportAllocs()
-
 	for b.Loop() {
 		c.Redirect().parseAndClearFlashMessages()
 	}
 
 	require.Equal(b, FlashMessage{Key: "success", Value: "1"}, c.Redirect().Message("success"))
-
 	require.Equal(b, FlashMessage{Key: "message", Value: "test"}, c.Redirect().Message("message"))
-
 	require.Equal(b, OldInputData{Key: "id", Value: "1"}, c.Redirect().OldInput("id"))
-
 	require.Equal(b, OldInputData{Key: "name", Value: "tom"}, c.Redirect().OldInput("name"))
 }
 
 func Benchmark_Redirect_processFlashMessages(b *testing.B) {
-	app := New()
-	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
-
-	c := apptest.CtxAs[*DefaultCtx](b, app)
-
+	c := redirBenchCtx(b, "/user")
 	c.Redirect().With("success", "1").With("message", "test")
 
 	b.ReportAllocs()
-
 	for b.Loop() {
 		c.Redirect().processFlashMessages()
 	}
 
-	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
-
-	var msgs redirectionMsgs
-	decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
-	require.NoError(b, err)
-	_, err = msgs.UnmarshalMsg(decoded)
-	require.NoError(b, err)
-
+	msgs := redirFlashCookieMsgs(b, c)
 	require.Len(b, msgs, 2)
 	require.Contains(b, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
 	require.Contains(b, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
 }
 
 func Benchmark_Redirect_Messages(b *testing.B) {
-	app := New()
-	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
-
-	c := apptest.CtxAs[*DefaultCtx](b, app)
-
-	val, err := testredirectionMsgs.MarshalMsg(nil)
-	require.NoError(b, err)
-
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
+	c := redirBenchCtx(b, "/user")
+	c.Request().Header.Set(HeaderCookie, redirFlashCookie(b))
 	c.Redirect().parseAndClearFlashMessages()
 
 	var msgs []FlashMessage
-
 	msgTemplate := testredirectionMsgs
 
 	b.ReportAllocs()
-
 	for b.Loop() {
 		c.flashMessages = c.flashMessages[:0]
 		c.flashMessages = append(c.flashMessages, msgTemplate...)
@@ -965,53 +878,34 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 	}
 
 	require.Contains(b, msgs, FlashMessage{Key: "success", Value: "1", Level: 0})
-
 	require.Contains(b, msgs, FlashMessage{Key: "message", Value: "test", Level: 0})
 }
 
 func Benchmark_Redirect_OldInputs(b *testing.B) {
-	app := New()
-	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
-
-	c := apptest.CtxAs[*DefaultCtx](b, app)
-
-	val, err := testredirectionMsgs.MarshalMsg(nil)
-	require.NoError(b, err)
-
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
+	c := redirBenchCtx(b, "/user")
+	c.Request().Header.Set(HeaderCookie, redirFlashCookie(b))
 	c.Redirect().parseAndClearFlashMessages()
 
 	var oldInputs []OldInputData
 
 	b.ReportAllocs()
-
 	for b.Loop() {
 		oldInputs = c.Redirect().OldInputs()
 	}
 
 	require.Contains(b, oldInputs, OldInputData{Key: "name", Value: "tom"})
-
 	require.Contains(b, oldInputs, OldInputData{Key: "id", Value: "1"})
 }
 
 func Benchmark_Redirect_Message(b *testing.B) {
-	app := New()
-	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
-
-	c := apptest.CtxAs[*DefaultCtx](b, app)
-
-	val, err := testredirectionMsgs.MarshalMsg(nil)
-	require.NoError(b, err)
-
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
+	c := redirBenchCtx(b, "/user")
+	c.Request().Header.Set(HeaderCookie, redirFlashCookie(b))
 	c.Redirect().parseAndClearFlashMessages()
 
 	var msg FlashMessage
-
 	msgTemplate := testredirectionMsgs
 
 	b.ReportAllocs()
-
 	for b.Loop() {
 		c.flashMessages = c.flashMessages[:0]
 		c.flashMessages = append(c.flashMessages, msgTemplate...)
@@ -1022,21 +916,13 @@ func Benchmark_Redirect_Message(b *testing.B) {
 }
 
 func Benchmark_Redirect_OldInput(b *testing.B) {
-	app := New()
-	app.Get("/user", func(c Ctx) error { return c.SendString("user") }).Name("user")
-
-	c := apptest.CtxAs[*DefaultCtx](b, app)
-
-	val, err := testredirectionMsgs.MarshalMsg(nil)
-	require.NoError(b, err)
-
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
+	c := redirBenchCtx(b, "/user")
+	c.Request().Header.Set(HeaderCookie, redirFlashCookie(b))
 	c.Redirect().parseAndClearFlashMessages()
 
 	var input OldInputData
 
 	b.ReportAllocs()
-
 	for b.Loop() {
 		input = c.Redirect().OldInput("name")
 	}
@@ -1133,9 +1019,7 @@ func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
 		if flashCookie != "" {
 			req.Header.Set(HeaderCookie, FlashCookieName+"="+flashCookie)
 		}
-		resp := apptest.Do(t, app, req)
-		body := apptest.Body(t, resp)
-		return body
+		return apptest.Body(t, apptest.Do(t, app, req))
 	}
 
 	// One request carries real flash data and leaves it unread.

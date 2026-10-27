@@ -7,152 +7,89 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestState_SetAndGet_WithApp(t *testing.T) {
-	t.Parallel()
-	// Create app
-	app := New()
-
-	// test setting and getting a value
-	app.State().Set("foo", "bar")
-	val, ok := app.State().Get("foo")
-	require.True(t, ok)
-	require.Equal(t, "bar", val)
-
-	// test key not found
-	_, ok = app.State().Get("unknown")
-	require.False(t, ok)
-}
-
 func TestState_SetAndGet(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	// test setting and getting a value
-	st.Set("foo", "bar")
-	val, ok := st.Get("foo")
-	require.True(t, ok)
-	require.Equal(t, "bar", val)
-
-	// test key not found
-	_, ok = st.Get("unknown")
-	require.False(t, ok)
-}
-
-// stateTestGetter runs the three scenarios every typed State getter must satisfy, each as its own
-// subtest: a stored value of the getter's type is returned together with true, while a value of
-// another type (wrongType) and a missing key both return the zero value together with false.
-//
-// State hands values back untouched, so they are compared with Equal even for floats.
-func stateTestGetter[T any](t *testing.T, get func(*State, string) (T, bool), value T, wrongType any) {
-	t.Helper()
-
-	var zero T
 	for _, tc := range []struct {
-		want T
-		name string
-		key  string
-		ok   bool
+		state func() *State
+		name  string
 	}{
-		{name: "stored value", key: "value", want: value, ok: true},
-		{name: "wrong type", key: "wrong", want: zero},
-		{name: "missing key", key: "missing", want: zero},
+		{name: "state", state: newState},
+		{name: "app state", state: func() *State { return New().State() }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			st := newState()
-			st.Set("value", value)
-			st.Set("wrong", wrongType)
+			st := tc.state()
+			st.Set("foo", "bar")
+			val, ok := st.Get("foo")
+			require.True(t, ok)
+			require.Equal(t, "bar", val)
 
-			got, ok := get(st, tc.key)
-			require.Equal(t, tc.ok, ok)
-			require.Equal(t, tc.want, got)
+			_, ok = st.Get("unknown")
+			require.False(t, ok)
 		})
 	}
 }
 
-func TestState_GetString(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetString, "hello", 123)
+// stateTestGetter runs, as a parallel subtest called name, the three scenarios every typed State
+// getter must satisfy, each as its own subtest: a stored value of the getter's type is returned
+// together with true, while a value of another type (wrongType) and a missing key both return the
+// zero value together with false.
+//
+// State hands values back untouched, so they are compared with Equal even for floats.
+func stateTestGetter[T any](t *testing.T, name string, get func(*State, string) (T, bool), value T, wrongType any) {
+	t.Helper()
+	t.Run(name, func(t *testing.T) {
+		t.Parallel()
+		var zero T
+		for _, tc := range []struct {
+			want T
+			name string
+			key  string
+			ok   bool
+		}{
+			{name: "stored value", key: "value", want: value, ok: true},
+			{name: "wrong type", key: "wrong", want: zero},
+			{name: "missing key", key: "missing", want: zero},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				st := newState()
+				st.Set("value", value)
+				st.Set("wrong", wrongType)
+
+				got, ok := get(st, tc.key)
+				require.Equal(t, tc.ok, ok)
+				require.Equal(t, tc.want, got)
+			})
+		}
+	})
 }
 
-func TestState_GetInt(t *testing.T) {
+// TestState_TypedGetters covers every typed getter of State, and GetState, the
+// generic getter, for some of the types.
+func TestState_TypedGetters(t *testing.T) {
 	t.Parallel()
-	stateTestGetter(t, (*State).GetInt, 456, "abc")
-}
-
-func TestState_GetBool(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetBool, true, 1)
-}
-
-func TestState_GetFloat64(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetFloat64, 3.14, 10)
-}
-
-func TestState_GetUint(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetUint, 100, "not uint")
-}
-
-func TestState_GetInt8(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetInt8, 10, "not int8")
-}
-
-func TestState_GetInt16(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetInt16, 200, "not int16")
-}
-
-func TestState_GetInt32(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetInt32, 3000, "not int32")
-}
-
-func TestState_GetInt64(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetInt64, 4000, "not int64")
-}
-
-func TestState_GetUint8(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetUint8, 20, "not uint8")
-}
-
-func TestState_GetUint16(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetUint16, 300, "not uint16")
-}
-
-func TestState_GetUint32(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetUint32, 400000, "not uint32")
-}
-
-func TestState_GetUint64(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetUint64, 5000000, "not uint64")
-}
-
-func TestState_GetUintptr(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetUintptr, 12345, "not uintptr")
-}
-
-func TestState_GetFloat32(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetFloat32, 3.14, "not float32")
-}
-
-func TestState_GetComplex64(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetComplex64, complex(2, 3), "not complex64")
-}
-
-func TestState_GetComplex128(t *testing.T) {
-	t.Parallel()
-	stateTestGetter(t, (*State).GetComplex128, complex(4, 5), "not complex128")
+	stateTestGetter(t, "GetString", (*State).GetString, "hello", 123)
+	stateTestGetter(t, "GetInt", (*State).GetInt, 456, "abc")
+	stateTestGetter(t, "GetBool", (*State).GetBool, true, 1)
+	stateTestGetter(t, "GetFloat64", (*State).GetFloat64, 3.14, 10)
+	stateTestGetter(t, "GetUint", (*State).GetUint, 100, "not uint")
+	stateTestGetter(t, "GetInt8", (*State).GetInt8, 10, "not int8")
+	stateTestGetter(t, "GetInt16", (*State).GetInt16, 200, "not int16")
+	stateTestGetter(t, "GetInt32", (*State).GetInt32, 3000, "not int32")
+	stateTestGetter(t, "GetInt64", (*State).GetInt64, 4000, "not int64")
+	stateTestGetter(t, "GetUint8", (*State).GetUint8, 20, "not uint8")
+	stateTestGetter(t, "GetUint16", (*State).GetUint16, 300, "not uint16")
+	stateTestGetter(t, "GetUint32", (*State).GetUint32, 400000, "not uint32")
+	stateTestGetter(t, "GetUint64", (*State).GetUint64, 5000000, "not uint64")
+	stateTestGetter(t, "GetUintptr", (*State).GetUintptr, 12345, "not uintptr")
+	stateTestGetter(t, "GetFloat32", (*State).GetFloat32, 3.14, "not float32")
+	stateTestGetter(t, "GetComplex64", (*State).GetComplex64, complex(2, 3), "not complex64")
+	stateTestGetter(t, "GetComplex128", (*State).GetComplex128, complex(4, 5), "not complex128")
+	stateTestGetter(t, "GetState[int]", GetState[int], 42, "abc")
+	stateTestGetter(t, "GetState[string]", GetState[string], "hello", 100)
+	stateTestGetter(t, "GetState[bool]", GetState[bool], true, 1)
+	stateTestGetter(t, "GetState[float64]", GetState[float64], 3.14, 10)
 }
 
 func TestState_MustGet(t *testing.T) {
@@ -198,38 +135,31 @@ func TestState_Reset(t *testing.T) {
 
 func TestState_Keys(t *testing.T) {
 	t.Parallel()
-	st := newState()
-
-	keys := []string{"one", "two", "three"}
-	for _, k := range keys {
-		st.Set(k, k)
+	for _, tc := range []struct {
+		name string
+		keys []any // stored in this order: a string with Set, any other key straight into the map
+		want []string
+	}{
+		{name: "string keys", keys: []any{"one", "two", "three"}, want: []string{"one", "two", "three"}},
+		{name: "skips non-string keys", keys: []any{"one", "two", 42, struct{}{}}, want: []string{"one", "two"}},
+		{
+			name: "skips non-string keys in mixed order",
+			keys: []any{"before", 42, "after"}, want: []string{"before", "after"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			st := newState()
+			for _, key := range tc.keys {
+				if s, ok := key.(string); ok {
+					st.Set(s, s)
+				} else {
+					st.dependencies.Store(key, "value")
+				}
+			}
+			require.ElementsMatch(t, tc.want, st.Keys())
+		})
 	}
-
-	returnedKeys := st.Keys()
-	require.ElementsMatch(t, keys, returnedKeys)
-}
-
-func TestState_Keys_SkipsNonStringKeys(t *testing.T) {
-	t.Parallel()
-	st := newState()
-	st.Set("one", "one")
-	st.Set("two", "two")
-	st.dependencies.Store(42, "value")
-	st.dependencies.Store(struct{}{}, "value")
-
-	returnedKeys := st.Keys()
-	require.ElementsMatch(t, []string{"one", "two"}, returnedKeys)
-}
-
-func TestState_Keys_SkipsNonStringKeys_WithMixedOrder(t *testing.T) {
-	t.Parallel()
-	st := newState()
-	st.Set("before", "value")
-	st.dependencies.Store(42, "value")
-	st.Set("after", "value")
-
-	returnedKeys := st.Keys()
-	require.ElementsMatch(t, []string{"before", "after"}, returnedKeys)
 }
 
 func TestState_Len(t *testing.T) {
@@ -246,49 +176,6 @@ func TestState_Len(t *testing.T) {
 
 	st.Delete("a")
 	require.Equal(t, 1, st.Len())
-}
-
-type testCase[T any] struct {
-	value    any
-	expected T
-	name     string
-	key      string
-	ok       bool
-}
-
-func runGenericTest[T any](t *testing.T, getter func(*State, string) (T, bool), tests []testCase[T]) {
-	t.Helper()
-
-	st := newState()
-	for _, tc := range tests {
-		st.Set(tc.key, tc.value)
-		got, ok := getter(st, tc.key)
-		require.Equal(t, tc.ok, ok, tc.name)
-		require.Equal(t, tc.expected, got, tc.name)
-	}
-}
-
-func TestState_GetGeneric(t *testing.T) {
-	t.Parallel()
-	runGenericTest(t, GetState[int], []testCase[int]{
-		{name: "int correct conversion", key: "num", value: 42, expected: 42, ok: true},
-		{name: "int wrong conversion from string", key: "str", value: "abc", expected: 0, ok: false},
-	})
-
-	runGenericTest(t, GetState[string], []testCase[string]{
-		{name: "string correct conversion", key: "strVal", value: "hello", expected: "hello", ok: true},
-		{name: "string wrong conversion from int", key: "intVal", value: 100, expected: "", ok: false},
-	})
-
-	runGenericTest(t, GetState[bool], []testCase[bool]{
-		{name: "bool correct conversion", key: "flag", value: true, expected: true, ok: true},
-		{name: "bool wrong conversion from int", key: "intFlag", value: 1, expected: false, ok: false},
-	})
-
-	runGenericTest(t, GetState[float64], []testCase[float64]{
-		{name: "float64 correct conversion", key: "pi", value: 3.14, expected: 3.14, ok: true},
-		{name: "float64 wrong conversion from int", key: "intVal", value: 10, expected: 0.0, ok: false},
-	})
 }
 
 func Test_MustGetStateGeneric(t *testing.T) {
@@ -385,6 +272,7 @@ func TestState_Service(t *testing.T) {
 	})
 
 	t.Run("keys", func(t *testing.T) {
+		t.Parallel()
 		t.Run("empty", func(t *testing.T) {
 			t.Parallel()
 			st := newState()
@@ -395,61 +283,34 @@ func TestState_Service(t *testing.T) {
 			require.Empty(t, st.serviceKeys())
 		})
 
-		t.Run("with-services", func(t *testing.T) {
-			t.Parallel()
-			st := newState()
-			st.setService(srv1)
-			st.setService(srv2)
+		// Each row stores others next to both services; only the services are listed.
+		for _, tc := range []struct {
+			others map[any]any
+			name   string
+		}{
+			{name: "with-services"},
+			{name: "with-services/with-keys", others: map[any]any{"key1": "value1", "key2": "value2"}},
+			{name: "with-non-string-key", others: map[any]any{42: "value", struct{}{}: "value"}},
+			{name: "with-non-service-keys", others: map[any]any{"other": "value", 42: "value"}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				st := newState()
+				st.setService(srv1)
+				st.setService(srv2)
+				for key, value := range tc.others {
+					st.dependencies.Store(key, value)
+				}
 
-			keys := st.serviceKeys()
-			require.Len(t, keys, 2)
-			require.Contains(t, keys, st.serviceKey(srv1.String()))
-			require.Contains(t, keys, st.serviceKey(srv2.String()))
-		})
-
-		t.Run("with-services/with-keys", func(t *testing.T) {
-			t.Parallel()
-			st := newState()
-			st.setService(srv1)
-			st.setService(srv2)
-			st.Set("key1", "value1")
-			st.Set("key2", "value2")
-
-			keys := st.serviceKeys()
-			require.Len(t, keys, 2)
-			require.Contains(t, keys, st.serviceKey(srv1.String()))
-			require.Contains(t, keys, st.serviceKey(srv2.String()))
-			require.NotContains(t, keys, "key1")
-			require.NotContains(t, keys, "key2")
-		})
-
-		t.Run("with-non-string-key", func(t *testing.T) {
-			t.Parallel()
-			st := newState()
-			st.setService(srv1)
-			st.setService(srv2)
-			st.dependencies.Store(42, "value")
-			st.dependencies.Store(struct{}{}, "value")
-
-			keys := st.serviceKeys()
-			require.Len(t, keys, 2)
-			require.Contains(t, keys, st.serviceKey(srv1.String()))
-			require.Contains(t, keys, st.serviceKey(srv2.String()))
-		})
-
-		t.Run("with-non-service-keys", func(t *testing.T) {
-			t.Parallel()
-			st := newState()
-			st.setService(srv1)
-			st.setService(srv2)
-			st.Set("other", "value")
-			st.dependencies.Store(42, "value")
-
-			keys := st.serviceKeys()
-			require.Len(t, keys, 2)
-			require.Contains(t, keys, st.serviceKey(srv1.String()))
-			require.Contains(t, keys, st.serviceKey(srv2.String()))
-		})
+				keys := st.serviceKeys()
+				require.Len(t, keys, 2)
+				require.Contains(t, keys, st.serviceKey(srv1.String()))
+				require.Contains(t, keys, st.serviceKey(srv2.String()))
+				for key := range tc.others {
+					require.NotContains(t, keys, key)
+				}
+			})
+		}
 	})
 
 	t.Run("delete", func(t *testing.T) {
@@ -483,10 +344,9 @@ func TestState_Service(t *testing.T) {
 
 func TestState_GetService(t *testing.T) {
 	t.Parallel()
+	srv1 := &mockService{name: "test1"}
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
-		srv1 := &mockService{name: "test1"}
-
 		st := newState()
 		st.setService(srv1)
 
@@ -497,11 +357,7 @@ func TestState_GetService(t *testing.T) {
 
 	t.Run("ko", func(t *testing.T) {
 		t.Parallel()
-		srv1 := &mockService{name: "test1"}
-
-		st := newState()
-
-		got, ok := GetService[*mockService](st, srv1.String())
+		got, ok := GetService[*mockService](newState(), srv1.String())
 		require.False(t, ok)
 		require.Nil(t, got)
 	})
@@ -509,25 +365,32 @@ func TestState_GetService(t *testing.T) {
 
 func TestState_MustGetService(t *testing.T) {
 	t.Parallel()
+	srv1 := &mockService{name: "test1"}
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
-		srv1 := &mockService{name: "test1"}
-
 		st := newState()
 		st.setService(srv1)
 
-		got := MustGetService[*mockService](st, srv1.String())
-		require.Equal(t, srv1, got)
+		require.Equal(t, srv1, MustGetService[*mockService](st, srv1.String()))
 	})
 
 	t.Run("panics", func(t *testing.T) {
 		t.Parallel()
-		srv1 := &mockService{name: "test1"}
-
 		st := newState()
-
 		require.Panics(t, func() { _ = MustGetService[*mockService](st, srv1.String()) })
 	})
+}
+
+// stateBenchKeys is how many keys stateBenchFill puts in a State.
+const stateBenchKeys = 1000
+
+// stateBenchFill returns a State holding stateBenchKeys keys, "key0" onwards, each key i set to value(i).
+func stateBenchFill(value func(i int) any) *State {
+	st := newState()
+	for i := range stateBenchKeys {
+		st.Set("key"+strconv.Itoa(i), value(i))
+	}
+	return st
 }
 
 func BenchmarkState_Set(b *testing.B) {
@@ -545,15 +408,8 @@ func BenchmarkState_Set(b *testing.B) {
 
 func BenchmarkState_Get(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	// prepopulate the state
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, i)
-	}
-
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return i })
 	i := 0
 	for b.Loop() {
 		i++
@@ -564,15 +420,8 @@ func BenchmarkState_Get(b *testing.B) {
 
 func BenchmarkState_GetString(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	// prepopulate the state
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, strconv.Itoa(i))
-	}
-
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return strconv.Itoa(i) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -583,15 +432,8 @@ func BenchmarkState_GetString(b *testing.B) {
 
 func BenchmarkState_GetInt(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	// prepopulate the state
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, i)
-	}
-
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return i })
 	i := 0
 	for b.Loop() {
 		i++
@@ -602,15 +444,8 @@ func BenchmarkState_GetInt(b *testing.B) {
 
 func BenchmarkState_GetBool(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	// prepopulate the state
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, i%2 == 0)
-	}
-
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return i%2 == 0 })
 	i := 0
 	for b.Loop() {
 		i++
@@ -621,15 +456,8 @@ func BenchmarkState_GetBool(b *testing.B) {
 
 func BenchmarkState_GetFloat64(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	// prepopulate the state
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, float64(i))
-	}
-
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return float64(i) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -640,15 +468,8 @@ func BenchmarkState_GetFloat64(b *testing.B) {
 
 func BenchmarkState_MustGet(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	// prepopulate the state
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, i)
-	}
-
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return i })
 	i := 0
 	for b.Loop() {
 		i++
@@ -659,15 +480,8 @@ func BenchmarkState_MustGet(b *testing.B) {
 
 func BenchmarkState_GetStateGeneric(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	// prepopulate the state
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, i)
-	}
-
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return i })
 	i := 0
 	for b.Loop() {
 		i++
@@ -678,15 +492,8 @@ func BenchmarkState_GetStateGeneric(b *testing.B) {
 
 func BenchmarkState_MustGetStateGeneric(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	// prepopulate the state
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, i)
-	}
-
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return i })
 	i := 0
 	for b.Loop() {
 		i++
@@ -697,15 +504,8 @@ func BenchmarkState_MustGetStateGeneric(b *testing.B) {
 
 func BenchmarkState_GetStateWithDefault(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	// prepopulate the state
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, i)
-	}
-
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return i })
 	i := 0
 	for b.Loop() {
 		i++
@@ -716,14 +516,8 @@ func BenchmarkState_GetStateWithDefault(b *testing.B) {
 
 func BenchmarkState_Has(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	// prepopulate the state
-	for i := range n {
-		st.Set("key"+strconv.Itoa(i), i)
-	}
-
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return i })
 	i := 0
 	for b.Loop() {
 		i++
@@ -756,13 +550,7 @@ func BenchmarkState_Reset(b *testing.B) {
 
 func BenchmarkState_Keys(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	for i := range n {
-		st.Set("key"+strconv.Itoa(i), i)
-	}
-
+	st := stateBenchFill(func(i int) any { return i })
 	for b.Loop() {
 		_ = st.Keys()
 	}
@@ -770,13 +558,7 @@ func BenchmarkState_Keys(b *testing.B) {
 
 func BenchmarkState_Len(b *testing.B) {
 	b.ReportAllocs()
-
-	st := newState()
-	n := 1000
-	for i := range n {
-		st.Set("key"+strconv.Itoa(i), i)
-	}
-
+	st := stateBenchFill(func(i int) any { return i })
 	for b.Loop() {
 		_ = st.Len()
 	}
@@ -784,13 +566,8 @@ func BenchmarkState_Len(b *testing.B) {
 
 func BenchmarkState_GetUint(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with uint values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint(i))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return uint(i) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -801,13 +578,8 @@ func BenchmarkState_GetUint(b *testing.B) {
 
 func BenchmarkState_GetInt8(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with int8 values (using modulo to stay in range).
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, int8(i%128))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return int8(i % 128) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -818,13 +590,8 @@ func BenchmarkState_GetInt8(b *testing.B) {
 
 func BenchmarkState_GetInt16(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with int16 values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, int16(i))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return int16(i) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -835,13 +602,8 @@ func BenchmarkState_GetInt16(b *testing.B) {
 
 func BenchmarkState_GetInt32(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with int32 values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, int32(i))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return int32(i) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -852,13 +614,8 @@ func BenchmarkState_GetInt32(b *testing.B) {
 
 func BenchmarkState_GetInt64(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with int64 values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, int64(i))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return int64(i) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -869,13 +626,8 @@ func BenchmarkState_GetInt64(b *testing.B) {
 
 func BenchmarkState_GetUint8(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with uint8 values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint8(i%256))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return uint8(i % 256) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -886,13 +638,8 @@ func BenchmarkState_GetUint8(b *testing.B) {
 
 func BenchmarkState_GetUint16(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with uint16 values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint16(i))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return uint16(i) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -903,13 +650,8 @@ func BenchmarkState_GetUint16(b *testing.B) {
 
 func BenchmarkState_GetUint32(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with uint32 values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint32(i))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return uint32(i) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -920,13 +662,8 @@ func BenchmarkState_GetUint32(b *testing.B) {
 
 func BenchmarkState_GetUint64(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with uint64 values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint64(i))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return uint64(i) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -937,13 +674,8 @@ func BenchmarkState_GetUint64(b *testing.B) {
 
 func BenchmarkState_GetUintptr(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with uintptr values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, uintptr(i))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return uintptr(i) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -954,13 +686,8 @@ func BenchmarkState_GetUintptr(b *testing.B) {
 
 func BenchmarkState_GetFloat32(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with float32 values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		st.Set(key, float32(i))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return float32(i) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -971,14 +698,8 @@ func BenchmarkState_GetFloat32(b *testing.B) {
 
 func BenchmarkState_GetComplex64(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with complex64 values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		// Create a complex64 value with both real and imaginary parts.
-		st.Set(key, complex(float32(i), float32(i)))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return complex(float32(i), float32(i)) })
 	i := 0
 	for b.Loop() {
 		i++
@@ -989,14 +710,8 @@ func BenchmarkState_GetComplex64(b *testing.B) {
 
 func BenchmarkState_GetComplex128(b *testing.B) {
 	b.ReportAllocs()
-	st := newState()
-	n := 1000
-	// Prepopulate the state with complex128 values.
-	for i := range n {
-		key := "key" + strconv.Itoa(i)
-		// Create a complex128 value with both real and imaginary parts.
-		st.Set(key, complex(float64(i), float64(i)))
-	}
+	n := stateBenchKeys
+	st := stateBenchFill(func(i int) any { return complex(float64(i), float64(i)) })
 	i := 0
 	for b.Loop() {
 		i++

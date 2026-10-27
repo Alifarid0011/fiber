@@ -18,21 +18,16 @@ var errContextTestWrite = errors.New("context test write failure")
 
 type failingContextBuffer struct{}
 
-func (failingContextBuffer) Len() int { return 0 }
-func (failingContextBuffer) ReadFrom(_ io.Reader) (int64, error) {
-	return 0, errContextTestWrite
-}
-
-func (failingContextBuffer) WriteTo(_ io.Writer) (int64, error) {
-	return 0, errContextTestWrite
-}
-func (failingContextBuffer) Bytes() []byte                   { return nil }
-func (failingContextBuffer) Write(_ []byte) (int, error)     { return 0, errContextTestWrite }
-func (failingContextBuffer) WriteByte(byte) error            { return errContextTestWrite }
-func (failingContextBuffer) WriteString(string) (int, error) { return 0, errContextTestWrite }
-func (failingContextBuffer) Set([]byte)                      {}
-func (failingContextBuffer) SetString(string)                {}
-func (failingContextBuffer) String() string                  { return "" }
+func (failingContextBuffer) Len() int                            { return 0 }
+func (failingContextBuffer) ReadFrom(_ io.Reader) (int64, error) { return 0, errContextTestWrite }
+func (failingContextBuffer) WriteTo(_ io.Writer) (int64, error)  { return 0, errContextTestWrite }
+func (failingContextBuffer) Bytes() []byte                       { return nil }
+func (failingContextBuffer) Write(_ []byte) (int, error)         { return 0, errContextTestWrite }
+func (failingContextBuffer) WriteByte(byte) error                { return errContextTestWrite }
+func (failingContextBuffer) WriteString(string) (int, error)     { return 0, errContextTestWrite }
+func (failingContextBuffer) Set([]byte)                          {}
+func (failingContextBuffer) SetString(string)                    {}
+func (failingContextBuffer) String() string                      { return "" }
 
 // buildTestTemplate compiles a context template using the package-default tag
 // map merged with the supplied custom tags. It mirrors the production merge
@@ -56,6 +51,11 @@ func executeContextTemplate(t *testing.T, tmpl *logtemplate.Template[any, Contex
 
 	require.NoError(t, tmpl.Execute(buf, ctx, &ContextData{}))
 	return buf.String()
+}
+
+// stringTag returns a context tag that writes s.
+func stringTag(s string) ContextTagFunc {
+	return func(output Buffer, _ any, _ *ContextData, _ string) (int, error) { return output.WriteString(s) }
 }
 
 type testUserValueContext map[any]any
@@ -158,12 +158,7 @@ func Test_ContextTemplate_DefaultTagsRenderEmpty(t *testing.T) {
 
 func Test_ContextTemplate_CustomTag(t *testing.T) {
 	t.Parallel()
-	tmpl := buildTestTemplate(t, "[${requestid}]", map[string]ContextTagFunc{
-		"requestid": func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
-			return output.WriteString("req-42")
-		},
-	})
-
+	tmpl := buildTestTemplate(t, "[${requestid}]", map[string]ContextTagFunc{"requestid": stringTag("req-42")})
 	require.Equal(t, "[req-42]", executeContextTemplate(t, tmpl, context.Background()))
 }
 
@@ -174,12 +169,8 @@ func Test_SetContextTemplateRejectsReservedValueTag(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
 	require.ErrorIs(t, SetContextTemplate(ContextConfig{
-		Format: "[${value:request_id}]",
-		CustomTags: map[string]ContextTagFunc{
-			TagContextValue: func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
-				return output.WriteString("override")
-			},
-		},
+		Format:     "[${value:request_id}]",
+		CustomTags: map[string]ContextTagFunc{TagContextValue: stringTag("override")},
 	}), ErrContextTagReserved)
 }
 
@@ -189,12 +180,8 @@ func Test_SetContextTemplate_RegistersCustomTag(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
 	require.NoError(t, SetContextTemplate(ContextConfig{
-		Format: "[${tenant}]",
-		CustomTags: map[string]ContextTagFunc{
-			"tenant": func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
-				return output.WriteString("acme")
-			},
-		},
+		Format:     "[${tenant}]",
+		CustomTags: map[string]ContextTagFunc{"tenant": stringTag("acme")},
 	}))
 
 	tmpl := contextTemplate.Load()
@@ -208,9 +195,7 @@ func Test_SetContextTemplate_RegistersCustomTag(t *testing.T) {
 func Test_RegisterContextTagThenSetFormat(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
-	require.NoError(t, RegisterContextTag("tenant", func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
-		return output.WriteString("acme")
-	}))
+	require.NoError(t, RegisterContextTag("tenant", stringTag("acme")))
 	// With no format active, the template stays nil even after registration.
 	require.Nil(t, contextTemplate.Load())
 
@@ -227,12 +212,8 @@ func Test_DefaultFormatDisablesContextTemplate(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
 	MustSetContextTemplate(ContextConfig{
-		Format: "[${requestid}] ",
-		CustomTags: map[string]ContextTagFunc{
-			"requestid": func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
-				return output.WriteString("req-42")
-			},
-		},
+		Format:     "[${requestid}] ",
+		CustomTags: map[string]ContextTagFunc{"requestid": stringTag("req-42")},
 	})
 	require.NotNil(t, contextTemplate.Load())
 
@@ -260,20 +241,14 @@ func Test_SetContextTemplate_ReturnsBuildError(t *testing.T) {
 
 func Test_RegisterContextTagRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
-	require.ErrorIs(t, RegisterContextTag("", func(Buffer, any, *ContextData, string) (int, error) {
-		return 0, nil
-	}), ErrContextTagInvalid)
+	require.ErrorIs(t, RegisterContextTag("", stringTag("")), ErrContextTagInvalid)
 	require.ErrorIs(t, RegisterContextTag("missing", nil), ErrContextTagInvalid)
-	require.ErrorIs(t, RegisterContextTag(TagContextValue, func(Buffer, any, *ContextData, string) (int, error) {
-		return 0, nil
-	}), ErrContextTagReserved)
+	require.ErrorIs(t, RegisterContextTag(TagContextValue, stringTag("")), ErrContextTagReserved)
 }
 
 func Test_MustRegisterContextTag_PanicsOnInvalidInput(t *testing.T) {
 	t.Parallel()
-	require.PanicsWithError(t, ErrContextTagInvalid.Error(), func() {
-		MustRegisterContextTag("", func(Buffer, any, *ContextData, string) (int, error) { return 0, nil })
-	})
+	require.PanicsWithError(t, ErrContextTagInvalid.Error(), func() { MustRegisterContextTag("", stringTag("")) })
 }
 
 func Test_ContextValue(t *testing.T) {
@@ -305,9 +280,7 @@ func Test_ContextValue(t *testing.T) {
 func Test_ContextTemplate_ConcurrentRegistration(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
-	require.NoError(t, RegisterContextTag("tenant", func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
-		return output.WriteString("acme")
-	}))
+	require.NoError(t, RegisterContextTag("tenant", stringTag("acme")))
 	require.NoError(t, SetContextTemplate(ContextConfig{Format: "[${tenant}]"}))
 
 	const goroutines = 8
@@ -320,9 +293,7 @@ func Test_ContextTemplate_ConcurrentRegistration(t *testing.T) {
 		defer wg.Done()
 		for range iterations {
 			//nolint:errcheck // race-stress test intentionally ignores transient errors
-			_ = RegisterContextTag("tenant", func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
-				return output.WriteString("acme")
-			})
+			_ = RegisterContextTag("tenant", stringTag("acme"))
 			_ = id
 		}
 	}
@@ -357,11 +328,8 @@ func Test_ContextTemplate_ConcurrentRegistration(t *testing.T) {
 }
 
 func Benchmark_ContextTemplate_Execute(b *testing.B) {
-	tmpl, err := logtemplate.Build[any, ContextData]("[${requestid}] ", map[string]ContextTagFunc{
-		"requestid": func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
-			return output.WriteString("req-42")
-		},
-	})
+	tags := map[string]ContextTagFunc{"requestid": stringTag("req-42")}
+	tmpl, err := logtemplate.Build[any, ContextData]("[${requestid}] ", tags)
 	require.NoError(b, err)
 
 	buf := bytebufferpool.Get()
@@ -394,9 +362,7 @@ func Benchmark_DefaultContextValueTag(b *testing.B) {
 func Benchmark_writeSanitizedString(b *testing.B) {
 	buf := &bytebufferpool.ByteBuffer{}
 	inputs := []string{
-		"GET /api/v1/users completed in 3ms",
-		"user login ok request-id=6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-		"short",
+		"GET /api/v1/users completed in 3ms", "user login ok request-id=6ba7b810-9dad-11d1-80b4-00c04fd430c8", "short",
 	}
 	b.ReportAllocs()
 	for b.Loop() {

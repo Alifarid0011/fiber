@@ -59,282 +59,247 @@ func TestNewTestCtx_ReturnsDefaultCtx(t *testing.T) {
 	require.Equal(t, app, ctx.App())
 }
 
+// newTestCtx returns a new app and a *DefaultCtx borrowed from it until the test ends.
 func newTestCtx(t *testing.T) (*App, *DefaultCtx) {
 	t.Helper()
 
 	app := New()
-	fasthttpCtx := &fasthttp.RequestCtx{}
-	customCtx := apptest.CtxFor(t, app, fasthttpCtx)
-	ctx, ok := customCtx.(*DefaultCtx)
-	require.True(t, ok)
-
-	return app, ctx
+	return app, apptest.CtxAs[*DefaultCtx](t, app)
 }
 
-func withRouteHandlers(t *testing.T, ctx *DefaultCtx, handlers ...Handler) {
-	t.Helper()
-
-	ctx.route = &Route{Handlers: handlers}
-	ctx.indexHandler = 0
-	t.Cleanup(func() {
-		ctx.route = nil
-		ctx.indexHandler = 0
-	})
-}
-
-// rootMiscAAssertBound asserts that the Req and Res an Express-style handler
-// receives belong to app.
-func rootMiscAAssertBound(t *testing.T, app *App, req Req, res Res) {
-	t.Helper()
-
-	assert.Equal(t, app, req.App())
-	assert.Equal(t, app, res.App())
-}
-
-// rootMiscARunChain converts the Express-style handler and runs it on ctx in
-// front of a downstream handler that returns nextErr. It reports whether the
-// downstream handler ran and the error the converted handler returned.
-func rootMiscARunChain(t *testing.T, ctx *DefaultCtx, nextErr error, handler any) (bool, error) {
-	t.Helper()
-
-	converted, ok := toFiberHandler(handler)
-	require.True(t, ok)
-
-	nextCalled := false
-	nextHandler := func(_ Ctx) error {
-		nextCalled = true
-		return nextErr
-	}
-	withRouteHandlers(t, ctx, converted, nextHandler)
-
-	err := converted(ctx)
-	return nextCalled, err
-}
-
-func TestToFiberHandler_ExpressTwoParamsWithError(t *testing.T) {
+// TestToFiberHandler_Express runs every Express-style handler shape in front
+// of a downstream handler that returns nextErr, and checks the error the
+// converted handler returns, whether the downstream handler ran and, for the
+// shapes without a next callback, the response.
+func TestToFiberHandler_Express(t *testing.T) {
 	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res) error {
-		rootMiscAAssertBound(t, app, req, res)
-		return res.SendString("express")
+	errNext := errors.New("next error")
+	tests := []struct {
+		build    func(t require.TestingT, bound func(Req, Res)) any // the handler under test, which calls bound
+		check    func(t require.TestingT, ctx *DefaultCtx)
+		nextErr  error // what the downstream handler returns
+		name     string
+		wantErr  string // the error the converted handler returns, none when empty
+		isNext   bool   // the error is nextErr itself
+		wantNext bool   // the downstream handler ran
+	}{
+		{
+			name: "TwoParamsWithError",
+			build: func(_ require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res) error {
+					bound(req, res)
+					return res.SendString("express")
+				}
+			},
+			check: func(t require.TestingT, ctx *DefaultCtx) {
+				require.Equal(t, "express", string(ctx.Response().Body()))
+			},
+		},
+		{
+			name: "TwoParamsWithoutError",
+			build: func(t require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res) {
+					bound(req, res)
+					require.NoError(t, res.SendStatus(http.StatusCreated))
+				}
+			},
+			check: func(t require.TestingT, ctx *DefaultCtx) {
+				require.Equal(t, http.StatusCreated, ctx.Response().StatusCode())
+			},
+		},
+		{
+			name: "ThreeParamsWithError",
+			build: func(_ require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func() error) error {
+					bound(req, res)
+					return next()
+				}
+			},
+			nextErr: errors.New("next"), wantErr: "next", isNext: true, wantNext: true,
+		},
+		{
+			name: "ThreeParamsWithError_PrefersHandlerErrorOverNextError",
+			build: func(t require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func() error) error {
+					bound(req, res)
+					require.EqualError(t, next(), "next error")
+					return errors.New("handler error")
+				}
+			},
+			nextErr: errNext, wantErr: "handler error", wantNext: true,
+		},
+		{
+			name: "ThreeParamsWithError_PropagatesNextErrorWhenNoReturnError",
+			build: func(t require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func() error) error {
+					bound(req, res)
+					require.ErrorIs(t, next(), errNext)
+					return nil
+				}
+			},
+			nextErr: errNext, wantErr: "next error", isNext: true, wantNext: true,
+		},
+		{
+			name: "ThreeParamsWithoutError",
+			build: func(t require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func() error) {
+					bound(req, res)
+					err := next()
+					require.Error(t, err)
+					assert.EqualError(t, err, "next without error")
+				}
+			},
+			nextErr: errors.New("next without error"), wantErr: "next without error", wantNext: true,
+		},
+		{
+			name: "NextNoArgWithErrorReturn",
+			build: func(_ require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func()) error {
+					bound(req, res)
+					next()
+					return nil
+				}
+			},
+			nextErr: errors.New("next without return value"), wantErr: "next without return value",
+			isNext: true, wantNext: true,
+		},
+		{
+			name: "NextNoArgPropagatesError",
+			build: func(_ require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func()) {
+					bound(req, res)
+					next()
+				}
+			},
+			nextErr: errors.New("next without return value"), wantErr: "next without return value",
+			isNext: true, wantNext: true,
+		},
+		{
+			name: "NextNoArgStopsChain",
+			build: func(_ require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, _ func()) {
+					bound(req, res)
+					// Intentionally do not call next().
+				}
+			},
+			nextErr: errors.New("should not be called"),
+		},
+		{
+			name: "NextWithErrorContinuesOnNil",
+			build: func(_ require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func(error)) {
+					bound(req, res)
+					next(nil)
+				}
+			},
+			wantNext: true,
+		},
+		{
+			name: "NextWithErrorShortCircuitsOnError",
+			build: func(_ require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func(error)) {
+					bound(req, res)
+					next(errors.New("next error"))
+				}
+			},
+			wantErr: "next error",
+		},
+		{
+			name: "NextWithErrorReturn_ShortCircuitsOnNextError",
+			build: func(_ require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func(error)) error {
+					bound(req, res)
+					next(errors.New("next error"))
+					return nil
+				}
+			},
+			wantErr: "next error",
+		},
+		{
+			name: "NextWithErrorReturnCallback_PropagatesNextError",
+			build: func(t require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func(error) error) {
+					bound(req, res)
+					require.EqualError(t, next(nil), "next error")
+				}
+			},
+			nextErr: errNext, wantErr: "next error", isNext: true, wantNext: true,
+		},
+		{
+			name: "NextWithErrorReturnCallback_ShortCircuitsOnNextError",
+			build: func(t require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func(error) error) {
+					bound(req, res)
+					require.EqualError(t, next(errors.New("next error")), "next error")
+				}
+			},
+			wantErr: "next error",
+		},
+		{
+			name: "NextWithErrorReturnCallback_StopsChainWithoutNextCall",
+			build: func(_ require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, _ func(error) error) {
+					bound(req, res)
+					// Intentionally do not call next.
+				}
+			},
+			nextErr: errors.New("should not be called"),
+		},
+		{
+			name: "NextWithErrorReturn_PrefersHandlerErrorOverNextError",
+			build: func(t require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func(error) error) error {
+					bound(req, res)
+					require.EqualError(t, next(errors.New("next error")), "next error")
+					return errors.New("handler error")
+				}
+			},
+			wantErr: "handler error",
+		},
+		{
+			name: "NextWithErrorReturn_PropagatesNextErrorWhenNoReturnError",
+			build: func(_ require.TestingT, bound func(Req, Res)) any {
+				return func(req Req, res Res, next func(error) error) error {
+					bound(req, res)
+					return next(errors.New("next error"))
+				}
+			},
+			wantErr: "next error",
+		},
 	}
 
-	converted, ok := toFiberHandler(handler)
-	require.True(t, ok)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, ctx := newTestCtx(t)
+			bound := func(req Req, res Res) { // the Req and Res the handler receives belong to app
+				assert.Equal(t, app, req.App())
+				assert.Equal(t, app, res.App())
+			}
+			converted, ok := toFiberHandler(tc.build(t, bound))
+			require.True(t, ok)
 
-	require.NoError(t, converted(ctx))
-	require.Equal(t, "express", string(ctx.Response().Body()))
-}
+			nextCalled := false
+			ctx.route = &Route{Handlers: []Handler{converted, func(Ctx) error {
+				nextCalled = true
+				return tc.nextErr
+			}}}
 
-func TestToFiberHandler_ExpressTwoParamsWithoutError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res) {
-		rootMiscAAssertBound(t, app, req, res)
-		require.NoError(t, res.SendStatus(http.StatusCreated))
+			err := converted(ctx)
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, tc.wantErr)
+			}
+			if tc.isNext {
+				require.ErrorIs(t, err, tc.nextErr)
+			}
+			require.Equal(t, tc.wantNext, nextCalled)
+			if tc.check != nil {
+				tc.check(t, ctx)
+			}
+		})
 	}
-
-	converted, ok := toFiberHandler(handler)
-	require.True(t, ok)
-
-	require.NoError(t, converted(ctx))
-	require.Equal(t, http.StatusCreated, ctx.Response().StatusCode())
-}
-
-func TestToFiberHandler_ExpressThreeParamsWithError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func() error) error {
-		rootMiscAAssertBound(t, app, req, res)
-		return next()
-	}
-
-	nextErr := errors.New("next")
-	nextCalled, err := rootMiscARunChain(t, ctx, nextErr, handler)
-	require.ErrorIs(t, err, nextErr)
-	require.True(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressThreeParamsWithError_PrefersHandlerErrorOverNextError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func() error) error {
-		rootMiscAAssertBound(t, app, req, res)
-		require.EqualError(t, next(), "next error")
-		return errors.New("handler error")
-	}
-
-	nextCalled, err := rootMiscARunChain(t, ctx, errors.New("next error"), handler)
-	require.EqualError(t, err, "handler error")
-	require.True(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressThreeParamsWithError_PropagatesNextErrorWhenNoReturnError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	nextErr := errors.New("next error")
-
-	handler := func(req Req, res Res, next func() error) error {
-		rootMiscAAssertBound(t, app, req, res)
-		require.ErrorIs(t, next(), nextErr)
-		return nil
-	}
-
-	nextCalled, err := rootMiscARunChain(t, ctx, nextErr, handler)
-	require.ErrorIs(t, err, nextErr)
-	require.True(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressThreeParamsWithoutError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func() error) {
-		rootMiscAAssertBound(t, app, req, res)
-		err := next()
-		require.Error(t, err)
-		assert.EqualError(t, err, "next without error")
-	}
-
-	nextCalled, err := rootMiscARunChain(t, ctx, errors.New("next without error"), handler)
-	require.EqualError(t, err, "next without error")
-	require.True(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressNextNoArgWithErrorReturn(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func()) error {
-		rootMiscAAssertBound(t, app, req, res)
-		next()
-		return nil
-	}
-
-	nextErr := errors.New("next without return value")
-	nextCalled, err := rootMiscARunChain(t, ctx, nextErr, handler)
-	require.ErrorIs(t, err, nextErr)
-	require.True(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressNextWithErrorContinuesOnNil(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func(error)) {
-		rootMiscAAssertBound(t, app, req, res)
-		next(nil)
-	}
-
-	nextCalled, err := rootMiscARunChain(t, ctx, nil, handler)
-	require.NoError(t, err)
-	require.True(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressNextWithErrorShortCircuitsOnError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func(error)) {
-		rootMiscAAssertBound(t, app, req, res)
-		next(errors.New("next error"))
-	}
-
-	nextCalled, err := rootMiscARunChain(t, ctx, nil, handler)
-	require.EqualError(t, err, "next error")
-	require.False(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressNextWithErrorReturn_ShortCircuitsOnNextError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func(error)) error {
-		rootMiscAAssertBound(t, app, req, res)
-		next(errors.New("next error"))
-		return nil
-	}
-
-	nextCalled, err := rootMiscARunChain(t, ctx, nil, handler)
-	require.EqualError(t, err, "next error")
-	require.False(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressNextWithErrorReturnCallback_PropagatesNextError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func(error) error) {
-		rootMiscAAssertBound(t, app, req, res)
-		require.EqualError(t, next(nil), "next error")
-	}
-
-	nextErr := errors.New("next error")
-	nextCalled, err := rootMiscARunChain(t, ctx, nextErr, handler)
-	require.ErrorIs(t, err, nextErr)
-	require.True(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressNextWithErrorReturnCallback_ShortCircuitsOnNextError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func(error) error) {
-		rootMiscAAssertBound(t, app, req, res)
-		require.EqualError(t, next(errors.New("next error")), "next error")
-	}
-
-	nextCalled, err := rootMiscARunChain(t, ctx, nil, handler)
-	require.EqualError(t, err, "next error")
-	require.False(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressNextWithErrorReturn_PrefersHandlerErrorOverNextError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func(error) error) error {
-		rootMiscAAssertBound(t, app, req, res)
-		require.EqualError(t, next(errors.New("next error")), "next error")
-		return errors.New("handler error")
-	}
-
-	nextCalled, err := rootMiscARunChain(t, ctx, nil, handler)
-	require.EqualError(t, err, "handler error")
-	require.False(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressNextWithErrorReturn_PropagatesNextErrorWhenNoReturnError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func(error) error) error {
-		rootMiscAAssertBound(t, app, req, res)
-		return next(errors.New("next error"))
-	}
-
-	nextCalled, err := rootMiscARunChain(t, ctx, nil, handler)
-	require.EqualError(t, err, "next error")
-	require.False(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressNextWithErrorReturnCallback_StopsChainWithoutNextCall(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, _ func(error) error) {
-		rootMiscAAssertBound(t, app, req, res)
-		// Intentionally do not call next.
-	}
-
-	nextCalled, err := rootMiscARunChain(t, ctx, errors.New("should not be called"), handler)
-	require.NoError(t, err)
-	require.False(t, nextCalled)
 }
 
 func TestAdapter_MixedHandlerIntegration(t *testing.T) {
@@ -406,35 +371,6 @@ func TestAdapter_MixedHandlerIntegration(t *testing.T) {
 	require.NoError(t, httpHandlerWriteErr)
 }
 
-func TestToFiberHandler_ExpressNextNoArgPropagatesError(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, next func()) {
-		rootMiscAAssertBound(t, app, req, res)
-		next()
-	}
-
-	nextErr := errors.New("next without return value")
-	nextCalled, err := rootMiscARunChain(t, ctx, nextErr, handler)
-	require.ErrorIs(t, err, nextErr)
-	require.True(t, nextCalled)
-}
-
-func TestToFiberHandler_ExpressNextNoArgStopsChain(t *testing.T) {
-	t.Parallel()
-	app, ctx := newTestCtx(t)
-
-	handler := func(req Req, res Res, _ func()) {
-		rootMiscAAssertBound(t, app, req, res)
-		// Intentionally do not call next().
-	}
-
-	nextCalled, err := rootMiscARunChain(t, ctx, errors.New("should not be called"), handler)
-	require.NoError(t, err)
-	require.False(t, nextCalled)
-}
-
 func TestToFiberHandler_ExpressNextNoArgMiddleware(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -445,7 +381,8 @@ func TestToFiberHandler_ExpressNextNoArgMiddleware(t *testing.T) {
 	app.Use(func(req Req, res Res, next func()) {
 		callOrder = append(callOrder, "middleware")
 		next()
-		rootMiscAAssertBound(t, app, req, res)
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
 	})
 
 	app.Get("/", func(c Ctx) error {
@@ -608,12 +545,7 @@ func TestWrapHTTPHandler_Nil(t *testing.T) {
 	require.Nil(t, wrapHTTPHandler(nil))
 }
 
-func TestCollectHandlers_InvalidType(t *testing.T) {
-	t.Parallel()
-	require.PanicsWithValue(t, "context: invalid handler #0 (int)\n", func() { collectHandlers("context", 42) })
-}
-
-func TestCollectHandlers_TypedNil(t *testing.T) {
+func TestCollectHandlers_InvalidHandler(t *testing.T) {
 	t.Parallel()
 	var (
 		handlerFunc           http.HandlerFunc
@@ -633,6 +565,8 @@ func TestCollectHandlers_TypedNil(t *testing.T) {
 		{name: "FuncHTTPHandler", handler: dummyFuncHandler(nil)},
 		{name: "RequestHandler", handler: requestHandler},
 		{name: "RequestHandlerWithError", handler: requestHandlerWithErr},
+		{name: "unsupported type", handler: 42},
+		{name: "typed nil pointer http.Handler", handler: http.Handler((*dummyHandler)(nil))},
 	}
 
 	for _, tt := range tests {
@@ -656,15 +590,6 @@ func (handler dummyFuncHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 	handler(w, r)
-}
-
-func TestCollectHandlers_TypedNilPointerHTTPHandler(t *testing.T) {
-	t.Parallel()
-	var handler http.Handler = (*dummyHandler)(nil)
-
-	require.PanicsWithValue(t, "context: invalid handler #0 (*fiber.dummyHandler)\n", func() {
-		collectHandlers("context", handler)
-	})
 }
 
 func TestCollectHandlers_FasthttpHandler(t *testing.T) {
@@ -724,11 +649,8 @@ func TestCollectHandlers_MixedHandlers(t *testing.T) {
 
 	ctx := apptest.Ctx(t, New())
 
-	err := handlers[0](ctx)
-	require.NoError(t, err)
-
-	err = handlers[1](ctx)
-	require.NoError(t, err)
+	require.NoError(t, handlers[0](ctx))
+	require.NoError(t, handlers[1](ctx))
 	require.Equal(t, "done", string(ctx.Response().Body()))
 	require.Equal(t, "fiber", string(ctx.Response().Header.Peek("X-Before")))
 	require.NoError(t, writeErr)

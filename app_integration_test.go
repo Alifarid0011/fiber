@@ -2,6 +2,7 @@ package fiber_test
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"mime/multipart"
 	"net"
@@ -57,17 +58,13 @@ func performOversizedRequest(t *testing.T, app *fiber.App, configure func(req *f
 
 	require.Eventually(t, func() bool {
 		conn, err := ln.Dial()
-		if err != nil {
-			return false
-		}
-		if err := conn.Close(); err != nil {
-			return false
-		}
-		return true
+		return err == nil && conn.Close() == nil
 	}, time.Second, 10*time.Millisecond)
 
 	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
 	resp := fasthttp.AcquireResponse()
+	t.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
 
 	req.SetRequestURI("http://example.com/")
 	req.Header.SetMethod(fiber.MethodPost)
@@ -80,16 +77,7 @@ func performOversizedRequest(t *testing.T, app *fiber.App, configure func(req *f
 	client := fasthttp.Client{Dial: func(string) (net.Conn, error) { return ln.Dial() }}
 
 	require.NoError(t, client.Do(req, resp))
-
-	respCopy := fasthttp.AcquireResponse()
-	resp.CopyTo(respCopy)
-
-	fasthttp.ReleaseRequest(req)
-	fasthttp.ReleaseResponse(resp)
-
-	t.Cleanup(func() { fasthttp.ReleaseResponse(respCopy) })
-
-	return respCopy
+	return resp
 }
 
 var integrationEncryptCookieKey = encryptcookie.GenerateKey(32)
@@ -107,23 +95,6 @@ type middlewareCombinationTestCase struct { // betteralign:ignore - readability 
 	handler          func(c fiber.Ctx) error
 	assertions       func(t *testing.T, resp *fasthttp.Response)
 	expectedStatus   int
-}
-
-func (tc middlewareCombinationTestCase) statusOrDefault() int {
-	if tc.expectedStatus == 0 {
-		return fiber.StatusInternalServerError
-	}
-	return tc.expectedStatus
-}
-
-func (tc middlewareCombinationTestCase) handlerOrDefault() func(fiber.Ctx) error {
-	if tc.handler != nil {
-		return tc.handler
-	}
-
-	return func(fiber.Ctx) error {
-		return fiber.NewError(fiber.StatusInternalServerError, "middleware combination failure")
-	}
 }
 
 func Test_Integration_RequestID_ContextPropagationFlag(t *testing.T) {
@@ -490,11 +461,16 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 			// can verify which headers survive the error response. A few cases override the
 			// handler to exercise panic recovery or other routes that still flow through the
 			// default error path.
-			app.All("/", tc.handlerOrDefault())
+			handler := tc.handler
+			if handler == nil {
+				handler = func(fiber.Ctx) error {
+					return fiber.NewError(fiber.StatusInternalServerError, "middleware combination failure")
+				}
+			}
+			app.All("/", handler)
 
 			resp := performOversizedRequest(t, app, tc.configureRequest)
-
-			require.Equal(t, tc.statusOrDefault(), resp.StatusCode())
+			require.Equal(t, cmp.Or(tc.expectedStatus, fiber.StatusInternalServerError), resp.StatusCode())
 			tc.assertions(t, resp)
 		})
 	}
@@ -638,26 +614,18 @@ func Test_Integration_App_ServerErrorHandler_WithCustomCtx(t *testing.T) {
 	require.Equal(t, "https://example.org", string(resp.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }
 
-// Integration tests for domain routing
-
 func Test_Integration_Domain_WithMiddleware(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(helmet.New())
 	app.Use(requestid.New())
-
-	// Domain-specific route with middleware
 	app.Domain("api.example.com").Get("/users", func(c fiber.Ctx) error { return c.SendString("api users") })
-
-	// Fallback route
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendString("default users") })
 
-	// Test matching domain
 	resp := apptest.ExpectBody(t, app, apptest.Req(http.MethodGet, "/users", apptest.WithHost("api.example.com")), fiber.StatusOK, "api users")
 	require.NotEmpty(t, resp.Header.Get("X-Request-ID"))
 	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
 
-	// Test non-matching domain (fallback)
 	apptest.ExpectBody(t, app, apptest.Req(http.MethodGet, "/users", apptest.WithHost("www.example.com")), fiber.StatusOK, "default users")
 }
 
@@ -680,23 +648,15 @@ func Test_Integration_Domain_WithGroup(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(helmet.New())
-
-	// Domain with group
 	apiDomain := app.Domain("api.example.com")
 	apiDomain.Use(requestid.New(requestid.Config{Generator: func() string { return "domain-request-id" }}))
+	apiDomain.Group("/v1").Get("/posts", func(c fiber.Ctx) error { return c.SendString("v1 posts") })
+	apiDomain.Group("/v2").Get("/posts", func(c fiber.Ctx) error { return c.SendString("v2 posts") })
 
-	v1 := apiDomain.Group("/v1")
-	v1.Get("/posts", func(c fiber.Ctx) error { return c.SendString("v1 posts") })
-
-	v2 := apiDomain.Group("/v2")
-	v2.Get("/posts", func(c fiber.Ctx) error { return c.SendString("v2 posts") })
-
-	// Test v1
 	resp := apptest.ExpectBody(t, app, apptest.Req(http.MethodGet, "/v1/posts", apptest.WithHost("api.example.com")), fiber.StatusOK, "v1 posts")
 	require.Equal(t, "domain-request-id", resp.Header.Get("X-Request-ID"))
 	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
 
-	// Test v2
 	apptest.ExpectBody(t, app, apptest.Req(http.MethodGet, "/v2/posts", apptest.WithHost("api.example.com")), fiber.StatusOK, "v2 posts")
 }
 
@@ -704,26 +664,18 @@ func Test_Integration_Domain_WithSubAppMount(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(helmet.New())
-
-	// Create sub-app with routes
 	subApp := fiber.New()
 	subApp.Use(requestid.New())
 	subApp.Get("/users", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"users": []string{"alice", "bob"}}) })
 	subApp.Get("/posts", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"posts": []string{"post1", "post2"}}) })
-
-	// Mount sub-app on domain
 	app.Domain("api.example.com").Use("/api", subApp)
-
-	// Fallback route
 	app.Get("/api/users", func(c fiber.Ctx) error { return c.SendString("default users") })
 
-	// Test domain-mounted sub-app
 	resp := apptest.Expect(t, app, apptest.Req(http.MethodGet, "/api/users", apptest.WithHost("api.example.com")), fiber.StatusOK)
 	require.Contains(t, apptest.Body(t, resp), "alice")
 	require.NotEmpty(t, resp.Header.Get("X-Request-ID"))
 	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
 
-	// Test non-matching domain (fallback)
 	apptest.ExpectBody(t, app, apptest.Req(http.MethodGet, "/api/users", apptest.WithHost("www.example.com")), fiber.StatusOK, "default users")
 }
 
@@ -731,8 +683,6 @@ func Test_Integration_Domain_WithParams(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(requestid.New())
-
-	// Domain with parameters
 	app.Domain(":tenant.app.example.com").Get("/dashboard", func(c fiber.Ctx) error {
 		tenant := fiber.DomainParam(c, "tenant")
 		return c.JSON(fiber.Map{"tenant": tenant, "page": "dashboard", "requestID": c.Get("X-Request-ID")})
@@ -748,15 +698,9 @@ func Test_Integration_Domain_WithParams(t *testing.T) {
 func Test_Integration_Domain_MultipleDomains(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
-	// Different domains with different responses
 	app.Domain("api.example.com").Get("/", func(c fiber.Ctx) error { return c.SendString("api domain") })
-
 	app.Domain("admin.example.com").Get("/", func(c fiber.Ctx) error { return c.SendString("admin domain") })
-
 	app.Domain("app.example.com").Get("/", func(c fiber.Ctx) error { return c.SendString("app domain") })
-
-	// Default fallback
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("default domain") })
 
 	tests := []struct {
@@ -782,7 +726,6 @@ func Test_Integration_Domain_WithSession(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(session.New())
-
 	app.Domain("api.example.com").Get("/session", func(c fiber.Ctx) error {
 		sess := session.FromContext(c)
 		if sess == nil {
@@ -800,7 +743,6 @@ func Test_Integration_Domain_WithCompress(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(compress.New())
-
 	app.Domain("api.example.com").Get("/data", func(c fiber.Ctx) error {
 		// Return large enough content for compression
 		return c.SendString(strings.Repeat("Hello World! ", 100))
@@ -820,7 +762,6 @@ func Test_Integration_Domain_ErrorHandling(t *testing.T) {
 		},
 	})
 	app.Use(helmet.New())
-
 	app.Domain("api.example.com").Get("/error", func(_ fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "domain error")
 	})
@@ -828,8 +769,7 @@ func Test_Integration_Domain_ErrorHandling(t *testing.T) {
 	resp := apptest.Expect(t, app, apptest.Req(http.MethodGet, "/error", apptest.WithHost("api.example.com")), fiber.StatusInternalServerError)
 	require.Equal(t, "true", resp.Header.Get("X-Error-Handled"))
 	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
-	body := apptest.Body(t, resp)
-	require.Contains(t, body, "domain error")
+	require.Contains(t, apptest.Body(t, resp), "domain error")
 }
 
 func Test_Integration_Domain_WithLimiter(t *testing.T) {
@@ -842,16 +782,12 @@ func Test_Integration_Domain_WithLimiter(t *testing.T) {
 		Expiration:   1 * time.Minute,
 		KeyGenerator: func(_ fiber.Ctx) string { return "domain-limiter" },
 	}))
-
 	app.Domain("api.example.com").Get("/limited", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	// Make requests up to the limit
 	for range maxRequests {
 		resp := apptest.Expect(t, app, apptest.Req(http.MethodGet, "/limited", apptest.WithHost("api.example.com")), fiber.StatusOK)
 		require.Equal(t, strconv.Itoa(maxRequests), resp.Header.Get("X-RateLimit-Limit"))
 	}
-
-	// Next request should be rate limited
 	apptest.Expect(t, app, apptest.Req(http.MethodGet, "/limited", apptest.WithHost("api.example.com")), fiber.StatusTooManyRequests)
 }
 
@@ -861,7 +797,6 @@ func Test_Integration_Domain_WithCSRF(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(csrf.New(csrf.Config{CookieName: csrfCookie, KeyGenerator: func() string { return "test-csrf-token" }}))
-
 	app.Domain("api.example.com").Get("/form", func(c fiber.Ctx) error { return c.SendString("form page") })
 
 	resp := apptest.Expect(t, app, apptest.Req(http.MethodGet, "/form", apptest.WithHost("api.example.com")), fiber.StatusOK)
@@ -871,10 +806,8 @@ func Test_Integration_Domain_WithCSRF(t *testing.T) {
 func Test_Integration_Domain_CaseInsensitiveMatching(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
 	app.Domain("API.Example.COM").Get("/", func(c fiber.Ctx) error { return c.SendString("matched") })
 
-	// Test various case combinations
 	hosts := []string{"api.example.com", "API.EXAMPLE.COM", "Api.Example.Com", "aPi.eXaMpLe.CoM"}
 
 	for _, host := range hosts {
@@ -888,18 +821,13 @@ func Test_Integration_Domain_CaseInsensitiveMatching(t *testing.T) {
 func Test_Integration_Domain_ReusableSubApp(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
-	// Create a reusable sub-app
 	apiApp := fiber.New()
 	apiApp.Get("/status", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	// Mount the same sub-app on multiple domains
+	// The same sub-app is mounted on two domains.
 	app.Domain("api1.example.com").Use("/v1", apiApp)
 	app.Domain("api2.example.com").Use("/v2", apiApp)
 
-	// Test first domain
 	apptest.ExpectBody(t, app, apptest.Req(http.MethodGet, "/v1/status", apptest.WithHost("api1.example.com")), fiber.StatusOK, "ok")
-
-	// Test second domain
 	apptest.ExpectBody(t, app, apptest.Req(http.MethodGet, "/v2/status", apptest.WithHost("api2.example.com")), fiber.StatusOK, "ok")
 }

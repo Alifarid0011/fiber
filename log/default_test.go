@@ -50,6 +50,24 @@ func expectCallerOutput(t *testing.T, w *byteSliceWriter, withContextLine, infoL
 	require.Equal(t, want, string(w.b), "log output should attribute the WithContext call site (line %d) and the bare Info call site (line %d)", withContextLine, infoLine)
 }
 
+// logThroughTag logs msg through WithContext(ctx) with the context template "[${<name>}] ", whose tag
+// renders with tag, and returns what the default logger wrote. It swaps the package-global logger,
+// output and template, so its callers run serially. It calls initDefaultLogger up front because under
+// -shuffle=on a caller may run before any other log test, while logger.stdlog could still be nil.
+func logThroughTag(t *testing.T, name string, tag ContextTagFunc, ctx any, msg string) string {
+	t.Helper()
+	initDefaultLogger()
+	t.Cleanup(initDefaultLogger)
+	cfg := ContextConfig{Format: "[${" + name + "}] ", CustomTags: map[string]ContextTagFunc{name: tag}}
+	require.NoError(t, SetContextTemplate(cfg))
+	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
+
+	var w byteSliceWriter
+	SetOutput(&w)
+	WithContext(ctx).Info(msg)
+	return string(w.b)
+}
+
 // Test_WithContextCaller runs serially because it mutates the package-global
 // logger and output to verify caller attribution.
 func Test_WithContextCaller(t *testing.T) {
@@ -84,29 +102,13 @@ func Test_WithContextCaller(t *testing.T) {
 // not silently drop context — the failure should leave a visible marker in
 // the log line so operators notice. The error message is also sanitized for
 // control bytes so a tag that wraps attacker-controlled data in its error
-// cannot inject CR/LF into the log stream. Calls initDefaultLogger up front
-// because under -shuffle=on this test may run before any other log test, in
-// which case the package-global logger.stdlog could still be nil.
+// cannot inject CR/LF into the log stream.
 func Test_WithContextRenderError(t *testing.T) {
-	initDefaultLogger()
-	t.Cleanup(initDefaultLogger)
-
 	// Embed CR/LF in the error to exercise the sanitiser.
 	templateErr := errors.New("tag\r\nboom")
-	require.NoError(t, SetContextTemplate(ContextConfig{
-		Format: "[${broken}] ",
-		CustomTags: map[string]ContextTagFunc{
-			"broken": func(_ Buffer, _ any, _ *ContextData, _ string) (int, error) { return 0, templateErr },
-		},
-	}))
-	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
+	broken := func(Buffer, any, *ContextData, string) (int, error) { return 0, templateErr }
 
-	var w byteSliceWriter
-	SetOutput(&w)
-
-	WithContext(context.Background()).Info("payload")
-
-	out := string(w.b)
+	out := logThroughTag(t, "broken", broken, context.Background(), "payload")
 	require.Contains(t, out, "ctx-render-error", "expected render-error marker, got %q", out)
 	require.Contains(t, out, "payload", "expected payload to still be emitted, got %q", out)
 	require.NotContains(t, out, "\r", "CR in error message must be sanitized")
@@ -144,107 +146,83 @@ func Test_NewRetainedContext_TypedNil(t *testing.T) {
 	}
 }
 
+// Test_DefaultLogger runs serially because initDefaultLogger and SetOutput
+// mutate the package-global logger shared with other log tests.
 func Test_DefaultLogger(t *testing.T) {
-	initDefaultLogger()
-
-	var w byteSliceWriter
-	SetOutput(&w)
-
-	Trace("trace work")
-	Debug("received work order")
-	Info("starting work")
-	Warn("work may fail")
-	Error("work failed")
-
-	require.Panics(t, func() { Panic("work panic") })
-
-	require.Equal(t, "[Trace] trace work\n"+
-		"[Debug] received work order\n"+
-		"[Info] starting work\n"+
-		"[Warn] work may fail\n"+
-		"[Error] work failed\n"+
-		"[Panic] work panic\n", string(w.b))
-}
-
-func Test_DefaultFormatLogger(t *testing.T) {
-	initDefaultLogger()
-
-	var w byteSliceWriter
-	SetOutput(&w)
-
-	Tracef("trace %s", work)
-	Debugf("received %s order", work)
-	Infof("starting %s", work)
-	Warnf("%s may fail", work)
-	Errorf("%s failed", work)
-
-	require.Panics(t, func() { Panicf("%s panic", work) })
-
-	require.Equal(t, "[Trace] trace work\n"+
-		"[Debug] received work order\n"+
-		"[Info] starting work\n"+
-		"[Warn] work may fail\n"+
-		"[Error] work failed\n"+
-		"[Panic] work panic\n", string(w.b))
-}
-
-func Test_CtxLogger(t *testing.T) {
-	initDefaultLogger()
-
-	var w byteSliceWriter
-	SetOutput(&w)
-
+	const upToWarn = "[Trace] trace work\n[Debug] received work order\n[Info] starting work\n[Warn] work may fail\n"
 	ctx := context.Background()
+	for _, tc := range []struct {
+		log, panics func()
+		name, want  string
+	}{
+		{
+			name: "print",
+			log: func() {
+				Trace("trace work")
+				Debug("received work order")
+				Info("starting work")
+				Warn("work may fail")
+				Error("work failed")
+			},
+			panics: func() { Panic("work panic") },
+			want:   upToWarn + "[Error] work failed\n[Panic] work panic\n",
+		},
+		{
+			name: "printf",
+			log: func() {
+				Tracef("trace %s", work)
+				Debugf("received %s order", work)
+				Infof("starting %s", work)
+				Warnf("%s may fail", work)
+				Errorf("%s failed", work)
+			},
+			panics: func() { Panicf("%s panic", work) },
+			want:   upToWarn + "[Error] work failed\n[Panic] work panic\n",
+		},
+		{
+			name: "WithContext printf",
+			log: func() {
+				WithContext(ctx).Tracef("trace %s", work)
+				WithContext(ctx).Debugf("received %s order", work)
+				WithContext(ctx).Infof("starting %s", work)
+				WithContext(ctx).Warnf("%s may fail", work)
+				WithContext(ctx).Errorf("%s failed %d", work, 50)
+			},
+			panics: func() { WithContext(ctx).Panicf("%s panic", work) },
+			want:   upToWarn + "[Error] work failed 50\n[Panic] work panic\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			initDefaultLogger()
+			var w byteSliceWriter
+			SetOutput(&w)
 
-	WithContext(ctx).Tracef("trace %s", work)
-	WithContext(ctx).Debugf("received %s order", work)
-	WithContext(ctx).Infof("starting %s", work)
-	WithContext(ctx).Warnf("%s may fail", work)
-	WithContext(ctx).Errorf("%s failed %d", work, 50)
-
-	require.Panics(t, func() { WithContext(ctx).Panicf("%s panic", work) })
-
-	require.Equal(t, "[Trace] trace work\n"+
-		"[Debug] received work order\n"+
-		"[Info] starting work\n"+
-		"[Warn] work may fail\n"+
-		"[Error] work failed 50\n"+
-		"[Panic] work panic\n", string(w.b))
+			tc.log()
+			require.Panics(t, tc.panics)
+			require.Equal(t, tc.want, string(w.b))
+		})
+	}
 }
 
 // Test_WithContextTemplate runs serially because initDefaultLogger,
 // SetContextTemplate, MustSetContextTemplate, and SetOutput mutate package
 // globals shared with other log tests.
 func Test_WithContextTemplate(t *testing.T) {
-	initDefaultLogger()
-
 	type requestIDKey struct{}
 	ctx := context.WithValue(context.Background(), requestIDKey{}, "req-42")
+	requestID := func(output Buffer, ctx any, _ *ContextData, _ string) (int, error) {
+		ctxTyped, ok := ctx.(context.Context)
+		if !ok {
+			return 0, nil
+		}
+		id, ok := ctxTyped.Value(requestIDKey{}).(string)
+		if !ok {
+			return 0, nil
+		}
+		return output.WriteString(id)
+	}
 
-	require.NoError(t, SetContextTemplate(ContextConfig{
-		Format: "[${requestid}] ",
-		CustomTags: map[string]ContextTagFunc{
-			"requestid": func(output Buffer, ctx any, _ *ContextData, _ string) (int, error) {
-				ctxTyped, ok := ctx.(context.Context)
-				if !ok {
-					return 0, nil
-				}
-				id, ok := ctxTyped.Value(requestIDKey{}).(string)
-				if !ok {
-					return 0, nil
-				}
-				return output.WriteString(id)
-			},
-		},
-	}))
-	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
-
-	var w byteSliceWriter
-	SetOutput(&w)
-
-	WithContext(ctx).Info("start")
-
-	require.Equal(t, "[Info] [req-42] start\n", string(w.b))
+	require.Equal(t, "[Info] [req-42] start\n", logThroughTag(t, "requestid", requestID, ctx, "start"))
 }
 
 // Test_WithContextTemplateFailureOmitsPartialContext locks in the scratch-buffer
@@ -252,89 +230,60 @@ func Test_WithContextTemplate(t *testing.T) {
 // leak its prefix into the real log line. Instead, the render-error marker
 // stands in for the entire context block.
 func Test_WithContextTemplateFailureOmitsPartialContext(t *testing.T) {
-	initDefaultLogger()
-
 	templateErr := errors.New("template failure")
-	require.NoError(t, SetContextTemplate(ContextConfig{
-		Format: "[${broken}] ",
-		CustomTags: map[string]ContextTagFunc{
-			"broken": func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
-				if _, err := output.WriteString("partial"); err != nil {
-					return 0, err
-				}
-				return 0, templateErr
-			},
-		},
-	}))
-	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
+	broken := func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
+		if _, err := output.WriteString("partial"); err != nil {
+			return 0, err
+		}
+		return 0, templateErr
+	}
 
-	var w byteSliceWriter
-	SetOutput(&w)
-
-	WithContext(context.Background()).Info("start")
-
-	out := string(w.b)
+	out := logThroughTag(t, "broken", broken, context.Background(), "start")
 	require.NotContains(t, out, "partial", "scratch buffer must isolate partial writes from the live log line")
 	require.Contains(t, out, "ctx-render-error", "render error must be surfaced rather than silently dropped")
 	require.Contains(t, out, "start", "log payload must still reach the writer")
 }
 
+// logfCases are the privateLogw calls that Test_LogfKeyAndValues checks and the two
+// Benchmark_LogfKeyAndValues benchmarks time, under the name each of them gives a call.
+var logfCases = []struct {
+	name, parallelName, format, want string
+	keysAndValues                    []any
+	level                            Level
+}{
+	{
+		name: "test logf with debug level and key-values", parallelName: "debug level with key-values",
+		level: LevelDebug, keysAndValues: []any{"name", "Bob", "age", 30}, want: "[Debug] name=Bob age=30\n",
+	},
+	{
+		name: "test logf with info level and key-values", parallelName: "info level with key-values",
+		level: LevelInfo, keysAndValues: []any{"status", "ok", "code", 200}, want: "[Info] status=ok code=200\n",
+	},
+	{
+		name: "test logf with warn level and key-values", parallelName: "warn level with key-values",
+		level: LevelWarn, keysAndValues: []any{"error", "not found", "id", 123},
+		want: "[Warn] error=not found id=123\n",
+	},
+	{
+		name: "test logf with format and key-values", parallelName: "warn level with format and key-values",
+		level: LevelWarn, format: "test", keysAndValues: []any{"error", "not found", "id", 123},
+		want: "[Warn] test error=not found id=123\n",
+	},
+	{
+		name: "test logf with one key", parallelName: "warn level with one key",
+		level: LevelWarn, keysAndValues: []any{"error"}, want: "[Warn] error=KEYVALS UNPAIRED\n",
+	},
+}
+
 func Test_LogfKeyAndValues(t *testing.T) {
-	tests := []struct {
-		name          string
-		format        string
-		wantOutput    string
-		fmtArgs       []any
-		keysAndValues []any
-		level         Level
-	}{
-		{
-			name:          "test logf with debug level and key-values",
-			level:         LevelDebug,
-			format:        "",
-			fmtArgs:       nil,
-			keysAndValues: []any{"name", "Bob", "age", 30},
-			wantOutput:    "[Debug] name=Bob age=30\n",
-		},
-		{
-			name:          "test logf with info level and key-values",
-			level:         LevelInfo,
-			format:        "",
-			fmtArgs:       nil,
-			keysAndValues: []any{"status", "ok", "code", 200},
-			wantOutput:    "[Info] status=ok code=200\n",
-		},
-		{
-			name:          "test logf with warn level and key-values",
-			level:         LevelWarn,
-			format:        "",
-			fmtArgs:       nil,
-			keysAndValues: []any{"error", "not found", "id", 123},
-			wantOutput:    "[Warn] error=not found id=123\n",
-		},
-		{
-			name:          "test logf with format and key-values",
-			level:         LevelWarn,
-			format:        "test",
-			fmtArgs:       nil,
-			keysAndValues: []any{"error", "not found", "id", 123},
-			wantOutput:    "[Warn] test error=not found id=123\n",
-		},
-		{
-			name:          "test logf with one key",
-			level:         LevelWarn,
-			format:        "",
-			fmtArgs:       nil,
-			keysAndValues: []any{"error"},
-			wantOutput:    "[Warn] error=KEYVALS UNPAIRED\n",
-		},
-	}
-	for _, tt := range tests {
+	t.Parallel()
+	for _, tt := range logfCases {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var buf bytes.Buffer
 			l := &defaultLogger{stdlog: log.New(&buf, "", 0), level: tt.level, depth: 4}
 			l.privateLogw(tt.level, tt.format, tt.keysAndValues)
-			require.Equal(t, tt.wantOutput, buf.String())
+			require.Equal(t, tt.want, buf.String())
 		})
 	}
 }
@@ -359,11 +308,8 @@ func Test_SetLevel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			setLogger := &defaultLogger{
-				stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
-				depth:  4,
-			}
-
+			stdlog := log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
+			setLogger := &defaultLogger{stdlog: stdlog, depth: 4}
 			setLogger.SetLevel(tt.level)
 			require.Equal(t, tt.level, setLogger.level)
 			require.Equal(t, tt.want, setLogger.level.toString())
@@ -424,9 +370,7 @@ type stringKey struct {
 	value string
 }
 
-func (k stringKey) String() string {
-	return "key:" + k.value
-}
+func (k stringKey) String() string { return "key:" + k.value }
 
 func Test_DefaultLoggerNonStringKeys(t *testing.T) {
 	t.Parallel()
@@ -461,45 +405,7 @@ func Test_DefaultLoggerNonStringKeys(t *testing.T) {
 }
 
 func Benchmark_LogfKeyAndValues(b *testing.B) {
-	tests := []struct {
-		name          string
-		format        string
-		keysAndValues []any
-		level         Level
-	}{
-		{
-			name:          "test logf with debug level and key-values",
-			level:         LevelDebug,
-			format:        "",
-			keysAndValues: []any{"name", "Bob", "age", 30},
-		},
-		{
-			name:          "test logf with info level and key-values",
-			level:         LevelInfo,
-			format:        "",
-			keysAndValues: []any{"status", "ok", "code", 200},
-		},
-		{
-			name:          "test logf with warn level and key-values",
-			level:         LevelWarn,
-			format:        "",
-			keysAndValues: []any{"error", "not found", "id", 123},
-		},
-		{
-			name:          "test logf with format and key-values",
-			level:         LevelWarn,
-			format:        "test",
-			keysAndValues: []any{"error", "not found", "id", 123},
-		},
-		{
-			name:          "test logf with one key",
-			level:         LevelWarn,
-			format:        "",
-			keysAndValues: []any{"error"},
-		},
-	}
-
-	for _, tt := range tests {
+	for _, tt := range logfCases {
 		b.Run(tt.name, func(bb *testing.B) {
 			var buf bytes.Buffer
 			l := &defaultLogger{stdlog: log.New(&buf, "", 0), level: tt.level, depth: 4}
@@ -514,46 +420,8 @@ func Benchmark_LogfKeyAndValues(b *testing.B) {
 }
 
 func Benchmark_LogfKeyAndValues_Parallel(b *testing.B) {
-	tests := []struct {
-		name          string
-		format        string
-		keysAndValues []any
-		level         Level
-	}{
-		{
-			name:          "debug level with key-values",
-			level:         LevelDebug,
-			format:        "",
-			keysAndValues: []any{"name", "Bob", "age", 30},
-		},
-		{
-			name:          "info level with key-values",
-			level:         LevelInfo,
-			format:        "",
-			keysAndValues: []any{"status", "ok", "code", 200},
-		},
-		{
-			name:          "warn level with key-values",
-			level:         LevelWarn,
-			format:        "",
-			keysAndValues: []any{"error", "not found", "id", 123},
-		},
-		{
-			name:          "warn level with format and key-values",
-			level:         LevelWarn,
-			format:        "test",
-			keysAndValues: []any{"error", "not found", "id", 123},
-		},
-		{
-			name:          "warn level with one key",
-			level:         LevelWarn,
-			format:        "",
-			keysAndValues: []any{"error"},
-		},
-	}
-
-	for _, tt := range tests {
-		b.Run(tt.name, func(bb *testing.B) {
+	for _, tt := range logfCases {
+		b.Run(tt.parallelName, func(bb *testing.B) {
 			bb.ReportAllocs()
 			bb.ResetTimer()
 			bb.RunParallel(func(pb *testing.PB) {
@@ -570,12 +438,8 @@ func Benchmark_LogfKeyAndValues_Parallel(b *testing.B) {
 func Test_DefaultLogger_FatalExitsAboveLevel(t *testing.T) {
 	t.Parallel()
 	var exited []int
-	logger := &defaultLogger{
-		stdlog: log.New(io.Discard, "", 0),
-		exit:   func(code int) { exited = append(exited, code) },
-		level:  LevelPanic,
-		depth:  4,
-	}
+	exit := func(code int) { exited = append(exited, code) }
+	logger := &defaultLogger{stdlog: log.New(io.Discard, "", 0), exit: exit, level: LevelPanic, depth: 4}
 
 	logger.Fatal("fatal")
 	logger.Fatalf("fatal %d", 1)
@@ -593,12 +457,8 @@ func Test_DefaultLogger_FatalExitsAfterWrite(t *testing.T) {
 	t.Parallel()
 	var exited []int
 	var buf bytes.Buffer
-	logger := &defaultLogger{
-		stdlog: log.New(&buf, "", 0),
-		exit:   func(code int) { exited = append(exited, code) },
-		level:  LevelTrace,
-		depth:  4,
-	}
+	exit := func(code int) { exited = append(exited, code) }
+	logger := &defaultLogger{stdlog: log.New(&buf, "", 0), exit: exit, level: LevelTrace, depth: 4}
 
 	logger.Fatal("fatal")
 	logger.Fatalf("fatal %d", 1)

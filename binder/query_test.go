@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 func Benchmark_QueryBinder_Bind(b *testing.B) {
@@ -19,23 +18,14 @@ func Benchmark_QueryBinder_Bind(b *testing.B) {
 	}
 	var user User
 
-	req := fasthttp.AcquireRequest()
-	b.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-
-	req.URI().SetQueryString("name=john&age=42&posts=post1,post2,post3")
+	req := newQueryRequest(b, "name=john&age=42&posts=post1,post2,post3")
 
 	var err error
 	for b.Loop() {
 		err = binder.Bind(req, &user)
 	}
 
-	require.NoError(b, err)
-	require.Equal(b, "john", user.Name)
-	require.Equal(b, 42, user.Age)
-	require.Len(b, user.Posts, 3)
-	require.Contains(b, user.Posts, "post1")
-	require.Contains(b, user.Posts, "post2")
-	require.Contains(b, user.Posts, "post3")
+	requireJohn42(b, err, user.Name, user.Age, user.Posts)
 }
 
 func Test_QueryBinder_Bind_PointerSlices(t *testing.T) {

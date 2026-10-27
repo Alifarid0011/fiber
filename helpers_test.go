@@ -737,89 +737,114 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 	require.True(b, ok)
 }
 
-// testGenericParseTypeIntCase and testGenericParseTypeUintCase are the cases of
-// the integer parsing benchmarks: value needs an integer of at least bits width.
-type testGenericParseTypeIntCase struct {
-	value int64
+// miscParseIntCase is a case of the integer parsing tests and benchmarks: value
+// needs an integer of at least bits width.
+type miscParseIntCase[N int64 | uint64] struct {
+	value N
 	bits  int
 }
 
+// miscParseInts, miscParseUints, miscParseFloats, miscParseBytes and
+// miscParseBools are what the genericParseType tests parse, and its benchmarks
+// would time.
+var (
+	miscParseInts = []miscParseIntCase[int64]{
+		{value: 0, bits: 8},
+		{value: 1, bits: 8},
+		{value: 2, bits: 8},
+		{value: 3, bits: 8},
+		{value: 4, bits: 8},
+		{value: -1, bits: 8},
+		{value: math.MaxInt8, bits: 8},
+		{value: math.MinInt8, bits: 8},
+		{value: math.MaxInt16, bits: 16},
+		{value: math.MinInt16, bits: 16},
+		{value: math.MaxInt32, bits: 32},
+		{value: math.MinInt32, bits: 32},
+		{value: math.MaxInt64, bits: 64},
+		{value: math.MinInt64, bits: 64},
+	}
+	miscParseUints = []miscParseIntCase[uint64]{
+		{value: 0, bits: 8},
+		{value: 1, bits: 8},
+		{value: 2, bits: 8},
+		{value: 3, bits: 8},
+		{value: 4, bits: 8},
+		{value: math.MaxUint8, bits: 8},
+		{value: math.MaxUint16, bits: 16},
+		{value: math.MaxUint16, bits: 16},
+		{value: math.MaxUint32, bits: 32},
+		{value: math.MaxUint64, bits: 64},
+	}
+	miscParseFloats = []struct {
+		str   string
+		value float64
+	}{{value: 3.1415, str: "3.1415"}, {value: 1.234, str: "1.234"}, {value: 2, str: "2"}, {value: 3, str: "3"}}
+	miscParseBytes = []struct {
+		str   string
+		err   error
+		value []byte
+	}{
+		{value: []byte("alex"), str: "alex"},
+		{value: []byte("32.23"), str: "32.23"},
+		{value: []byte("john"), str: "john"},
+		{value: []byte(nil), str: "", err: errParsedEmptyBytes},
+	}
+	miscParseBools = []struct {
+		str   string
+		value bool
+	}{
+		{str: "True", value: true},
+		{str: "False", value: false},
+		{str: "true", value: true},
+		{str: "false", value: false},
+	}
+)
+
 func Test_GenericParseTypeInts(t *testing.T) {
 	t.Parallel()
-	// The key is the width in bits that holds all of its values.
-	ints := map[int][]int64{
-		8:  {0, 1, 2, 3, 4, -1, math.MaxInt8, math.MinInt8},
-		16: {math.MaxInt16, math.MinInt16},
-		32: {math.MaxInt32, math.MinInt32},
-		64: {math.MaxInt64, math.MinInt64},
-	}
-
-	testGenericTypeInteger[int8](t, "test_genericParseTypeInt8s", ints)
-	testGenericTypeInteger[int16](t, "test_genericParseTypeInt16s", ints)
-	testGenericTypeInteger[int32](t, "test_genericParseTypeInt32s", ints)
-	testGenericTypeInteger[int64](t, "test_genericParseTypeInt64s", ints)
-	testGenericTypeInteger[int](t, "test_genericParseTypeInts", ints)
+	testGenericTypeInteger[int8](t, "test_genericParseTypeInt8s", miscParseInts)
+	testGenericTypeInteger[int16](t, "test_genericParseTypeInt16s", miscParseInts)
+	testGenericTypeInteger[int32](t, "test_genericParseTypeInt32s", miscParseInts)
+	testGenericTypeInteger[int64](t, "test_genericParseTypeInt64s", miscParseInts)
+	testGenericTypeInteger[int](t, "test_genericParseTypeInts", miscParseInts)
 }
 
-// testGenericTypeInteger parses the decimal form of every value in cases as V.
-// The key of cases is the width in bits that holds its values: a value that
-// fits in V must parse to itself, any other one must be rejected.
-func testGenericTypeInteger[V GenericTypeInteger, N int64 | uint64](t *testing.T, name string, cases map[int][]N) {
+// testGenericTypeInteger parses the decimal form of every value in cases as V:
+// a value that fits in V must parse to itself, any other one must be rejected.
+func testGenericTypeInteger[V GenericTypeInteger, N int64 | uint64](
+	t *testing.T, name string, cases []miscParseIntCase[N],
+) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		t.Parallel()
-		for bits, values := range cases {
-			for _, value := range values {
-				v, err := genericParseType[V](fmt.Sprint(value))
-				if bits <= int(unsafe.Sizeof(V(0)))*8 {
-					require.NoError(t, err, "value %d", value)
-					require.Equal(t, V(value), v, "value %d", value)
-				} else {
-					require.ErrorIs(t, err, errParseValue, "value %d", value)
-				}
+		for _, tc := range cases {
+			v, err := genericParseType[V](fmt.Sprint(tc.value))
+			if tc.bits <= int(unsafe.Sizeof(V(0)))*8 {
+				require.NoError(t, err, "value %d", tc.value)
+				require.Equal(t, V(tc.value), v, "value %d", tc.value)
+			} else {
+				require.ErrorIs(t, err, errParseValue, "value %d", tc.value)
 			}
 		}
 		testGenericParseError[V](t)
 	})
 }
 
-type testGenericParseTypeUintCase struct {
-	value uint64
-	bits  int
-}
-
 func Test_GenericParseTypeUints(t *testing.T) {
 	t.Parallel()
-	// The key is the width in bits that holds all of its values.
-	uints := map[int][]uint64{
-		8:  {0, 1, 2, 3, 4, math.MaxUint8},
-		16: {math.MaxUint16},
-		32: {math.MaxUint32},
-		64: {math.MaxUint64},
-	}
-
-	testGenericTypeInteger[uint8](t, "test_genericParseTypeUint8s", uints)
-	testGenericTypeInteger[uint16](t, "test_genericParseTypeUint16s", uints)
-	testGenericTypeInteger[uint32](t, "test_genericParseTypeUint32s", uints)
-	testGenericTypeInteger[uint64](t, "test_genericParseTypeUint64s", uints)
-	testGenericTypeInteger[uint](t, "test_genericParseTypeUints", uints)
+	testGenericTypeInteger[uint8](t, "test_genericParseTypeUint8s", miscParseUints)
+	testGenericTypeInteger[uint16](t, "test_genericParseTypeUint16s", miscParseUints)
+	testGenericTypeInteger[uint32](t, "test_genericParseTypeUint32s", miscParseUints)
+	testGenericTypeInteger[uint64](t, "test_genericParseTypeUint64s", miscParseUints)
+	testGenericTypeInteger[uint](t, "test_genericParseTypeUints", miscParseUints)
 }
 
 func Test_GenericParseTypeFloats(t *testing.T) {
 	t.Parallel()
-	floats := []struct {
-		str   string
-		value float64
-	}{
-		{value: 3.1415, str: "3.1415"},
-		{value: 1.234, str: "1.234"},
-		{value: 2, str: "2"},
-		{value: 3, str: "3"},
-	}
-
 	t.Run("test_genericParseTypeFloat32s", func(t *testing.T) {
 		t.Parallel()
-		for _, test := range floats {
+		for _, test := range miscParseFloats {
 			v, err := genericParseType[float32](test.str)
 			require.NoError(t, err)
 			require.InEpsilon(t, float32(test.value), v, epsilon)
@@ -829,7 +854,7 @@ func Test_GenericParseTypeFloats(t *testing.T) {
 
 	t.Run("test_genericParseTypeFloat64s", func(t *testing.T) {
 		t.Parallel()
-		for _, test := range floats {
+		for _, test := range miscParseFloats {
 			v, err := genericParseType[float64](test.str)
 			require.NoError(t, err)
 			require.InEpsilon(t, test.value, v, epsilon)
@@ -840,20 +865,9 @@ func Test_GenericParseTypeFloats(t *testing.T) {
 
 func Test_GenericParseTypeBytes(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		str   string
-		err   error
-		value []byte
-	}{
-		{value: []byte("alex"), str: "alex"},
-		{value: []byte("32.23"), str: "32.23"},
-		{value: []byte("john"), str: "john"},
-		{value: []byte(nil), str: "", err: errParsedEmptyBytes},
-	}
-
 	t.Run("test_genericParseTypeBytes", func(t *testing.T) {
 		t.Parallel()
-		for _, test := range cases {
+		for _, test := range miscParseBytes {
 			v, err := genericParseType[[]byte](test.str)
 			if test.err == nil {
 				require.NoError(t, err)
@@ -881,19 +895,9 @@ func Test_GenericParseTypeString(t *testing.T) {
 
 func Test_GenericParseTypeBoolean(t *testing.T) {
 	t.Parallel()
-	bools := []struct {
-		str   string
-		value bool
-	}{
-		{str: "True", value: true},
-		{str: "False", value: false},
-		{str: "true", value: true},
-		{str: "false", value: false},
-	}
-
 	t.Run("test_genericParseTypeBoolean", func(t *testing.T) {
 		t.Parallel()
-		for _, test := range bools {
+		for _, test := range miscParseBools {
 			v, err := genericParseType[bool](test.str)
 			require.NoError(t, err)
 			if test.value {
@@ -916,23 +920,7 @@ func testGenericParseError[V GenericType](t *testing.T) {
 
 func Benchmark_GenericParseTypeInts(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
-	ints := []testGenericParseTypeIntCase{
-		{value: 0, bits: 8},
-		{value: 1, bits: 8},
-		{value: 2, bits: 8},
-		{value: 3, bits: 8},
-		{value: 4, bits: 8},
-		{value: -1, bits: 8},
-		{value: math.MaxInt8, bits: 8},
-		{value: math.MinInt8, bits: 8},
-		{value: math.MaxInt16, bits: 16},
-		{value: math.MinInt16, bits: 16},
-		{value: math.MaxInt32, bits: 32},
-		{value: math.MinInt32, bits: 32},
-		{value: math.MaxInt64, bits: 64},
-		{value: math.MinInt64, bits: 64},
-	}
-	for _, test := range ints {
+	for _, test := range miscParseInts {
 		benchGenericParseTypeInt[int8](b, "bench_genericParseTypeInt8s", test)
 		benchGenericParseTypeInt[int16](b, "bench_genericParseTypeInt16s", test)
 		benchGenericParseTypeInt[int32](b, "bench_genericParseTypeInt32s", test)
@@ -941,7 +929,7 @@ func Benchmark_GenericParseTypeInts(b *testing.B) {
 	}
 }
 
-func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, test testGenericParseTypeIntCase) {
+func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, test miscParseIntCase[int64]) {
 	b.Helper()
 	b.Run(name, func(t *testing.B) {
 		var v V
@@ -964,23 +952,7 @@ func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, t
 
 func Benchmark_GenericParseTypeUints(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
-	uints := []struct {
-		value uint64
-		bits  int
-	}{
-		{value: 0, bits: 8},
-		{value: 1, bits: 8},
-		{value: 2, bits: 8},
-		{value: 3, bits: 8},
-		{value: 4, bits: 8},
-		{value: math.MaxUint8, bits: 8},
-		{value: math.MaxUint16, bits: 16},
-		{value: math.MaxUint16, bits: 16},
-		{value: math.MaxUint32, bits: 32},
-		{value: math.MaxUint64, bits: 64},
-	}
-
-	for _, test := range uints {
+	for _, test := range miscParseUints {
 		benchGenericParseTypeUInt[uint8](b, "benchmark_genericParseTypeUint8s", test)
 		benchGenericParseTypeUInt[uint16](b, "benchmark_genericParseTypeUint16s", test)
 		benchGenericParseTypeUInt[uint32](b, "benchmark_genericParseTypeUint32s", test)
@@ -989,7 +961,7 @@ func Benchmark_GenericParseTypeUints(b *testing.B) {
 	}
 }
 
-func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, test testGenericParseTypeUintCase) {
+func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, test miscParseIntCase[uint64]) {
 	b.Helper()
 	b.Run(name, func(t *testing.B) {
 		var v V
@@ -1012,17 +984,7 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 
 func Benchmark_GenericParseTypeFloats(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
-	floats := []struct {
-		str   string
-		value float64
-	}{
-		{value: 3.1415, str: "3.1415"},
-		{value: 1.234, str: "1.234"},
-		{value: 2, str: "2"},
-		{value: 3, str: "3"},
-	}
-
-	for _, test := range floats {
+	for _, test := range miscParseFloats {
 		b.Run("benchmark_genericParseTypeFloat32s", func(t *testing.B) {
 			var v float32
 			var err error
@@ -1038,7 +1000,7 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 		})
 	}
 
-	for _, test := range floats {
+	for _, test := range miscParseFloats {
 		b.Run("benchmark_genericParseTypeFloat64s", func(t *testing.B) {
 			var v float64
 			var err error
@@ -1057,18 +1019,7 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 
 func Benchmark_GenericParseTypeBytes(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
-	cases := []struct {
-		str   string
-		err   error
-		value []byte
-	}{
-		{value: []byte("alex"), str: "alex"},
-		{value: []byte("32.23"), str: "32.23"},
-		{value: []byte("john"), str: "john"},
-		{value: []byte(nil), str: "", err: errParsedEmptyBytes},
-	}
-
-	for _, test := range cases {
+	for _, test := range miscParseBytes {
 		b.Run("benchmark_genericParseTypeBytes", func(b *testing.B) {
 			var v []byte
 			var err error
@@ -1112,17 +1063,7 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 
 func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
-	bools := []struct {
-		str   string
-		value bool
-	}{
-		{str: "True", value: true},
-		{str: "False", value: false},
-		{str: "true", value: true},
-		{str: "false", value: false},
-	}
-
-	for _, test := range bools {
+	for _, test := range miscParseBools {
 		b.Run("benchmark_genericParseTypeBoolean", func(b *testing.B) {
 			var v bool
 			var err error
@@ -1486,10 +1427,7 @@ func Test_bindMediaType(t *testing.T) {
 
 func Benchmark_bindMediaType(b *testing.B) {
 	for _, ct := range []string{
-		"application/json",
-		"application/json; charset=utf-8",
-		"Application/JSON",
-		"application/x-www-form-urlencoded",
+		"application/json", "application/json; charset=utf-8", "Application/JSON", "application/x-www-form-urlencoded",
 	} {
 		b.Run(ct, func(b *testing.B) {
 			h := &fasthttp.RequestHeader{}

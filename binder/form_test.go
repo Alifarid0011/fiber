@@ -129,19 +129,14 @@ func Benchmark_FormBinder_Bind(b *testing.B) {
 	}
 	var user User
 
-	req := fasthttp.AcquireRequest()
-	req.SetBodyString("name=john&age=42&posts=post1,post2,post3")
-	req.Header.SetContentType("application/x-www-form-urlencoded")
+	req := newFormRequest(b, "name=john&age=42&posts=post1,post2,post3")
 
 	var err error
 	for b.Loop() {
 		err = binder.Bind(req, &user)
 	}
 
-	require.NoError(b, err)
-	require.Equal(b, "john", user.Name)
-	require.Equal(b, 42, user.Age)
-	require.Len(b, user.Posts, 3)
+	requireJohn42(b, err, user.Name, user.Age, user.Posts)
 }
 
 func Test_FormBinder_BindMultipart(t *testing.T) {
@@ -180,13 +175,8 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	require.NoError(t, b.Bind(req, &user))
 	require.Equal(t, "john", user.Name)
 	require.Equal(t, 42, user.Age)
-	require.Contains(t, user.Names, "john")
-	require.Contains(t, user.Names, "doe")
-	require.Contains(t, user.Names, "eric")
-	require.Len(t, user.Posts, 3)
-	require.Equal(t, "post1", user.Posts[0].Title)
-	require.Equal(t, "post2", user.Posts[1].Title)
-	require.Equal(t, "post3", user.Posts[2].Title)
+	require.Equal(t, []string{"john", "eric", "doe"}, user.Names)
+	require.Equal(t, []Post{{Title: "post1"}, {Title: "post2"}, {Title: "post3"}}, user.Posts)
 
 	require.NotNil(t, user.Avatar)
 	requireFile(t, user.Avatar, "avatar.txt", "avatar")
@@ -236,26 +226,6 @@ func Test_FormBinder_BindMultipart_BodyLimitExceeded(t *testing.T) {
 
 	err = b.Bind(req, &user)
 	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
-}
-
-func Test_FormBinder_BindMultipart_ValueError(t *testing.T) {
-	b := &FormBinding{}
-	req := newMultipartRequestWith(t, func(mw *multipart.Writer) {
-		require.NoError(t, mw.WriteField("invalid[", "val"))
-	})
-	err := b.Bind(req, &struct{}{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "unmatched brackets")
-}
-
-func Test_FormBinder_BindMultipart_FileError(t *testing.T) {
-	b := &FormBinding{}
-	req := newMultipartRequestWith(t, func(mw *multipart.Writer) {
-		writeFormFile(t, mw, "invalid[", "file.txt", "content")
-	})
-	err := b.Bind(req, &struct{}{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "unmatched brackets")
 }
 
 func Test_FormBinder_Bind_MapClearedBetweenRequests(t *testing.T) {
@@ -324,29 +294,18 @@ func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	}
 	var user User
 
-	req := fasthttp.AcquireRequest()
-	b.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-
-	buf := &bytes.Buffer{}
-	mw := multipart.NewWriter(buf)
-
-	require.NoError(b, mw.WriteField("name", "john"))
-	require.NoError(b, mw.WriteField("age", "42"))
-	require.NoError(b, mw.WriteField("posts", "post1"))
-	require.NoError(b, mw.WriteField("posts", "post2"))
-	require.NoError(b, mw.WriteField("posts", "post3"))
-	require.NoError(b, mw.Close())
-
-	req.Header.SetContentType(mw.FormDataContentType())
-	req.SetBody(buf.Bytes())
+	req := newMultipartRequestWith(b, func(mw *multipart.Writer) {
+		require.NoError(b, mw.WriteField("name", "john"))
+		require.NoError(b, mw.WriteField("age", "42"))
+		require.NoError(b, mw.WriteField("posts", "post1"))
+		require.NoError(b, mw.WriteField("posts", "post2"))
+		require.NoError(b, mw.WriteField("posts", "post3"))
+	})
 
 	var err error
 	for b.Loop() {
 		err = binder.Bind(req, &user)
 	}
 
-	require.NoError(b, err)
-	require.Equal(b, "john", user.Name)
-	require.Equal(b, 42, user.Age)
-	require.Len(b, user.Posts, 3)
+	requireJohn42(b, err, user.Name, user.Age, user.Posts)
 }

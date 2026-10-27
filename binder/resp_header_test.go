@@ -3,7 +3,6 @@ package binder
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -31,8 +30,5 @@ func Benchmark_RespHeaderBinder_Bind(b *testing.B) {
 		err = binder.Bind(resp, &user)
 	}
 
-	require.NoError(b, err)
-	require.Equal(b, "john", user.Name)
-	require.Equal(b, 42, user.Age)
-	require.Equal(b, []string{"post1", "post2", "post3"}, user.Posts)
+	requireJohn42(b, err, user.Name, user.Age, user.Posts)
 }

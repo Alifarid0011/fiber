@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,44 +26,28 @@ type contextCheckingStorage struct {
 	ctxKey any
 }
 
+// errorStorage is a Storage whose every operation fails with err, which may be
+// nil, except Close, which records that it ran and fails with closeErr.
 type errorStorage struct {
-	err      error
-	closeErr error
+	err         error
+	closeErr    error
+	closeCalled atomic.Bool
 }
 
-func (s *errorStorage) GetWithContext(context.Context, string) ([]byte, error) {
-	return nil, s.err
-}
-
-func (s *errorStorage) Get(string) ([]byte, error) {
-	return nil, s.err
-}
+func (s *errorStorage) GetWithContext(context.Context, string) ([]byte, error) { return nil, s.err }
+func (s *errorStorage) Get(string) ([]byte, error)                             { return nil, s.err }
+func (s *errorStorage) Set(string, []byte, time.Duration) error                { return s.err }
+func (s *errorStorage) DeleteWithContext(context.Context, string) error        { return s.err }
+func (s *errorStorage) Delete(string) error                                    { return s.err }
+func (s *errorStorage) ResetWithContext(context.Context) error                 { return s.err }
+func (s *errorStorage) Reset() error                                           { return s.err }
 
 func (s *errorStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
 	return s.err
 }
 
-func (s *errorStorage) Set(string, []byte, time.Duration) error {
-	return s.err
-}
-
-func (s *errorStorage) DeleteWithContext(context.Context, string) error {
-	return s.err
-}
-
-func (s *errorStorage) Delete(string) error {
-	return s.err
-}
-
-func (s *errorStorage) ResetWithContext(context.Context) error {
-	return s.err
-}
-
-func (s *errorStorage) Reset() error {
-	return s.err
-}
-
 func (s *errorStorage) Close() error {
+	s.closeCalled.Store(true)
 	return s.closeErr
 }
 
@@ -103,13 +88,8 @@ func (s *contextCheckingStorage) ResetWithContext(ctx context.Context) error {
 	return s.base.ResetWithContext(ctx)
 }
 
-func (s *contextCheckingStorage) Reset() error {
-	return s.base.Reset()
-}
-
-func (s *contextCheckingStorage) Close() error {
-	return s.base.Close()
-}
+func (s *contextCheckingStorage) Reset() error { return s.base.Reset() }
+func (s *contextCheckingStorage) Close() error { return s.base.Close() }
 
 // stateTestExpectSharedOpsFail calls every SharedState operation on state and expects each one to fail
 // with wantErr and return no data, except Close, which must fail with wantCloseErr.
@@ -123,23 +103,16 @@ func stateTestExpectSharedOpsFail(t *testing.T, state *SharedState, wantErr, wan
 	require.False(t, found)
 	require.ErrorIs(t, err, wantErr)
 
-	require.ErrorIs(t, state.SetJSON("k", Map{"v": 1}, time.Second), wantErr)
-	require.ErrorIs(t, state.SetMsgPack("k", Map{"v": 1}, time.Second), wantErr)
-	require.ErrorIs(t, state.SetCBOR("k", Map{"v": 1}, time.Second), wantErr)
-	require.ErrorIs(t, state.SetXML("k", Map{"v": 1}, time.Second), wantErr)
-
-	_, found, err = state.GetJSON("k", &Map{})
-	require.False(t, found)
-	require.ErrorIs(t, err, wantErr)
-	_, found, err = state.GetMsgPack("k", &Map{})
-	require.False(t, found)
-	require.ErrorIs(t, err, wantErr)
-	_, found, err = state.GetCBOR("k", &Map{})
-	require.False(t, found)
-	require.ErrorIs(t, err, wantErr)
-	_, found, err = state.GetXML("k", &Map{})
-	require.False(t, found)
-	require.ErrorIs(t, err, wantErr)
+	setters := []func(string, any, time.Duration) error{state.SetJSON, state.SetMsgPack, state.SetCBOR, state.SetXML}
+	for i, set := range setters {
+		require.ErrorIs(t, set("k", Map{"v": 1}, time.Second), wantErr, "setter %d", i)
+	}
+	getters := []func(string, any) ([]byte, bool, error){state.GetJSON, state.GetMsgPack, state.GetCBOR, state.GetXML}
+	for i, get := range getters {
+		_, found, err = get("k", &Map{})
+		require.False(t, found, "getter %d", i)
+		require.ErrorIs(t, err, wantErr, "getter %d", i)
+	}
 
 	has, err := state.Has("k")
 	require.False(t, has)
@@ -168,11 +141,8 @@ func TestSharedState_PreforkSafeWithSharedStorage(t *testing.T) {
 	require.False(t, ok)
 
 	payload := Map{"worker": "a", "version": 3}
-	err := workerA.SharedState().SetJSON("cluster-key", payload, time.Minute)
-	require.NoError(t, err)
-
-	err = workerA.SharedState().Set("raw-cluster-key", []byte("raw-value"), time.Minute)
-	require.NoError(t, err)
+	require.NoError(t, workerA.SharedState().SetJSON("cluster-key", payload, time.Minute))
+	require.NoError(t, workerA.SharedState().Set("raw-cluster-key", []byte("raw-value"), time.Minute))
 
 	var out map[string]any
 	rawJSON, found, err := workerB.SharedState().GetJSON("cluster-key", &out)
@@ -191,8 +161,7 @@ func TestSharedState_PreforkSafeWithSharedStorage(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, has)
 
-	err = workerB.SharedState().Delete("cluster-key")
-	require.NoError(t, err)
+	require.NoError(t, workerB.SharedState().Delete("cluster-key"))
 
 	has, err = workerA.SharedState().Has("cluster-key")
 	require.NoError(t, err)
@@ -227,8 +196,7 @@ func TestSharedState_ContextAwareVariants(t *testing.T) {
 	t.Run("context propagation", func(t *testing.T) {
 		t.Parallel()
 		ctx := context.WithValue(context.Background(), ctxKey, "value")
-		err := app.SharedState().SetJSONWithContext(ctx, "key", Map{"ok": true}, time.Second)
-		require.NoError(t, err)
+		require.NoError(t, app.SharedState().SetJSONWithContext(ctx, "key", Map{"ok": true}, time.Second))
 
 		var out map[string]bool
 		_, found, err := app.SharedState().GetJSONWithContext(ctx, "key", &out)
@@ -240,8 +208,7 @@ func TestSharedState_ContextAwareVariants(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, has)
 
-		err = app.SharedState().DeleteWithContext(ctx, "key")
-		require.NoError(t, err)
+		require.NoError(t, app.SharedState().DeleteWithContext(ctx, "key"))
 	})
 }
 
@@ -251,10 +218,8 @@ func TestSharedState_KeyNamespacing(t *testing.T) {
 	appOne := New(Config{AppName: "app-one", SharedStorage: store})
 	appTwo := New(Config{AppName: "app-two", SharedStorage: store})
 
-	err := appOne.SharedState().SetJSON("same-key", Map{"app": 1}, time.Minute)
-	require.NoError(t, err)
-	err = appTwo.SharedState().SetJSON("same-key", Map{"app": 2}, time.Minute)
-	require.NoError(t, err)
+	require.NoError(t, appOne.SharedState().SetJSON("same-key", Map{"app": 1}, time.Minute))
+	require.NoError(t, appTwo.SharedState().SetJSON("same-key", Map{"app": 2}, time.Minute))
 
 	var outOne map[string]int
 	_, found, err := appOne.SharedState().GetJSON("same-key", &outOne)
@@ -275,11 +240,8 @@ func TestSharedState_KeyNamespacingWithOverlappingPrefixes(t *testing.T) {
 	shortPrefixApp := New(Config{AppName: "app", SharedStorage: store})
 	longPrefixApp := New(Config{AppName: "app-one", SharedStorage: store})
 
-	err := longPrefixApp.SharedState().Set("session:123", []byte("victim-secret"), time.Minute)
-	require.NoError(t, err)
-
-	err = shortPrefixApp.SharedState().Set("one-session:123", []byte("attacker-value"), time.Minute)
-	require.NoError(t, err)
+	require.NoError(t, longPrefixApp.SharedState().Set("session:123", []byte("victim-secret"), time.Minute))
+	require.NoError(t, shortPrefixApp.SharedState().Set("one-session:123", []byte("attacker-value"), time.Minute))
 
 	data, found, err := longPrefixApp.SharedState().Get("session:123")
 	require.NoError(t, err)
@@ -364,8 +326,7 @@ func TestSharedState_RawWithContextVariants(t *testing.T) {
 	store := &contextCheckingStorage{ctxKey: ctxKey, base: newSharedStateMemoryStorage(t)}
 	app := New(Config{SharedStorage: store})
 
-	err := app.SharedState().SetWithContext(context.Background(), "raw", []byte("x"), time.Second)
-	require.Error(t, err)
+	require.Error(t, app.SharedState().SetWithContext(context.Background(), "raw", []byte("x"), time.Second))
 
 	ctx := context.WithValue(context.Background(), ctxKey, "value")
 	require.NoError(t, app.SharedState().SetWithContext(ctx, "raw", []byte("x"), time.Second))
@@ -568,8 +529,7 @@ func TestSharedState_UnconfiguredCodecsReturnErrorInsteadOfPanic(t *testing.T) {
 	require.False(t, found)
 	require.ErrorContains(t, err, "shared state msgpack")
 
-	err = app.SharedState().SetCBOR("codec", Map{"ignored": true}, time.Minute)
-	require.ErrorContains(t, err, "shared state cbor")
+	require.ErrorContains(t, app.SharedState().SetCBOR("codec", Map{"ignored": true}, time.Minute), "shared state cbor")
 
 	require.NoError(t, app.SharedState().Set("cbor-payload", []byte("payload"), time.Minute))
 
@@ -582,36 +542,28 @@ func TestSharedState_EmptyKeyBehavior(t *testing.T) {
 	t.Parallel()
 	app := New(Config{SharedStorage: newSharedStateMemoryStorage(t)})
 
-	require.NoError(t, app.SharedState().Set("", []byte("raw"), time.Minute))
-	require.NoError(t, app.SharedState().SetJSON("", Map{"v": 1}, time.Minute))
-	require.NoError(t, app.SharedState().SetMsgPack("", Map{"v": 1}, time.Minute))
-	require.NoError(t, app.SharedState().SetCBOR("", Map{"v": 1}, time.Minute))
-	require.NoError(t, app.SharedState().SetXML("", Map{"v": 1}, time.Minute))
+	state := app.SharedState()
+	require.NoError(t, state.Set("", []byte("raw"), time.Minute))
+	setters := []func(string, any, time.Duration) error{state.SetJSON, state.SetMsgPack, state.SetCBOR, state.SetXML}
+	for i, set := range setters {
+		require.NoError(t, set("", Map{"v": 1}, time.Minute), "setter %d", i)
+	}
 
-	raw, found, err := app.SharedState().Get("")
+	raw, found, err := state.Get("")
 	require.NoError(t, err)
 	require.Nil(t, raw)
 	require.False(t, found)
 
-	_, found, err = app.SharedState().GetJSON("", &Map{})
-	require.NoError(t, err)
-	require.False(t, found)
+	getters := []func(string, any) ([]byte, bool, error){state.GetJSON, state.GetMsgPack, state.GetCBOR, state.GetXML}
+	for i, get := range getters {
+		_, found, err = get("", &Map{})
+		require.NoError(t, err, "getter %d", i)
+		require.False(t, found, "getter %d", i)
+	}
 
-	_, found, err = app.SharedState().GetMsgPack("", &Map{})
-	require.NoError(t, err)
-	require.False(t, found)
+	require.NoError(t, state.Delete(""))
 
-	_, found, err = app.SharedState().GetCBOR("", &Map{})
-	require.NoError(t, err)
-	require.False(t, found)
-
-	_, found, err = app.SharedState().GetXML("", &Map{})
-	require.NoError(t, err)
-	require.False(t, found)
-
-	require.NoError(t, app.SharedState().Delete(""))
-
-	has, err := app.SharedState().Has("")
+	has, err := state.Has("")
 	require.NoError(t, err)
 	require.False(t, has)
 }
