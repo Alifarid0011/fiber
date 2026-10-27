@@ -190,7 +190,6 @@ func Test_Security_FollowRedirects_UnguardedClientHopsAreJudgedByFreshLookups(t 
 	})
 	req.SetRequestURI("http://start.example/")
 
-	err := followRedirects(client.client, req, resp, 5, mustParseTestURL(t, "http://start.example/"), DefaultSecurityPolicy())
-	require.ErrorIs(t, err, ErrUpstreamHostBlocked, "the second hop to the rebound name is judged by its new answer")
+	require.ErrorIs(t, followRedirects(client.client, req, resp, 5, mustParseTestURL(t, "http://start.example/"), DefaultSecurityPolicy()), ErrUpstreamHostBlocked, "the second hop to the rebound name is judged by its new answer")
 	require.Equal(t, []string{"http://start.example/", "http://rebind.test/a"}, hops, "and never sent")
 }

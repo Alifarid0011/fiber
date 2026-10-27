@@ -684,8 +684,7 @@ func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {
 	}
 
 	client := &stubRedirectClient{calls: calls}
-	err := doRedirectsWithClient(req, resp, -1, client)
-	require.ErrorIs(t, err, fasthttp.ErrTooManyRedirects)
+	require.ErrorIs(t, doRedirectsWithClient(req, resp, -1, client), fasthttp.ErrTooManyRedirects)
 	require.Equal(t, defaultRedirectLimit+1, client.CallCount())
 }
 

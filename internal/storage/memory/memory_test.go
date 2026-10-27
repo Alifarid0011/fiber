@@ -57,8 +57,7 @@ func Test_Storage_Memory_Set(t *testing.T) {
 		val       = []byte("doe")
 	)
 
-	err := testStore.Set(key, val, 0)
-	require.NoError(t, err)
+	require.NoError(t, testStore.Set(key, val, 0))
 
 	requireKeys(t, testStore, 1)
 }
@@ -151,8 +150,7 @@ func Test_Storage_Memory_Get(t *testing.T) {
 		val       = []byte("doe")
 	)
 
-	err := testStore.Set(key, val, 0)
-	require.NoError(t, err)
+	require.NoError(t, testStore.Set(key, val, 0))
 
 	requireValue(t, testStore, key, val)
 	requireKeys(t, testStore, 1)
@@ -167,8 +165,7 @@ func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 		exp       = 1 * time.Second
 	)
 
-	err := testStore.Set(key, val, exp)
-	require.NoError(t, err)
+	require.NoError(t, testStore.Set(key, val, exp))
 
 	// interval + expire + buffer
 	time.Sleep(1500 * time.Millisecond)
@@ -265,8 +262,7 @@ func Test_Storage_Memory_Set_Long_Expiration_with_Keys(t *testing.T) {
 
 	requireKeys(t, testStore, 0)
 
-	err := testStore.Set(key, val, exp)
-	require.NoError(t, err)
+	require.NoError(t, testStore.Set(key, val, exp))
 
 	time.Sleep(1100 * time.Millisecond)
 
@@ -432,8 +428,7 @@ func Benchmark_Memory_Set_Asserted(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		err := testStore.Set("john", []byte("doe"), 0)
-		require.NoError(b, err)
+		require.NoError(b, testStore.Set("john", []byte("doe"), 0))
 	}
 }
 
@@ -444,8 +439,7 @@ func Benchmark_Memory_Set_Asserted_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			err := testStore.Set("john", []byte("doe"), 0)
-			require.NoError(b, err)
+			require.NoError(b, testStore.Set("john", []byte("doe"), 0))
 		}
 	})
 }
@@ -453,8 +447,7 @@ func Benchmark_Memory_Set_Asserted_Parallel(b *testing.B) {
 // Benchmarks for Get operation
 func Benchmark_Memory_Get(b *testing.B) {
 	testStore := New()
-	err := testStore.Set("john", []byte("doe"), 0)
-	require.NoError(b, err)
+	require.NoError(b, testStore.Set("john", []byte("doe"), 0))
 
 	b.ReportAllocs()
 
@@ -465,8 +458,7 @@ func Benchmark_Memory_Get(b *testing.B) {
 
 func Benchmark_Memory_Get_Parallel(b *testing.B) {
 	testStore := New()
-	err := testStore.Set("john", []byte("doe"), 0)
-	require.NoError(b, err)
+	require.NoError(b, testStore.Set("john", []byte("doe"), 0))
 
 	b.ReportAllocs()
 	b.ResetTimer()

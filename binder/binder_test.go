@@ -50,8 +50,7 @@ func Test_Binders_ErrorPaths(t *testing.T) {
 		b := &FormBinding{}
 		req := acquireRequest(t)
 		req.Header.SetContentType(MIMEMultipartForm)
-		err := b.Bind(req, &struct{}{})
-		require.Error(t, err)
+		require.Error(t, b.Bind(req, &struct{}{}))
 	})
 }
 
@@ -158,8 +157,7 @@ func Test_SetParserDecoder_UnknownKeys(t *testing.T) {
 		Name string `query:"name"`
 	}
 	data := map[string][]string{"name": {"john"}, "foo": {"bar"}}
-	err := parseToStruct("query", &user{}, data)
-	require.Error(t, err)
+	require.Error(t, parseToStruct("query", &user{}, data))
 
 	// The binders decode a struct from its pairs with DecodeValues, which must
 	// honor the setting as well.
@@ -190,8 +188,7 @@ func Test_SetParserDecoder_CustomConverter(t *testing.T) {
 		V myInt `query:"v"`
 	}
 	d := new(data)
-	err := parse("query", d, map[string][]string{"v": {"5"}})
-	require.NoError(t, err)
+	require.NoError(t, parse("query", d, map[string][]string{"v": {"5"}}))
 	require.Equal(t, myInt(5), d.V)
 }
 
@@ -205,7 +202,6 @@ func Test_SetParserDecoder_AliasTagIgnored(t *testing.T) {
 		Greeting string `query:"v"`
 	}
 	d := new(data)
-	err := parse("query", d, map[string][]string{"v": {"hello"}})
-	require.NoError(t, err)
+	require.NoError(t, parse("query", d, map[string][]string{"v": {"hello"}}))
 	require.Equal(t, "hello", d.Greeting)
 }

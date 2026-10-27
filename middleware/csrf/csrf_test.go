@@ -1011,8 +1011,7 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	handler := HandlerFromContext(app.AcquireCtx(ctx))
 	if handler != nil {
 		ctx.Request.Header.DelAllCookies()
-		err := handler.DeleteToken(app.AcquireCtx(ctx))
-		require.ErrorIs(t, err, ErrTokenNotFound)
+		require.ErrorIs(t, handler.DeleteToken(app.AcquireCtx(ctx)), ErrTokenNotFound)
 	}
 	h(ctx)
 

@@ -246,8 +246,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 		client := New()
 		req := AcquireRequest().SetURL("http://:host/api/v1?a=b").SetPathParam("host", "\u00fcn\u00efcode.example.com")
 
-		err := parserRequestURL(client, req)
-		require.NoError(t, err)
+		require.NoError(t, parserRequestURL(client, req))
 		require.Equal(t, "\u00fcn\u00efcode.example.com", string(req.RawRequest.URI().Host()))
 		// A percent-escape in the host makes fasthttp abandon the rest of the
 		// URI, so this pins that a host value never gets escaped.
@@ -417,8 +416,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		req := AcquireRequest().AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
 			SetFormData("foo", "bar")
 
-		err := parserRequestHeader(client, req)
-		require.NoError(t, err)
+		require.NoError(t, parserRequestHeader(client, req))
 		require.Contains(t, string(req.RawRequest.Header.MultipartFormBoundary()), "FiberFormBoundary")
 		require.Contains(t, string(req.RawRequest.Header.ContentType()), multipartFormData)
 	})
@@ -550,8 +548,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 		client := New()
 		req := AcquireRequest().SetFormDataWithMap(map[string]string{"": ""})
 
-		err := parserRequestBody(client, req)
-		require.NoError(t, err)
+		require.NoError(t, parserRequestBody(client, req))
 	})
 
 	for _, tc := range []struct {
@@ -589,8 +586,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		req := AcquireRequest().AddFile(missingPath)
 
-		err := parserRequestBody(client, req)
-		require.ErrorContains(t, err, "open file error")
+		require.ErrorContains(t, parserRequestBody(client, req), "open file error")
 	})
 
 	t.Run("file body missing path and name", func(t *testing.T) {
@@ -600,8 +596,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		req := AcquireRequest().AddFiles(file)
 
-		err := parserRequestBody(client, req)
-		require.ErrorIs(t, err, ErrFileNoName)
+		require.ErrorIs(t, parserRequestBody(client, req), ErrFileNoName)
 	})
 
 	t.Run("raw body error", func(t *testing.T) {
@@ -611,8 +606,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		req.body = nil
 
-		err := parserRequestBody(client, req)
-		require.ErrorIs(t, err, ErrBodyType)
+		require.ErrorIs(t, parserRequestBody(client, req), ErrBodyType)
 	})
 
 	t.Run("unsupported body type", func(t *testing.T) {
@@ -622,8 +616,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		req.bodyType = 999 // some invalid type
 
-		err := parserRequestBody(client, req)
-		require.ErrorIs(t, err, ErrBodyTypeNotSupported)
+		require.ErrorIs(t, parserRequestBody(client, req), ErrBodyTypeNotSupported)
 	})
 }
 

@@ -2238,8 +2238,7 @@ func Test_Bind_All_StructValidator(t *testing.T) {
 	ctxFail.Request().Header.SetContentType(MIMEApplicationJSON)
 	ctxFail.Request().SetBody([]byte(`{}`))
 	sqFail := new(simpleQuery)
-	err := (&Bind{ctx: ctxFail}).WithoutAutoHandling().All(sqFail)
-	require.EqualError(t, err, "you should have entered right name")
+	require.EqualError(t, (&Bind{ctx: ctxFail}).WithoutAutoHandling().All(sqFail), "you should have entered right name")
 }
 
 func BenchmarkBind_All(b *testing.B) {

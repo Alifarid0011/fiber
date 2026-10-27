@@ -781,8 +781,7 @@ func Test_Security_FollowRedirects_NegativeMaxBecomesZero(t *testing.T) {
 		"http://example.com/start": {status: fasthttp.StatusFound, location: "http://example.com/next"},
 	})
 
-	err := proxyTestFollow(t, client.client, "http://example.com/start", -1, proxyTestAllowPrivatePolicy())
-	require.ErrorIs(t, err, fasthttp.ErrTooManyRedirects)
+	require.ErrorIs(t, proxyTestFollow(t, client.client, "http://example.com/start", -1, proxyTestAllowPrivatePolicy()), fasthttp.ErrTooManyRedirects)
 	require.Equal(t, 1, *hits)
 }
 
@@ -795,8 +794,7 @@ func Test_Security_FollowRedirects_MissingLocation(t *testing.T) {
 		"http://example.com/start": {status: fasthttp.StatusFound, location: ""},
 	})
 
-	err := proxyTestFollow(t, client.client, "http://example.com/start", 3, proxyTestAllowPrivatePolicy())
-	require.ErrorIs(t, err, fasthttp.ErrMissingLocation)
+	require.ErrorIs(t, proxyTestFollow(t, client.client, "http://example.com/start", 3, proxyTestAllowPrivatePolicy()), fasthttp.ErrMissingLocation)
 }
 
 // Test_Security_FollowRedirects_LeavesCallerRequestIntact pins that a redirect changes a copy of
@@ -872,8 +870,7 @@ func Test_Security_FollowRedirects_PropagatesClientError(t *testing.T) {
 	sentinel := errors.New("dial failure")
 	cli := &fasthttp.Client{Dial: func(string) (net.Conn, error) { return nil, sentinel }}
 
-	err := proxyTestFollow(t, cli, "http://example.com/", 1, DefaultSecurityPolicy())
-	require.ErrorIs(t, err, sentinel)
+	require.ErrorIs(t, proxyTestFollow(t, cli, "http://example.com/", 1, DefaultSecurityPolicy()), sentinel)
 }
 
 // Test_Security_DomainForward_HostMismatchPassesThrough covers the

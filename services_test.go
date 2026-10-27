@@ -324,16 +324,14 @@ func Test_StartServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
 		app := rootMiscAServicesApp()
 
-		err := app.startServices(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, app.startServices(context.Background()))
 		require.Zero(t, app.state.ServicesLen())
 	})
 
 	t.Run("successful-start", func(t *testing.T) {
 		app := rootMiscAServicesApp(&mockService{name: "dep1"}, &mockService{name: "dep2"})
 
-		err := app.startServices(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, app.startServices(context.Background()))
 		require.Equal(t, 2, app.state.ServicesLen())
 	})
 
@@ -359,8 +357,7 @@ func Test_StartServices(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 
-			err := app.startServices(ctx)
-			require.ErrorIs(t, err, context.Canceled)
+			require.ErrorIs(t, app.startServices(ctx), context.Canceled)
 			require.Zero(t, app.state.ServicesLen())
 		})
 
@@ -375,8 +372,7 @@ func Test_StartServices(t *testing.T) {
 			defer cancel()
 
 			// Start services with a delay that is longer than the timeout
-			err := app.startServices(ctx)
-			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.ErrorIs(t, app.startServices(ctx), context.DeadlineExceeded)
 			require.Zero(t, app.state.ServicesLen())
 		})
 	})
@@ -386,8 +382,7 @@ func Test_ShutdownServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
 		app := rootMiscAServicesApp()
 
-		err := app.shutdownServices(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, app.shutdownServices(context.Background()))
 		require.Zero(t, app.state.ServicesLen())
 	})
 
@@ -395,8 +390,7 @@ func Test_ShutdownServices(t *testing.T) {
 		// Both services have been started
 		app := rootMiscAStartedServicesApp(&mockService{name: "dep1"}, &mockService{name: "dep2"})
 
-		err := app.shutdownServices(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, app.shutdownServices(context.Background()))
 		require.Zero(t, app.state.ServicesLen())
 	})
 
@@ -443,8 +437,7 @@ func Test_ShutdownServices(t *testing.T) {
 			defer cancel()
 
 			// Shutdown services with canceled context
-			err := app.shutdownServices(ctx)
-			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.ErrorIs(t, app.shutdownServices(ctx), context.DeadlineExceeded)
 			require.Equal(t, 1, app.state.ServicesLen())
 		})
 	})

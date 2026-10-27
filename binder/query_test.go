@@ -55,8 +55,7 @@ func Test_QueryBinder_Bind_PointerSlices(t *testing.T) {
 
 	req := newQueryRequest(t, "emails=work,personal&preferences[tags]=golang,api")
 
-	err := binder.Bind(req, &profile)
-	require.NoError(t, err)
+	require.NoError(t, binder.Bind(req, &profile))
 
 	require.NotNil(t, profile.Emails)
 	require.ElementsMatch(t, []string{"work", "personal"}, *profile.Emails)

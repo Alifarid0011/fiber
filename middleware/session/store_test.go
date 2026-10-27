@@ -153,8 +153,7 @@ func TestStore_Delete(t *testing.T) {
 	})
 
 	t.Run("delete non-existing session", func(t *testing.T) {
-		err := store.Delete(context.Background(), "non-existing-session-id")
-		require.NoError(t, err)
+		require.NoError(t, store.Delete(context.Background(), "non-existing-session-id"))
 	})
 }
 

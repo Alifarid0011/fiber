@@ -1139,8 +1139,7 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 
 	go func() {
 		serverReady <- struct{}{}
-		err := app.Listener(ln)
-		assert.NoError(t, err)
+		assert.NoError(t, app.Listener(ln))
 	}()
 
 	<-serverReady // Waiting for the server to be ready
@@ -1369,8 +1368,7 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 
-		err := app.ShutdownWithContext(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, app.ShutdownWithContext(context.Background()))
 
 		require.Equal(t, []string{"pre", "post"}, hookOrder, "Hooks should execute in order")
 	})
@@ -1425,8 +1423,7 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel()
 
-		err := app.ShutdownWithContext(ctx)
-		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.ErrorIs(t, app.ShutdownWithContext(ctx), context.DeadlineExceeded)
 	})
 }
 
@@ -2154,8 +2151,7 @@ func Test_App_ReloadViews_NoEngine(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	err := app.ReloadViews()
-	require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+	require.ErrorIs(t, app.ReloadViews(), ErrNoViewEngineConfigured)
 }
 
 func Test_App_ReloadViews_InterfaceNilPointer(t *testing.T) {
@@ -2163,8 +2159,7 @@ func Test_App_ReloadViews_InterfaceNilPointer(t *testing.T) {
 	var view *countingView
 	app := &App{config: Config{Views: view}}
 
-	err := app.ReloadViews()
-	require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+	require.ErrorIs(t, app.ReloadViews(), ErrNoViewEngineConfigured)
 }
 
 func Test_App_Render_WritesConfiguredView(t *testing.T) {
@@ -2184,9 +2179,7 @@ func Test_App_Render_WritesConfiguredView(t *testing.T) {
 			app := New(Config{Views: &writerView{}, ViewsLayout: "base"})
 			var out bytes.Buffer
 
-			err := app.Render(&out, "partial", Map{"title": "Fiber"}, testCase.layouts...)
-
-			require.NoError(t, err)
+			require.NoError(t, app.Render(&out, "partial", Map{"title": "Fiber"}, testCase.layouts...))
 			require.Equal(t, testCase.want, out.String())
 		})
 	}
@@ -2198,9 +2191,7 @@ func Test_App_Render_ReturnsViewErrors(t *testing.T) {
 		t.Parallel()
 		app := New()
 
-		err := app.Render(io.Discard, "partial", nil)
-
-		require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+		require.ErrorIs(t, app.Render(io.Discard, "partial", nil), ErrNoViewEngineConfigured)
 	})
 
 	t.Run("typed nil view engine", func(t *testing.T) {
@@ -2208,9 +2199,7 @@ func Test_App_Render_ReturnsViewErrors(t *testing.T) {
 		var view *writerView
 		app := &App{config: Config{Views: view}}
 
-		err := app.Render(io.Discard, "partial", nil)
-
-		require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+		require.ErrorIs(t, app.Render(io.Discard, "partial", nil), ErrNoViewEngineConfigured)
 	})
 
 	t.Run("render failure", func(t *testing.T) {
@@ -2218,9 +2207,7 @@ func Test_App_Render_ReturnsViewErrors(t *testing.T) {
 		wantErr := errors.New("render failed")
 		app := New(Config{Views: &writerView{renderErr: wantErr}})
 
-		err := app.Render(io.Discard, "partial", Map{})
-
-		require.ErrorIs(t, err, wantErr)
+		require.ErrorIs(t, app.Render(io.Discard, "partial", Map{}), wantErr)
 	})
 }
 
@@ -2324,8 +2311,7 @@ func Test_App_ReloadViews_MountedViews_Error(t *testing.T) {
 	app := New()
 	app.Use("/sub", subApp)
 
-	err := app.ReloadViews()
-	require.ErrorIs(t, err, expectedErr)
+	require.ErrorIs(t, app.ReloadViews(), expectedErr)
 }
 
 func Test_App_ReloadViews_MountedViews_MultipleApps(t *testing.T) {
@@ -2819,8 +2805,7 @@ func Test_App_Test_ReadFail(t *testing.T) {
 	app := New()
 	hints := []string{"<https://cdn.com>; rel=preload; as=script"}
 	app.Get("/early", func(c Ctx) error {
-		err := c.SendEarlyHints(hints)
-		require.NoError(t, err)
+		require.NoError(t, c.SendEarlyHints(hints))
 		return c.SendStatus(StatusOK)
 	})
 
@@ -2870,8 +2855,7 @@ func Test_App_Test_CloseFail(t *testing.T) {
 	app := New()
 	hints := []string{"<https://cdn.com>; rel=preload; as=script"}
 	app.Get("/early", func(c Ctx) error {
-		err := c.SendEarlyHints(hints)
-		require.NoError(t, err)
+		require.NoError(t, c.SendEarlyHints(hints))
 		return c.Status(StatusOK).SendString("done")
 	})
 

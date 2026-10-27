@@ -4752,8 +4752,7 @@ func Test_Cache_VaryAndAuth(t *testing.T) {
 		storage := newFailingCacheStorage()
 		storage.errs["set|manifest"] = errors.New("storage fail")
 		manager := &manager{storage: storage}
-		err := storeVaryManifest(context.Background(), manager, "manifest", []string{"Accept"}, 3600*time.Second)
-		require.Error(t, err)
+		require.Error(t, storeVaryManifest(context.Background(), manager, "manifest", []string{"Accept"}, 3600*time.Second))
 	})
 
 	t.Run("loadVaryManifest not found", func(t *testing.T) {

@@ -304,8 +304,7 @@ func Test_Response_Body(t *testing.T) {
 		resp := clientTestBGet(t, routes, "http://example.com/json")
 
 		tmp := &body{}
-		err := resp.JSON(tmp)
-		require.NoError(t, err)
+		require.NoError(t, resp.JSON(tmp))
 		require.Equal(t, "success", tmp.Status)
 	})
 
@@ -319,8 +318,7 @@ func Test_Response_Body(t *testing.T) {
 		resp := clientTestBGet(t, routes, "http://example.com/xml")
 
 		tmp := &body{}
-		err := resp.XML(tmp)
-		require.NoError(t, err)
+		require.NoError(t, resp.XML(tmp))
 		require.Equal(t, "success", tmp.Status)
 	})
 
@@ -336,8 +334,7 @@ func Test_Response_Body(t *testing.T) {
 		resp := clientTestBGet(t, routes, "http://example.com/cbor")
 
 		tmp := &cborData{}
-		err := resp.CBOR(tmp)
-		require.NoError(t, err)
+		require.NoError(t, resp.CBOR(tmp))
 		require.Equal(t, data, *tmp)
 	})
 }
@@ -372,8 +369,7 @@ func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 
 				decoded := payload{}
 				require.NotPanics(t, func() {
-					err := tc.decode(resp, &decoded)
-					require.ErrorIs(t, err, ErrClientNil)
+					require.ErrorIs(t, tc.decode(resp, &decoded), ErrClientNil)
 				})
 			})
 		}
@@ -389,8 +385,7 @@ func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 				resp.RawResponse.SetBodyString(tc.body)
 
 				decoded := payload{}
-				err := tc.decode(resp, &decoded)
-				require.NoError(t, err)
+				require.NoError(t, tc.decode(resp, &decoded))
 				require.Equal(t, "success", decoded.Status)
 			})
 		}
@@ -451,8 +446,7 @@ func Test_Response_Save(t *testing.T) {
 
 		buf := &bytes.Buffer{}
 
-		err := resp.Save(buf)
-		require.NoError(t, err)
+		require.NoError(t, resp.Save(buf))
 		require.JSONEq(t, "{\"status\":\"success\"}", buf.String())
 	})
 
@@ -463,8 +457,7 @@ func Test_Response_Save(t *testing.T) {
 		resp.RawResponse.SetBodyStream(&errorReader{err: errors.New("copy failure")}, -1)
 
 		target := filepath.Join(t.TempDir(), "out.txt")
-		err := resp.Save(target)
-		require.ErrorContains(t, err, "failed to write response body to file: copy failure")
+		require.ErrorContains(t, resp.Save(target), "failed to write response body to file: copy failure")
 	})
 
 	t.Run("io.Copy error when saving to writer is surfaced", func(t *testing.T) {
@@ -473,16 +466,14 @@ func Test_Response_Save(t *testing.T) {
 
 		resp.RawResponse.SetBodyStream(bytes.NewBufferString("data"), len("data"))
 
-		err := resp.Save(&errorWriter{err: errors.New("sink closed")})
-		require.ErrorContains(t, err, "failed to write response body to writer: sink closed")
+		require.ErrorContains(t, resp.Save(&errorWriter{err: errors.New("sink closed")}), "failed to write response body to writer: sink closed")
 	})
 
 	t.Run("error type", func(t *testing.T) {
 		t.Parallel()
 		resp := clientTestBGet(t, routes, "http://example.com/json")
 
-		err := resp.Save(nil)
-		require.Error(t, err)
+		require.Error(t, resp.Save(nil))
 	})
 }
 
@@ -627,8 +618,7 @@ func Test_Response_Save_Streaming(t *testing.T) {
 		resp := clientTestBClientGet(t, client, "http://example.com/stream")
 
 		var buf bytes.Buffer
-		err := resp.Save(&buf)
-		require.NoError(t, err)
+		require.NoError(t, resp.Save(&buf))
 		require.Equal(t, "streaming writer content", buf.String())
 	})
 
@@ -659,8 +649,7 @@ func Test_Response_Save_Streaming(t *testing.T) {
 
 		// Create a mock WriteCloser to verify Close is called
 		mockWriter := &mockWriteCloser{}
-		err := resp.Save(mockWriter)
-		require.NoError(t, err)
+		require.NoError(t, resp.Save(mockWriter))
 		require.True(t, mockWriter.closed, "Save() should close io.WriteCloser")
 		require.Equal(t, "test content", mockWriter.buf.String())
 	})

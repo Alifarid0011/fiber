@@ -275,11 +275,10 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 			app.Get("/user/:name", func(c Ctx) error { return c.JSON(c.Params("name")) }).Name("user")
 			c := apptest.Ctx(t, app)
 
-			err := c.Redirect().Route("user", RedirectConfig{
+			require.NoError(t, c.Redirect().Route("user", RedirectConfig{
 				Params:  Map{"name": tc.param},
 				Queries: map[string]string{"q": "1"},
-			})
-			require.NoError(t, err)
+			}))
 			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
 		})
 	}
@@ -373,8 +372,7 @@ func Test_Redirect_Back_WithReferer(t *testing.T) {
 	c := apptest.Ctx(t, app)
 
 	c.Request().Header.Set(HeaderReferer, "/back")
-	err := c.Redirect().Back("/")
-	require.NoError(t, err)
+	require.NoError(t, c.Redirect().Back("/"))
 	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
 	require.Equal(t, "/back", c.Get(HeaderReferer))
 	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))

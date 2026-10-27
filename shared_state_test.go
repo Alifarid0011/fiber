@@ -208,8 +208,7 @@ func TestSharedState_PreforkSafeWithSharedStorage(t *testing.T) {
 func TestSharedState_ExplicitSerializationError(t *testing.T) {
 	t.Parallel()
 	app := New(Config{SharedStorage: newSharedStateMemoryStorage(t)})
-	err := app.SharedState().SetJSON("invalid", make(chan int), time.Second)
-	require.Error(t, err)
+	require.Error(t, app.SharedState().SetJSON("invalid", make(chan int), time.Second))
 }
 
 func TestSharedState_ContextAwareVariants(t *testing.T) {
@@ -222,8 +221,7 @@ func TestSharedState_ContextAwareVariants(t *testing.T) {
 
 	t.Run("missing context", func(t *testing.T) {
 		t.Parallel()
-		err := app.SharedState().SetJSONWithContext(context.Background(), "key", Map{"ok": true}, time.Second)
-		require.Error(t, err)
+		require.Error(t, app.SharedState().SetJSONWithContext(context.Background(), "key", Map{"ok": true}, time.Second))
 	})
 
 	t.Run("context propagation", func(t *testing.T) {

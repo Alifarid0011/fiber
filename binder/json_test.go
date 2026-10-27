@@ -23,8 +23,7 @@ func Test_JSON_Binding_Bind(t *testing.T) {
 	}
 	var user User
 
-	err := b.Bind([]byte(`{"name":"john","age":42,"posts":[{"title":"post1"},{"title":"post2"},{"title":"post3"}]}`), &user)
-	require.NoError(t, err)
+	require.NoError(t, b.Bind([]byte(`{"name":"john","age":42,"posts":[{"title":"post1"},{"title":"post2"},{"title":"post3"}]}`), &user))
 	require.Equal(t, "john", user.Name)
 	require.Equal(t, 42, user.Age)
 	require.Len(t, user.Posts, 3)

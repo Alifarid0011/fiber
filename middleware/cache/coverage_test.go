@@ -516,8 +516,7 @@ func Test_manager_set_StorageError(t *testing.T) {
 
 	it := m.acquire()
 	it.status = 200
-	err := m.set(context.Background(), "k", it, time.Minute)
-	require.ErrorContains(t, err, "boom")
+	require.ErrorContains(t, m.set(context.Background(), "k", it, time.Minute), "boom")
 
 	// setRaw storage error.
 	require.ErrorContains(t, m.setRaw(context.Background(), "k", []byte("v"), time.Minute), "boom")

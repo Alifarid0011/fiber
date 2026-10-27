@@ -1194,11 +1194,10 @@ func Test_Res_FormatWithoutNormalizing(t *testing.T) {
 	t.Parallel()
 	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) { req.Header.Set("accept", "text/html") })
 
-	err := c.Res().Format(
+	require.NoError(t, c.Res().Format(
 		ResFmt{MediaType: "application/json", Handler: func(cc Ctx) error { return cc.SendString("json") }},
 		ResFmt{MediaType: "text/html", Handler: func(cc Ctx) error { return cc.SendString("html") }},
-	)
-	require.NoError(t, err)
+	))
 	require.Equal(t, "html", string(c.Response().Body()))
 }
 

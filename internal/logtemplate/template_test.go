@@ -141,8 +141,7 @@ func Test_ExecuteChainsRejectsMismatchedLengths(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	err := ExecuteChains[string, testData](buf, "ctx", &testData{}, nil, []Func[string, testData]{nil})
-	require.EqualError(t, err, "logtemplate: invalid chain lengths: fixedParts=0 funcChain=1")
+	require.EqualError(t, ExecuteChains[string, testData](buf, "ctx", &testData{}, nil, []Func[string, testData]{nil}), "logtemplate: invalid chain lengths: fixedParts=0 funcChain=1")
 	require.Empty(t, buf.String())
 }
 

@@ -173,15 +173,14 @@ func Test_ContextTemplate_CustomTag(t *testing.T) {
 func Test_SetContextTemplateRejectsReservedValueTag(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
-	err := SetContextTemplate(ContextConfig{
+	require.ErrorIs(t, SetContextTemplate(ContextConfig{
 		Format: "[${value:request_id}]",
 		CustomTags: map[string]ContextTagFunc{
 			TagContextValue: func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
 				return output.WriteString("override")
 			},
 		},
-	})
-	require.ErrorIs(t, err, ErrContextTagReserved)
+	}), ErrContextTagReserved)
 }
 
 // Test_SetContextTemplate_RegistersCustomTag runs serially because it mutates

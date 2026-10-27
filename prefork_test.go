@@ -32,8 +32,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	app := New()
 
 	cfg := listenConfigDefault()
-	err := app.prefork("invalid", nil, &cfg)
-	require.Error(t, err)
+	require.Error(t, app.prefork("invalid", nil, &cfg))
 
 	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
 

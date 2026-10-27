@@ -33,8 +33,7 @@ func startTestServer(tb testing.TB, beforeStarting func(app *fiber.App)) *testSe
 
 	ch := make(chan struct{})
 	go func() {
-		err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-		assert.NoError(tb, err)
+		assert.NoError(tb, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 
 		close(ch)
 	}()

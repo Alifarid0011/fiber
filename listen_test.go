@@ -462,12 +462,11 @@ func Test_Listen_Prefork(t *testing.T) {
 
 	app := New()
 
-	err := app.Listen(":0", ListenConfig{
+	require.ErrorIs(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage:   true,
 		EnablePrefork:           true,
 		PreforkRecoverThreshold: 1,
-	})
-	require.ErrorIs(t, err, prefork.ErrOverRecovery)
+	}), prefork.ErrOverRecovery)
 }
 
 func Test_Listen_TLSMinVersion(t *testing.T) {
@@ -496,13 +495,12 @@ func Test_Listen_TLSMinVersion(t *testing.T) {
 	require.NoError(t, app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS13}))
 
 	// Valid TLSMinVersion with Prefork
-	err := app.Listen(":0", ListenConfig{
+	require.ErrorIs(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage:   true,
 		EnablePrefork:           true,
 		TLSMinVersion:           tls.VersionTLS13,
 		PreforkRecoverThreshold: 1,
-	})
-	require.ErrorIs(t, err, prefork.ErrOverRecovery)
+	}), prefork.ErrOverRecovery)
 }
 
 func Test_Listen_TLS(t *testing.T) {
@@ -560,15 +558,14 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 				CertClientFile:        tc.certClientFile,
 			}))
 
-			err := app.Listen(":0", ListenConfig{
+			require.ErrorIs(t, app.Listen(":0", ListenConfig{
 				DisableStartupMessage:   true,
 				EnablePrefork:           true,
 				CertFile:                "./.github/testdata/ssl.pem",
 				CertKeyFile:             "./.github/testdata/ssl.key",
 				CertClientFile:          tc.certClientFile,
 				PreforkRecoverThreshold: 1,
-			})
-			require.ErrorIs(t, err, prefork.ErrOverRecovery)
+			}), prefork.ErrOverRecovery)
 		})
 	}
 }
@@ -764,12 +761,11 @@ func Test_Listen_AutoCert_Conflicts(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	err := app.Listen(":0", ListenConfig{
+	require.ErrorIs(t, app.Listen(":0", ListenConfig{
 		AutoCertManager: &autocert.Manager{},
 		CertFile:        "./.github/testdata/ssl.pem",
 		CertKeyFile:     "./.github/testdata/ssl.key",
-	})
-	require.ErrorIs(t, err, ErrAutoCertWithCertFile)
+	}), ErrAutoCertWithCertFile)
 }
 
 func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
@@ -826,12 +822,11 @@ func Test_Listen_ClientCertErrorDoesNotSetTLSHandler(t *testing.T) {
 
 	app := New()
 
-	err := app.Listen(":0", ListenConfig{
+	require.ErrorContains(t, app.Listen(":0", ListenConfig{
 		CertFile:       "./.github/testdata/ssl.pem",
 		CertKeyFile:    "./.github/testdata/ssl.key",
 		CertClientFile: invalidClientCAPath,
-	})
-	require.ErrorContains(t, err, filepath.Base(invalidClientCAPath))
+	}), filepath.Base(invalidClientCAPath))
 
 	c := apptest.Ctx(t, app)
 
@@ -2140,8 +2135,7 @@ func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 			// Fail instead of serving plaintext.
 			cfg.BeforeServeFunc = func(_ *App) error { return errors.New("server would have served plaintext HTTP") }
 
-			err := app.Listen("127.0.0.1:0", cfg)
-			require.ErrorIs(t, err, ErrCertFileAndKeyRequired)
+			require.ErrorIs(t, app.Listen("127.0.0.1:0", cfg), ErrCertFileAndKeyRequired)
 			require.Nil(t, app.tlsHandler)
 		})
 	}

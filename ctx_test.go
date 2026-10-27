@@ -5904,8 +5904,7 @@ func Test_Ctx_SendEarlyHints(t *testing.T) {
 
 	hints := []string{"<https://cdn.com>; rel=preload; as=script"}
 	app.Get("/earlyhints", func(c Ctx) error {
-		err := c.SendEarlyHints(hints)
-		require.NoError(t, err, "SendEarlyHints")
+		require.NoError(t, c.SendEarlyHints(hints), "SendEarlyHints")
 		c.Status(StatusBadRequest)
 		return c.SendString("fail")
 	})
@@ -5926,8 +5925,7 @@ func Test_Ctx_SendEarlyHints_HTTP10(t *testing.T) {
 	// Without the protocol guard this would reach fasthttp's EarlyHints,
 	// which writes the interim response directly to the connection (and
 	// panics here, where no connection exists).
-	err := c.SendEarlyHints([]string{"<https://cdn.com/style.css>; rel=preload; as=style"})
-	require.NoError(t, err)
+	require.NoError(t, c.SendEarlyHints([]string{"<https://cdn.com/style.css>; rel=preload; as=style"}))
 	require.Equal(t, "<https://cdn.com/style.css>; rel=preload; as=style", c.GetRespHeader(HeaderLink))
 }
 
@@ -6998,8 +6996,7 @@ func Test_Ctx_XML(t *testing.T) {
 		Ages    []int    `xml:"Ages"`
 	}
 
-	err := c.XML(xmlResult{Names: []string{"Grame", "John"}, Ages: []int{1, 12, 20}})
-	require.NoError(t, err)
+	require.NoError(t, c.XML(xmlResult{Names: []string{"Grame", "John"}, Ages: []int{1, 12, 20}}))
 	require.Equal(t, `<Users><Names>Grame</Names><Names>John</Names><Ages>1</Ages><Ages>12</Ages><Ages>20</Ages></Users>`, string(c.Response().Body()))
 	require.Equal(t, "application/xml; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
@@ -7679,8 +7676,7 @@ func Test_Ctx_Render_Engine_Error(t *testing.T) {
 	app.config.Views = errorTemplateEngine{}
 	c := apptest.Ctx(t, app)
 
-	err := c.Render("index.tmpl", nil)
-	require.Error(t, err)
+	require.Error(t, c.Render("index.tmpl", nil))
 }
 
 func Test_Ctx_Render_Go_Template(t *testing.T) {
@@ -7733,8 +7729,7 @@ func Test_Ctx_SendStatus(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
 
-	err := c.SendStatus(415)
-	require.NoError(t, err)
+	require.NoError(t, c.SendStatus(415))
 	require.Equal(t, 415, c.Response().StatusCode())
 	require.Equal(t, "Unsupported Media Type", string(c.Response().Body()))
 }
@@ -7761,8 +7756,7 @@ func Test_Ctx_SendStatusNoBodyResponses(t *testing.T) {
 
 			c.Response().SetBodyString("preset body")
 
-			err := c.SendStatus(testCase.status)
-			require.NoError(t, err)
+			require.NoError(t, c.SendStatus(testCase.status))
 			require.Empty(t, c.Response().Body())
 			require.Equal(t, 0, c.Response().Header.ContentLength())
 		})
@@ -7773,8 +7767,7 @@ func Test_Ctx_SendString(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
 
-	err := c.SendString("Don't crash please")
-	require.NoError(t, err)
+	require.NoError(t, c.SendString("Don't crash please"))
 	require.Equal(t, "Don't crash please", string(c.Response().Body()))
 }
 
@@ -7916,8 +7909,7 @@ func Test_Ctx_Status(t *testing.T) {
 
 	c.Status(400)
 	require.Equal(t, 400, c.Response().StatusCode())
-	err := c.Status(415).Send([]byte("Hello, World"))
-	require.NoError(t, err)
+	require.NoError(t, c.Status(415).Send([]byte("Hello, World")))
 	require.Equal(t, 415, c.Response().StatusCode())
 	require.Equal(t, "Hello, World", string(c.Response().Body()))
 }

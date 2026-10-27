@@ -283,8 +283,7 @@ func Test_decoderBuilder(t *testing.T) {
 	var out struct {
 		X customInt `custom:"x"`
 	}
-	err := dec.Decode(&out, map[string][]string{"x": {"7"}})
-	require.NoError(t, err)
+	require.NoError(t, dec.Decode(&out, map[string][]string{"x": {"7"}}))
 	require.Equal(t, customInt(7), out.X)
 }
 

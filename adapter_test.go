@@ -475,8 +475,7 @@ func TestCollectHandlers_HTTPHandler(t *testing.T) {
 
 	ctx := apptest.Ctx(t, New())
 
-	err := converted(ctx)
-	require.NoError(t, err)
+	require.NoError(t, converted(ctx))
 	require.Equal(t, http.StatusTeapot, ctx.Response().StatusCode())
 	require.Equal(t, "ok", string(ctx.Response().Header.Peek("X-HTTP")))
 	require.Equal(t, "http", string(ctx.Response().Body()))
@@ -497,8 +496,7 @@ func TestToFiberHandler_HTTPHandler(t *testing.T) {
 
 	ctx := apptest.Ctx(t, New())
 
-	err := converted(ctx)
-	require.NoError(t, err)
+	require.NoError(t, converted(ctx))
 	require.Equal(t, "handler", string(ctx.Response().Header.Peek("X-HTTP")))
 	require.Equal(t, "through", string(ctx.Response().Body()))
 	require.NoError(t, writeErr)
@@ -517,8 +515,7 @@ func TestToFiberHandler_FasthttpHandlerWithError(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, converted)
 
-	err := converted(ctx)
-	require.EqualError(t, err, "fasthttp error")
+	require.EqualError(t, converted(ctx), "fasthttp error")
 	require.Equal(t, "error", string(ctx.Response().Header.Peek("X-FASTHTTP")))
 }
 
@@ -539,8 +536,7 @@ func TestToFiberHandler_HTTPHandler_Flush(t *testing.T) {
 
 	ctx := apptest.Ctx(t, New())
 
-	err := converted(ctx)
-	require.NoError(t, err)
+	require.NoError(t, converted(ctx))
 	require.Equal(t, "handler", string(ctx.Response().Header.Peek("X-HTTP")))
 	require.Equal(t, "through", string(ctx.Response().Body()))
 }
@@ -603,8 +599,7 @@ func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
 
 	ctx := apptest.Ctx(t, New())
 
-	err := converted(ctx)
-	require.NoError(t, err)
+	require.NoError(t, converted(ctx))
 	require.Equal(t, http.StatusNoContent, ctx.Response().StatusCode())
 }
 

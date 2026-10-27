@@ -25,8 +25,7 @@ func Test_MemoryLock(t *testing.T) {
 		go func() {
 			defer close(done)
 
-			err := l.Lock("a")
-			assert.NoError(t, err)
+			assert.NoError(t, l.Lock("a"))
 		}()
 
 		select {

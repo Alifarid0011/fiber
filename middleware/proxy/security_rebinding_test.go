@@ -763,8 +763,7 @@ func Test_Security_EnsureClientGuarded_ComposePropagatesError(t *testing.T) {
 	cli := &fasthttp.Client{ConfigureClient: func(_ *fasthttp.HostClient) error { return wantErr }}
 	ensureClientGuarded(cli)
 
-	err := cli.ConfigureClient(&fasthttp.HostClient{})
-	require.ErrorIs(t, err, wantErr)
+	require.ErrorIs(t, cli.ConfigureClient(&fasthttp.HostClient{}), wantErr)
 }
 
 // Test_Security_ClientDialer_DialsValidatedIPWithGuardDialer covers the strict-policy path for a

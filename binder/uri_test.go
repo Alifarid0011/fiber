@@ -30,8 +30,7 @@ func Test_URIBinding_Bind(t *testing.T) {
 		return ""
 	}
 
-	err := b.Bind(paramsKey, paramsFunc, &user)
-	require.NoError(t, err)
+	require.NoError(t, b.Bind(paramsKey, paramsFunc, &user))
 	require.Equal(t, "john", user.Name)
 	require.Equal(t, 42, user.Age)
 	require.Equal(t, []string{"post1,post2,post3"}, user.Posts)

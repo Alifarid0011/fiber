@@ -177,9 +177,7 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 		writeFormFile(t, mw, "avatars", "avatar2.txt", "avatar2")
 	})
 
-	err := b.Bind(req, &user)
-
-	require.NoError(t, err)
+	require.NoError(t, b.Bind(req, &user))
 	require.Equal(t, "john", user.Name)
 	require.Equal(t, 42, user.Age)
 	require.Contains(t, user.Names, "john")

@@ -341,8 +341,7 @@ func Test_Mount_Route_Names(t *testing.T) {
 func Test_Ctx_Render_Mount(t *testing.T) {
 	t.Parallel()
 	engine := &testTemplateEngine{}
-	err := engine.Load()
-	require.NoError(t, err)
+	require.NoError(t, engine.Load())
 
 	sub := New(Config{Views: engine})
 
@@ -397,8 +396,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 func Test_Ctx_Render_MountGroup(t *testing.T) {
 	t.Parallel()
 	engine := &testTemplateEngine{}
-	err := engine.Load()
-	require.NoError(t, err)
+	require.NoError(t, engine.Load())
 
 	micro := New(Config{Views: engine})
 

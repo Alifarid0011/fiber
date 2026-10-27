@@ -464,12 +464,11 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 		return nil
 	})
 
-	err := app.Listen(":0", ListenConfig{
+	require.ErrorIs(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage:   true,
 		EnablePrefork:           true,
 		PreforkRecoverThreshold: 1,
-	})
-	require.ErrorIs(t, err, prefork.ErrOverRecovery)
+	}), prefork.ErrOverRecovery)
 	require.Equal(t, "ready", buf.String())
 }
 
@@ -484,12 +483,11 @@ func Test_Hook_OnHook(t *testing.T) {
 		return nil
 	})
 
-	err := app.prefork(":0", nil, &ListenConfig{
+	require.ErrorIs(t, app.prefork(":0", nil, &ListenConfig{
 		DisableStartupMessage:   true,
 		EnablePrefork:           true,
 		PreforkRecoverThreshold: 1,
-	})
-	require.ErrorIs(t, err, prefork.ErrOverRecovery)
+	}), prefork.ErrOverRecovery)
 }
 
 func Test_Hook_OnMount(t *testing.T) {
@@ -585,8 +583,7 @@ func Test_executeOnListenHooks_Error(t *testing.T) {
 
 	app.Hooks().OnListen(func(_ ListenData) error { return errors.New("listen error") })
 
-	err := app.hooks.executeOnListenHooks(&ListenData{Host: "127.0.0.1", Port: "0"})
-	require.EqualError(t, err, "listen error")
+	require.EqualError(t, app.hooks.executeOnListenHooks(&ListenData{Host: "127.0.0.1", Port: "0"}), "listen error")
 }
 
 func Test_executeOnPreStartupMessageHooks_Error(t *testing.T) {
@@ -597,8 +594,7 @@ func Test_executeOnPreStartupMessageHooks_Error(t *testing.T) {
 		return errors.New("pre startup message error")
 	})
 
-	err := app.hooks.executeOnPreStartupMessageHooks(newPreStartupMessageData(&ListenData{}))
-	require.EqualError(t, err, "pre startup message error")
+	require.EqualError(t, app.hooks.executeOnPreStartupMessageHooks(newPreStartupMessageData(&ListenData{})), "pre startup message error")
 }
 
 func Test_executeOnPostStartupMessageHooks_Error(t *testing.T) {
@@ -609,8 +605,7 @@ func Test_executeOnPostStartupMessageHooks_Error(t *testing.T) {
 		return errors.New("post startup message error")
 	})
 
-	err := app.hooks.executeOnPostStartupMessageHooks(newPostStartupMessageData(&ListenData{}, false, false, false))
-	require.EqualError(t, err, "post startup message error")
+	require.EqualError(t, app.hooks.executeOnPostStartupMessageHooks(newPostStartupMessageData(&ListenData{}, false, false, false)), "post startup message error")
 }
 
 func Test_executeOnPreShutdownHooks_Error(t *testing.T) {
@@ -652,8 +647,7 @@ func Test_executeOnMountHooks_Error(t *testing.T) {
 		return errors.New("mount error")
 	})
 
-	err := app.hooks.executeOnMountHooks(parent)
-	require.EqualError(t, err, "mount error")
+	require.EqualError(t, app.hooks.executeOnMountHooks(parent), "mount error")
 }
 
 func Test_Hooks_ShutdownSnapshot_WithoutApp(t *testing.T) {

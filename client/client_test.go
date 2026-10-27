@@ -1645,8 +1645,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		t.Parallel()
 		client := New()
 
-		err := client.SetProxyURL("ftp://127.0.0.1:8080")
-		require.Error(t, err)
+		require.Error(t, client.SetProxyURL("ftp://127.0.0.1:8080"))
 	})
 }
 

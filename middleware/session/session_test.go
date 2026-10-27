@@ -362,8 +362,7 @@ func Test_Session_Save(t *testing.T) {
 			sess.Set("name", "john")
 
 			// save session
-			err := sess.Save()
-			require.NoError(t, err)
+			require.NoError(t, sess.Save())
 
 			cookie := ctx.Response().Header.PeekCookie("session_id")
 			if tc.cookie {
@@ -790,8 +789,7 @@ func Test_Session_Cookie_SameSite(t *testing.T) {
 			sess, ctx := sessionTestFresh(t, store)
 
 			// save session to trigger cookie setting
-			err := sess.Save()
-			require.NoError(t, err)
+			require.NoError(t, sess.Save())
 
 			// check cookie
 			cookie := string(ctx.Response().Header.PeekCookie("session_id"))
@@ -985,8 +983,7 @@ func Test_Session_Regenerate(t *testing.T) {
 		acquiredSession := loadSession(t, app, store, originalSessionUUIDString)
 		require.False(t, acquiredSession.Fresh())
 
-		err := acquiredSession.Regenerate()
-		require.NoError(t, err)
+		require.NoError(t, acquiredSession.Regenerate())
 
 		require.NotEqual(t, originalSessionUUIDString, acquiredSession.ID())
 
@@ -1490,8 +1487,7 @@ func Test_Session_RegenerateWithContext(t *testing.T) {
 
 		sess := loadSession(t, app, store, originalID)
 
-		err := sess.RegenerateWithContext(t.Context())
-		require.NoError(t, err)
+		require.NoError(t, sess.RegenerateWithContext(t.Context()))
 		require.NotEqual(t, originalID, sess.ID())
 		require.True(t, sess.Fresh())
 		// Regenerate must preserve session data (unlike Reset, which clears it).
@@ -1530,8 +1526,7 @@ func Test_Session_SaveWithContext(t *testing.T) {
 		sess, _ := sessionTestFresh(t, store)
 
 		sess.Set("name", "fenny")
-		err := sess.SaveWithContext(t.Context())
-		require.NoError(t, err)
+		require.NoError(t, sess.SaveWithContext(t.Context()))
 
 		// Verify data persisted by getting a new session with same ID
 		sess2 := loadSession(t, fiber.New(), store, sess.ID())

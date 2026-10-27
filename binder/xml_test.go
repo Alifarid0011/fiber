@@ -25,7 +25,7 @@ func Test_XMLBinding_Bind(t *testing.T) {
 	}
 
 	user := new(User)
-	err := b.Bind([]byte(`
+	require.NoError(t, b.Bind([]byte(`
 		<user>
 			<name>john</name>
 			<age>42</age>
@@ -39,8 +39,7 @@ func Test_XMLBinding_Bind(t *testing.T) {
 				</post>
 			</posts>
 		</user>
-	`), user)
-	require.NoError(t, err)
+	`), user))
 	require.Equal(t, "john", user.Name)
 	require.Equal(t, 42, user.Age)
 	require.Empty(t, user.Ignore)
