@@ -38,10 +38,8 @@ func Test_ConstraintMatchConstraint(t *testing.T) {
 			invalid:    []string{"hello"},
 		},
 		{
-			name:       "typed data",
-			constraint: newConstraint(minLenConstraintType{}, ConstraintMinLen, []string{"3"}),
-			valid:      []string{"hello"},
-			invalid:    []string{"hi"},
+			name: "typed data", constraint: newConstraint(minLenConstraintType{}, ConstraintMinLen, []string{"3"}),
+			valid: []string{"hello"}, invalid: []string{"hi"},
 		},
 	}
 
@@ -101,9 +99,7 @@ func Test_ConstraintExecute(t *testing.T) {
 	}{
 		{name: "int", handler: intConstraintType{}, valid: []string{"42"}, invalid: []string{"abc"}},
 		{
-			name:    "bool",
-			handler: boolConstraintType{},
-			valid:   []string{"true", "false", "1", "0"},
+			name: "bool", handler: boolConstraintType{}, valid: []string{"true", "false", "1", "0"},
 			invalid: []string{"maybe"},
 		},
 		{
@@ -136,16 +132,11 @@ func Test_ConstraintExecute(t *testing.T) {
 			},
 		},
 		{
-			name:    "guid",
-			handler: guidConstraintType{},
-			valid:   []string{"12345678-1234-1234-1234-123456789abc"},
+			name: "guid", handler: guidConstraintType{}, valid: []string{"12345678-1234-1234-1234-123456789abc"},
 			invalid: []string{"not-a-guid"},
 		},
 		{
-			name:    "regex compiled",
-			handler: regexConstraintType{},
-			data:    []any{re},
-			valid:   []string{"123"},
+			name: "regex compiled", handler: regexConstraintType{}, data: []any{re}, valid: []string{"123"},
 			invalid: []string{"abc"},
 		},
 	}
@@ -277,7 +268,6 @@ func Test_CustomConstraintWrapper_ExecuteKeepsLegacyArgsWithAnalyzer(t *testing.
 
 func Test_resolveConstraintName_UnicodeFolding(t *testing.T) {
 	t.Parallel()
-
 	// Aliases fold with full Unicode simple case mapping, so locale-style
 	// uppercase such as the Turkish dotted capital I still canonicalizes;
 	// switching to an ASCII-only fold silently drops these constraints.

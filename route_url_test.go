@@ -2,8 +2,6 @@ package fiber
 
 import (
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"testing"
 
@@ -76,13 +74,9 @@ func Test_Route_URL_ParameterRepresentability(t *testing.T) {
 			require.Equal(t, tc.want, location)
 			require.Equal(t, location, ctxLocation)
 			require.Equal(t, location, string(ctx.Response().Header.Peek(HeaderLocation)))
-			response, err := app.Test(httptest.NewRequest(MethodGet, location, http.NoBody))
-			require.NoError(t, err)
-			defer func() { require.NoError(t, response.Body.Close()) }()
-			require.Equal(t, StatusOK, response.StatusCode)
-			body := apptest.Body(t, response)
-			value := body
+			value := apptest.Body(t, apptest.Expect(t, app, location, StatusOK))
 			if !tc.unescape {
+				var err error
 				value, err = url.PathUnescape(value)
 				require.NoError(t, err)
 			}
@@ -91,8 +85,6 @@ func Test_Route_URL_ParameterRepresentability(t *testing.T) {
 	}
 }
 
-// Test_Route_URL_MountedRepresentabilityConfig verifies that mounted routes
-// and their automatic HEAD copies validate using the parent's decoding policy.
 func Test_Route_urlHasDotSegment(t *testing.T) {
 	t.Parallel()
 	route := &Route{}
@@ -106,6 +98,8 @@ func Test_Route_urlHasDotSegment(t *testing.T) {
 	}
 }
 
+// Test_Route_URL_MountedRepresentabilityConfig verifies that mounted routes
+// and their automatic HEAD copies validate using the parent's decoding policy.
 func Test_Route_URL_MountedRepresentabilityConfig(t *testing.T) {
 	t.Parallel()
 	for _, parentUnescape := range []bool{false, true} {

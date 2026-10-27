@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp/prefork"
 
 	"github.com/gofiber/fiber/v3/log"
@@ -65,26 +64,17 @@ func Test_Hook_OnRoute_Mount(t *testing.T) {
 func Test_Hook_OnName(t *testing.T) {
 	t.Parallel()
 	app := New()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
+	var names string
 	app.Hooks().OnName(func(r Route) error {
-		_, err := buf.WriteString(r.Name)
-		require.NoError(t, err)
-
+		names += r.Name
 		return nil
 	})
-
 	app.Get("/", testSimpleHandler).Name("index")
-
 	subApp := New()
 	subApp.Get("/test", testSimpleHandler)
 	subApp.Get("/test2", testSimpleHandler)
-
 	app.Use("/sub", subApp)
-
-	require.Equal(t, "index", buf.String())
+	require.Equal(t, "index", names)
 }
 
 func Test_Hook_OnName_Error(t *testing.T) {
@@ -99,20 +89,14 @@ func Test_Hook_OnName_Error(t *testing.T) {
 func Test_Hook_OnGroup(t *testing.T) {
 	t.Parallel()
 	app := New()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
+	var prefixes string
 	app.Hooks().OnGroup(func(g Group) error {
-		_, err := buf.WriteString(g.Prefix)
-		require.NoError(t, err)
+		prefixes += g.Prefix
 		return nil
 	})
-
 	grp := app.Group("/x").Name("x.")
 	grp.Group("/a")
-
-	require.Equal(t, "/x/x/a", buf.String())
+	require.Equal(t, "/x/x/a", prefixes)
 }
 
 func Test_Hook_OnGroup_Mount(t *testing.T) {
@@ -133,33 +117,20 @@ func Test_Hook_OnGroup_Mount(t *testing.T) {
 func Test_Hook_OnGroupName(t *testing.T) {
 	t.Parallel()
 	app := New()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	buf2 := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf2)
-
+	var groupNames, routeNames string
 	app.Hooks().OnGroupName(func(g Group) error {
-		_, err := buf.WriteString(g.name)
-		require.NoError(t, err)
-
+		groupNames += g.name
 		return nil
 	})
-
 	app.Hooks().OnName(func(r Route) error {
-		_, err := buf2.WriteString(r.Name)
-		require.NoError(t, err)
-
+		routeNames += r.Name
 		return nil
 	})
-
 	grp := app.Group("/x").Name("x.")
 	grp.Get("/test", testSimpleHandler).Name("test")
 	grp.Get("/test2", testSimpleHandler)
-
-	require.Equal(t, "x.", buf.String())
-	require.Equal(t, "x.test", buf2.String())
+	require.Equal(t, "x.", groupNames)
+	require.Equal(t, "x.test", routeNames)
 }
 
 func Test_Hook_OnGroupName_Error(t *testing.T) {
@@ -174,19 +145,13 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 func Test_Hook_OnPreShutdown(t *testing.T) {
 	t.Parallel()
 	app := New()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
+	var calls string
 	app.Hooks().OnPreShutdown(func() error {
-		_, err := buf.WriteString("pre-shutdown")
-		require.NoError(t, err)
-
+		calls += "pre-shutdown"
 		return nil
 	})
-
 	require.NoError(t, app.Shutdown())
-	require.Equal(t, "pre-shutdown", buf.String())
+	require.Equal(t, "pre-shutdown", calls)
 }
 
 func Test_Hook_OnPostShutdown(t *testing.T) {
@@ -257,24 +222,17 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 func Test_Hook_OnListen(t *testing.T) {
 	t.Parallel()
 	app := New()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
+	var calls string
 	app.Hooks().OnListen(func(_ ListenData) error {
-		_, err := buf.WriteString("ready")
-		require.NoError(t, err)
-
+		calls += "ready"
 		return nil
 	})
-
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
 		assert.NoError(t, app.Shutdown())
 	}()
 	require.NoError(t, app.Listen(":0"))
-
-	require.Equal(t, "ready", buf.String())
+	require.Equal(t, "ready", calls)
 }
 
 func Test_ListenDataMetadata(t *testing.T) {
@@ -285,8 +243,8 @@ func Test_ListenDataMetadata(t *testing.T) {
 	cfg := ListenConfig{EnablePrefork: true}
 	childPIDs := []int{11, 22}
 	listenData := app.prepareListenData(":3030", true, &cfg, childPIDs)
-
-	app.Hooks().OnListen(func(data ListenData) error {
+	// requireMeta requires data to hold what the app and listen config above set.
+	requireMeta := func(data *ListenData) {
 		require.Equal(t, globalIpv4Addr, data.Host)
 		require.Equal(t, "3030", data.Port)
 		require.True(t, data.TLS)
@@ -298,25 +256,16 @@ func Test_ListenDataMetadata(t *testing.T) {
 		require.True(t, data.Prefork)
 		require.Equal(t, childPIDs, data.ChildPIDs)
 		require.Equal(t, app.config.ColorScheme, data.ColorScheme)
+	}
 
+	app.Hooks().OnListen(func(data ListenData) error {
+		requireMeta(&data)
 		return nil
 	})
-
 	app.runOnListenHooks(listenData)
 
 	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
-		require.Equal(t, globalIpv4Addr, data.Host)
-		require.Equal(t, "3030", data.Port)
-		require.True(t, data.TLS)
-		require.Equal(t, Version, data.Version)
-		require.Equal(t, "meta", data.AppName)
-		require.Equal(t, 42, data.HandlerCount)
-		require.Equal(t, runtime.GOMAXPROCS(0), data.ProcessCount)
-		require.Equal(t, os.Getpid(), data.PID)
-		require.True(t, data.Prefork)
-		require.Equal(t, childPIDs, data.ChildPIDs)
-		require.Equal(t, app.config.ColorScheme, data.ColorScheme)
-
+		requireMeta(data.ListenData)
 		data.ResetEntries()
 
 		data.AddInfo("custom", "Custom Info", "value", 3)
@@ -340,14 +289,14 @@ func Test_ListenDataMetadata(t *testing.T) {
 
 // rootMiscARunPreStartupHook registers hook as the only OnPreStartupMessage
 // hook of a new app and executes the app's hooks on a blank
-// PreStartupMessageData. The assertions live in hook, which must not fail.
+// PreStartupMessageData, whose entries are reset before hook runs. The
+// assertions live in hook, which must not fail.
 func rootMiscARunPreStartupHook(t *testing.T, hook func(data *PreStartupMessageData)) {
 	t.Helper()
-
 	app := New()
 	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+		data.ResetEntries()
 		hook(data)
-
 		return nil
 	})
 
@@ -360,11 +309,8 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 	t.Run("EntryKeys", func(t *testing.T) {
 		t.Parallel()
 		rootMiscARunPreStartupHook(t, func(data *PreStartupMessageData) {
-			data.ResetEntries()
-
 			data.AddInfo("key1", "Title 1", "Value 1", 1)
 			data.AddInfo("key2", "Title 2", "Value 2", 2)
-
 			keys := data.EntryKeys()
 			require.Len(t, keys, 2)
 			require.Equal(t, "key1", keys[0])
@@ -375,13 +321,9 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 	t.Run("ResetEntries", func(t *testing.T) {
 		t.Parallel()
 		rootMiscARunPreStartupHook(t, func(data *PreStartupMessageData) {
-			data.ResetEntries()
-
 			data.AddInfo("key1", "Title 1", "Value 1", 1)
 			data.AddInfo("key2", "Title 2", "Value 2", 2)
-
 			require.Len(t, data.entries, 2)
-
 			data.ResetEntries()
 			require.Empty(t, data.entries)
 		})
@@ -400,8 +342,6 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			rootMiscARunPreStartupHook(t, func(data *PreStartupMessageData) {
-				data.ResetEntries()
-
 				tc.add(data, "key1", "Title 1", "Value 1", 1)
 				require.Len(t, data.entries, 1)
 				require.Equal(t, "key1", data.entries[0].key)
@@ -416,11 +356,8 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 	t.Run("AddInfo-UpdateExisting", func(t *testing.T) {
 		t.Parallel()
 		rootMiscARunPreStartupHook(t, func(data *PreStartupMessageData) {
-			data.ResetEntries()
-
 			data.AddInfo("key1", "Title 1", "Value 1", 1)
 			data.AddInfo("key1", "Updated Title", "Updated Value", 2)
-
 			require.Len(t, data.entries, 1)
 			require.Equal(t, "key1", data.entries[0].key)
 			require.Equal(t, "Updated Title", data.entries[0].title)
@@ -432,13 +369,9 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 	t.Run("DeleteEntry", func(t *testing.T) {
 		t.Parallel()
 		rootMiscARunPreStartupHook(t, func(data *PreStartupMessageData) {
-			data.ResetEntries()
-
 			data.AddInfo("key1", "Title 1", "Value 1", 1)
 			data.AddInfo("key2", "Title 2", "Value 2", 2)
-
 			require.Len(t, data.entries, 2)
-
 			data.DeleteEntry("key1")
 			require.Len(t, data.entries, 1)
 			require.Equal(t, "key2", data.entries[0].key)
@@ -453,23 +386,17 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 	enableTestPreforkMaster(t)
 
 	app := New()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
+	var calls string
 	app.Hooks().OnListen(func(_ ListenData) error {
-		_, err := buf.WriteString("ready")
-		require.NoError(t, err)
-
+		calls += "ready"
 		return nil
 	})
-
 	require.ErrorIs(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage:   true,
 		EnablePrefork:           true,
 		PreforkRecoverThreshold: 1,
 	}), prefork.ErrOverRecovery)
-	require.Equal(t, "ready", buf.String())
+	require.Equal(t, "ready", calls)
 }
 
 func Test_Hook_OnHook(t *testing.T) {
@@ -577,35 +504,42 @@ func Test_executeOnGroupHooks_ErrorWithMount(t *testing.T) {
 	}
 }
 
-func Test_executeOnListenHooks_Error(t *testing.T) {
+// Test_executeOnHooks_Error pins that the error a hook returns reaches the
+// caller of the function that executes the hooks.
+func Test_executeOnHooks_Error(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	app.Hooks().OnListen(func(_ ListenData) error { return errors.New("listen error") })
-
-	require.EqualError(t, app.hooks.executeOnListenHooks(&ListenData{Host: "127.0.0.1", Port: "0"}), "listen error")
-}
-
-func Test_executeOnPreStartupMessageHooks_Error(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Hooks().OnPreStartupMessage(func(_ *PreStartupMessageData) error {
-		return errors.New("pre startup message error")
-	})
-
-	require.EqualError(t, app.hooks.executeOnPreStartupMessageHooks(newPreStartupMessageData(&ListenData{})), "pre startup message error")
-}
-
-func Test_executeOnPostStartupMessageHooks_Error(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Hooks().OnPostStartupMessage(func(_ *PostStartupMessageData) error {
-		return errors.New("post startup message error")
-	})
-
-	require.EqualError(t, app.hooks.executeOnPostStartupMessageHooks(newPostStartupMessageData(&ListenData{}, false, false, false)), "post startup message error")
+	for _, tc := range []struct {
+		run  func(t *testing.T, app *App) error // registers a failing hook and executes the hooks
+		name string
+		err  string
+	}{
+		{name: "OnListen", err: "listen error", run: func(_ *testing.T, app *App) error {
+			app.Hooks().OnListen(func(_ ListenData) error { return errors.New("listen error") })
+			return app.hooks.executeOnListenHooks(&ListenData{Host: "127.0.0.1", Port: "0"})
+		}},
+		{name: "OnPreStartupMessage", err: "pre startup message error", run: func(_ *testing.T, app *App) error {
+			app.Hooks().OnPreStartupMessage(func(_ *PreStartupMessageData) error { return errors.New("pre startup message error") })
+			return app.hooks.executeOnPreStartupMessageHooks(newPreStartupMessageData(&ListenData{}))
+		}},
+		{name: "OnPostStartupMessage", err: "post startup message error", run: func(_ *testing.T, app *App) error {
+			app.Hooks().OnPostStartupMessage(func(_ *PostStartupMessageData) error { return errors.New("post startup message error") })
+			return app.hooks.executeOnPostStartupMessageHooks(newPostStartupMessageData(&ListenData{}, false, false, false))
+		}},
+		{name: "OnMount", err: "mount error", run: func(t *testing.T, app *App) error {
+			t.Helper()
+			parent := New()
+			app.Hooks().OnMount(func(a *App) error {
+				require.Equal(t, parent, a)
+				return errors.New("mount error")
+			})
+			return app.hooks.executeOnMountHooks(parent)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.EqualError(t, tc.run(t, New()), tc.err)
+		})
+	}
 }
 
 func Test_executeOnPreShutdownHooks_Error(t *testing.T) {
@@ -635,19 +569,6 @@ func Test_executeOnForkHooks_Error(t *testing.T) {
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 	app.hooks.executeOnForkHooks(1)
 	require.NotZero(t, buf.Len())
-}
-
-func Test_executeOnMountHooks_Error(t *testing.T) {
-	t.Parallel()
-	app := New()
-	parent := New()
-
-	app.Hooks().OnMount(func(a *App) error {
-		require.Equal(t, parent, a)
-		return errors.New("mount error")
-	})
-
-	require.EqualError(t, app.hooks.executeOnMountHooks(parent), "mount error")
 }
 
 func Test_Hooks_ShutdownSnapshot_WithoutApp(t *testing.T) {

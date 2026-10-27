@@ -26,13 +26,9 @@ func Test_App_Mount_PreservesSubAppRegexHandler(t *testing.T) {
 	sub.Get("/resource/:id<regex(ALLOW)>", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	parent.Use("/mounted", sub)
-
 	apptest.Expect(t, sub, "/resource/ALLOW", StatusOK)
-
 	apptest.Expect(t, parent, "/mounted/resource/ALLOW", StatusOK)
-
 	apptest.Expect(t, sub, "/resource/allow", StatusNotFound)
-
 	apptest.Expect(t, parent, "/mounted/resource/allow", StatusNotFound)
 }
 
@@ -73,19 +69,12 @@ func Test_App_Mount_Nested(t *testing.T) {
 	two.Use("/three", three)
 	app.Use("/one", one)
 	one.Use("/two", two)
-
 	one.Get("/doe", func(c Ctx) error { return c.SendStatus(StatusOK) })
-
 	two.Get("/nested", func(c Ctx) error { return c.SendStatus(StatusOK) })
-
 	three.Get("/test", func(c Ctx) error { return c.SendStatus(StatusOK) })
-
-	apptest.Expect(t, app, "/one/doe", 200)
-
-	apptest.Expect(t, app, "/one/two/nested", 200)
-
-	apptest.Expect(t, app, "/one/two/three/test", 200)
-
+	for _, path := range []string{"/one/doe", "/one/two/nested", "/one/two/three/test"} {
+		apptest.Expect(t, app, path, 200)
+	}
 	require.Equal(t, uint32(6), app.handlersCount)
 }
 
@@ -95,8 +84,6 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 
 	app := New()
 	subApp := New()
-
-	// app setup
 	subApp.Get("/hello", createTestHandler("subapp hello!"))
 	subApp.Get("/world", createTestHandler("subapp world!")) // <- wins
 
@@ -112,7 +99,6 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 
 	// 404 Handler
 	app.Use(func(c Ctx) error { return c.SendStatus(StatusNotFound) })
-	// expectation check
 	apptest.ExpectBody(t, app, "/world", StatusOK, "subapp world!")
 	apptest.ExpectBody(t, app, "/hello", StatusOK, "app hello!")
 	apptest.ExpectBody(t, app, "/bar", StatusOK, "subapp bar!")
@@ -127,51 +113,40 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 	app := New()
 	subApp1 := New()
 	subApp2 := New()
-	// app setup
-	{
-		app.Use(func(c Ctx) error {
-			// set initial value
-			c.Locals("world", "world")
-			return c.Next()
-		})
-		app.Use("/subApp1", subApp1)
-		app.Use(func(c Ctx) error { return c.Next() })
-		app.Get("/bar", func(c Ctx) error { return c.SendString("ok") })
-		app.Use(func(c Ctx) error {
-			// is overwritten when the positioning is not correct
-			c.Locals("world", "hello")
-			return c.Next()
-		})
-		methods := subApp2.Group("/subApp2")
-		methods.Get("/world", func(c Ctx) error {
-			v, ok := c.Locals("world").(string)
-			if !ok {
-				panic("unexpected data type")
-			}
-			return c.SendString(v)
-		})
-		app.Use("", subApp2)
-	}
+	app.Use(func(c Ctx) error {
+		// set initial value
+		c.Locals("world", "world")
+		return c.Next()
+	})
+	app.Use("/subApp1", subApp1)
+	app.Use(func(c Ctx) error { return c.Next() })
+	app.Get("/bar", func(c Ctx) error { return c.SendString("ok") })
+	app.Use(func(c Ctx) error {
+		// is overwritten when the positioning is not correct
+		c.Locals("world", "hello")
+		return c.Next()
+	})
+	methods := subApp2.Group("/subApp2")
+	methods.Get("/world", func(c Ctx) error {
+		v, ok := c.Locals("world").(string)
+		if !ok {
+			panic("unexpected data type")
+		}
+		return c.SendString(v)
+	})
+	app.Use("", subApp2)
 
 	apptest.ExpectBody(t, app, "/subApp2/world", StatusOK, "hello")
 
 	routeStackGET := app.Stack()[0]
-	require.True(t, routeStackGET[0].use)
-	require.Equal(t, "/", routeStackGET[0].path)
-
-	require.True(t, routeStackGET[1].use)
-	require.Equal(t, "/", routeStackGET[1].path)
-
-	require.False(t, routeStackGET[2].use)
-	require.Equal(t, "/bar", routeStackGET[2].path)
-
-	require.True(t, routeStackGET[3].use)
-	require.Equal(t, "/", routeStackGET[3].path)
-
-	require.False(t, routeStackGET[4].use)
-	require.Equal(t, "/subapp2/world", routeStackGET[4].path)
-
 	require.Len(t, routeStackGET, 5)
+	for i, want := range []struct {
+		path string
+		use  bool
+	}{{"/", true}, {"/", true}, {"/bar", false}, {"/", true}, {"/subapp2/world", false}} {
+		require.Equal(t, want.use, routeStackGET[i].use, "route %d", i)
+		require.Equal(t, want.path, routeStackGET[i].path, "route %d", i)
+	}
 }
 
 func Test_App_MountPath(t *testing.T) {
@@ -281,7 +256,6 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 
 func Test_Mount_Route_Names(t *testing.T) {
 	t.Parallel()
-	// create sub-app with 2 handlers:
 	subApp1 := New()
 	subApp1.Get("/users", func(c Ctx) error {
 		url, err := c.GetRouteURL("add-user", Map{})
@@ -297,13 +271,11 @@ func Test_Mount_Route_Names(t *testing.T) {
 		return nil
 	}).Name("add-user")
 
-	// create sub-app with 2 handlers inside a group:
 	subApp2 := New()
 	app2Grp := subApp2.Group("/users").Name("users.")
 	app2Grp.Get("", emptyHandler).Name("get")
 	app2Grp.Post("", emptyHandler).Name("add")
 
-	// put both sub-apps into root app
 	rootApp := New()
 	_ = rootApp.Use("/app1", subApp1)
 	_ = rootApp.Use("/app2", subApp2)
@@ -358,33 +330,18 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	t.Parallel()
 	engine := &testTemplateEngine{}
-	err := engine.Load()
-	require.NoError(t, err)
-
+	require.NoError(t, engine.Load())
 	engine2 := &testTemplateEngine{path: "testdata2"}
-	err = engine2.Load()
-	require.NoError(t, err)
-
+	require.NoError(t, engine2.Load())
 	engine3 := &testTemplateEngine{path: "testdata3"}
-	err = engine3.Load()
-	require.NoError(t, err)
+	require.NoError(t, engine3.Load())
 
 	sub := New(Config{Views: engine3})
-
 	sub2 := New(Config{Views: engine2})
-
 	app := New(Config{Views: engine})
-
-	app.Get("/test", func(c Ctx) error {
-		return c.Render("index.tmpl", Map{"Title": "Hello, World!"})
-	})
-
-	sub.Get("/world/:name", func(c Ctx) error {
-		return c.Render("hello_world.tmpl", Map{"Name": c.Params("name")})
-	})
-
+	app.Get("/test", func(c Ctx) error { return c.Render("index.tmpl", Map{"Title": "Hello, World!"}) })
+	sub.Get("/world/:name", func(c Ctx) error { return c.Render("hello_world.tmpl", Map{"Name": c.Params("name")}) })
 	sub2.Get("/moment", func(c Ctx) error { return c.Render("bruh.tmpl", Map{}) })
-
 	sub.Use("/bruh", sub2)
 	app.Use("/hello", sub)
 
@@ -412,33 +369,32 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 }
 
 // Test_App_Mount_FewerRequestMethods verifies that a sub-app serving only some
-// of the parent's request methods can be mounted: the parent must read the
-// sub-app's routes by method, not by its own stack index.
+// of the parent's request methods can be mounted, directly and through another
+// mount: the parent must read the sub-app's routes by method, not by its own
+// stack index.
 func Test_App_Mount_FewerRequestMethods(t *testing.T) {
 	t.Parallel()
-	micro := New(Config{RequestMethods: []string{MethodGet}})
-	micro.Get("/doe", func(c Ctx) error { return c.SendString("doe") })
-
-	app := New()
-	app.Use("/john", micro)
-
-	apptest.ExpectBody(t, app, "/john/doe", StatusOK, "doe")
-}
-
-// Test_App_Mount_FewerRequestMethodsNested verifies the same for a sub-app
-// reached through another mount.
-func Test_App_Mount_FewerRequestMethodsNested(t *testing.T) {
-	t.Parallel()
-	micro := New(Config{RequestMethods: []string{MethodGet}})
-	micro.Get("/doe", func(c Ctx) error { return c.SendString("doe") })
-
-	sub := New()
-	sub.Use("/v1", micro)
-
-	app := New()
-	app.Use("/john", sub)
-
-	apptest.ExpectBody(t, app, "/john/v1/doe", StatusOK, "doe")
+	for _, tc := range []struct {
+		name, path string
+		nested     bool // micro is reached through another mount
+	}{
+		{name: "direct", path: "/john/doe"},
+		{name: "nested", path: "/john/v1/doe", nested: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			micro := New(Config{RequestMethods: []string{MethodGet}})
+			micro.Get("/doe", func(c Ctx) error { return c.SendString("doe") })
+			mounted := micro
+			if tc.nested {
+				mounted = New()
+				mounted.Use("/v1", micro)
+			}
+			app := New()
+			app.Use("/john", mounted)
+			apptest.ExpectBody(t, app, tc.path, StatusOK, "doe")
+		})
+	}
 }
 
 // Test_App_Mount_ReorderedRequestMethods verifies that a sub-app which lists
@@ -446,7 +402,6 @@ func Test_App_Mount_FewerRequestMethodsNested(t *testing.T) {
 // the method it was registered with.
 func Test_App_Mount_ReorderedRequestMethods(t *testing.T) {
 	t.Parallel()
-
 	// Swap GET and POST, so the two apps' stack indexes disagree.
 	methods := append([]string{}, DefaultMethods...)
 	for i, method := range methods {
@@ -484,19 +439,13 @@ func (*onlyBarConstraint) Name() string { return "onlybar" }
 
 func (*onlyBarConstraint) Execute(param string, _ ...string) bool { return param == "bar" }
 
-// sameNameFooConstraint and sameNameBarConstraint share a name and accept
-// different values, as two apps mounted side by side are free to do.
-type sameNameFooConstraint struct{}
+// mountSameNameConstraint is named "same" whatever value it accepts, as two
+// apps mounted side by side are free to give one name different meanings.
+type mountSameNameConstraint struct{ allowed string }
 
-func (*sameNameFooConstraint) Name() string { return "same" }
+func (*mountSameNameConstraint) Name() string { return "same" }
 
-func (*sameNameFooConstraint) Execute(param string, _ ...string) bool { return param == "foo" }
-
-type sameNameBarConstraint struct{}
-
-func (*sameNameBarConstraint) Name() string { return "same" }
-
-func (*sameNameBarConstraint) Execute(param string, _ ...string) bool { return param == "bar" }
+func (c *mountSameNameConstraint) Execute(param string, _ ...string) bool { return param == c.allowed }
 
 // Test_App_Mount_SiblingConstraintNames verifies that a constraint binds only
 // the routes of the app that registered it: two apps mounted side by side can
@@ -504,18 +453,17 @@ func (*sameNameBarConstraint) Execute(param string, _ ...string) bool { return p
 // other's.
 func Test_App_Mount_SiblingConstraintNames(t *testing.T) {
 	t.Parallel()
-
 	// A fresh tree per case: mounting one app on two parents would have the
 	// first expand it before the second cloned it.
 	build := func() *App {
 		handler := func(c Ctx) error { return c.SendString("ok") }
 
 		foo := New()
-		foo.RegisterCustomConstraint(&sameNameFooConstraint{})
+		foo.RegisterCustomConstraint(&mountSameNameConstraint{allowed: "foo"})
 		foo.Get("/:value<same>", handler)
 
 		bar := New()
-		bar.RegisterCustomConstraint(&sameNameBarConstraint{})
+		bar.RegisterCustomConstraint(&mountSameNameConstraint{allowed: "bar"})
 		bar.Get("/:value<same>", handler)
 
 		subApp := New()
@@ -634,33 +582,33 @@ func Test_App_Mount_RootMountKeepsParentAutoHead(t *testing.T) {
 }
 
 // Test_App_Mount_ParametricPrefix verifies that a mount prefix carrying a
-// parameter is matched as a pattern. The prefix rewrites every route of the
-// mounted app, so the parameters it introduces have to be rebuilt onto them.
+// parameter is matched as a pattern, also when an outer mount applies the
+// prefix a second time. The prefix rewrites every route of the mounted app, so
+// the parameters it introduces have to be rebuilt onto them.
 func Test_App_Mount_ParametricPrefix(t *testing.T) {
 	t.Parallel()
-	micro := New()
-	micro.Get("/doe", func(c Ctx) error { return c.SendString("version=" + c.Params("Version")) })
-
-	app := New()
-	app.Use("/v1/:Version", micro)
-
-	apptest.ExpectBody(t, app, "/v1/42/doe", StatusOK, "version=42")
-}
-
-// Test_App_Mount_ParametricPrefixNested verifies the same when the prefix is
-// applied a second time, by an outer mount.
-func Test_App_Mount_ParametricPrefixNested(t *testing.T) {
-	t.Parallel()
-	micro := New()
-	micro.Get("/doe", func(c Ctx) error { return c.SendString("version=" + c.Params("version")) })
-
-	sub := New()
-	sub.Use("/v1/:version", micro)
-
-	app := New()
-	app.Use("/john", sub)
-
-	apptest.ExpectBody(t, app, "/john/v1/42/doe", StatusOK, "version=42")
+	for _, tc := range []struct {
+		name, param, path string
+		nested            bool // micro is mounted under the prefix by an app that is mounted itself
+	}{
+		{name: "direct", param: "Version", path: "/v1/42/doe"},
+		{name: "nested", param: "version", path: "/john/v1/42/doe", nested: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			micro := New()
+			micro.Get("/doe", func(c Ctx) error { return c.SendString("version=" + c.Params(tc.param)) })
+			app := New()
+			if tc.nested {
+				sub := New()
+				sub.Use("/v1/:"+tc.param, micro)
+				app.Use("/john", sub)
+			} else {
+				app.Use("/v1/:"+tc.param, micro)
+			}
+			apptest.ExpectBody(t, app, tc.path, StatusOK, "version=42")
+		})
+	}
 }
 
 // Test_App_Mount_CaseInsensitivePath verifies that a mount path is matched by

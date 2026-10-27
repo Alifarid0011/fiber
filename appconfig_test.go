@@ -47,7 +47,6 @@ func Test_AppConfigReader(t *testing.T) {
 
 	t.Run("the reader cannot be replaced", func(t *testing.T) {
 		t.Parallel()
-
 		// init installed the reader, so no later caller can change what
 		// Immutable means for the rest of the process.
 		appconfig.SetReader(func(any) appconfig.Hot {

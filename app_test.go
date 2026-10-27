@@ -93,16 +93,14 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 				time.Sleep(300 * time.Millisecond) // Simulate time-consuming operation
 				return c.SendString("ok")
 			},
-			timeout:    50 * time.Millisecond,  // // Short timeout to ensure triggering
+			timeout:    50 * time.Millisecond,  // Short timeout to ensure triggering
 			sleepTime:  500 * time.Millisecond, // Wait time longer than handler execution time
 			expectLeak: true,
 		},
 		{
-			name: "Without timeout (no leak)",
-			handler: func(c Ctx) error {
-				return c.SendString("ok") // Return immediately
-			},
-			timeout:    0, // Disable timeout
+			name:       "Without timeout (no leak)",
+			handler:    func(c Ctx) error { return c.SendString("ok") }, // Return immediately
+			timeout:    0,                                               // Disable timeout
 			sleepTime:  100 * time.Millisecond,
 			expectLeak: false,
 		},
@@ -112,13 +110,11 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			app := New()
 
-			// Record initial goroutine count
 			initialGoroutines := runtime.NumGoroutine()
 			t.Logf("[%s] Initial goroutines: %d", tc.name, initialGoroutines)
 
 			app.Get("/", tc.handler)
 
-			// Send 10 requests
 			numRequests := 10
 			for range numRequests {
 				req := httptest.NewRequest(MethodGet, "/", http.NoBody)
@@ -137,7 +133,6 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 			// Wait for normal goroutines to complete
 			time.Sleep(tc.sleepTime)
 
-			// Check final goroutine count
 			finalGoroutines := runtime.NumGoroutine()
 			leakedGoroutines := max(finalGoroutines-initialGoroutines, 0)
 			t.Logf("[%s] Final goroutines: %d (leaked: %d)", tc.name, finalGoroutines, leakedGoroutines)
@@ -165,37 +160,24 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 func Test_App_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
 	app := New()
-
 	app.Use(func(c Ctx) error { return c.Next() })
-
 	app.Post("/", testEmptyHandler)
-
 	app.Options("/", testEmptyHandler)
-
 	resp := apptest.Expect(t, app, apptest.Req(MethodPost, "/"), 200)
 	require.Empty(t, resp.Header.Get(HeaderAllow))
 
-	resp = apptest.Expect(t, app, "/", 405)
-	require.Equal(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
-
-	resp = apptest.Expect(t, app, apptest.Req(MethodPatch, "/"), 405)
-	require.Equal(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
-
-	resp = apptest.Expect(t, app, apptest.Req(MethodPut, "/"), 405)
-	require.Equal(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
-
+	// requireAllow requires a 405 listing allow for each of methods.
+	requireAllow := func(allow string, methods ...string) {
+		for _, method := range methods {
+			resp := apptest.Expect(t, app, apptest.Req(method, "/"), 405)
+			require.Equal(t, allow, resp.Header.Get(HeaderAllow), method)
+		}
+	}
+	requireAllow("POST, OPTIONS", MethodGet, MethodPatch, MethodPut)
 	app.Get("/", testEmptyHandler)
-
-	resp = apptest.Expect(t, app, apptest.Req(MethodTrace, "/"), 405)
-	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
-
-	resp = apptest.Expect(t, app, apptest.Req(MethodPatch, "/"), 405)
-	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
-
+	requireAllow("GET, HEAD, POST, OPTIONS", MethodTrace, MethodPatch)
 	app.Head("/", testEmptyHandler)
-
-	resp = apptest.Expect(t, app, apptest.Req(MethodPut, "/"), 405)
-	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
+	requireAllow("GET, HEAD, POST, OPTIONS", MethodPut)
 }
 
 func Test_App_QueryMethod_AllowHeader(t *testing.T) {
@@ -299,10 +281,6 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 	logHeaderSlice := make([]string, 5000)
 	request.Header.Set("Very-Long-Header", strings.Join(logHeaderSlice, "-"))
 	_, err := app.Test(request)
-	if err == nil {
-		t.Error("Expect an error at app.Test(request)")
-	}
-
 	// assert on the error type, not on fasthttp's message wording
 	require.ErrorAs(t, err, new(*fasthttp.ErrSmallBuffer))
 }
@@ -312,16 +290,8 @@ func Test_App_Errors(t *testing.T) {
 	app := New(Config{BodyLimit: 4})
 
 	app.Get("/", func(_ Ctx) error { return errors.New("hi, i'm an error") })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 500, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "hi, i'm an error", string(body))
-
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/", strings.NewReader("big body")))
+	apptest.ExpectBody(t, app, "/", 500, "hi, i'm an error")
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", strings.NewReader("big body")))
 	if err != nil {
 		require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge, "app.Test(req)")
 	}
@@ -389,20 +359,13 @@ func Test_App_CustomConstraint(t *testing.T) {
 	app.RegisterCustomConstraint(&customConstraint{})
 
 	app.Get("/test/:param<test(test)>", func(c Ctx) error { return c.SendString("test") })
-
 	app.Get("/test2/:param<test>", func(c Ctx) error { return c.SendString("test") })
-
 	app.Get("/test3/:param<test()>", func(c Ctx) error { return c.SendString("test") })
-
-	apptest.Expect(t, app, "/test/test", 200)
-
-	apptest.Expect(t, app, "/test/test2", 404)
-
-	apptest.Expect(t, app, "/test2/c", 200)
-
-	apptest.Expect(t, app, "/test2/cc", 404)
-
-	apptest.Expect(t, app, "/test3/cc", 404)
+	for path, status := range map[string]int{
+		"/test/test": 200, "/test/test2": 404, "/test2/c": 200, "/test2/cc": 404, "/test3/cc": 404,
+	} {
+		apptest.Expect(t, app, path, status)
+	}
 }
 
 func Test_App_ErrorHandler_Custom(t *testing.T) {
@@ -458,36 +421,34 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 	apptest.ExpectBody(t, app, "/test", 500, "1: USE error")
 }
 
-func Test_DefaultErrorHandler_TypedNilError(t *testing.T) {
+// Test_DefaultErrorHandler pins the response DefaultErrorHandler writes: a
+// typed nil error is an internal error, and a wrapped fiber.Error keeps its
+// code but answers with the wrapping message.
+func Test_DefaultErrorHandler(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		err  error
-		name string
+	internal := utils.StatusMessage(StatusInternalServerError)
+	wrapped := fmt.Errorf("auth failed: %w", ErrUnauthorized)
+	for _, tc := range []struct {
+		err        error
+		name       string
+		wantBody   string
+		wantStatus int
 	}{
-		{name: "fiber error", err: (*Error)(nil)},
-		{name: "custom error", err: (*typedNilHandlerError)(nil)},
-	}
-
-	for _, tc := range tests {
+		{name: "typed nil fiber error", err: (*Error)(nil), wantStatus: StatusInternalServerError, wantBody: internal},
+		{
+			name: "typed nil custom error", err: (*typedNilHandlerError)(nil),
+			wantStatus: StatusInternalServerError, wantBody: internal,
+		},
+		{name: "wrapped fiber error uses wrapped message", err: wrapped, wantStatus: StatusUnauthorized, wantBody: wrapped.Error()},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			c := apptest.CtxAs[*DefaultCtx](t, New())
-
 			require.NotPanics(t, func() { require.NoError(t, DefaultErrorHandler(c, tc.err)) })
-			require.Equal(t, StatusInternalServerError, c.fasthttp.Response.StatusCode())
-			require.Equal(t, utils.StatusMessage(StatusInternalServerError), string(c.fasthttp.Response.Body()))
+			require.Equal(t, tc.wantStatus, c.fasthttp.Response.StatusCode())
+			require.Equal(t, tc.wantBody, string(c.fasthttp.Response.Body()))
 		})
 	}
-}
-
-func Test_DefaultErrorHandler_WrappedFiberErrorUsesWrappedMessage(t *testing.T) {
-	t.Parallel()
-	c := apptest.CtxAs[*DefaultCtx](t, New())
-
-	err := fmt.Errorf("auth failed: %w", ErrUnauthorized)
-	require.NoError(t, DefaultErrorHandler(c, err))
-	require.Equal(t, StatusUnauthorized, c.fasthttp.Response.StatusCode())
-	require.Equal(t, err.Error(), string(c.fasthttp.Response.Body()))
 }
 
 func Test_App_serverErrorHandler(t *testing.T) {
@@ -498,29 +459,18 @@ func Test_App_serverErrorHandler(t *testing.T) {
 		wantBody   string
 		wantStatus int
 	}{
+		{name: "internal error", err: errors.New("test err"), wantBody: "test err", wantStatus: StatusBadRequest},
 		{
-			name:       "internal error",
-			err:        errors.New("test err"),
-			wantBody:   "test err",
-			wantStatus: StatusBadRequest,
-		},
-		{
-			name:       "typed nil op error",
-			err:        (*net.OpError)(nil),
-			wantBody:   utils.StatusMessage(StatusBadGateway),
+			name: "typed nil op error", err: (*net.OpError)(nil), wantBody: utils.StatusMessage(StatusBadGateway),
 			wantStatus: StatusBadGateway,
 		},
 		{
-			name:       "network error",
-			err:        &net.DNSError{Err: "test error", Name: "test host", IsTimeout: false},
-			wantBody:   utils.StatusMessage(StatusBadGateway),
-			wantStatus: StatusBadGateway,
+			name: "network error", err: &net.DNSError{Err: "test error", Name: "test host", IsTimeout: false},
+			wantBody: utils.StatusMessage(StatusBadGateway), wantStatus: StatusBadGateway,
 		},
 		{
-			name:       "unsupported method error",
-			err:        errors.New("unsupported http request method 'FOO'"),
-			wantBody:   utils.StatusMessage(StatusNotImplemented),
-			wantStatus: StatusNotImplemented,
+			name: "unsupported method error", err: errors.New("unsupported http request method 'FOO'"),
+			wantBody: utils.StatusMessage(StatusNotImplemented), wantStatus: StatusNotImplemented,
 		},
 	}
 
@@ -541,12 +491,9 @@ func Test_App_serverErrorHandler_Unsupported_Method_Request(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/bar", func(c Ctx) error { return c.SendString("bar") })
-
 	ln := fasthttputil.NewInmemoryListener()
-
 	serverStarted := make(chan struct{}, 1)
 	serverErr := make(chan error, 1)
-
 	go func() {
 		serverStarted <- struct{}{}
 		if err := app.Listener(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -555,24 +502,19 @@ func Test_App_serverErrorHandler_Unsupported_Method_Request(t *testing.T) {
 		}
 		serverErr <- nil
 	}()
-
 	<-serverStarted
 
 	conn, err := ln.Dial()
 	require.NoError(t, err)
 	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
-
 	_, err = conn.Write([]byte("FOO /bar HTTP/1.1\r\nHost: example.com\r\n\r\n"))
 	require.NoError(t, err)
-
 	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 	require.NoError(t, err)
 	require.Equal(t, StatusNotImplemented, resp.StatusCode)
-
 	require.Equal(t, utils.StatusMessage(StatusNotImplemented), apptest.Body(t, resp))
 	require.NoError(t, resp.Body.Close())
 	require.NoError(t, conn.Close())
-
 	require.NoError(t, app.Shutdown())
 	require.NoError(t, <-serverErr)
 }
@@ -636,13 +578,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 		return nil
 	})
 
-	resp := apptest.Expect(t, app, "/cR%C3%A9eR/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", StatusOK)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	// check the param result
-	require.Equal(t, "اختبار", app.toString(body))
-
+	apptest.ExpectBody(t, app, "/cR%C3%A9eR/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", StatusOK, "اختبار")
 	// with lowercase letters
 	apptest.Expect(t, app, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", StatusNotFound)
 }
@@ -659,37 +595,9 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	// right letters in the requested route -> 200
 	apptest.Expect(t, app, "/abc", StatusOK)
 
-	// check the detected path when the case-insensitive recognition is activated
+	// with case-insensitive matching the handler still sees the path as requested
 	app.config.CaseSensitive = false
-	// check the case-sensitive feature
-	resp := apptest.Expect(t, app, "/AbC", StatusOK)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	// check the detected path result
-	require.Equal(t, "/AbC", app.toString(body))
-}
-
-func Test_App_Not_Use_StrictRouting(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Use("/abc", func(c Ctx) error { return c.SendString(c.Path()) })
-
-	g := app.Group("/foo")
-	g.Use("/", func(c Ctx) error { return c.SendString(c.Path()) })
-
-	// wrong path in the requested route -> 404
-	apptest.Expect(t, app, "/abc/", StatusOK)
-
-	// right path in the requested route -> 200
-	apptest.Expect(t, app, "/abc", StatusOK)
-
-	// wrong path with group in the requested route -> 404
-	apptest.Expect(t, app, "/foo", StatusOK)
-
-	// right path with group in the requested route -> 200
-	apptest.Expect(t, app, "/foo/", StatusOK)
+	apptest.ExpectBody(t, app, "/AbC", StatusOK, "/AbC")
 }
 
 func Test_App_Use_MultiplePrefix(t *testing.T) {
@@ -701,13 +609,9 @@ func Test_App_Use_MultiplePrefix(t *testing.T) {
 	g := app.Group("/test")
 	g.Use([]string{"/john", "/doe"}, func(c Ctx) error { return c.SendString(c.Path()) })
 
-	apptest.ExpectBody(t, app, "/john", StatusOK, "/john")
-
-	apptest.ExpectBody(t, app, "/doe", StatusOK, "/doe")
-
-	apptest.ExpectBody(t, app, "/test/john", StatusOK, "/test/john")
-
-	apptest.ExpectBody(t, app, "/test/doe", StatusOK, "/test/doe")
+	for _, path := range []string{"/john", "/doe", "/test/john", "/test/doe"} {
+		apptest.ExpectBody(t, app, path, StatusOK, path)
+	}
 }
 
 func Test_Group_Use_NoBoundary(t *testing.T) {
@@ -722,26 +626,38 @@ func Test_Group_Use_NoBoundary(t *testing.T) {
 	apptest.Expect(t, app, "/api/foobar", StatusNotFound)
 }
 
+// Test_App_Use_StrictRouting pins how a trailing slash is matched, on the app
+// and on a group: a Use prefix without StrictRouting ignores it, a route with
+// StrictRouting does not.
 func Test_App_Use_StrictRouting(t *testing.T) {
 	t.Parallel()
-	app := New(Config{StrictRouting: true})
-
-	app.Get("/abc", func(c Ctx) error { return c.SendString(c.Path()) })
-
-	g := app.Group("/foo")
-	g.Get("/", func(c Ctx) error { return c.SendString(c.Path()) })
-
-	// wrong path in the requested route -> 404
-	apptest.Expect(t, app, "/abc/", StatusNotFound)
-
-	// right path in the requested route -> 200
-	apptest.Expect(t, app, "/abc", StatusOK)
-
-	// wrong path with group in the requested route -> 404
-	apptest.Expect(t, app, "/foo", StatusNotFound)
-
-	// right path with group in the requested route -> 200
-	apptest.Expect(t, app, "/foo/", StatusOK)
+	handler := func(c Ctx) error { return c.SendString(c.Path()) }
+	for _, tc := range []struct {
+		want   map[string]int // path -> status
+		name   string
+		strict bool // StrictRouting with Get routes, instead of Use prefixes without it
+	}{
+		{name: "Use without StrictRouting", want: map[string]int{"/abc/": StatusOK, "/abc": StatusOK, "/foo": StatusOK, "/foo/": StatusOK}},
+		{
+			name: "Get with StrictRouting", strict: true,
+			want: map[string]int{"/abc/": StatusNotFound, "/abc": StatusOK, "/foo": StatusNotFound, "/foo/": StatusOK},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{StrictRouting: tc.strict})
+			if tc.strict {
+				app.Get("/abc", handler)
+				app.Group("/foo").Get("/", handler)
+			} else {
+				app.Use("/abc", handler)
+				app.Group("/foo").Use("/", handler)
+			}
+			for path, status := range tc.want {
+				apptest.Expect(t, app, path, status)
+			}
+		})
+	}
 }
 
 func Test_App_Add_Method_Test(t *testing.T) {
@@ -835,15 +751,13 @@ func Test_App_GETOnly_Allow(t *testing.T) {
 			app.All("/", func(c Ctx) error { return c.SendString("ok") })
 
 			for _, method := range []string{MethodPost, MethodPut, MethodPatch, MethodDelete, MethodOptions} {
-				resp, err := app.Test(httptest.NewRequest(method, "/", http.NoBody))
-				require.NoError(t, err, method)
+				resp := apptest.Do(t, app, apptest.Req(method, "/"))
 				require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, method)
 				require.Equal(t, "GET, HEAD", resp.Header.Get(HeaderAllow), method)
 			}
 
 			for _, method := range []string{MethodGet, MethodHead} {
-				resp, err := app.Test(httptest.NewRequest(method, "/", http.NoBody))
-				require.NoError(t, err, method)
+				resp := apptest.Do(t, app, apptest.Req(method, "/"))
 				require.Equal(t, StatusOK, resp.StatusCode, method)
 				require.Empty(t, resp.Header.Get(HeaderAllow), method)
 			}
@@ -884,27 +798,21 @@ func Test_App_Chaining(t *testing.T) {
 func Test_App_Order(t *testing.T) {
 	t.Parallel()
 	app := New()
-
-	app.Get("/test", func(c Ctx) error {
-		_, err := c.WriteString("1")
-		require.NoError(t, err)
-		return c.Next()
-	})
-
-	app.All("/test", func(c Ctx) error {
-		_, err := c.WriteString("2")
-		require.NoError(t, err)
-
-		return c.Next()
-	})
-
+	// write returns a handler that writes s and hands over to the next one.
+	write := func(s string) Handler {
+		return func(c Ctx) error {
+			_, err := c.WriteString(s)
+			require.NoError(t, err)
+			return c.Next()
+		}
+	}
+	app.Get("/test", write("1"))
+	app.All("/test", write("2"))
 	app.Use(func(c Ctx) error {
 		_, err := c.WriteString("3")
 		require.NoError(t, err)
-
 		return c.SendStatus(StatusOK)
 	})
-
 	apptest.ExpectBody(t, app, "/test", 200, "123")
 }
 
@@ -967,44 +875,27 @@ func Test_App_AutoHead_Compliance(t *testing.T) {
 
 func Test_App_Methods(t *testing.T) {
 	t.Parallel()
-	dummyHandler := testEmptyHandler
-
 	app := New()
-
-	app.Connect("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", "CONNECT")
-
-	app.Put("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", MethodPut)
-
-	app.Post("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", MethodPost)
-
-	app.Delete("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", MethodDelete)
-
-	app.Head("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", MethodHead)
-
-	app.Patch("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", MethodPatch)
-
-	app.Options("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", MethodOptions)
-
-	app.Trace("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", MethodTrace)
-
-	app.Query("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", MethodQuery)
-
-	app.Get("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", MethodGet)
-
-	app.All("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", MethodPost)
-
-	app.Use("/:john?/:doe?", dummyHandler)
+	for _, tc := range []struct {
+		register func(path string, handler any, handlers ...any) Router
+		method   string
+	}{
+		{register: app.Connect, method: MethodConnect},
+		{register: app.Put, method: MethodPut},
+		{register: app.Post, method: MethodPost},
+		{register: app.Delete, method: MethodDelete},
+		{register: app.Head, method: MethodHead},
+		{register: app.Patch, method: MethodPatch},
+		{register: app.Options, method: MethodOptions},
+		{register: app.Trace, method: MethodTrace},
+		{register: app.Query, method: MethodQuery},
+		{register: app.Get, method: MethodGet},
+		{register: app.All, method: MethodPost},
+	} {
+		tc.register("/:john?/:doe?", testEmptyHandler)
+		testStatus200(t, app, "/john/doe", tc.method)
+	}
+	app.Use("/:john?/:doe?", testEmptyHandler)
 	testStatus200(t, app, "/john/doe", MethodGet)
 }
 
@@ -1066,21 +957,15 @@ func Test_App_GetString(t *testing.T) {
 	heap := string([]byte("fiber"))
 	appMutable := New()
 	same := appMutable.GetString(heap)
-	if unsafe.StringData(same) != unsafe.StringData(heap) {
-		t.Error("expected original string when immutable is disabled")
-	}
+	require.Same(t, unsafe.StringData(heap), unsafe.StringData(same), "expected original string when immutable is disabled")
 
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.GetString(heap)
-	if unsafe.StringData(copied) == unsafe.StringData(heap) {
-		t.Error("expected a copy for heap-backed string when immutable is enabled")
-	}
+	require.NotSame(t, unsafe.StringData(heap), unsafe.StringData(copied), "expected a copy for heap-backed string when immutable is enabled")
 
 	literal := "fiber"
 	sameLit := appImmutable.GetString(literal)
-	if unsafe.StringData(sameLit) != unsafe.StringData(literal) {
-		t.Error("expected original literal when immutable is enabled")
-	}
+	require.Same(t, unsafe.StringData(literal), unsafe.StringData(sameLit), "expected original literal when immutable is enabled")
 }
 
 func Test_App_GetBytes(t *testing.T) {
@@ -1088,25 +973,33 @@ func Test_App_GetBytes(t *testing.T) {
 	b := []byte("fiber")
 	appMutable := New()
 	same := appMutable.GetBytes(b)
-	if unsafe.SliceData(same) != unsafe.SliceData(b) {
-		t.Error("expected original slice when immutable is disabled")
-	}
+	require.Same(t, unsafe.SliceData(b), unsafe.SliceData(same), "expected original slice when immutable is disabled")
 
 	alias := make([]byte, 10)
 	copy(alias, b)
 	sub := alias[:5]
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.GetBytes(sub)
-	if unsafe.SliceData(copied) == unsafe.SliceData(sub) {
-		t.Error("expected a copy for aliased slice when immutable is enabled")
-	}
+	require.NotSame(t, unsafe.SliceData(sub), unsafe.SliceData(copied), "expected a copy for aliased slice when immutable is enabled")
 
 	full := make([]byte, 5)
 	copy(full, b)
 	detached := appImmutable.GetBytes(full)
-	if unsafe.SliceData(detached) == unsafe.SliceData(full) {
-		t.Error("expected a copy even when cap==len")
-	}
+	require.NotSame(t, unsafe.SliceData(full), unsafe.SliceData(detached), "expected a copy even when cap==len")
+}
+
+// appListen serves app on a new in-memory listener from a goroutine that is
+// running by the time it returns; an error from the server fails the test.
+func appListen(t *testing.T, app *App, cfg ...ListenConfig) *fasthttputil.InmemoryListener {
+	t.Helper()
+	ln := fasthttputil.NewInmemoryListener()
+	ready := make(chan struct{})
+	go func() {
+		close(ready)
+		assert.NoError(t, app.Listener(ln, cfg...))
+	}()
+	<-ready
+	return ln
 }
 
 func Test_App_Shutdown(t *testing.T) {
@@ -1133,30 +1026,17 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 		time.Sleep(5 * time.Second)
 		return c.SendString("body")
 	})
+	ln := appListen(t, app)
 
-	ln := fasthttputil.NewInmemoryListener()
-	serverReady := make(chan struct{}) // Signal that the server is ready to start
-
-	go func() {
-		serverReady <- struct{}{}
-		assert.NoError(t, app.Listener(ln))
-	}()
-
-	<-serverReady // Waiting for the server to be ready
-
-	// Create a connection and send a request
 	connReady := make(chan struct{})
 	go func() {
 		conn, err := ln.Dial()
 		assert.NoError(t, err)
-
 		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n"))
 		assert.NoError(t, err)
-
 		connReady <- struct{}{} // Signal that the request has been sent
 	}()
-
-	<-connReady // Waiting for the request to be sent
+	<-connReady
 
 	shutdownErr := make(chan error)
 	go func() { shutdownErr <- app.ShutdownWithTimeout(1 * time.Second) }()
@@ -1199,14 +1079,7 @@ func Test_App_ShutdownWithTimeout_WaitsForStreamedBody(t *testing.T) {
 		})
 		return nil
 	})
-
-	ln := fasthttputil.NewInmemoryListener()
-	serverReady := make(chan struct{})
-	go func() {
-		close(serverReady)
-		assert.NoError(t, app.Listener(ln))
-	}()
-	<-serverReady
+	ln := appListen(t, app)
 
 	conn, err := ln.Dial()
 	require.NoError(t, err)
@@ -1267,14 +1140,7 @@ func Test_App_Shutdown_ContextNotCanceled(t *testing.T) {
 
 		return c.SendString("ok")
 	})
-
-	ln := fasthttputil.NewInmemoryListener()
-	serverReady := make(chan struct{})
-	go func() {
-		close(serverReady)
-		assert.NoError(t, app.Listener(ln))
-	}()
-	<-serverReady
+	ln := appListen(t, app)
 
 	clientDone := make(chan struct{})
 	go func() {
@@ -1308,23 +1174,10 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 	t.Run("successful shutdown", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-
 		// Fast request that should complete
 		app.Get("/", func(c Ctx) error { return c.SendString("OK") })
+		ln := appListen(t, app)
 
-		ln := fasthttputil.NewInmemoryListener()
-		serverStarted := make(chan bool, 1)
-
-		go func() {
-			serverStarted <- true
-			if err := app.Listener(ln); err != nil {
-				t.Errorf("Failed to start listener: %v", err)
-			}
-		}()
-
-		<-serverStarted
-
-		// Execute normal request
 		conn, err := ln.Dial()
 		require.NoError(t, err)
 		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
@@ -1333,43 +1186,25 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 		// Shutdown with sufficient timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-
-		err = app.ShutdownWithContext(ctx)
-		require.NoError(t, err, "Expected successful shutdown")
+		require.NoError(t, app.ShutdownWithContext(ctx), "Expected successful shutdown")
 	})
 
 	t.Run("shutdown with hooks", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-
 		hookOrder := make([]string, 0)
 		var hookMutex sync.Mutex
-
-		app.Hooks().OnPreShutdown(func() error {
+		record := func(hook string) error {
 			hookMutex.Lock()
-			hookOrder = append(hookOrder, "pre")
-			hookMutex.Unlock()
+			defer hookMutex.Unlock()
+			hookOrder = append(hookOrder, hook)
 			return nil
-		})
-
-		app.Hooks().OnPostShutdown(func(_ error) error {
-			hookMutex.Lock()
-			hookOrder = append(hookOrder, "post")
-			hookMutex.Unlock()
-			return nil
-		})
-
-		ln := fasthttputil.NewInmemoryListener()
-		go func() {
-			if err := app.Listener(ln); err != nil {
-				t.Errorf("Failed to start listener: %v", err)
-			}
-		}()
-
+		}
+		app.Hooks().OnPreShutdown(func() error { return record("pre") })
+		app.Hooks().OnPostShutdown(func(_ error) error { return record("post") })
+		appListen(t, app)
 		time.Sleep(100 * time.Millisecond)
-
 		require.NoError(t, app.ShutdownWithContext(context.Background()))
-
 		require.Equal(t, []string{"pre", "post"}, hookOrder, "Hooks should execute in order")
 	})
 
@@ -1387,18 +1222,10 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 			time.Sleep(2 * time.Second)
 			return c.SendString("OK")
 		})
-
-		ln := fasthttputil.NewInmemoryListener()
-		go func() {
-			if err := app.Listener(ln); err != nil {
-				t.Errorf("Failed to start listener: %v", err)
-			}
-		}()
-
+		ln := appListen(t, app)
 		// Ensure server is fully started
 		time.Sleep(100 * time.Millisecond)
 
-		// Start a long-running request
 		go func() {
 			conn, err := ln.Dial()
 			if err != nil {
@@ -1446,54 +1273,36 @@ func Test_App_OptionsAsterisk(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
 	errCh := make(chan error, 1)
 	serverReady := make(chan struct{})
-
 	go func() {
 		serverReady <- struct{}{}
 		errCh <- app.Listener(ln)
 	}()
-
 	<-serverReady
-
 	t.Cleanup(func() {
 		require.NoError(t, app.Shutdown())
 		require.NoError(t, <-errCh)
 	})
 
-	writeRequest := func(conn net.Conn, raw string) {
-		t.Helper()
-		_, err := conn.Write([]byte(raw))
+	for _, tc := range []struct {
+		target, allow string
+		status        int
+	}{
+		{target: "*", allow: "GET, POST", status: StatusOK},
+		{target: "/resource", allow: "GET", status: StatusNoContent}, // the control request
+	} {
+		conn, err := ln.Dial()
 		require.NoError(t, err)
+		_, err = conn.Write([]byte("OPTIONS " + tc.target + " HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+		require.NoError(t, err)
+		resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodOptions})
+		require.NoError(t, err)
+		require.Equal(t, tc.status, resp.StatusCode, tc.target)
+		require.Equal(t, tc.allow, resp.Header.Get(HeaderAllow), tc.target)
+		require.Zero(t, resp.ContentLength, tc.target)
+		require.Empty(t, apptest.BodyBytes(t, resp), tc.target)
+		require.NoError(t, resp.Body.Close())
+		require.NoError(t, conn.Close())
 	}
-
-	conn, err := ln.Dial()
-	require.NoError(t, err)
-
-	writeRequest(conn, "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n")
-
-	resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodOptions})
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	require.Equal(t, "GET, POST", resp.Header.Get(HeaderAllow))
-	require.Zero(t, resp.ContentLength)
-	body := apptest.BodyBytes(t, resp)
-	require.Empty(t, body)
-	require.NoError(t, resp.Body.Close())
-	require.NoError(t, conn.Close())
-
-	controlConn, err := ln.Dial()
-	require.NoError(t, err)
-
-	writeRequest(controlConn, "OPTIONS /resource HTTP/1.1\r\nHost: example.com\r\n\r\n")
-
-	controlResp, err := http.ReadResponse(bufio.NewReader(controlConn), &http.Request{Method: http.MethodOptions})
-	require.NoError(t, err)
-	require.Equal(t, StatusNoContent, controlResp.StatusCode)
-	require.Equal(t, "GET", controlResp.Header.Get(HeaderAllow))
-	require.Zero(t, controlResp.ContentLength)
-	controlBody := apptest.BodyBytes(t, controlResp)
-	require.Empty(t, controlBody)
-	require.NoError(t, controlResp.Body.Close())
-	require.NoError(t, controlConn.Close())
 }
 
 func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
@@ -1533,59 +1342,39 @@ func Test_App_Group_Invalid(t *testing.T) {
 
 func Test_App_Group(t *testing.T) {
 	t.Parallel()
-	dummyHandler := testEmptyHandler
-
 	app := New()
-
 	grp := app.Group("/test")
-	grp.Get("/", dummyHandler)
+	grp.Get("/", testEmptyHandler)
 	testStatus200(t, app, "/test", MethodGet)
-
-	grp.Get("/:demo?", dummyHandler)
+	grp.Get("/:demo?", testEmptyHandler)
 	testStatus200(t, app, "/test/john", MethodGet)
-
-	grp.Connect("/CONNECT", dummyHandler)
-	testStatus200(t, app, "/test/CONNECT", MethodConnect)
-
-	grp.Put("/PUT", dummyHandler)
-	testStatus200(t, app, "/test/PUT", MethodPut)
-
-	grp.Post("/POST", dummyHandler)
-	testStatus200(t, app, "/test/POST", MethodPost)
-
-	grp.Delete("/DELETE", dummyHandler)
-	testStatus200(t, app, "/test/DELETE", MethodDelete)
-
-	grp.Head("/HEAD", dummyHandler)
-	testStatus200(t, app, "/test/HEAD", MethodHead)
-
-	grp.Patch("/PATCH", dummyHandler)
-	testStatus200(t, app, "/test/PATCH", MethodPatch)
-
-	grp.Options("/OPTIONS", dummyHandler)
-	testStatus200(t, app, "/test/OPTIONS", MethodOptions)
-
-	grp.Trace("/TRACE", dummyHandler)
-	testStatus200(t, app, "/test/TRACE", MethodTrace)
-
-	grp.Query("/QUERY", dummyHandler)
-	testStatus200(t, app, "/test/QUERY", MethodQuery)
-
-	grp.All("/ALL", dummyHandler)
-	testStatus200(t, app, "/test/ALL", MethodPost)
-
-	grp.Use(dummyHandler)
+	for _, tc := range []struct {
+		register     func(path string, handler any, handlers ...any) Router
+		path, method string
+	}{
+		{grp.Connect, "/CONNECT", MethodConnect},
+		{grp.Put, "/PUT", MethodPut},
+		{grp.Post, "/POST", MethodPost},
+		{grp.Delete, "/DELETE", MethodDelete},
+		{grp.Head, "/HEAD", MethodHead},
+		{grp.Patch, "/PATCH", MethodPatch},
+		{grp.Options, "/OPTIONS", MethodOptions},
+		{grp.Trace, "/TRACE", MethodTrace},
+		{grp.Query, "/QUERY", MethodQuery},
+		{grp.All, "/ALL", MethodPost},
+	} {
+		tc.register(tc.path, testEmptyHandler)
+		testStatus200(t, app, "/test"+tc.path, tc.method)
+	}
+	grp.Use(testEmptyHandler)
 	testStatus200(t, app, "/test/oke", MethodGet)
-
-	grp.Use("/USE", dummyHandler)
+	grp.Use("/USE", testEmptyHandler)
 	testStatus200(t, app, "/test/USE/oke", MethodGet)
 
 	api := grp.Group("/v1")
-	api.Post("/", dummyHandler)
-
+	api.Post("/", testEmptyHandler)
 	apptest.Expect(t, app, apptest.Req(MethodPost, "/test/v1/"), 200)
-
-	api.Get("/users", dummyHandler)
+	api.Get("/users", testEmptyHandler)
 	apptest.Expect(t, app, "/test/v1/UsErS", 200)
 }
 
@@ -1603,27 +1392,16 @@ func Test_App_RouteChain(t *testing.T) {
 		Patch(dummyHandler).
 		Query(dummyHandler)
 
-	testStatus200(t, app, "/test", MethodGet)
-	testStatus200(t, app, "/test", MethodHead)
-	testStatus200(t, app, "/test", MethodPost)
-	testStatus200(t, app, "/test", MethodPut)
-	testStatus200(t, app, "/test", MethodDelete)
-	testStatus200(t, app, "/test", MethodConnect)
-	testStatus200(t, app, "/test", MethodOptions)
-	testStatus200(t, app, "/test", MethodTrace)
-	testStatus200(t, app, "/test", MethodPatch)
-	testStatus200(t, app, "/test", MethodQuery)
-
+	for _, method := range []string{
+		MethodGet, MethodHead, MethodPost, MethodPut, MethodDelete, MethodConnect, MethodOptions, MethodTrace, MethodPatch, MethodQuery,
+	} {
+		testStatus200(t, app, "/test", method)
+	}
 	register.RouteChain("/v1").Get(dummyHandler).Post(dummyHandler)
-
 	apptest.Expect(t, app, apptest.Req(MethodPost, "/test/v1"), 200)
-
 	apptest.Expect(t, app, "/test/v1", 200)
-
 	register.RouteChain("/v1").RouteChain("/v2").RouteChain("/v3").Get(dummyHandler).Trace(dummyHandler)
-
 	apptest.Expect(t, app, apptest.Req(MethodTrace, "/test/v1/v2/v3"), 200)
-
 	apptest.Expect(t, app, "/test/v1/v2/v3", 200)
 }
 
@@ -1745,36 +1523,26 @@ func Test_NewErrorf_Format(t *testing.T) {
 	}{
 		{name: "no-args → default text", code: StatusNotFound, in: nil, want: utils.StatusMessage(StatusNotFound)},
 		{
-			name: "single-string arg overrides",
-			code: StatusBadRequest,
-			in:   args{"custom bad request"},
+			name: "single-string arg overrides", code: StatusBadRequest, in: args{"custom bad request"},
 			want: "custom bad request",
 		},
 		{
-			name: "single non-string arg stringified",
-			code: StatusInternalServerError,
-			in:   args{errors.New("db down")},
+			name: "single non-string arg stringified", code: StatusInternalServerError, in: args{errors.New("db down")},
 			want: "db down",
 		},
 		{name: "single nil interface", code: StatusInternalServerError, in: args{any(nil)}, want: "<nil>"},
 		{name: "format string + args", code: StatusBadRequest, in: args{"invalid id %d", 10}, want: "invalid id 10"},
 		{
-			name: "format string + excess args",
-			code: StatusBadRequest,
-			in:   args{"odd %d", 1, 2, 3},
+			name: "format string + excess args", code: StatusBadRequest, in: args{"odd %d", 1, 2, 3},
 			want: "odd 1%!(EXTRA int=2, int=3)",
 		},
 		{
-			name: "≥2 args but first not string keeps all args",
-			code: StatusBadRequest,
-			in:   args{errors.New("boom"), 42},
-			want: "boom 42",
+			name: "≥2 args but first not string keeps all args", code: StatusBadRequest,
+			in: args{errors.New("boom"), 42}, want: "boom 42",
 		},
 		{
-			name: "≥2 args, first non-string followed by string",
-			code: StatusInternalServerError,
-			in:   args{42, "extra details"},
-			want: "42extra details",
+			name: "≥2 args, first non-string followed by string", code: StatusInternalServerError,
+			in: args{42, "extra details"}, want: "42extra details",
 		},
 	}
 
@@ -1793,20 +1561,14 @@ func Test_Test_Timeout(t *testing.T) {
 	app := New()
 
 	app.Get("/", testEmptyHandler)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{Timeout: 0})
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, "/", TestConfig{Timeout: 0})
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	app.Get("timeout", func(_ Ctx) error {
 		time.Sleep(200 * time.Millisecond)
 		return nil
 	})
-
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", http.NoBody), TestConfig{
-		Timeout:       20 * time.Millisecond,
-		FailOnTimeout: true,
-	})
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/timeout", http.NoBody), TestConfig{Timeout: 20 * time.Millisecond, FailOnTimeout: true})
 	require.Error(t, err, "app.Test(req)")
 }
 
@@ -1897,27 +1659,6 @@ func (funcViews) Load() error { return nil }
 
 func (funcViews) Render(io.Writer, string, any, ...string) error { return nil }
 
-type blockingView struct {
-	loadStarted   chan struct{}
-	loadRelease   chan struct{}
-	renderEntered chan struct{}
-	loads         int
-}
-
-func (v *blockingView) Load() error {
-	v.loads++
-	if v.loads > 1 {
-		close(v.loadStarted)
-		<-v.loadRelease
-	}
-	return nil
-}
-
-func (v *blockingView) Render(io.Writer, string, any, ...string) error {
-	close(v.renderEntered)
-	return nil
-}
-
 type sharedBlockingView struct {
 	loadStarted   chan struct{}
 	loadRelease   chan struct{}
@@ -1938,6 +1679,34 @@ func (v *sharedBlockingView) Load() error {
 func (v *sharedBlockingView) Render(io.Writer, string, any, ...string) error {
 	close(v.renderEntered)
 	return nil
+}
+
+// appBlockingView returns a view whose Load number blockOnLoad blocks until loadRelease is closed.
+func appBlockingView(blockOnLoad int) *sharedBlockingView {
+	return &sharedBlockingView{
+		loadStarted: make(chan struct{}), loadRelease: make(chan struct{}), renderEntered: make(chan struct{}),
+		blockOnLoad: blockOnLoad,
+	}
+}
+
+// appRequireRenderWaitsForReload runs reload and, once it holds view in Load, a
+// GET of path through handler: the render must not start before that Load is
+// released, and both must then finish, the request with a 200.
+func appRequireRenderWaitsForReload(
+	t *testing.T, view *sharedBlockingView, reload func() error, handler fasthttp.RequestHandler, path, msg string,
+) {
+	t.Helper()
+	reloadDone := make(chan error, 1)
+	go func() { reloadDone <- reload() }()
+	<-view.loadStarted
+
+	renderDone := make(chan int, 1)
+	go func() { renderDone <- runGetHandlerRequest(handler, path) }()
+	rootMiscBRequireNothing(t, view.renderEntered, msg)
+	close(view.loadRelease)
+
+	require.NoError(t, rootMiscBRecv(t, reloadDone, "reload did not finish"))
+	require.Equal(t, StatusOK, rootMiscBRecv(t, renderDone, "render request did not finish"))
 }
 
 func runGetHandlerRequest(handler fasthttp.RequestHandler, path string) int {
@@ -2020,29 +1789,10 @@ func Test_App_ReloadViews_Error(t *testing.T) {
 
 func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
 	t.Parallel()
-	view := &blockingView{
-		loadStarted:   make(chan struct{}),
-		loadRelease:   make(chan struct{}),
-		renderEntered: make(chan struct{}),
-	}
+	view := appBlockingView(2)
 	app := New(Config{Views: view})
 	app.Get("/", func(c Ctx) error { return c.Render("home", nil) })
-	handler := app.Handler()
-
-	reloadDone := make(chan error, 1)
-	go func() { reloadDone <- app.ReloadViews() }()
-
-	<-view.loadStarted
-
-	renderDone := make(chan int, 1)
-	go func() { renderDone <- runGetHandlerRequest(handler, "/") }()
-
-	rootMiscBRequireNothing(t, view.renderEntered, "render should wait until ReloadViews Load finishes")
-
-	close(view.loadRelease)
-
-	require.NoError(t, rootMiscBRecv(t, reloadDone, "reload did not finish"))
-	require.Equal(t, StatusOK, rootMiscBRecv(t, renderDone, "render request did not finish"))
+	appRequireRenderWaitsForReload(t, view, app.ReloadViews, app.Handler(), "/", "render should wait until ReloadViews Load finishes")
 }
 
 func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
@@ -2147,13 +1897,6 @@ func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
 	require.NoError(t, rootMiscBRecv(t, reloadDone, "reload did not finish after render panic"))
 }
 
-func Test_App_ReloadViews_NoEngine(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	require.ErrorIs(t, app.ReloadViews(), ErrNoViewEngineConfigured)
-}
-
 func Test_App_ReloadViews_InterfaceNilPointer(t *testing.T) {
 	t.Parallel()
 	var view *countingView
@@ -2187,13 +1930,6 @@ func Test_App_Render_WritesConfiguredView(t *testing.T) {
 
 func Test_App_Render_ReturnsViewErrors(t *testing.T) {
 	t.Parallel()
-	t.Run("no view engine", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-
-		require.ErrorIs(t, app.Render(io.Discard, "partial", nil), ErrNoViewEngineConfigured)
-	})
-
 	t.Run("typed nil view engine", func(t *testing.T) {
 		t.Parallel()
 		var view *writerView
@@ -2256,11 +1992,7 @@ func Test_isNilViews_ReturnsTrueForNilUnsafePointer(t *testing.T) {
 
 func Test_App_Render_WaitsForReloadViews(t *testing.T) {
 	t.Parallel()
-	view := &blockingView{
-		loadStarted:   make(chan struct{}),
-		loadRelease:   make(chan struct{}),
-		renderEntered: make(chan struct{}),
-	}
+	view := appBlockingView(2)
 	app := New(Config{Views: view})
 	view.loads = 1
 
@@ -2371,73 +2103,30 @@ func Test_App_ReloadViews_MountedViews_ConcurrentMount(t *testing.T) {
 
 func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testing.T) {
 	t.Parallel()
-	view := &sharedBlockingView{
-		loadStarted:   make(chan struct{}),
-		loadRelease:   make(chan struct{}),
-		renderEntered: make(chan struct{}),
-		blockOnLoad:   3,
-	}
+	view := appBlockingView(3)
 	subAppA := New(Config{Views: view})
 	subAppB := New(Config{Views: view})
 	subAppB.Get("/render", func(c Ctx) error { return c.Render("home", nil) })
 	app := New()
 	app.Use("/a", subAppA)
 	app.Use("/b", subAppB)
-	handler := app.Handler()
-
-	reloadDone := make(chan error, 1)
-	go func() { reloadDone <- subAppA.ReloadViews() }()
-
-	<-view.loadStarted
-
-	renderDone := make(chan int, 1)
-	go func() { renderDone <- runGetHandlerRequest(handler, "/b/render") }()
-
-	rootMiscBRequireNothing(t, view.renderEntered, "render should wait until shared view engine reload finishes")
-
-	close(view.loadRelease)
-
-	require.NoError(t, rootMiscBRecv(t, reloadDone, "reload did not finish"))
-	require.Equal(t, StatusOK, rootMiscBRecv(t, renderDone, "render request did not finish"))
+	appRequireRenderWaitsForReload(t, view, subAppA.ReloadViews, app.Handler(), "/b/render",
+		"render should wait until shared view engine reload finishes")
 }
 
 func Test_App_ReloadViews_SharedEngineBlocksRenderAfterReusableMount(t *testing.T) {
 	t.Parallel()
-	view := &sharedBlockingView{
-		loadStarted:   make(chan struct{}),
-		loadRelease:   make(chan struct{}),
-		renderEntered: make(chan struct{}),
-		blockOnLoad:   3,
-	}
-
+	view := appBlockingView(3)
 	reusableSubApp := New(Config{Views: view})
 	reusableSubApp.Get("/render", func(c Ctx) error { return c.Render("home", nil) })
-
 	siblingApp := New(Config{Views: view})
-
 	parentAppA := New()
 	parentAppA.Use("/shared", reusableSubApp)
 	parentAppA.Use("/sibling", siblingApp)
-
 	parentAppB := New()
 	parentAppB.Use("/shared", reusableSubApp)
-
-	handler := parentAppA.Handler()
-
-	reloadDone := make(chan error, 1)
-	go func() { reloadDone <- siblingApp.ReloadViews() }()
-
-	<-view.loadStarted
-
-	renderDone := make(chan int, 1)
-	go func() { renderDone <- runGetHandlerRequest(handler, "/shared/render") }()
-
-	rootMiscBRequireNothing(t, view.renderEntered, "render should wait until shared view engine reload finishes")
-
-	close(view.loadRelease)
-
-	require.NoError(t, rootMiscBRecv(t, reloadDone, "reload did not finish"))
-	require.Equal(t, StatusOK, rootMiscBRecv(t, renderDone, "render request did not finish"))
+	appRequireRenderWaitsForReload(t, view, siblingApp.ReloadViews, parentAppA.Handler(), "/shared/render",
+		"render should wait until shared view engine reload finishes")
 }
 
 func Test_App_ReloadViews_MountedViews_WithParentViews(t *testing.T) {
@@ -2520,9 +2209,7 @@ func Test_App_RefusedRequest(t *testing.T) {
 		{
 			name:   "read timeout",
 			config: Config{ReadTimeout: time.Nanosecond, IdleTimeout: time.Minute, DisableKeepalive: true},
-			route:  "/read-timeout",
-			raw:    "HEAD /read-timeout HTTP/1.1\r\n",
-			want:   "408 Request Timeout",
+			route:  "/read-timeout", raw: "HEAD /read-timeout HTTP/1.1\r\n", want: "408 Request Timeout",
 		},
 		{name: "bad request", route: "/bad-request", raw: "BadRequest\r\n", want: "400 Bad Request"},
 	}
@@ -2716,10 +2403,7 @@ func Test_App_Test_timeout(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{
-		Timeout:       100 * time.Millisecond,
-		FailOnTimeout: true,
-	})
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{Timeout: 100 * time.Millisecond, FailOnTimeout: true})
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 }
 
@@ -2741,11 +2425,7 @@ func Test_App_Test_drop_empty_response(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.Drop() })
-
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{
-		Timeout:       0,
-		FailOnTimeout: false,
-	})
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{Timeout: 0, FailOnTimeout: false})
 	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 }
 
@@ -2770,11 +2450,7 @@ func Test_App_Test_response_error(t *testing.T) {
 
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.SendStatus(StatusOK) })
-
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{
-		Timeout:       0,
-		FailOnTimeout: false,
-	})
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{Timeout: 0, FailOnTimeout: false})
 	require.ErrorIs(t, err, errErrorReader)
 }
 
@@ -2920,24 +2596,15 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 	t.Parallel()
 	named := "named"
 	app := New()
-
 	app.Get("/unnamed", func(c Ctx) error { return c.Next() })
-
 	app.Post("/named", func(c Ctx) error { return c.Next() }).Name(named)
-
 	app.Use(func(c Ctx) error { return c.Next() }) // no name - logging MW
-
 	app.Use(func(c Ctx) error { return c.Next() }).Name("corsMW")
-
 	app.Use(func(c Ctx) error { return c.Next() }).Name("compressMW")
-
 	app.Use(func(c Ctx) error { return c.Next() }) // no name - cache MW
-
 	grp := app.Group("/pages").Name("pages.")
 	grp.Use(func(c Ctx) error { return c.Next() }).Name("csrfMW")
-
 	grp.Get("/home", func(c Ctx) error { return c.Next() }).Name("home")
-
 	grp.Get("/unnamed", func(c Ctx) error { return c.Next() })
 
 	for _, route := range app.GetRoutes() {
@@ -2961,78 +2628,59 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 	t.Parallel()
 	app := New()
-
 	app.Get("/", emptyHandler).Name("index")
 	require.Equal(t, "/", app.GetRoute("index").Path)
-
 	app.Get("/a/:a_id", emptyHandler).Name("a")
 	require.Equal(t, "/a/:a_id", app.GetRoute("a").Path)
-
 	app.Post("/b/:bId", emptyHandler).Name("b")
 	require.Equal(t, "/b/:bId", app.GetRoute("b").Path)
 
 	c := app.Group("/c")
 	c.Get("", emptyHandler).Name("c.get")
 	require.Equal(t, "/c", app.GetRoute("c.get").Path)
-
 	c.Post("", emptyHandler).Name("c.post")
 	require.Equal(t, "/c", app.GetRoute("c.post").Path)
-
 	c.Get("/d", emptyHandler).Name("c.get.d")
 	require.Equal(t, "/c/d", app.GetRoute("c.get.d").Path)
 
 	d := app.Group("/d/:d_id")
 	d.Get("", emptyHandler).Name("d.get")
 	require.Equal(t, "/d/:d_id", app.GetRoute("d.get").Path)
-
 	d.Post("", emptyHandler).Name("d.post")
 	require.Equal(t, "/d/:d_id", app.GetRoute("d.post").Path)
 
 	e := app.Group("/e/:eId")
 	e.Get("", emptyHandler).Name("e.get")
 	require.Equal(t, "/e/:eId", app.GetRoute("e.get").Path)
-
 	e.Post("", emptyHandler).Name("e.post")
 	require.Equal(t, "/e/:eId", app.GetRoute("e.post").Path)
-
 	e.Get("f", emptyHandler).Name("e.get.f")
 	require.Equal(t, "/e/:eId/f", app.GetRoute("e.get.f").Path)
 
 	postGroup := app.Group("/post/:postId")
 	postGroup.Get("", emptyHandler).Name("post.get")
 	require.Equal(t, "/post/:postId", app.GetRoute("post.get").Path)
-
 	postGroup.Post("", emptyHandler).Name("post.update")
 	require.Equal(t, "/post/:postId", app.GetRoute("post.update").Path)
 
-	// Add testcase for routes use the same PATH on different methods
+	// routes with the same path on different methods
 	app.Get("/users", emptyHandler).Name("get-users")
 	app.Post("/users", emptyHandler).Name("add-user")
-	getUsers := app.GetRoute("get-users")
-	require.Equal(t, "/users", getUsers.Path)
+	require.Equal(t, "/users", app.GetRoute("get-users").Path)
+	require.Equal(t, "/users", app.GetRoute("add-user").Path)
 
-	addUser := app.GetRoute("add-user")
-	require.Equal(t, "/users", addUser.Path)
-
-	// Add testcase for routes use the same PATH on different methods (for groups)
+	// the same in a group
 	newGrp := app.Group("/name-test")
 	newGrp.Get("/users", emptyHandler).Name("grp-get-users")
 	newGrp.Post("/users", emptyHandler).Name("grp-add-user")
-	getUsers = app.GetRoute("grp-get-users")
-	require.Equal(t, "/name-test/users", getUsers.Path)
+	require.Equal(t, "/name-test/users", app.GetRoute("grp-get-users").Path)
+	require.Equal(t, "/name-test/users", app.GetRoute("grp-add-user").Path)
 
-	addUser = app.GetRoute("grp-add-user")
-	require.Equal(t, "/name-test/users", addUser.Path)
-
-	// Add testcase for HEAD route naming
+	// HEAD route naming
 	app.Get("/simple-route", emptyHandler).Name("simple-route")
 	app.Head("/simple-route", emptyHandler).Name("simple-route2")
-
-	sRoute := app.GetRoute("simple-route")
-	require.Equal(t, "/simple-route", sRoute.Path)
-
-	sRoute2 := app.GetRoute("simple-route2")
-	require.Equal(t, "/simple-route", sRoute2.Path)
+	require.Equal(t, "/simple-route", app.GetRoute("simple-route").Path)
+	require.Equal(t, "/simple-route", app.GetRoute("simple-route2").Path)
 }
 
 func Test_App_State(t *testing.T) {
@@ -3047,15 +2695,9 @@ func Test_App_State(t *testing.T) {
 
 func Benchmark_Communication_Flow(b *testing.B) {
 	app := New()
-
 	app.Get("/", func(c Ctx) error { return c.SendString("Hello, World!") })
-
 	h := app.Handler()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(MethodGet)
-	fctx.Request.SetRequestURI("/")
-
+	fctx := routerTestRequestCtx(MethodGet, "/")
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -3068,26 +2710,18 @@ func Benchmark_Communication_Flow(b *testing.B) {
 
 func Benchmark_Communication_Flow_Parallel(b *testing.B) {
 	app := New()
-
 	app.Get("/", func(c Ctx) error { return c.SendString("Hello, World!") })
-
 	h := app.Handler()
-
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(MethodGet)
-		fctx.Request.SetRequestURI("/")
+		fctx := routerTestRequestCtx(MethodGet, "/")
 		for pb.Next() {
 			h(fctx)
 		}
 	})
 
-	verifyCtx := &fasthttp.RequestCtx{}
-	verifyCtx.Request.Header.SetMethod(MethodGet)
-	verifyCtx.Request.SetRequestURI("/")
+	verifyCtx := routerTestRequestCtx(MethodGet, "/")
 	h(verifyCtx)
-
 	require.Equal(b, 200, verifyCtx.Response.Header.StatusCode())
 	require.Equal(b, "Hello, World!", string(verifyCtx.Response.Body()))
 }
@@ -3204,17 +2838,7 @@ func TestErrorHandler_PicksRightOne(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.path, func(t *testing.T) {
 			t.Parallel()
-			resp, err := app.Test(httptest.NewRequest(MethodGet, testCase.path, http.NoBody))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			require.Equal(t, testCase.expected, string(body))
+			require.Equal(t, testCase.expected, apptest.Body(t, apptest.Do(t, app, testCase.path)))
 		})
 	}
 }
@@ -3246,15 +2870,11 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutFalse(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode)
 
 	var response groupIDResponse
-	body := apptest.BodyBytes(t, resp)
-	err = json.Unmarshal(body, &response)
-	require.NoError(t, err)
-
+	require.NoError(t, json.Unmarshal(apptest.BodyBytes(t, resp), &response))
 	require.NotEmpty(t, response.GroupID)
 	require.Equal(t, "g.test123", response.GroupID)
 }
 
-// Test that FailOnTimeout: true still works as expected
 func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3263,12 +2883,9 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
 		groupID := "g.test123"
 		return c.JSON(groupIDResponse{GroupID: groupID})
 	})
-
 	req := httptest.NewRequest(MethodPost, "/admin/api/groups", http.NoBody)
-
 	// With FailOnTimeout: true (default), it should fail fast with timeout error
 	_, err := app.Test(req, TestConfig{Timeout: 10 * time.Millisecond, FailOnTimeout: true})
-
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 }
 
@@ -3403,14 +3020,7 @@ func Test_App_Shutdown_HookRegistrationNoRace(t *testing.T) {
 	app := New()
 	app.Hooks().OnPreShutdown(func() error { return nil })
 	app.Hooks().OnPostShutdown(func(error) error { return nil })
-
-	ln := fasthttputil.NewInmemoryListener()
-	served := make(chan struct{})
-	go func() {
-		close(served)
-		assert.NoError(t, app.Listener(ln, ListenConfig{DisableStartupMessage: true}))
-	}()
-	<-served
+	appListen(t, app, ListenConfig{DisableStartupMessage: true})
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
@@ -3421,37 +3031,6 @@ func Test_App_Shutdown_HookRegistrationNoRace(t *testing.T) {
 	})
 	wg.Go(func() { assert.NoError(t, app.Shutdown()) })
 	wg.Wait()
-}
-
-func Test_Group_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
-	t.Parallel()
-	sub := New()
-	sub.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
-
-	app := New()
-	grp := app.Group("/g")
-	grp.Use([]string{"/one", "/two"}, sub)
-
-	for _, prefix := range []string{"/g/one/ping", "/g/two/ping"} {
-		resp := apptest.Do(t, app, prefix)
-		require.Equal(t, StatusOK, resp.StatusCode, "%s was not mounted", prefix)
-	}
-}
-
-func Test_Domain_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
-	t.Parallel()
-	sub := New()
-	sub.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
-
-	app := New()
-	app.Domain("example.com").Use([]string{"/one", "/two"}, sub)
-
-	for _, prefix := range []string{"/one/ping", "/two/ping"} {
-		req := httptest.NewRequest(MethodGet, prefix, http.NoBody)
-		req.Host = "example.com"
-		resp := apptest.Do(t, app, req)
-		require.Equal(t, StatusOK, resp.StatusCode, "%s was not mounted", prefix)
-	}
 }
 
 // rawResponse is a response read off a test connection.
@@ -3688,48 +3267,35 @@ func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 		chunked = "\r\n0\r\n\r\n"
 	)
 
-	t.Run("served by Transfer-Encoding then closed", func(t *testing.T) {
-		t.Parallel()
-		for name, headers := range map[string]string{
-			"Content-Length first":    "Content-Length: 4\r\nTransfer-Encoding: chunked\r\n",
-			"Transfer-Encoding first": "Transfer-Encoding: chunked\r\nContent-Length: 4\r\n",
-			"lower-case names":        "content-length: 4\r\ntransfer-encoding: chunked\r\n",
-		} {
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-				raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + headers + chunked + second
-				responses, after := rawExchange(t, ln, raw, 1)
-
-				require.Equal(t, StatusOK, responses[0].status)
-				require.Equal(t, "first", responses[0].body)
-				require.True(t, responses[0].closes, "Connection: close expected")
-				require.Equal(t, connClosed, after, "the pipelined request must not be answered")
-			})
-		}
-	})
-
-	// fasthttp ignores "identity" and frames the request by its Content-Length, so
-	// the request is served as one without the field, but it still has both.
-	t.Run("identity is ignored and still closes", func(t *testing.T) {
-		t.Parallel()
-		for name, headers := range map[string]string{
+	for group, requests := range map[string]map[string]string{ // headers and body of the first request
+		"served by Transfer-Encoding then closed": {
+			"Content-Length first":    "Content-Length: 4\r\nTransfer-Encoding: chunked\r\n" + chunked,
+			"Transfer-Encoding first": "Transfer-Encoding: chunked\r\nContent-Length: 4\r\n" + chunked,
+			"lower-case names":        "content-length: 4\r\ntransfer-encoding: chunked\r\n" + chunked,
+		},
+		// fasthttp ignores "identity" and frames the request by its Content-Length, so
+		// the request is served as one without the field, but it still has both.
+		"identity is ignored and still closes": {
 			"Content-Length first":    "Content-Length: 4\r\nTransfer-Encoding: identity\r\n\r\nabcd",
 			"Transfer-Encoding first": "Transfer-Encoding: identity\r\nContent-Length: 4\r\n\r\nabcd",
 			"lower-case names":        "content-length: 4\r\ntransfer-encoding: identity\r\n\r\nabcd",
 			"empty body":              "Content-Length: 0\r\nTransfer-Encoding: identity\r\n\r\n",
-		} {
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-				raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + headers + second
-				responses, after := rawExchange(t, ln, raw, 1)
-
-				require.Equal(t, StatusOK, responses[0].status)
-				require.Equal(t, "first", responses[0].body)
-				require.True(t, responses[0].closes, "Connection: close expected")
-				require.Equal(t, connClosed, after, "the pipelined request must not be answered")
-			})
-		}
-	})
+		},
+	} {
+		t.Run(group, func(t *testing.T) {
+			t.Parallel()
+			for name, headers := range requests {
+				t.Run(name, func(t *testing.T) {
+					t.Parallel()
+					responses, after := rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\n"+headers+second, 1)
+					require.Equal(t, StatusOK, responses[0].status)
+					require.Equal(t, "first", responses[0].body)
+					require.True(t, responses[0].closes, "Connection: close expected")
+					require.Equal(t, connClosed, after, "the pipelined request must not be answered")
+				})
+			}
+		})
+	}
 
 	// Each header alone is ordinary traffic and keeps the connection alive.
 	t.Run("one header alone keeps the connection", func(t *testing.T) {
