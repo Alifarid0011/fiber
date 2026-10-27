@@ -122,12 +122,7 @@ func Benchmark_FormBinder_Bind(b *testing.B) {
 
 	binder := &FormBinding{EnableSplitting: true}
 
-	type User struct {
-		Name  string   `form:"name"`
-		Posts []string `form:"posts"`
-		Age   int      `form:"age"`
-	}
-	var user User
+	var user benchUser
 
 	req := newFormRequest(b, "name=john&age=42&posts=post1,post2,post3")
 
@@ -287,12 +282,7 @@ func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 
 	binder := &FormBinding{EnableSplitting: true}
 
-	type User struct {
-		Name  string   `form:"name"`
-		Posts []string `form:"posts"`
-		Age   int      `form:"age"`
-	}
-	var user User
+	var user benchUser
 
 	req := newMultipartRequestWith(b, func(mw *multipart.Writer) {
 		require.NoError(b, mw.WriteField("name", "john"))

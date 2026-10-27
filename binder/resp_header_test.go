@@ -11,12 +11,7 @@ func Benchmark_RespHeaderBinder_Bind(b *testing.B) {
 
 	binder := &RespHeaderBinding{EnableSplitting: true}
 
-	type User struct {
-		Name  string   `respHeader:"name"`
-		Posts []string `respHeader:"posts"`
-		Age   int      `respHeader:"age"`
-	}
-	var user User
+	var user benchUser
 
 	resp := fasthttp.AcquireResponse()
 	resp.Header.Set("name", "john")

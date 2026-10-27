@@ -9,12 +9,7 @@ func Benchmark_CookieBinder_Bind(b *testing.B) {
 
 	binder := &CookieBinding{EnableSplitting: true}
 
-	type User struct {
-		Name  string   `query:"name"`
-		Posts []string `query:"posts"`
-		Age   int      `query:"age"`
-	}
-	var user User
+	var user benchUser
 
 	req := acquireRequest(b)
 	req.Header.SetCookie("name", "john")

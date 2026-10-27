@@ -11,12 +11,7 @@ func Benchmark_QueryBinder_Bind(b *testing.B) {
 
 	binder := &QueryBinding{EnableSplitting: true}
 
-	type User struct {
-		Name  string   `query:"name"`
-		Posts []string `query:"posts"`
-		Age   int      `query:"age"`
-	}
-	var user User
+	var user benchUser
 
 	req := newQueryRequest(b, "name=john&age=42&posts=post1,post2,post3")
 

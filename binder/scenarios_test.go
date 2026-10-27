@@ -15,6 +15,14 @@ type pairUser struct {
 	Age   int      `cookie:"age" form:"age" header:"Age" query:"age" respHeader:"age"`
 }
 
+// benchUser is what the benchmarks of the pair-reading binders bind; each finds
+// the fields through its own tag.
+type benchUser struct {
+	Name  string   `cookie:"name" form:"name" header:"Name" query:"name" respHeader:"name"`
+	Posts []string `cookie:"posts" form:"posts" header:"Posts" query:"posts" respHeader:"posts"`
+	Age   int      `cookie:"age" form:"age" header:"Age" query:"age" respHeader:"age"`
+}
+
 // Test_PairSources_Bind pins that every binder that reads name/value pairs
 // fills a struct from them, and splits a comma separated value into a slice
 // when splitting is on.

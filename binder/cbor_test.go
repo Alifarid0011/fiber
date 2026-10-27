@@ -65,15 +65,3 @@ func Benchmark_CBORBinder_Bind(b *testing.B) {
 	require.Equal(b, "john", user.Name)
 	require.Equal(b, 42, user.Age)
 }
-
-func Test_UnimplementedCborMarshal_ReturnsError(t *testing.T) {
-	t.Parallel()
-	_, err := UnimplementedCborMarshal(struct{ Name string }{Name: "test"})
-	require.ErrorIs(t, err, ErrUnimplementedCBOR)
-}
-
-func Test_UnimplementedCborUnmarshal_ReturnsError(t *testing.T) {
-	t.Parallel()
-	var out any
-	require.ErrorIs(t, UnimplementedCborUnmarshal([]byte{0xa0}, &out), ErrUnimplementedCBOR)
-}

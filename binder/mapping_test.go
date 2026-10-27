@@ -108,38 +108,51 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 
 func Test_parseToMap(t *testing.T) {
 	t.Parallel()
-	inputMap := map[string][]string{"key1": {"value1", "value2"}, "key2": {"value3"}, "key3": {"value4"}}
+	input := map[string][]string{"key1": {"value1", "value2"}, "key2": {"value3"}, "key3": {"value4"}}
+	withEmpty := map[string][]string{"empty": {}, "key1": {"value1"}}
 
-	// Test map[string]string
-	m := make(map[string]string)
-	require.NoError(t, parseToMap(reflect.ValueOf(m), inputMap))
-	require.Equal(t, "value2", m["key1"])
-	require.Equal(t, "value3", m["key2"])
-	require.Equal(t, "value4", m["key3"])
-
-	// Test map[string][]string
-	m2 := make(map[string][]string)
-	require.NoError(t, parseToMap(reflect.ValueOf(m2), inputMap))
-	require.Len(t, m2["key1"], 2)
-	require.Contains(t, m2["key1"], "value1")
-	require.Contains(t, m2["key1"], "value2")
-	require.Len(t, m2["key2"], 1)
-	require.Len(t, m2["key3"], 1)
-
-	// Test map[string]any
-	m3 := make(map[string]any)
-	require.NoError(t, parseToMap(reflect.ValueOf(m3), inputMap))
-	require.Empty(t, m3)
-
-	var zeroStringMap map[string]string
-	require.NoError(t, parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), inputMap))
-	require.Equal(t, "value2", zeroStringMap["key1"])
-
-	var zeroSliceMap map[string][]string
-	require.NoError(t, parseToMap(reflect.ValueOf(&zeroSliceMap).Elem(), inputMap))
-	require.Len(t, zeroSliceMap["key1"], 2)
-
-	require.ErrorIs(t, parseToMap(reflect.ValueOf(map[string]string(nil)), inputMap), ErrMapNilDestination)
+	for _, tc := range []struct {
+		dst  any // a map, or a pointer to a nil one
+		data map[string][]string
+		want any
+		err  error
+		name string
+	}{
+		{
+			name: "string map keeps the last value",
+			dst:  map[string]string{}, data: input,
+			want: map[string]string{"key1": "value2", "key2": "value3", "key3": "value4"},
+		},
+		{name: "slice map keeps every value", dst: map[string][]string{}, data: input, want: input},
+		{name: "any map is left alone", dst: map[string]any{}, data: input, want: map[string]any{}},
+		{
+			name: "nil string map is made",
+			dst:  new(map[string]string), data: input,
+			want: map[string]string{"key1": "value2", "key2": "value3", "key3": "value4"},
+		},
+		{name: "nil slice map is made", dst: new(map[string][]string), data: input, want: input},
+		{name: "nil map by value", dst: map[string]string(nil), data: input, err: ErrMapNilDestination},
+		{name: "int map is left alone", dst: map[string]int{}, data: input, want: map[string]int{}},
+		{name: "int slice map is not convertible", dst: map[string][]int{}, data: withEmpty, err: ErrMapNotConvertible},
+		{
+			name: "string map holds a key without values as empty",
+			dst:  map[string]string{}, data: withEmpty, want: map[string]string{"empty": "", "key1": "value1"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dst := reflect.ValueOf(tc.dst)
+			if dst.Kind() == reflect.Pointer {
+				dst = dst.Elem()
+			}
+			if tc.err != nil {
+				require.ErrorIs(t, parseToMap(dst, tc.data), tc.err)
+				return
+			}
+			require.NoError(t, parseToMap(dst, tc.data))
+			require.Equal(t, tc.want, dst.Interface())
+		})
+	}
 }
 
 func Test_FilterFlags(t *testing.T) {
@@ -272,21 +285,6 @@ func Test_decoderBuilder(t *testing.T) {
 	}
 	require.NoError(t, dec.Decode(&out, map[string][]string{"x": {"7"}}))
 	require.Equal(t, customInt(7), out.X)
-}
-
-func Test_parseToMap_Extended(t *testing.T) {
-	t.Parallel()
-	data := map[string][]string{"empty": {}, "key1": {"value1"}}
-
-	m := make(map[string]string)
-	require.NoError(t, parseToMap(reflect.ValueOf(m), data))
-	require.Empty(t, m["empty"])
-
-	m2 := make(map[string][]int)
-	require.ErrorIs(t, parseToMap(reflect.ValueOf(m2), data), ErrMapNotConvertible)
-
-	m3 := make(map[string]int)
-	require.NoError(t, parseToMap(reflect.ValueOf(m3), data))
 }
 
 func Test_decoderPoolMapInit(t *testing.T) {

@@ -30,6 +30,37 @@ func Test_GetAndPutToThePool(t *testing.T) {
 	_ = GetFromThePool[*MsgPackBinding](&MsgPackBinderPool)
 }
 
+// Test_Unimplemented_ReturnsError pins that the codecs a binder falls back to
+// when none is configured fail with their own error instead of panicking.
+func Test_Unimplemented_ReturnsError(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		marshal   func(any) ([]byte, error)
+		unmarshal func([]byte, any) error
+		want      error
+		name      string
+		input     []byte
+	}{
+		{
+			name: "cbor", want: ErrUnimplementedCBOR, input: []byte{0xa0},
+			marshal: UnimplementedCborMarshal, unmarshal: UnimplementedCborUnmarshal,
+		},
+		{
+			name: "msgpack", want: ErrMsgPackNotConfigured, input: []byte{0x80},
+			marshal: UnimplementedMsgpackMarshal, unmarshal: UnimplementedMsgpackUnmarshal,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := tc.marshal(struct{ Name string }{Name: "test"})
+			require.ErrorIs(t, err, tc.want)
+
+			var out any
+			require.ErrorIs(t, tc.unmarshal(tc.input, &out), tc.want)
+		})
+	}
+}
+
 // Test_Binders_ErrorPaths pins that a key with an unmatched bracket is an error
 // from the binders that rewrite bracket notation, and so is a multipart request
 // without a body.
@@ -95,21 +126,6 @@ func Test_Binders_NameAndReset(t *testing.T) {
 			require.False(t, *tc.splitting)
 		})
 	}
-}
-
-func Test_parseToMap_defaultCase(t *testing.T) {
-	t.Parallel()
-	m := map[string]int{}
-	require.NoError(t, parseToMap(reflect.ValueOf(m), map[string][]string{"a": {"1"}}))
-	require.Empty(t, m)
-
-	m2 := map[string]string{}
-	require.NoError(t, parseToMap(reflect.ValueOf(m2), map[string][]string{"empty": {}}))
-	require.Empty(t, m2["empty"])
-
-	var zeroStringMap map[string]string
-	require.NoError(t, parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), map[string][]string{"name": {"john"}}))
-	require.Equal(t, "john", zeroStringMap["name"])
 }
 
 func Test_parse_function_maps(t *testing.T) {

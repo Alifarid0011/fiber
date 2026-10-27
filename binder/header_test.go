@@ -11,12 +11,7 @@ func Benchmark_HeaderBinder_Bind(b *testing.B) {
 
 	binder := &HeaderBinding{EnableSplitting: true}
 
-	type User struct {
-		Name  string   `header:"Name"`
-		Posts []string `header:"Posts"`
-		Age   int      `header:"Age"`
-	}
-	var user User
+	var user benchUser
 
 	req := acquireRequest(b)
 	req.Header.Set("name", "john")

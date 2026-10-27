@@ -65,15 +65,3 @@ func Benchmark_Msgpack_Binding_Bind(b *testing.B) {
 
 	requireJohn42(b, err, user.Name, user.Age, user.Posts)
 }
-
-func Test_UnimplementedMsgpackMarshal_ReturnsError(t *testing.T) {
-	t.Parallel()
-	_, err := UnimplementedMsgpackMarshal(struct{ Name string }{Name: "test"})
-	require.ErrorIs(t, err, ErrMsgPackNotConfigured)
-}
-
-func Test_UnimplementedMsgpackUnmarshal_ReturnsError(t *testing.T) {
-	t.Parallel()
-	var out any
-	require.ErrorIs(t, UnimplementedMsgpackUnmarshal([]byte{0x80}, &out), ErrMsgPackNotConfigured)
-}
