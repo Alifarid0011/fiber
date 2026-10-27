@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 func Test_GetAndPutToThePool(t *testing.T) {
@@ -158,9 +157,7 @@ func Test_SetParserDecoder_UnknownKeys(t *testing.T) {
 
 	// The binders decode a struct from its pairs with DecodeValues, which must
 	// honor the setting as well.
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
-	req.URI().SetQueryString("name=john&foo=bar")
+	req := newQueryRequest(t, "name=john&foo=bar")
 	require.ErrorContains(t, (&QueryBinding{}).Bind(req, &user{}), "foo")
 	require.ErrorContains(t, parseValuesToStruct("query", &user{}, []string{"name", "foo"}, []string{"john", "bar"}), "foo")
 
