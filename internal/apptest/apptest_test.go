@@ -70,6 +70,16 @@ func (f *fakeTB) run(fn func(tb *fakeTB)) {
 
 func (f *fakeTB) output() string { return strings.Join(f.messages, "\n") }
 
+// failure runs fn on a fresh fakeTB, requires that it failed and returns what
+// it reported.
+func failure(t *testing.T, fn func(tb *fakeTB)) string {
+	t.Helper()
+	fake := &fakeTB{}
+	fake.run(fn)
+	require.True(t, fake.failed)
+	return fake.output()
+}
+
 // testConfig stands in for fiber.TestConfig.
 type testConfig struct{ timeout int }
 
@@ -161,15 +171,10 @@ func Test_Do(t *testing.T) {
 
 	t.Run("app error fails the test", func(t *testing.T) {
 		t.Parallel()
-		boom := errors.New("boom")
-		app := &fakeApp{err: boom}
-		fake := &fakeTB{}
-
-		fake.run(func(tb *fakeTB) { apptest.Do(tb, app, "/broken") })
-
-		require.True(t, fake.failed)
-		require.Contains(t, fake.output(), "boom")
-		require.Contains(t, fake.output(), "GET /broken")
+		app := &fakeApp{err: errors.New("boom")}
+		out := failure(t, func(tb *fakeTB) { apptest.Do(tb, app, "/broken") })
+		require.Contains(t, out, "boom")
+		require.Contains(t, out, "GET /broken")
 	})
 }
 
@@ -188,12 +193,9 @@ func Test_Expect(t *testing.T) {
 	t.Run("mismatch fails and reports the body", func(t *testing.T) {
 		t.Parallel()
 		app := newApp(http.StatusInternalServerError, "database is down")
-		fake := &fakeTB{}
-
-		fake.run(func(tb *fakeTB) { apptest.Expect(tb, app, apptest.Req(http.MethodPut, "/save"), http.StatusOK) })
-
-		require.True(t, fake.failed)
-		out := fake.output()
+		out := failure(t, func(tb *fakeTB) {
+			apptest.Expect(tb, app, apptest.Req(http.MethodPut, "/save"), http.StatusOK)
+		})
 		require.Contains(t, out, "PUT /save")
 		require.Contains(t, out, "status = 500, want 200")
 		require.Contains(t, out, "database is down")
@@ -201,12 +203,9 @@ func Test_Expect(t *testing.T) {
 
 	t.Run("app error fails the test", func(t *testing.T) {
 		t.Parallel()
-		fake := &fakeTB{}
-
-		fake.run(func(tb *fakeTB) { apptest.Expect(tb, &fakeApp{err: errors.New("boom")}, "/", http.StatusOK) })
-
-		require.True(t, fake.failed)
-		require.Contains(t, fake.output(), "boom")
+		app := &fakeApp{err: errors.New("boom")}
+		out := failure(t, func(tb *fakeTB) { apptest.Expect(tb, app, "/", http.StatusOK) })
+		require.Contains(t, out, "boom")
 	})
 }
 
@@ -228,14 +227,9 @@ func Test_ExpectBody(t *testing.T) {
 
 	t.Run("body mismatch fails", func(t *testing.T) {
 		t.Parallel()
-		fake := &fakeTB{}
-
-		fake.run(func(tb *fakeTB) {
+		out := failure(t, func(tb *fakeTB) {
 			apptest.ExpectBody(tb, newApp(http.StatusOK, "actual"), "/page", http.StatusOK, "wanted")
 		})
-
-		require.True(t, fake.failed)
-		out := fake.output()
 		require.Contains(t, out, "GET /page: body")
 		require.Contains(t, out, "wanted")
 		require.Contains(t, out, "actual")
@@ -243,15 +237,11 @@ func Test_ExpectBody(t *testing.T) {
 
 	t.Run("status mismatch fails before the body is compared", func(t *testing.T) {
 		t.Parallel()
-		fake := &fakeTB{}
-
-		fake.run(func(tb *fakeTB) {
+		out := failure(t, func(tb *fakeTB) {
 			apptest.ExpectBody(tb, newApp(http.StatusNotFound, "Not Found"), "/", http.StatusOK, "hello")
 		})
-
-		require.True(t, fake.failed)
-		require.Contains(t, fake.output(), "status = 404, want 200")
-		require.NotContains(t, fake.output(), "hello", "the body assertion must not run")
+		require.Contains(t, out, "status = 404, want 200")
+		require.NotContains(t, out, "hello", "the body assertion must not run")
 	})
 }
 
@@ -280,12 +270,8 @@ func Test_Body(t *testing.T) {
 
 	t.Run("read error fails the test", func(t *testing.T) {
 		t.Parallel()
-		fake := &fakeTB{}
-
-		fake.run(func(tb *fakeTB) { apptest.Body(tb, &http.Response{Body: failingBody{}}) })
-
-		require.True(t, fake.failed)
-		require.Contains(t, fake.output(), "read failed")
+		out := failure(t, func(tb *fakeTB) { apptest.Body(tb, &http.Response{Body: failingBody{}}) })
+		require.Contains(t, out, "read failed")
 	})
 }
 
@@ -388,13 +374,8 @@ func Test_CtxAs(t *testing.T) {
 
 	t.Run("fails when the app hands out another type", func(t *testing.T) {
 		t.Parallel()
-		pool := &otherPool{}
-		fake := &fakeTB{}
-
-		fake.run(func(tb *fakeTB) { apptest.CtxAs[*realCtx](tb, pool) })
-
-		require.True(t, fake.failed)
-		require.Contains(t, fake.output(), "*apptest_test.otherCtx")
-		require.Contains(t, fake.output(), "*apptest_test.realCtx")
+		out := failure(t, func(tb *fakeTB) { apptest.CtxAs[*realCtx](tb, &otherPool{}) })
+		require.Contains(t, out, "*apptest_test.otherCtx")
+		require.Contains(t, out, "*apptest_test.realCtx")
 	})
 }

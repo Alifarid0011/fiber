@@ -39,7 +39,7 @@ func Test_Valid(t *testing.T) {
 		input      string
 	}
 
-	testCases := []testCase{
+	valid := []testCase{
 		{name: "simple path", input: "/foo/bar.txt"},
 		{name: "root", input: "/"},
 		{name: "empty", input: ""},
@@ -69,50 +69,7 @@ func Test_Valid(t *testing.T) {
 		{filesystem: os.DirFS("."), name: "filesystem trailing slash", input: "/foo/"},
 		{filesystem: fstest.MapFS{}, name: "filesystem drive letter is a name", input: "/C:/x"},
 	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.True(t, Valid([]byte(tc.input), tc.filesystem, true), "input=%q", tc.input)
-		})
-	}
-}
-
-// Test_Valid_NoDecode covers UnescapePath, where a "%" left in the routed
-// path is literal and must not be decoded again.
-func Test_Valid_NoDecode(t *testing.T) {
-	t.Parallel()
-	for _, input := range []string{
-		"/%70rivate/secret.txt",
-		"/100%.txt",
-		"/100%",
-		"/a%zzb.txt",
-		"/foo%2Fbar.txt",
-		"/foo%5Cbar.txt",
-		"/foo%00bar.txt",
-		"/%2e%2e/bar.txt",
-		"/foo bar/baz.txt",
-	} {
-		require.True(t, Valid([]byte(input), nil, false), "input=%q", input)
-	}
-
-	for _, input := range []string{
-		"/foo\\bar.txt", "/foo/bar.txt\x00", "/foo\x1fbar.txt", "/foo\x7fbar.txt",
-		"/foo//bar.txt", "/foo/../bar.txt", "/./bar.txt", "/C:/x", "//server/share/x",
-	} {
-		require.False(t, Valid([]byte(input), nil, false), "input=%q", input)
-	}
-}
-
-func Test_Valid_Error(t *testing.T) {
-	t.Parallel()
-	type testCase struct {
-		filesystem fs.FS
-		name       string
-		input      string
-	}
-
-	testCases := []testCase{
+	invalid := []testCase{
 		// the router removes dot segments and keeps empty ones, so neither names a matched file
 		{name: "parent segment", input: "/foo/../bar.txt"},
 		{name: "leading parent segment", input: "/../bar.txt"},
@@ -177,11 +134,32 @@ func Test_Valid_Error(t *testing.T) {
 		{filesystem: fstest.MapFS{}, name: "filesystem unc path", input: "//server/share"},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.False(t, Valid([]byte(tc.input), tc.filesystem, true), "input=%q", tc.input)
-		})
+	for want, testCases := range map[bool][]testCase{true: valid, false: invalid} {
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				require.Equal(t, want, Valid([]byte(tc.input), tc.filesystem, true), "input=%q", tc.input)
+			})
+		}
+	}
+}
+
+// Test_Valid_NoDecode covers UnescapePath, where a "%" left in the routed
+// path is literal and must not be decoded again.
+func Test_Valid_NoDecode(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{
+		"/%70rivate/secret.txt", "/100%.txt", "/100%", "/a%zzb.txt", "/foo%2Fbar.txt", "/foo%5Cbar.txt",
+		"/foo%00bar.txt", "/%2e%2e/bar.txt", "/foo bar/baz.txt",
+	} {
+		require.True(t, Valid([]byte(input), nil, false), "input=%q", input)
+	}
+
+	for _, input := range []string{
+		"/foo\\bar.txt", "/foo/bar.txt\x00", "/foo\x1fbar.txt", "/foo\x7fbar.txt",
+		"/foo//bar.txt", "/foo/../bar.txt", "/./bar.txt", "/C:/x", "//server/share/x",
+	} {
+		require.False(t, Valid([]byte(input), nil, false), "input=%q", input)
 	}
 }
 
@@ -198,15 +176,8 @@ func Test_HasUnsafeSegment(t *testing.T) {
 func Test_HasDriveLetter(t *testing.T) {
 	t.Parallel()
 	for input, want := range map[string]bool{
-		"":      false,
-		"C":     false,
-		"C:":    true,
-		"c:/x":  true,
-		"Z:x":   true,
-		"1:/x":  false,
-		"@:/x":  false,
-		"CC:/x": false,
-		"/C:/x": false,
+		"C:": true, "c:/x": true, "Z:x": true,
+		"": false, "C": false, "1:/x": false, "@:/x": false, "CC:/x": false, "/C:/x": false,
 	} {
 		require.Equal(t, want, hasDriveLetter(input), "input=%q", input)
 	}
@@ -215,18 +186,8 @@ func Test_HasDriveLetter(t *testing.T) {
 func Test_HasTrailingDotOrSpaceSegment(t *testing.T) {
 	t.Parallel()
 	for input, want := range map[string]bool{
-		"/":              false,
-		"/foo/bar.txt":   false,
-		"/.well-known/x": false,
-		"/..x/y":         false,
-		"/a.b/c":         false,
-		"/foo/":          false,
-		"/foo./bar":      true,
-		"/foo /bar":      true,
-		"/foo.":          true,
-		"/foo ":          true,
-		"/foo./":         true,
-		"/foo/bar. ":     true,
+		"/": false, "/foo/bar.txt": false, "/.well-known/x": false, "/..x/y": false, "/a.b/c": false, "/foo/": false,
+		"/foo./bar": true, "/foo /bar": true, "/foo.": true, "/foo ": true, "/foo./": true, "/foo/bar. ": true,
 	} {
 		require.Equal(t, want, hasTrailingDotOrSpaceSegment([]byte(input)), "input=%q", input)
 	}
@@ -273,22 +234,12 @@ func Test_Unhex(t *testing.T) {
 func Test_FSName(t *testing.T) {
 	t.Parallel()
 	for input, want := range map[string]string{
-		"":            "",
-		"/":           "",
-		".":           "",
-		"index.html":  "index.html",
-		"/index.html": "index.html",
-		"//a//b.txt":  "a/b.txt",
-		"a/./b.txt":   "a/b.txt",
-		"a/../b.txt":  "b.txt",
-		"dir/":        "dir",
+		"": "", "/": "", ".": "", "index.html": "index.html", "/index.html": "index.html",
+		"//a//b.txt": "a/b.txt", "a/./b.txt": "a/b.txt", "a/../b.txt": "b.txt", "dir/": "dir",
 		// a request path never climbs above the root, so neither does the name
-		"../b.txt":      "b.txt",
-		"a/../../b.txt": "b.txt",
-		"/../../etc":    "etc",
+		"../b.txt": "b.txt", "a/../../b.txt": "b.txt", "/../../etc": "etc",
 		// escapes are names here: SendFile escapes them before fasthttp decodes once
-		"100%25.txt": "100%25.txt",
-		"a%2F..":     "a%2F..",
+		"100%25.txt": "100%25.txt", "a%2F..": "a%2F..",
 	} {
 		got := FSName(input)
 		require.Equal(t, want, got, "input=%q", input)
@@ -299,11 +250,8 @@ func Test_FSName(t *testing.T) {
 func Test_OSName(t *testing.T) {
 	t.Parallel()
 	for input, want := range map[string]string{
-		"/srv/www/index.html":    "/srv/www/index.html",
-		"/srv/www/../index.html": "/srv/index.html",
-		"/srv//www/./a.txt":      "/srv/www/a.txt",
-		"/srv/www/dir/":          "/srv/www/dir",
-		"/../../etc/passwd":      "/etc/passwd",
+		"/srv/www/index.html": "/srv/www/index.html", "/srv/www/../index.html": "/srv/index.html",
+		"/srv//www/./a.txt": "/srv/www/a.txt", "/srv/www/dir/": "/srv/www/dir", "/../../etc/passwd": "/etc/passwd",
 	} {
 		require.Equal(t, filepath.FromSlash(want), OSName(input), "input=%q", input)
 	}

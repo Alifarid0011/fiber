@@ -125,28 +125,20 @@ func Test_Combined(t *testing.T) {
 	})
 
 	for _, tc := range []struct {
-		name string
-		raw  string
-		want string
+		name  string
+		lines string // the field lines after Host, less the CRLF ending the last
+		want  string
 	}{
-		{
-			name: "repeated lines are one value",
-			raw:  "GET / HTTP/1.1\r\nHost: e.com\r\nAccept: text/html\r\naccept: application/json\r\n\r\n",
-			want: "text/html, application/json",
-		},
-		{
-			// Both halves join every line they were sent, so a present-and-empty
-			// line is a value of nothing, not an absent line.
-			name: "an empty line among repeated ones keeps its place",
-			raw:  "GET / HTTP/1.1\r\nHost: e.com\r\nAccept:\r\naccept: application/json\r\n\r\n",
-			want: ", application/json",
-		},
+		{"repeated lines read as one", "Accept: text/html\r\naccept: application/json", "text/html, application/json"},
+		// Both halves join every line they were sent, so a present-and-empty
+		// line is a value of nothing, not an absent line.
+		{"an empty repeated line keeps its place", "Accept:\r\naccept: application/json", ", application/json"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			for _, normalize := range []bool{true, false} {
 				c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
-				readRequest(t, c, tc.raw)
+				readRequest(t, c, "GET / HTTP/1.1\r\nHost: e.com\r\n"+tc.lines+"\r\n\r\n")
 				require.Equal(t, tc.want, Combined(c, "Accept"), "normalize=%v", normalize)
 			}
 		})

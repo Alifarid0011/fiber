@@ -42,15 +42,9 @@ func Test_Normalize_AnyScheme(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		normalizedOrigin, valid := Normalize(tc.origin, AnyScheme)
-
-		if valid != tc.expectedValid {
-			t.Errorf("Expected origin '%s' to be valid: %v, but got: %v", tc.origin, tc.expectedValid, valid)
-		}
-
-		if normalizedOrigin != tc.expectedOrigin {
-			t.Errorf("Expected normalized origin '%s' for origin '%s', but got: '%s'", tc.expectedOrigin, tc.origin, normalizedOrigin)
-		}
+		got, ok := Normalize(tc.origin, AnyScheme)
+		assert.Equal(t, tc.expectedValid, ok, "Normalize(%q, AnyScheme) validity", tc.origin)
+		assert.Equal(t, tc.expectedOrigin, got, "Normalize(%q, AnyScheme) value", tc.origin)
 	}
 }
 
@@ -100,109 +94,33 @@ func Benchmark_MatchSubdomainOrigin(b *testing.B) {
 func Test_SubdomainMatch(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name     string
-		sub      Subdomain
-		origin   string
-		expected bool
+		name   string
+		prefix string // of the one pattern, whose suffix is "example.com"
+		origin string
+		want   bool
 	}{
-		{
-			name:     "match with different scheme",
-			sub:      Subdomain{Prefix: "http://api.", Suffix: "example.com"},
-			origin:   "https://api.service.example.com",
-			expected: false,
-		},
-		{
-			name:     "match with different scheme",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "http://api.service.example.com",
-			expected: false,
-		},
-		{
-			name:     "match with valid subdomain",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "https://api.service.example.com",
-			expected: true,
-		},
-		{
-			name:     "match with valid nested subdomain",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "https://1.2.api.service.example.com",
-			expected: true,
-		},
-
-		{
-			name:     "no match with invalid prefix",
-			sub:      Subdomain{Prefix: "https://abc.", Suffix: "example.com"},
-			origin:   "https://service.example.com",
-			expected: false,
-		},
-		{
-			name:     "no match with invalid suffix",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "https://api.example.org",
-			expected: false,
-		},
-		{
-			name:     "no match with empty origin",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "",
-			expected: false,
-		},
-		{
-			name:     "no match with malformed subdomain",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "https://evil.comexample.com",
-			expected: false,
-		},
-		{
-			name:     "partial match not considered a match",
-			sub:      Subdomain{Prefix: "https://service.", Suffix: "example.com"},
-			origin:   "https://api.example.com",
-			expected: false,
-		},
-		{
-			name:     "no match with empty host label",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "https://.example.com",
-			expected: false,
-		},
-		{
-			name:     "no match with malformed host label",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "https://..example.com",
-			expected: false,
-		},
-		{
-			name:     "no match with malformed origin port before suffix",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "https://evil.com:any.example.com",
-			expected: false,
-		},
-		{
-			name:     "no match with empty label before suffix",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "https://foo..example.com",
-			expected: false,
-		},
-		{
-			name:     "no match with userinfo in origin",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "https://user@api.example.com",
-			expected: false,
-		},
-		{
-			name:     "no match with non-normalized origin",
-			sub:      Subdomain{Prefix: "https://", Suffix: "example.com"},
-			origin:   "https://API.example.com",
-			expected: false,
-		},
+		{"match with different scheme", "http://api.", "https://api.service.example.com", false},
+		{"match with different scheme", "https://", "http://api.service.example.com", false},
+		{"match with valid subdomain", "https://", "https://api.service.example.com", true},
+		{"match with valid nested subdomain", "https://", "https://1.2.api.service.example.com", true},
+		{"no match with invalid prefix", "https://abc.", "https://service.example.com", false},
+		{"no match with invalid suffix", "https://", "https://api.example.org", false},
+		{"no match with empty origin", "https://", "", false},
+		{"no match with malformed subdomain", "https://", "https://evil.comexample.com", false},
+		{"partial match not considered a match", "https://service.", "https://api.example.com", false},
+		{"no match with empty host label", "https://", "https://.example.com", false},
+		{"no match with malformed host label", "https://", "https://..example.com", false},
+		{"no match with malformed origin port before suffix", "https://", "https://evil.com:any.example.com", false},
+		{"no match with empty label before suffix", "https://", "https://foo..example.com", false},
+		{"no match with userinfo in origin", "https://", "https://user@api.example.com", false},
+		{"no match with non-normalized origin", "https://", "https://API.example.com", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := MatchAny([]Subdomain{tt.sub}, tt.origin, AnyScheme)
-			assert.Equal(t, tt.expected, got, "MatchAny()")
+			got := MatchAny([]Subdomain{{Prefix: tt.prefix, Suffix: "example.com"}}, tt.origin, AnyScheme)
+			assert.Equal(t, tt.want, got, "MatchAny()")
 		})
 	}
 }
@@ -216,60 +134,25 @@ func Test_MatchSubdomainOrigin(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		origin     string
-		subdomains []Subdomain
-		expected   bool
+		name   string
+		origin string
+		subs   []Subdomain
+		want   bool
 	}{
-		{
-			name:       "matches first pattern",
-			subdomains: defaultSubs,
-			origin:     "https://api.service.example.net",
-			expected:   true,
-		},
-		{
-			name:       "matches later pattern",
-			subdomains: defaultSubs,
-			origin:     "https://api.service.example.com",
-			expected:   true,
-		},
-		{
-			name:       "rejects invalid origin once",
-			subdomains: defaultSubs,
-			origin:     "https://user@api.example.com",
-			expected:   false,
-		},
-		{
-			name:       "rejects non-normalized origin",
-			subdomains: defaultSubs,
-			origin:     "https://API.service.example.com",
-			expected:   false,
-		},
-		{
-			name:       "rejects unmatched origin",
-			subdomains: defaultSubs,
-			origin:     "https://api.service.example.dev",
-			expected:   false,
-		},
-		{
-			name:       "empty slice never matches",
-			subdomains: []Subdomain{},
-			origin:     "https://api.service.example.com",
-			expected:   false,
-		},
-		{
-			name:       "nil slice never matches",
-			subdomains: nil,
-			origin:     "https://api.service.example.com",
-			expected:   false,
-		},
+		{name: "matches first pattern", subs: defaultSubs, origin: "https://api.service.example.net", want: true},
+		{name: "matches later pattern", subs: defaultSubs, origin: "https://api.service.example.com", want: true},
+		{name: "rejects invalid origin once", subs: defaultSubs, origin: "https://user@api.example.com"},
+		{name: "rejects non-normalized origin", subs: defaultSubs, origin: "https://API.service.example.com"},
+		{name: "rejects unmatched origin", subs: defaultSubs, origin: "https://api.service.example.dev"},
+		{name: "empty slice never matches", subs: []Subdomain{}, origin: "https://api.service.example.com"},
+		{name: "nil slice never matches", subs: nil, origin: "https://api.service.example.com"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := MatchAny(tt.subdomains, tt.origin, AnyScheme)
-			assert.Equal(t, tt.expected, got)
+			got := MatchAny(tt.subs, tt.origin, AnyScheme)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

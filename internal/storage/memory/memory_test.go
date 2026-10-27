@@ -49,19 +49,6 @@ func canceledContext() context.Context {
 	return ctx
 }
 
-func Test_Storage_Memory_Set(t *testing.T) {
-	t.Parallel()
-	var (
-		testStore = New()
-		key       = "john"
-		val       = []byte("doe")
-	)
-
-	require.NoError(t, testStore.Set(key, val, 0))
-
-	requireKeys(t, testStore, 1)
-}
-
 // Test_Storage_Memory_CanceledContext pins that a WithContext variant called
 // with an already canceled context fails with the context's error and leaves
 // the store as it found it.
@@ -75,33 +62,18 @@ func Test_Storage_Memory_CanceledContext(t *testing.T) {
 		// seeded are the keys stored, with val, before the call.
 		seeded []string
 	}{
-		{
-			name: "SetWithContext",
-			call: func(ctx context.Context, store *Storage) ([]byte, error) {
-				return nil, store.SetWithContext(ctx, "john", val, 0)
-			},
-		},
-		{
-			name:   "GetWithContext",
-			seeded: []string{"john"},
-			call: func(ctx context.Context, store *Storage) ([]byte, error) {
-				return store.GetWithContext(ctx, "john")
-			},
-		},
-		{
-			name:   "DeleteWithContext",
-			seeded: []string{"john"},
-			call: func(ctx context.Context, store *Storage) ([]byte, error) {
-				return nil, store.DeleteWithContext(ctx, "john")
-			},
-		},
-		{
-			name:   "ResetWithContext",
-			seeded: []string{"john1", "john2"},
-			call: func(ctx context.Context, store *Storage) ([]byte, error) {
-				return nil, store.ResetWithContext(ctx)
-			},
-		},
+		{name: "SetWithContext", call: func(ctx context.Context, store *Storage) ([]byte, error) {
+			return nil, store.SetWithContext(ctx, "john", val, 0)
+		}},
+		{name: "GetWithContext", call: func(ctx context.Context, store *Storage) ([]byte, error) {
+			return store.GetWithContext(ctx, "john")
+		}, seeded: []string{"john"}},
+		{name: "DeleteWithContext", call: func(ctx context.Context, store *Storage) ([]byte, error) {
+			return nil, store.DeleteWithContext(ctx, "john")
+		}, seeded: []string{"john"}},
+		{name: "ResetWithContext", call: func(ctx context.Context, store *Storage) ([]byte, error) {
+			return nil, store.ResetWithContext(ctx)
+		}, seeded: []string{"john1", "john2"}},
 	}
 
 	for _, tc := range tests {
@@ -127,50 +99,28 @@ func Test_Storage_Memory_CanceledContext(t *testing.T) {
 
 func Test_Storage_Memory_Set_Override(t *testing.T) {
 	t.Parallel()
-	var (
-		testStore = New()
-		key       = "john"
-		val       = []byte("doe")
-	)
-
-	err := testStore.Set(key, val, 0)
-	require.NoError(t, err)
-
-	err = testStore.Set(key, val, 0)
-	require.NoError(t, err)
-
+	testStore := New()
+	require.NoError(t, testStore.Set("john", []byte("doe"), 0))
+	require.NoError(t, testStore.Set("john", []byte("doe"), 0))
 	requireKeys(t, testStore, 1)
 }
 
 func Test_Storage_Memory_Get(t *testing.T) {
 	t.Parallel()
-	var (
-		testStore = New()
-		key       = "john"
-		val       = []byte("doe")
-	)
-
-	require.NoError(t, testStore.Set(key, val, 0))
-
-	requireValue(t, testStore, key, val)
+	testStore := New()
+	require.NoError(t, testStore.Set("john", []byte("doe"), 0))
+	requireValue(t, testStore, "john", []byte("doe"))
 	requireKeys(t, testStore, 1)
 }
 
 func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 	t.Parallel()
-	var (
-		testStore = New(Config{GCInterval: 300 * time.Millisecond})
-		key       = "john"
-		val       = []byte("doe")
-		exp       = 1 * time.Second
-	)
-
-	require.NoError(t, testStore.Set(key, val, exp))
+	testStore := New(Config{GCInterval: 300 * time.Millisecond})
+	require.NoError(t, testStore.Set("john", []byte("doe"), 1*time.Second))
 
 	// interval + expire + buffer
 	time.Sleep(1500 * time.Millisecond)
-
-	requireMissing(t, testStore, key)
+	requireMissing(t, testStore, "john")
 	requireKeys(t, testStore, 0)
 }
 
@@ -253,23 +203,15 @@ func Test_Storage_Memory_GCInterval_SubSecond(t *testing.T) {
 
 func Test_Storage_Memory_Set_Long_Expiration_with_Keys(t *testing.T) {
 	t.Parallel()
-	var (
-		testStore = New()
-		key       = "john"
-		val       = []byte("doe")
-		exp       = 3 * time.Second
-	)
-
+	testStore := New()
 	requireKeys(t, testStore, 0)
-
-	require.NoError(t, testStore.Set(key, val, exp))
+	require.NoError(t, testStore.Set("john", []byte("doe"), 3*time.Second))
 
 	time.Sleep(1100 * time.Millisecond)
-
 	requireKeys(t, testStore, 1)
 
 	time.Sleep(4000 * time.Millisecond)
-	requireMissing(t, testStore, key)
+	requireMissing(t, testStore, "john")
 	requireKeys(t, testStore, 0)
 }
 
@@ -282,49 +224,24 @@ func Test_Storage_Memory_Get_NotExist(t *testing.T) {
 
 func Test_Storage_Memory_Delete(t *testing.T) {
 	t.Parallel()
-	var (
-		testStore = New()
-		key       = "john"
-		val       = []byte("doe")
-	)
-
-	err := testStore.Set(key, val, 0)
-	require.NoError(t, err)
-
+	testStore := New()
+	require.NoError(t, testStore.Set("john", []byte("doe"), 0))
 	requireKeys(t, testStore, 1)
-
-	err = testStore.Delete(key)
-	require.NoError(t, err)
-
-	requireMissing(t, testStore, key)
+	require.NoError(t, testStore.Delete("john"))
+	requireMissing(t, testStore, "john")
 	requireKeys(t, testStore, 0)
 }
 
 func Test_Storage_Memory_Reset(t *testing.T) {
 	t.Parallel()
 	testStore := New()
-	val := []byte("doe")
-
-	err := testStore.Set("john1", val, 0)
-	require.NoError(t, err)
-
-	err = testStore.Set("john2", val, 0)
-	require.NoError(t, err)
-
+	require.NoError(t, testStore.Set("john1", []byte("doe"), 0))
+	require.NoError(t, testStore.Set("john2", []byte("doe"), 0))
 	requireKeys(t, testStore, 2)
-
-	err = testStore.Reset()
-	require.NoError(t, err)
-
+	require.NoError(t, testStore.Reset())
 	requireMissing(t, testStore, "john1")
 	requireMissing(t, testStore, "john2")
 	requireKeys(t, testStore, 0)
-}
-
-func Test_Storage_Memory_Close(t *testing.T) {
-	t.Parallel()
-	testStore := New()
-	require.NoError(t, testStore.Close())
 }
 
 // Test_Storage_Memory_Close_GCPanic verifies that Close does not deadlock if
@@ -401,7 +318,6 @@ func Test_Storage_Memory_Conn(t *testing.T) {
 	require.NotNil(t, testStore.Conn())
 }
 
-// Benchmarks for Set operation
 func Benchmark_Memory_Set(b *testing.B) {
 	testStore := New()
 	b.ReportAllocs()
@@ -444,11 +360,9 @@ func Benchmark_Memory_Set_Asserted_Parallel(b *testing.B) {
 	})
 }
 
-// Benchmarks for Get operation
 func Benchmark_Memory_Get(b *testing.B) {
 	testStore := New()
 	require.NoError(b, testStore.Set("john", []byte("doe"), 0))
-
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -459,7 +373,6 @@ func Benchmark_Memory_Get(b *testing.B) {
 func Benchmark_Memory_Get_Parallel(b *testing.B) {
 	testStore := New()
 	require.NoError(b, testStore.Set("john", []byte("doe"), 0))
-
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -472,9 +385,7 @@ func Benchmark_Memory_Get_Parallel(b *testing.B) {
 
 func Benchmark_Memory_Get_Asserted(b *testing.B) {
 	testStore := New()
-	err := testStore.Set("john", []byte("doe"), 0)
-	require.NoError(b, err)
-
+	require.NoError(b, testStore.Set("john", []byte("doe"), 0))
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -485,9 +396,7 @@ func Benchmark_Memory_Get_Asserted(b *testing.B) {
 
 func Benchmark_Memory_Get_Asserted_Parallel(b *testing.B) {
 	testStore := New()
-	err := testStore.Set("john", []byte("doe"), 0)
-	require.NoError(b, err)
-
+	require.NoError(b, testStore.Set("john", []byte("doe"), 0))
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -499,7 +408,6 @@ func Benchmark_Memory_Get_Asserted_Parallel(b *testing.B) {
 	})
 }
 
-// Benchmarks for SetAndDelete operation
 func Benchmark_Memory_SetAndDelete(b *testing.B) {
 	testStore := New()
 	b.ReportAllocs()
@@ -554,7 +462,6 @@ func Benchmark_Memory_SetAndDelete_Asserted_Parallel(b *testing.B) {
 
 func Test_Storage_Memory_CeilSecondsSaturates(t *testing.T) {
 	t.Parallel()
-
 	// Rounding must not overflow into a wrapped, tiny expiration.
 	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)))
 	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)-1))

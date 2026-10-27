@@ -13,45 +13,18 @@ import (
 func Test_ParseSameSite(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name  string
-		value string
-		want  SameSite
-		valid bool
+		name     string
+		value    string
+		httpMode http.SameSite
+		fastMode fasthttp.CookieSameSite
+		secure   bool // RequiresSecure
+		valid    bool
 	}{
-		{
-			name:  "disabled",
-			value: "DISABLED",
-			want:  SameSite{HTTPMode: 0, FastHTTPMode: fasthttp.CookieSameSiteDisabled},
-			valid: true,
-		},
-		{
-			name:  "lax",
-			value: "lax",
-			want:  SameSite{HTTPMode: http.SameSiteLaxMode, FastHTTPMode: fasthttp.CookieSameSiteLaxMode},
-			valid: true,
-		},
-		{
-			name:  "strict",
-			value: "STRICT",
-			want:  SameSite{HTTPMode: http.SameSiteStrictMode, FastHTTPMode: fasthttp.CookieSameSiteStrictMode},
-			valid: true,
-		},
-		{
-			name:  "none",
-			value: "NoNe",
-			want: SameSite{
-				HTTPMode:       http.SameSiteNoneMode,
-				FastHTTPMode:   fasthttp.CookieSameSiteNoneMode,
-				RequiresSecure: true,
-			},
-			valid: true,
-		},
-		{
-			name:  "invalid falls back to lax",
-			value: "invalid",
-			want:  SameSite{HTTPMode: http.SameSiteLaxMode, FastHTTPMode: fasthttp.CookieSameSiteLaxMode},
-			valid: false,
-		},
+		{"disabled", "DISABLED", 0, fasthttp.CookieSameSiteDisabled, false, true},
+		{"lax", "lax", http.SameSiteLaxMode, fasthttp.CookieSameSiteLaxMode, false, true},
+		{"strict", "STRICT", http.SameSiteStrictMode, fasthttp.CookieSameSiteStrictMode, false, true},
+		{"none", "NoNe", http.SameSiteNoneMode, fasthttp.CookieSameSiteNoneMode, true, true},
+		{"invalid falls back to lax", "invalid", http.SameSiteLaxMode, fasthttp.CookieSameSiteLaxMode, false, false},
 	}
 
 	for _, test := range tests {
@@ -59,7 +32,8 @@ func Test_ParseSameSite(t *testing.T) {
 			t.Parallel()
 			got, valid := ParseSameSite(test.value)
 			require.Equal(t, test.valid, valid)
-			require.Equal(t, test.want, got)
+			want := SameSite{HTTPMode: test.httpMode, FastHTTPMode: test.fastMode, RequiresSecure: test.secure}
+			require.Equal(t, want, got)
 		})
 	}
 }

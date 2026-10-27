@@ -28,8 +28,7 @@ func Test_Template_Execute(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	err = tmpl.Execute(buf, "ctx-", &testData{value: "data"})
-	require.NoError(t, err)
+	require.NoError(t, tmpl.Execute(buf, "ctx-", &testData{value: "data"}))
 	require.Equal(t, "a ctx-data name z", buf.String())
 }
 
@@ -50,7 +49,6 @@ func Test_Template_NilTemplateExecuteIsNoop(t *testing.T) {
 
 func Test_Template_UnterminatedTagPreserved(t *testing.T) {
 	t.Parallel()
-
 	// An unterminated ${ runs to end-of-format. Build emits the literal "${"
 	// from the unterminated branch and preserves the trailing text as the
 	// final fixed part, so Execute round-trips the original input verbatim.

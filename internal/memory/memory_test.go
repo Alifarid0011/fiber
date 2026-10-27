@@ -18,39 +18,25 @@ func Test_Memory(t *testing.T) {
 		exp     = 1 * time.Second
 	)
 
-	// Set key with value
 	store.Set(key, val, 0)
-	result := store.Get(key)
-	require.Equal(t, val, result)
+	require.Equal(t, val, store.Get(key))
+	require.Nil(t, store.Get("empty"))
 
-	// Get non-existing key
-	result = store.Get("empty")
-	require.Nil(t, result)
-
-	// Set key with value and ttl
 	store.Set(key, val, exp)
 	require.Eventually(t, func() bool { return store.Get(key) == nil }, 3*time.Second, 10*time.Millisecond)
 
-	// Set key with value and no expiration
+	// Set again with no expiration
 	store.Set(key, val, 0)
-	result = store.Get(key)
-	require.Equal(t, val, result)
+	require.Equal(t, val, store.Get(key))
 
-	// Delete key
 	store.Delete(key)
-	result = store.Get(key)
-	require.Nil(t, result)
+	require.Nil(t, store.Get(key))
 
-	// Reset all keys
 	store.Set("john-reset", val, 0)
 	store.Set("doe-reset", val, 0)
 	store.Reset()
-
-	// Check if all keys are deleted
-	result = store.Get("john-reset")
-	require.Nil(t, result)
-	result = store.Get("doe-reset")
-	require.Nil(t, result)
+	require.Nil(t, store.Get("john-reset"))
+	require.Nil(t, store.Get("doe-reset"))
 }
 
 // setWithinSecond stores key while the cached clock holds still.
@@ -141,7 +127,6 @@ func Benchmark_Memory(b *testing.B) {
 
 func Test_Memory_CeilSecondsSaturates(t *testing.T) {
 	t.Parallel()
-
 	// Rounding must not overflow into a wrapped, tiny TTL.
 	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)))
 	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)-1))
