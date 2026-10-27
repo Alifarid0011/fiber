@@ -119,8 +119,6 @@ func loggerTestLog(t *testing.T, cfg *Config) string {
 // Test_Logger_Output pins the exact line the logger writes for one request,
 // one scenario per row. A row without a handler registers no route, so its
 // request is a 404.
-//
-// go test -run Test_Logger_Output
 func Test_Logger_Output(t *testing.T) {
 	t.Parallel()
 
@@ -223,7 +221,6 @@ func Test_Logger_Output(t *testing.T) {
 	}
 }
 
-// go test -run Test_Logger_locals
 func Test_Logger_locals(t *testing.T) {
 	t.Parallel()
 	app, buf := loggerTestApp(t, &Config{Format: "${locals:demo}"})
@@ -256,7 +253,6 @@ func Test_Logger_locals(t *testing.T) {
 	require.Empty(t, buf.String())
 }
 
-// go test -run Test_Logger_Next
 func Test_Logger_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -270,7 +266,6 @@ func Test_Logger_Next(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
-// go test -run Test_Logger_Done
 func Test_Logger_Done(t *testing.T) {
 	t.Parallel()
 	buf := bytes.NewBuffer(nil)
@@ -462,7 +457,6 @@ func Test_Logger_Filter(t *testing.T) {
 	})
 }
 
-// go test -run Test_Logger_ErrorTimeZone
 func Test_Logger_ErrorTimeZone(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -474,7 +468,6 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
-// go test -run Test_Logger_Fiber_Logger
 func Test_Logger_LoggerToWriter(t *testing.T) {
 	app := fiber.New()
 
@@ -562,8 +555,6 @@ func (o *loggerTestOutput) Write(b []byte) (int, error) {
 // Test_Logger_StreamWrites counts the writes made to Config.Stream for one
 // request. A stream that rejects the line is written the error text as well;
 // one that takes it is written the line only.
-//
-// go test -run Test_Logger_StreamWrites
 func Test_Logger_StreamWrites(t *testing.T) {
 	t.Parallel()
 
@@ -671,8 +662,6 @@ func Test_Logger_UnknownTagPanicsWithTypedError(t *testing.T) {
 
 // Test_Logger_NamedFormats pins the layout of the exported format constants.
 // The timestamp is matched, not compared, because it moves with the clock.
-//
-// go test -run Test_Logger_NamedFormats
 func Test_Logger_NamedFormats(t *testing.T) {
 	t.Parallel()
 
@@ -753,8 +742,6 @@ func getLatencyTimeUnits() []struct {
 // Test_Logger_WithLatency checks that the latency is rendered in the unit that
 // fits its magnitude, both through the ${latency} tag and in the default format.
 // The latency is injected through LoggerFunc, so no request has to be slow.
-//
-// go test -run Test_Logger_WithLatency
 func Test_Logger_WithLatency(t *testing.T) {
 	for _, tc := range []struct {
 		// latency extracts the rendered latency from what was logged.
@@ -816,7 +803,6 @@ func Test_Logger_WithLatency(t *testing.T) {
 	}
 }
 
-// go test -run Test_Response_Body
 func Test_Response_Body(t *testing.T) {
 	t.Parallel()
 	app, buf := loggerTestApp(t, &Config{Format: "${resBody}"})
@@ -841,7 +827,6 @@ func Test_Response_Body(t *testing.T) {
 	require.Equal(t, expectedPostResponse, buf.String())
 }
 
-// go test -run Test_Request_Body
 func Test_Request_Body(t *testing.T) {
 	t.Parallel()
 	app, buf := loggerTestApp(t, &Config{Format: "${bytesReceived} ${bytesSent} ${status}"})
@@ -860,7 +845,6 @@ func Test_Request_Body(t *testing.T) {
 	require.Equal(t, "5 5 200", buf.String())
 }
 
-// go test -run Test_Logger_AppendUint
 func Test_Logger_AppendUint(t *testing.T) {
 	t.Parallel()
 	app, buf := loggerTestApp(t, &Config{Format: "${bytesReceived} ${bytesSent} ${status}"})
@@ -882,7 +866,6 @@ func Test_Logger_AppendUint(t *testing.T) {
 	require.Equal(t, "-2 5 200", buf.String())
 }
 
-// go test -run Test_Logger_Data_Race -race
 func Test_Logger_Data_Race(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -959,7 +942,6 @@ func Test_Logger_SharedTimestampState(t *testing.T) {
 	require.NotEmpty(t, loaded)
 }
 
-// go test -run Test_Response_Header
 func Test_Response_Header(t *testing.T) {
 	t.Parallel()
 	buf := loggerTestBuf(t)
@@ -1072,7 +1054,6 @@ func Test_Logger_DataLegacyTemplateChains(t *testing.T) {
 	require.Equal(t, "GET /", buf.String())
 }
 
-// go test -run Test_Logger_ByteSent_Streaming
 func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	t.Parallel()
 	app, buf := loggerTestApp(t, &Config{Format: "${bytesReceived} ${bytesSent} ${status}"})
@@ -1104,7 +1085,6 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	require.Equal(t, "-2 -1 200", buf.String())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Logger$ -benchmem -count=4
 func Benchmark_Logger(b *testing.B) {
 	b.Run("NoMiddleware", func(bb *testing.B) {
 		app := fiber.New()
@@ -1284,7 +1264,6 @@ func Benchmark_Logger(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Logger_Parallel$ -benchmem -count=4
 func Benchmark_Logger_Parallel(b *testing.B) {
 	b.Run("NoMiddleware", func(bb *testing.B) {
 		app := fiber.New()

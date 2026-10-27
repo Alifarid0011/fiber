@@ -879,7 +879,6 @@ func benchApp(cfg *Config) fasthttp.RequestHandler {
 	return app.Handler()
 }
 
-// go test -v -run=^$ -bench=Benchmark_KeyAuth_Bearer -benchmem -count=4
 func Benchmark_KeyAuth_Bearer(b *testing.B) {
 	h := benchApp(&Config{Validator: benchValidator})
 
@@ -902,8 +901,6 @@ func Benchmark_KeyAuth_Bearer(b *testing.B) {
 }
 
 // The credential is in the last source, so the walk pays for both misses.
-//
-// go test -v -run=^$ -bench=Benchmark_KeyAuth_Chain -benchmem -count=4
 func Benchmark_KeyAuth_Chain(b *testing.B) {
 	h := benchApp(&Config{
 		Validator: benchValidator,

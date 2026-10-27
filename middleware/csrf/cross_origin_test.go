@@ -315,7 +315,6 @@ func Test_CSRF_CrossOriginProtection_DisableHeaderNormalizing(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Middleware_CSRF_CrossOriginProtection -benchmem -count=4
 func Benchmark_Middleware_CSRF_CrossOriginProtection(b *testing.B) {
 	app := fiber.New()
 

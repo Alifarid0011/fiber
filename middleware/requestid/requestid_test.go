@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// go test -run Test_RequestID
 func Test_RequestID(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -147,7 +146,6 @@ func Test_isValidRequestID_WordBoundaries(t *testing.T) {
 	require.False(t, isValidRequestID("ab\x00"))
 }
 
-// go test -run Test_RequestID_Next
 func Test_RequestID_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -162,7 +160,6 @@ func Test_RequestID_Next(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
-// go test -run Test_RequestID_Locals
 func Test_RequestID_FromContext(t *testing.T) {
 	t.Parallel()
 	reqID := "ThisIsARequestId"
@@ -267,7 +264,6 @@ func Test_RequestID_FromContext_Types(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusOK)
 }
 
-// go test -v -run=^$ -bench=Benchmark_isValidRequestID -benchmem -count=4
 func Benchmark_isValidRequestID(b *testing.B) {
 	inputs := []string{
 		"6ba7b810-9dad-11d1-80b4-00c04fd430c8", // UUID, the middleware's own format

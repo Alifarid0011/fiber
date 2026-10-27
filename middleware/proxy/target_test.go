@@ -106,8 +106,6 @@ func proxyTestExpectStatus(t *testing.T, app *fiber.App, status int, targets ...
 	}
 }
 
-// go test -run Test_Proxy_ForwardsRoutedPath
-//
 // Every forwarding handler is mounted behind a guard on "/admin" and sends what
 // the router resolved to its upstream: a target that stays within its own path
 // is forwarded as routed, one that resolves into the guarded path is answered by
@@ -197,7 +195,6 @@ func Test_Proxy_ForwardsRoutedPath(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_Balancer_ModifyRequestCanRetarget
 func Test_Proxy_Balancer_ModifyRequestCanRetarget(t *testing.T) {
 	t.Parallel()
 	addr := echoTarget(t)
@@ -225,7 +222,6 @@ func Test_Proxy_Balancer_ModifyRequestCanRetarget(t *testing.T) {
 	require.Equal(t, "/other?y=2", readBody(t, resp))
 }
 
-// go test -run Test_Proxy_Balancer_RestoresRequestLine
 func Test_Proxy_Balancer_RestoresRequestLine(t *testing.T) {
 	t.Parallel()
 	addr := echoTarget(t)
@@ -243,7 +239,6 @@ func Test_Proxy_Balancer_RestoresRequestLine(t *testing.T) {
 	require.Equal(t, "/public/A?x=%2F", string(resp.Body()))
 }
 
-// go test -run Test_Proxy_Balancer_RejectsHostUserinfo
 func Test_Proxy_Balancer_RejectsHostUserinfo(t *testing.T) {
 	t.Parallel()
 
@@ -266,7 +261,6 @@ func Test_Proxy_Balancer_RejectsHostUserinfo(t *testing.T) {
 	require.Equal(t, int32(1), hits.Load())
 }
 
-// go test -run Test_Proxy_Balancer_RejectsNonOriginServer
 func Test_Proxy_Balancer_RejectsNonOriginServer(t *testing.T) {
 	t.Parallel()
 
@@ -427,7 +421,6 @@ func Test_Proxy_EscapesRawBytes(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_Do_UserClientForwardsTargetAsGiven
 func Test_Proxy_Do_UserClientForwardsTargetAsGiven(t *testing.T) {
 	t.Parallel()
 	addr := echoTarget(t)

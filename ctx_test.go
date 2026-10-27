@@ -67,7 +67,6 @@ func (t testNetAddr) String() string {
 	return t.address
 }
 
-// go test -run Test_Ctx_Accepts
 func Test_Ctx_Accepts(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New(Config{
@@ -104,7 +103,6 @@ func Test_Ctx_Accepts(t *testing.T) {
 	require.Equal(t, "application/json", c.Accepts("application/json", "text/html"))
 }
 
-// go test -run Test_Ctx_AcceptsHelpers
 func Test_Ctx_AcceptsHelpers(t *testing.T) {
 	t.Parallel()
 
@@ -124,7 +122,6 @@ func Test_Ctx_AcceptsHelpers(t *testing.T) {
 	require.True(t, c.AcceptsEventStream())
 }
 
-// go test -run Test_Ctx_ContentTypeHelpers
 func Test_Ctx_ContentTypeHelpers(t *testing.T) {
 	t.Parallel()
 
@@ -159,7 +156,6 @@ func Test_Ctx_ContentTypeHelpers(t *testing.T) {
 	require.False(t, c.IsForm())
 }
 
-// go test -run Test_Ctx_Charset
 func Test_Ctx_Charset(t *testing.T) {
 	t.Parallel()
 
@@ -220,7 +216,6 @@ func Test_Ctx_Charset(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Charset -benchmem -count=4
 func Benchmark_Ctx_Charset(b *testing.B) {
 	for _, bench := range []struct {
 		name        string
@@ -244,7 +239,6 @@ func Benchmark_Ctx_Charset(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_MediaType -benchmem -count=4
 func Benchmark_Ctx_MediaType(b *testing.B) {
 	c := apptest.Ctx(b, New())
 	c.Request().Header.Set(HeaderContentType, "text/html ; charset=utf-8")
@@ -256,7 +250,6 @@ func Benchmark_Ctx_MediaType(b *testing.B) {
 	require.Equal(b, MIMETextHTML, mediaType)
 }
 
-// go test -run Test_Ctx_HeaderHelpers
 func Test_Ctx_HeaderHelpers(t *testing.T) {
 	t.Parallel()
 
@@ -292,7 +285,6 @@ func Test_Ctx_HeaderHelpers(t *testing.T) {
 	require.False(t, c.HasHeader("X-Trace-Id"))
 }
 
-// go test -run Test_Ctx_HasHeaderValue
 func Test_Ctx_HasHeaderValue(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -339,7 +331,6 @@ func Test_Ctx_HasHeaderValue(t *testing.T) {
 	require.False(t, c.HasHeaderValue(HeaderCacheControl, "public"))
 }
 
-// go test -run Test_Ctx_FullURL_DoesNotAliasPooledBuffer
 func Test_Ctx_FullURL_DoesNotAliasPooledBuffer(t *testing.T) {
 	t.Parallel()
 
@@ -363,7 +354,6 @@ func Test_Ctx_FullURL_DoesNotAliasPooledBuffer(t *testing.T) {
 	require.Equal(t, "http://example.com/search?q=fiber", fullURL)
 }
 
-// go test -run Test_Ctx_TypedParsingDefaults
 func Test_Ctx_TypedParsingDefaults(t *testing.T) {
 	t.Parallel()
 
@@ -390,7 +380,6 @@ func Test_Ctx_TypedParsingDefaults(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Accepts -benchmem -count=4
 func Benchmark_Ctx_Accepts(b *testing.B) {
 	c := apptest.Ctx(b, New(Config{
 		CBOREncoder: cbor.Marshal,
@@ -456,7 +445,6 @@ func ctxTestACustomApp(config ...Config) *App {
 	}, config...)
 }
 
-// go test -run Test_Ctx_CustomCtx
 func Test_Ctx_CustomCtx(t *testing.T) {
 	t.Parallel()
 
@@ -532,7 +520,6 @@ func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
 	require.Equal(t, "prefix_", apptest.Body(t, resp))
 }
 
-// go test -run Test_Ctx_CustomCtx_JSON_WithMiddleware
 func Test_Ctx_CustomCtx_JSON_WithMiddleware(t *testing.T) {
 	t.Parallel()
 
@@ -585,7 +572,6 @@ func ctxTestAExpectEmptyOK(t *testing.T, app *App, req *http.Request) {
 	require.Equal(t, int64(0), resp.ContentLength)
 }
 
-// go test -run Test_Ctx_CustomCtx
 func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 	t.Parallel()
 
@@ -605,7 +591,6 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_Accepts_EmptyAccept
 func Test_Ctx_Accepts_EmptyAccept(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New(Config{
@@ -645,7 +630,6 @@ func ctxTestAAccepts(t *testing.T, method func(Ctx, ...string) string, header st
 	}
 }
 
-// go test -run Test_Ctx_Accepts_HeaderForms
 func Test_Ctx_Accepts_HeaderForms(t *testing.T) {
 	t.Parallel()
 
@@ -667,7 +651,6 @@ func Test_Ctx_Accepts_HeaderForms(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_AcceptsCharsets
 func Test_Ctx_AcceptsCharsets(t *testing.T) {
 	t.Parallel()
 
@@ -677,7 +660,6 @@ func Test_Ctx_AcceptsCharsets(t *testing.T) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsCharsets -benchmem -count=4
 func Benchmark_Ctx_AcceptsCharsets(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
@@ -690,7 +672,6 @@ func Benchmark_Ctx_AcceptsCharsets(b *testing.B) {
 	require.Equal(b, "utf-8", res)
 }
 
-// go test -run Test_Ctx_AcceptsEncodings
 func Test_Ctx_AcceptsEncodings(t *testing.T) {
 	t.Parallel()
 
@@ -702,7 +683,6 @@ func Test_Ctx_AcceptsEncodings(t *testing.T) {
 }
 
 // RFC 9110 §12.5.3: "identity" is acceptable unless the field excludes it.
-// go test -run Test_Ctx_AcceptsEncodings_Identity
 func Test_Ctx_AcceptsEncodings_Identity(t *testing.T) {
 	t.Parallel()
 
@@ -739,7 +719,6 @@ func Test_Ctx_AcceptsEncodings_Identity(t *testing.T) {
 }
 
 // An absent field accepts any coding; an empty one only identity.
-// go test -run Test_Ctx_AcceptsEncodings_AbsentAndEmpty
 func Test_Ctx_AcceptsEncodings_AbsentAndEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -768,7 +747,6 @@ func Test_Ctx_AcceptsEncodings_AbsentAndEmpty(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsEncodings -benchmem -count=4
 func Benchmark_Ctx_AcceptsEncodings(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
@@ -781,7 +759,6 @@ func Benchmark_Ctx_AcceptsEncodings(b *testing.B) {
 	require.Equal(b, "gzip", res)
 }
 
-// go test -run Test_Ctx_AcceptsLanguages
 func Test_Ctx_AcceptsLanguages(t *testing.T) {
 	t.Parallel()
 
@@ -801,7 +778,6 @@ func Test_Ctx_AcceptsLanguages(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_AcceptsLanguagesExtended
 func Test_Ctx_AcceptsLanguagesExtended(t *testing.T) {
 	t.Parallel()
 
@@ -817,7 +793,6 @@ func Test_Ctx_AcceptsLanguagesExtended(t *testing.T) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsLanguages -benchmem -count=4
 func Benchmark_Ctx_AcceptsLanguages(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
@@ -830,7 +805,6 @@ func Benchmark_Ctx_AcceptsLanguages(b *testing.B) {
 	require.Equal(b, "fr", res)
 }
 
-// go test -run Test_Ctx_App
 func Test_Ctx_App(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -840,7 +814,6 @@ func Test_Ctx_App(t *testing.T) {
 	require.Equal(t, 1000, c.App().config.BodyLimit)
 }
 
-// go test -run Test_Ctx_Append
 func Test_Ctx_Append(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -880,7 +853,6 @@ func Test_Ctx_Append(t *testing.T) {
 	require.Empty(t, string(c.Response().Header.Peek("x-custom-header")))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Append -benchmem -count=4
 func Benchmark_Ctx_Append(b *testing.B) {
 	app := New()
 	c := apptest.CtxAs[*DefaultCtx](b, app)
@@ -894,7 +866,6 @@ func Benchmark_Ctx_Append(b *testing.B) {
 	require.Equal(b, "Hello, World", app.toString(c.Response().Header.Peek("X-Custom-Header")))
 }
 
-// go test -run Test_Ctx_Attachment
 func Test_Ctx_Attachment(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -929,7 +900,6 @@ func Test_Ctx_Attachment(t *testing.T) {
 	require.Contains(t, header, `filename*=UTF-8''%C3%BC%3Dfinal%402x.png`)
 }
 
-// go test -run Test_Ctx_Attachment_SanitizesFilenameControls
 func Test_Ctx_Attachment_SanitizesFilenameControls(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -961,7 +931,6 @@ func Test_Ctx_Attachment_SanitizesFilenameControls(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Attachment -benchmem -count=4
 func Benchmark_Ctx_Attachment(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
@@ -973,7 +942,6 @@ func Benchmark_Ctx_Attachment(b *testing.B) {
 	require.Equal(b, `attachment; filename="another document.pdf\"Bla: \"fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 }
 
-// go test -run Test_Ctx_BaseURL
 func Test_Ctx_BaseURL(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -984,7 +952,6 @@ func Test_Ctx_BaseURL(t *testing.T) {
 	require.Equal(t, "http://google.com", c.BaseURL())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_BaseURL -benchmem
 func Benchmark_Ctx_BaseURL(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
@@ -1025,7 +992,6 @@ func Benchmark_Ctx_FullURL(b *testing.B) {
 	require.Equal(b, "http://google.com:1337/haha/oke/lol?name=fiber", res)
 }
 
-// go test -run Test_Ctx_Body
 func Test_Ctx_Body(t *testing.T) {
 	t.Parallel()
 	c := apptest.CtxAs[*DefaultCtx](t, New())
@@ -1034,7 +1000,6 @@ func Test_Ctx_Body(t *testing.T) {
 	require.Equal(t, []byte("john=doe"), c.Body())
 }
 
-// go test -run Test_Ctx_BodyRaw
 func Test_Ctx_BodyRaw(t *testing.T) {
 	t.Parallel()
 	c := apptest.CtxAs[*DefaultCtx](t, New())
@@ -1043,7 +1008,6 @@ func Test_Ctx_BodyRaw(t *testing.T) {
 	require.Equal(t, []byte("john=doe"), c.BodyRaw())
 }
 
-// go test -run Test_Ctx_BodyRaw_Immutable
 func Test_Ctx_BodyRaw_Immutable(t *testing.T) {
 	t.Parallel()
 	c := apptest.CtxAs[*DefaultCtx](t, New(Config{Immutable: true}))
@@ -1052,7 +1016,6 @@ func Test_Ctx_BodyRaw_Immutable(t *testing.T) {
 	require.Equal(t, []byte("john=doe"), c.BodyRaw())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Body -benchmem -count=4
 func Benchmark_Ctx_Body(b *testing.B) {
 	const input = "john=doe"
 
@@ -1067,7 +1030,6 @@ func Benchmark_Ctx_Body(b *testing.B) {
 	require.Equal(b, []byte(input), c.Body())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_BodyRaw -benchmem -count=4
 func Benchmark_Ctx_BodyRaw(b *testing.B) {
 	const input = "john=doe"
 
@@ -1082,7 +1044,6 @@ func Benchmark_Ctx_BodyRaw(b *testing.B) {
 	require.Equal(b, []byte(input), c.BodyRaw())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_BodyRaw_Immutable -benchmem -count=4
 func Benchmark_Ctx_BodyRaw_Immutable(b *testing.B) {
 	const input = "john=doe"
 
@@ -1097,7 +1058,6 @@ func Benchmark_Ctx_BodyRaw_Immutable(b *testing.B) {
 	require.Equal(b, []byte(input), c.BodyRaw())
 }
 
-// go test -run Test_Ctx_Body_Immutable
 func Test_Ctx_Body_Immutable(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1108,7 +1068,6 @@ func Test_Ctx_Body_Immutable(t *testing.T) {
 	require.Equal(t, []byte("john=doe"), c.Body())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Body_Immutable -benchmem -count=4
 func Benchmark_Ctx_Body_Immutable(b *testing.B) {
 	const input = "john=doe"
 
@@ -1154,7 +1113,6 @@ func ctxTestACompress(t *testing.T, coding string, data []byte) []byte {
 	return buf.Bytes()
 }
 
-// go test -run Test_Ctx_Body_With_Compression
 func Test_Ctx_Body_With_Compression(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -1245,7 +1203,6 @@ func Test_Ctx_Body_With_Compression_BodyLimitExceeded(t *testing.T) {
 	require.Equal(t, StatusRequestEntityTooLarge, c.Response().StatusCode())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression -benchmem -count=4
 func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 	encodingErr := errors.New("failed to encoding data")
 
@@ -1367,7 +1324,6 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression_Immutable -benchmem -count=4
 func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 	encodingErr := errors.New("failed to encoding data")
 
@@ -1490,7 +1446,6 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 	}
 }
 
-// go test -run Test_Ctx_RequestCtx
 func Test_Ctx_RequestCtx(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -1498,7 +1453,6 @@ func Test_Ctx_RequestCtx(t *testing.T) {
 	require.Equal(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", c.RequestCtx()))
 }
 
-// go test -run Test_Ctx_Cookie
 func Test_Ctx_Cookie(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -1555,7 +1509,6 @@ func Test_Ctx_Cookie(t *testing.T) {
 	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 }
 
-// go test -run Test_Ctx_Cookie_Attributes
 func Test_Ctx_Cookie_Attributes(t *testing.T) {
 	t.Parallel()
 
@@ -1597,7 +1550,6 @@ func Test_Ctx_Cookie_Attributes(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Cookie_Invalid
 func Test_Ctx_Cookie_Invalid(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1625,7 +1577,6 @@ func Test_Ctx_Cookie_Invalid(t *testing.T) {
 
 // A value with a space or comma is written in quotes, as net/http does (RFC 6265
 // §4.1.1 allows neither even in quotes), and the quotes are not part of the value read back.
-// go test -run Test_Ctx_Cookie_ValueQuoting
 func Test_Ctx_Cookie_ValueQuoting(t *testing.T) {
 	t.Parallel()
 
@@ -1669,7 +1620,6 @@ func Test_Ctx_Cookie_ValueQuoting(t *testing.T) {
 }
 
 // Values the grammar cannot carry, even in quotes, are refused, not altered.
-// go test -run Test_Ctx_Cookie_ValueRejected
 func Test_Ctx_Cookie_ValueRejected(t *testing.T) {
 	t.Parallel()
 
@@ -1700,7 +1650,6 @@ func Test_Ctx_Cookie_ValueRejected(t *testing.T) {
 }
 
 // net/http reads back the values that were set.
-// go test -run Test_Ctx_Cookie_ValueQuoting_NetHTTP
 func Test_Ctx_Cookie_ValueQuoting_NetHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1725,7 +1674,6 @@ func Test_Ctx_Cookie_ValueQuoting_NetHTTP(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Cookie_SameSite_CaseInsensitive
 func Test_Ctx_Cookie_SameSite_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1791,7 +1739,6 @@ func Test_Ctx_Cookie_SameSite_CaseInsensitive(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Cookie_SameSite_None_Secure
 func Test_Ctx_Cookie_SameSite_None_Secure(t *testing.T) {
 	t.Parallel()
 
@@ -1829,7 +1776,6 @@ func Test_Ctx_Cookie_SameSite_None_Secure(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
 func Benchmark_Ctx_Cookie(b *testing.B) {
 	app := New()
 	c := apptest.CtxAs[*DefaultCtx](b, app)
@@ -1844,7 +1790,6 @@ func Benchmark_Ctx_Cookie(b *testing.B) {
 	require.Equal(b, "John=Doe; path=/; SameSite=Lax", app.toString(c.Response().Header.Peek("Set-Cookie")))
 }
 
-// go test -run Test_Ctx_Cookies
 func Test_Ctx_Cookies(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -1867,7 +1812,6 @@ func ctxTestAFormats(chosen *string, mediaTypes ...string) []ResFmt {
 	return formats
 }
 
-// go test -run Test_Ctx_Format
 func Test_Ctx_Format(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -2000,7 +1944,6 @@ func Test_Ctx_Format_NoAcceptDefaultFirst(t *testing.T) {
 	require.NotEqual(t, "default", c.GetRespHeader(HeaderContentType))
 }
 
-// go test -run Test_Ctx_Format_AcceptEmptyAndMultiLine
 func Test_Ctx_Format_AcceptEmptyAndMultiLine(t *testing.T) {
 	t.Parallel()
 
@@ -2118,7 +2061,6 @@ func Test_Ctx_AutoFormat_Vary(t *testing.T) {
 	require.Equal(t, HeaderAccept, c.GetRespHeader(HeaderVary))
 }
 
-// go test -run Test_Ctx_AutoFormat
 func Test_Ctx_AutoFormat(t *testing.T) {
 	t.Parallel()
 
@@ -2207,7 +2149,6 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_AutoFormat_XSS_Prevention
 func Test_Ctx_AutoFormat_XSS_Prevention(t *testing.T) {
 	t.Parallel()
 
@@ -2284,7 +2225,6 @@ func Test_Ctx_AutoFormat_XSS_Prevention(t *testing.T) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat -benchmem -count=4
 func Benchmark_Ctx_AutoFormat(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -2299,7 +2239,6 @@ func Benchmark_Ctx_AutoFormat(b *testing.B) {
 	require.Equal(b, `Hello, World!`, string(c.Response().Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat_HTML -benchmem -count=4
 func Benchmark_Ctx_AutoFormat_HTML(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -2314,7 +2253,6 @@ func Benchmark_Ctx_AutoFormat_HTML(b *testing.B) {
 	require.Equal(b, "<p>Hello, World!</p>", string(c.Response().Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat_JSON -benchmem -count=4
 func Benchmark_Ctx_AutoFormat_JSON(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -2329,7 +2267,6 @@ func Benchmark_Ctx_AutoFormat_JSON(b *testing.B) {
 	require.Equal(b, `"Hello, World!"`, string(c.Response().Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat_MsgPack -benchmem -count=4
 func Benchmark_Ctx_AutoFormat_MsgPack(b *testing.B) {
 	c := apptest.Ctx(b, New(
 		Config{
@@ -2349,7 +2286,6 @@ func Benchmark_Ctx_AutoFormat_MsgPack(b *testing.B) {
 	require.Equal(b, "\xadHello, World!", string(c.Response().Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat_XML -benchmem -count=4
 func Benchmark_Ctx_AutoFormat_XML(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -2364,7 +2300,6 @@ func Benchmark_Ctx_AutoFormat_XML(b *testing.B) {
 	require.Equal(b, `<string>Hello, World!</string>`, string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_FormFile
 func Test_Ctx_FormFile(t *testing.T) {
 	// TODO: We should clean this up
 	t.Parallel()
@@ -2405,7 +2340,6 @@ func Test_Ctx_FormFile(t *testing.T) {
 	ctxTestAExpectEmptyOK(t, app, req)
 }
 
-// go test -run Test_Ctx_FormValue
 func Test_Ctx_FormValue(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2585,7 +2519,6 @@ func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
 	}
 }
 
-// go test -run Test_Ctx_Fresh
 func Test_Ctx_Fresh(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -2615,7 +2548,6 @@ func Test_Ctx_Fresh(t *testing.T) {
 	require.True(t, c.Fresh())
 }
 
-// go test -run Test_Ctx_Fresh_NoCache
 func Test_Ctx_Fresh_NoCache(t *testing.T) {
 	t.Parallel()
 
@@ -2648,7 +2580,6 @@ func Test_Ctx_Fresh_NoCache(t *testing.T) {
 // It also verifies that If-Modified-Since values in the obsolete RFC 850 and
 // ANSI C asctime() formats are accepted, as required by RFC 9110 §5.6.7 for
 // any HTTP-date recipient.
-// go test -run Test_Ctx_Fresh_ModifiedSince
 func Test_Ctx_Fresh_ModifiedSince(t *testing.T) {
 	t.Parallel()
 
@@ -2763,7 +2694,6 @@ func Test_Ctx_Fresh_MultiFieldLines(t *testing.T) {
 
 // Test_Ctx_Body_With_Compression_MultiFieldLines verifies that repeated
 // Content-Encoding field lines are combined into one list per RFC 9110 §5.2.
-// go test -run Test_Ctx_Body_With_Compression_MultiFieldLines
 func Test_Ctx_Body_With_Compression_MultiFieldLines(t *testing.T) {
 	t.Parallel()
 
@@ -2794,7 +2724,6 @@ func Test_Ctx_Body_With_Compression_MultiFieldLines(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_WithNoCache -benchmem -count=4
 func Benchmark_Ctx_Fresh_WithNoCache(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -2805,7 +2734,6 @@ func Benchmark_Ctx_Fresh_WithNoCache(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_LastModified -benchmem -count=4
 func Benchmark_Ctx_Fresh_LastModified(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -2816,7 +2744,6 @@ func Benchmark_Ctx_Fresh_LastModified(b *testing.B) {
 	}
 }
 
-// go test -run Test_Ctx_Binders -v
 func Test_Ctx_Binders(t *testing.T) {
 	t.Parallel()
 	// setup
@@ -2915,7 +2842,6 @@ func Test_Ctx_Binders(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_Get
 func Test_Ctx_Get(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -2927,7 +2853,6 @@ func Test_Ctx_Get(t *testing.T) {
 	require.Equal(t, "default", c.Get("unknown", "default"))
 }
 
-// go test -run Test_Ctx_Get_EmptyFirstLine
 func Test_Ctx_Get_EmptyFirstLine(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -2943,7 +2868,6 @@ func Test_Ctx_Get_EmptyFirstLine(t *testing.T) {
 	require.Len(t, c.Request().Header.PeekAll("X-Token"), 2)
 }
 
-// go test -run Test_Ctx_GetReqHeader
 func Test_Ctx_GetReqHeader(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -2954,7 +2878,6 @@ func Test_Ctx_GetReqHeader(t *testing.T) {
 	require.Equal(t, "bar", GetReqHeader[string](c, "foo"))
 }
 
-// go test -run Test_Ctx_Host
 func Test_Ctx_Host(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -2965,7 +2888,6 @@ func Test_Ctx_Host(t *testing.T) {
 
 // Host and Hostname answer with the X-Forwarded-Host header only when the
 // request comes from a trusted proxy.
-// go test -run Test_Ctx_Host_ForwardedHost
 func Test_Ctx_Host_ForwardedHost(t *testing.T) {
 	t.Parallel()
 
@@ -3021,7 +2943,6 @@ func Test_Ctx_Host_ForwardedHost(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Host -benchmem -count=4
 func Benchmark_Ctx_Host(b *testing.B) {
 	c := apptest.Ctx(b, New())
 	c.Request().SetRequestURI("http://google.com/test")
@@ -3033,7 +2954,6 @@ func Benchmark_Ctx_Host(b *testing.B) {
 	require.Equal(b, "google.com", host)
 }
 
-// go test -run Test_Ctx_IsProxyTrusted
 func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	t.Parallel()
 
@@ -3069,7 +2989,6 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Hostname
 func Test_Ctx_Hostname(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -3081,7 +3000,6 @@ func Test_Ctx_Hostname(t *testing.T) {
 	require.Equal(t, "google.com", c.Hostname())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Hostname -benchmem -count=4
 func Benchmark_Ctx_Hostname(b *testing.B) {
 	c := apptest.Ctx(b, New())
 	c.Request().SetRequestURI("http://google.com:8080/test")
@@ -3104,7 +3022,6 @@ func Benchmark_Ctx_Hostname(b *testing.B) {
 	}
 }
 
-// go test -run Test_Ctx_Port
 func Test_Ctx_Port(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -3112,7 +3029,6 @@ func Test_Ctx_Port(t *testing.T) {
 	require.Equal(t, "0", c.Port())
 }
 
-// go test -run Test_Ctx_Port_RemoteAddrVariants
 func Test_Ctx_Port_RemoteAddrVariants(t *testing.T) {
 	t.Parallel()
 
@@ -3168,7 +3084,6 @@ func Test_Ctx_Port_RemoteAddrVariants(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_PortInHandler
 func Test_Ctx_PortInHandler(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3180,7 +3095,6 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 	apptest.ExpectBody(t, app, "/port", StatusOK, "0")
 }
 
-// go test -run Test_Ctx_IP
 func Test_Ctx_IP(t *testing.T) {
 	t.Parallel()
 
@@ -3194,7 +3108,6 @@ func Test_Ctx_IP(t *testing.T) {
 	require.Equal(t, "0.0.0.0", c.IP())
 }
 
-// go test -run Test_Ctx_IP_ProxyHeader
 func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 	t.Parallel()
 
@@ -3248,7 +3161,6 @@ func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_IP_TrustedProxy
 func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	t.Parallel()
 
@@ -3275,7 +3187,6 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_IP_StripTrustedProxies
 func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 	t.Parallel()
 
@@ -3431,7 +3342,6 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_IP_ProxyHeader_NoTrustedProxies
 func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -3618,7 +3528,6 @@ func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, unixSocket bool) string {
 	return <-result
 }
 
-// go test -run Test_Ctx_IPs  -parallel
 func Test_Ctx_IPs(t *testing.T) {
 	t.Parallel()
 
@@ -3700,7 +3609,6 @@ func Test_Ctx_IPs(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_IPs -benchmem -count=4
 func Benchmark_Ctx_IPs(b *testing.B) {
 	c := apptest.Ctx(b, New())
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, invalid, 127.0.0.1")
@@ -3818,7 +3726,6 @@ func Benchmark_Ctx_IP_With_ProxyHeader_Chain(b *testing.B) {
 	require.Equal(b, "203.0.113.50", res)
 }
 
-// go test -run Test_Ctx_Is
 func Test_Ctx_Is(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3852,7 +3759,6 @@ func Test_Ctx_Is(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Is -benchmem -count=4
 func Benchmark_Ctx_Is(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -3866,7 +3772,6 @@ func Benchmark_Ctx_Is(b *testing.B) {
 	require.True(b, res)
 }
 
-// go test -run Test_Ctx_Locals
 func Test_Ctx_Locals(t *testing.T) {
 	t.Parallel()
 
@@ -3894,7 +3799,6 @@ func Test_Ctx_Locals(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Deadline
 func Test_Ctx_Deadline(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3916,7 +3820,6 @@ func Test_Ctx_Deadline(t *testing.T) {
 	apptest.Expect(t, app, "/test", StatusOK)
 }
 
-// go test -run Test_Ctx_Done
 func Test_Ctx_Done(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3937,7 +3840,6 @@ func Test_Ctx_Done(t *testing.T) {
 	apptest.Expect(t, app, "/test", StatusOK)
 }
 
-// go test -run Test_Ctx_Err
 func Test_Ctx_Err(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3977,7 +3879,6 @@ func ctxTestBReleasedCtx(t *testing.T, onRequest func(c Ctx)) Ctx {
 	return released
 }
 
-// go test -run Test_Ctx_Value_AfterRelease
 func Test_Ctx_Value_AfterRelease(t *testing.T) {
 	t.Parallel()
 	ctx := ctxTestBReleasedCtx(t, func(c Ctx) {
@@ -3993,7 +3894,6 @@ func Test_Ctx_Value_AfterRelease(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_Locals_AfterRelease
 func Test_Ctx_Locals_AfterRelease(t *testing.T) {
 	t.Parallel()
 	ctx := ctxTestBReleasedCtx(t, func(c Ctx) { c.Locals("test", "value") })
@@ -4007,7 +3907,6 @@ func Test_Ctx_Locals_AfterRelease(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_SetLocal
 func Test_Ctx_SetLocal(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4027,7 +3926,6 @@ func Test_Ctx_SetLocal(t *testing.T) {
 	apptest.Expect(t, app, "/test", StatusOK)
 }
 
-// go test -run Test_Ctx_SetLocal_AfterRelease
 func Test_Ctx_SetLocal_AfterRelease(t *testing.T) {
 	t.Parallel()
 	ctx := ctxTestBReleasedCtx(t, nil)
@@ -4075,7 +3973,6 @@ func Test_Ctx_SetLocal_UsesCustomCtxLocals(t *testing.T) {
 	require.Equal(t, "v", c.Locals("k"), "and the value must actually be stored")
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_SetLocal -benchmem -count=4
 func Benchmark_Ctx_SetLocal(b *testing.B) {
 	app := New()
 	var c Ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -4096,7 +3993,6 @@ func Benchmark_Ctx_SetLocal(b *testing.B) {
 	require.Equal(b, "alice", c.Locals("user"))
 }
 
-// go test -run Test_Ctx_Value_InGoroutine
 func Test_Ctx_Value_InGoroutine(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4151,7 +4047,6 @@ func Test_Ctx_Value_InGoroutine(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Context
 func Test_Ctx_Context(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -4183,7 +4078,6 @@ func Test_Ctx_Context_AfterHandlerPanics(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_Request_Response_AfterRelease
 func Test_Ctx_Request_Response_AfterRelease(t *testing.T) {
 	t.Parallel()
 	ctx := ctxTestBReleasedCtx(t, nil)
@@ -4199,7 +4093,6 @@ func Test_Ctx_Request_Response_AfterRelease(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_SetContext
 func Test_Ctx_SetContext(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -4289,7 +4182,6 @@ func Test_Ctx_ValueFromContext_Config(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_Context_Multiple_Requests
 func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 	t.Parallel()
 	var testKey testContextKey
@@ -4326,7 +4218,6 @@ func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Locals_Generic
 func Test_Ctx_Locals_Generic(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4346,7 +4237,6 @@ func Test_Ctx_Locals_Generic(t *testing.T) {
 	apptest.Expect(t, app, "/test", StatusOK)
 }
 
-// go test -run Test_Ctx_Locals_GenericCustomStruct
 func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
 	t.Parallel()
 
@@ -4367,7 +4257,6 @@ func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
 	apptest.Expect(t, app, "/test", StatusOK)
 }
 
-// go test -run Test_Ctx_Method
 func Test_Ctx_Method(t *testing.T) {
 	t.Parallel()
 	fctx := &fasthttp.RequestCtx{}
@@ -4423,7 +4312,6 @@ func Test_Ctx_Method_CustomCaseSensitive(t *testing.T) {
 	require.Equal(t, MethodPost, c.Method("post"))
 }
 
-// go test -run Test_Ctx_ClientHelloInfo
 func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4472,7 +4360,6 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	apptest.ExpectBody(t, app, "/SupportedVersions", StatusOK, "["+strconv.Itoa(versionTLS13)+"]")
 }
 
-// go test -run Test_Ctx_InvalidMethod
 func Test_Ctx_InvalidMethod(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4490,7 +4377,6 @@ func Test_Ctx_InvalidMethod(t *testing.T) {
 	require.Equal(t, []byte("Not Implemented"), fctx.Response.Body())
 }
 
-// go test -run Test_Ctx_MultipartForm
 func Test_Ctx_MultipartForm(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4542,7 +4428,6 @@ func Test_Ctx_MultipartForm_BodyLimitExceeded(t *testing.T) {
 	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_MultipartForm -benchmem -count=4
 func Benchmark_Ctx_MultipartForm(b *testing.B) {
 	app := New()
 
@@ -4567,7 +4452,6 @@ func Benchmark_Ctx_MultipartForm(b *testing.B) {
 	}
 }
 
-// go test -run Test_Ctx_OriginalURL
 func Test_Ctx_OriginalURL(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -4576,7 +4460,6 @@ func Test_Ctx_OriginalURL(t *testing.T) {
 	require.Equal(t, "http://google.com/test?search=demo", c.OriginalURL())
 }
 
-// go test -race -run Test_Ctx_Params
 func Test_Ctx_Params(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4672,7 +4555,6 @@ func Test_Ctx_Params_Immutable(t *testing.T) {
 	require.Equal(t, "john", param)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=4
 func Benchmark_Ctx_Params(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
@@ -4695,7 +4577,6 @@ func Benchmark_Ctx_Params(b *testing.B) {
 	require.Equal(b, "awesome", res)
 }
 
-// go test -run Test_Ctx_Path
 func Test_Ctx_Path(t *testing.T) {
 	t.Parallel()
 	app := New(Config{UnescapePath: true})
@@ -4747,7 +4628,6 @@ func Test_Ctx_Path_OverrideNormalizes(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Protocol
 func Test_Ctx_Protocol(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -4758,7 +4638,6 @@ func Test_Ctx_Protocol(t *testing.T) {
 	require.Equal(t, "HTTP/2", c.Protocol())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Protocol -benchmem -count=4
 func Benchmark_Ctx_Protocol(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -4771,7 +4650,6 @@ func Benchmark_Ctx_Protocol(b *testing.B) {
 	require.Equal(b, "HTTP/1.1", res)
 }
 
-// go test -run Test_Ctx_Scheme
 func Test_Ctx_Scheme(t *testing.T) {
 	t.Parallel()
 
@@ -4838,7 +4716,6 @@ func Test_Ctx_Scheme(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Scheme_RejectsForeignSchemes
 func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
 	t.Parallel()
 
@@ -4877,7 +4754,6 @@ func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
 	require.Equal(t, "http://example.com", c.BaseURL())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
 func Benchmark_Ctx_Scheme(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -4889,7 +4765,6 @@ func Benchmark_Ctx_Scheme(b *testing.B) {
 	require.Equal(b, "http", res)
 }
 
-// go test -run Test_Ctx_Query
 func Test_Ctx_Query(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -4905,7 +4780,6 @@ func Test_Ctx_Query(t *testing.T) {
 	require.Equal(t, "default", Query(c, "unknown", "default"))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Query -benchmem -count=4
 func Benchmark_Ctx_Query(b *testing.B) {
 	c := apptest.Ctx(b, New())
 	c.Request().URI().SetQueryString("search=john&age=8")
@@ -4933,7 +4807,6 @@ func Benchmark_Ctx_Query_Generic_Default(b *testing.B) {
 	require.Equal(b, 3, m)
 }
 
-// go test -run Test_Ctx_Range
 func Test_Ctx_Range(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4993,7 +4866,6 @@ func Test_Ctx_Range(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Range_Errors
 func Test_Ctx_Range_Errors(t *testing.T) {
 	t.Parallel()
 
@@ -5196,7 +5068,6 @@ func Test_Ctx_Range_SuffixNormalization(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Range -benchmem -count=4
 func Benchmark_Ctx_Range(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -5229,7 +5100,6 @@ func Benchmark_Ctx_Range(b *testing.B) {
 	}
 }
 
-// go test -run Test_Ctx_Route
 func Test_Ctx_Route(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -5256,7 +5126,6 @@ func ctxTestBExpectGet(t *testing.T, app *App, target string, status int) {
 	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
 }
 
-// go test -run Test_Ctx_FullPath
 func Test_Ctx_FullPath(t *testing.T) {
 	t.Parallel()
 
@@ -5269,7 +5138,6 @@ func Test_Ctx_FullPath(t *testing.T) {
 	ctxTestBExpectGet(t, app, "/test", StatusOK)
 }
 
-// go test -run Test_Ctx_FullPath_Group
 func Test_Ctx_FullPath_Group(t *testing.T) {
 	t.Parallel()
 
@@ -5283,7 +5151,6 @@ func Test_Ctx_FullPath_Group(t *testing.T) {
 	ctxTestBExpectGet(t, app, "/v1/test", StatusOK)
 }
 
-// go test -run Test_Ctx_FullPath_Middleware
 func Test_Ctx_FullPath_Middleware(t *testing.T) {
 	t.Parallel()
 
@@ -5311,7 +5178,6 @@ func Test_Ctx_FullPath_Middleware(t *testing.T) {
 	require.Equal(t, []string{"/", "/test"}, recorded)
 }
 
-// go test -run Test_Ctx_Endpoint_Middleware
 func Test_Ctx_Endpoint_Middleware(t *testing.T) {
 	t.Parallel()
 
@@ -5336,7 +5202,6 @@ func Test_Ctx_Endpoint_Middleware(t *testing.T) {
 	require.Equal(t, []string{"/users/:id", "user.show"}, recorded)
 }
 
-// go test -run Test_Ctx_Endpoint_NotFound
 func Test_Ctx_Endpoint_NotFound(t *testing.T) {
 	t.Parallel()
 
@@ -5350,7 +5215,6 @@ func Test_Ctx_Endpoint_NotFound(t *testing.T) {
 	ctxTestBExpectGet(t, app, "/not-found", StatusNotFound)
 }
 
-// go test -run Test_Ctx_Endpoint_RepeatedAndSkipped
 func Test_Ctx_Endpoint_RepeatedAndSkipped(t *testing.T) {
 	t.Parallel()
 
@@ -5378,7 +5242,6 @@ func Test_Ctx_Endpoint_RepeatedAndSkipped(t *testing.T) {
 	require.Equal(t, 1, calls)
 }
 
-// go test -bench=Benchmark_Ctx_Endpoint -benchmem -count=4
 func Benchmark_Ctx_Endpoint(b *testing.B) {
 	app := New()
 	app.Use(func(c Ctx) error { return c.Next() })
@@ -5400,7 +5263,6 @@ func Benchmark_Ctx_Endpoint(b *testing.B) {
 	require.NotNil(b, route)
 }
 
-// go test -run Test_Ctx_Endpoint_NilWhenNoEndpointCanRun
 // serverErrorHandler replays the chain for protocol-level errors with
 // shouldSkipNonUseRoutes set, and next() then runs no endpoint at all.
 func Test_Ctx_Endpoint_NilWhenNoEndpointCanRun(t *testing.T) {
@@ -5430,7 +5292,6 @@ func Test_Ctx_Endpoint_NilWhenNoEndpointCanRun(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Endpoint_MatchesTheRouteThatRuns
 // Sweeps the whole route fixture: whatever the look-ahead names in middleware
 // must be the endpoint next() then executes, or nil when none does. prefixRejects
 // warns that hand-written scan copies drift unnoticed; this is that guard.
@@ -5484,7 +5345,6 @@ func routeName(r *Route) any {
 	return r.Method + " " + r.Path
 }
 
-// go test -run Test_Ctx_Endpoint_FollowsMethodOverride
 func Test_Ctx_Endpoint_FollowsMethodOverride(t *testing.T) {
 	t.Parallel()
 
@@ -5512,7 +5372,6 @@ func Test_Ctx_Endpoint_FollowsMethodOverride(t *testing.T) {
 	require.Equal(t, "x.post", after, "Endpoint must follow a method override, not report the route the old method would have hit")
 }
 
-// go test -run Test_Ctx_Endpoint_LooksPastTheCurrentRoute
 // A middleware placed behind an endpoint that already ran must be told the next
 // endpoint, not the one the chain has passed. Both endpoints are parametric so
 // that SkipUnmatchedRoutes resolves a firstMatchIndex at all: a static hit
@@ -5541,7 +5400,6 @@ func Test_Ctx_Endpoint_LooksPastTheCurrentRoute(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Endpoint_SkipUnmatchedRoutes
 func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -5612,7 +5470,6 @@ func Test_Ctx_Path_DisablePathNormalizing(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_RouteNormalized
 func Test_Ctx_RouteNormalized(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -5644,7 +5501,6 @@ func ctxTestBHelloWorldUpload(t *testing.T) *http.Request {
 	return req
 }
 
-// go test -run Test_Ctx_SaveFile
 func Test_Ctx_SaveFile(t *testing.T) {
 	// TODO We should clean this up
 	t.Parallel()
@@ -5702,7 +5558,6 @@ func createMultipartFileHeader(t *testing.T, filename string, data []byte) *mult
 	return files[0]
 }
 
-// go test -run Test_Ctx_SaveFileToStorage
 func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -6046,7 +5901,6 @@ func (s *failingStorage) SetWithContext(_ context.Context, _ string, _ []byte, _
 func (*failingStorage) DeleteWithContext(context.Context, string) error { return nil }
 func (*failingStorage) ResetWithContext(context.Context) error          { return nil }
 
-// go test -run Test_Ctx_SaveFileToStorage_ContextPropagation
 func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
 	t.Parallel()
 
@@ -6084,7 +5938,6 @@ func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
 	apptest.Expect(t, app, ctxTestBHelloWorldUpload(t), StatusOK)
 }
 
-// go test -run Test_Ctx_Secure
 func Test_Ctx_Secure(t *testing.T) {
 	t.Parallel()
 
@@ -6152,7 +6005,6 @@ func Test_Ctx_Secure(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Stale
 func Test_Ctx_Stale(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -6160,7 +6012,6 @@ func Test_Ctx_Stale(t *testing.T) {
 	require.True(t, c.Stale())
 }
 
-// go test -run Test_Ctx_Subdomains
 func Test_Ctx_Subdomains(t *testing.T) {
 	app := New()
 
@@ -6287,7 +6138,6 @@ func Test_Ctx_Subdomains(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Subdomains -benchmem -count=4
 func Benchmark_Ctx_Subdomains(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -6300,7 +6150,6 @@ func Benchmark_Ctx_Subdomains(b *testing.B) {
 	require.Equal(b, []string{"john", "doe"}, res)
 }
 
-// go test -run Test_Ctx_ClearCookie
 func Test_Ctx_ClearCookie(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -6332,7 +6181,6 @@ func ctxTestBCtxGoSource(t *testing.T) []byte {
 	return content
 }
 
-// go test -race -run Test_Ctx_Download
 func Test_Ctx_Download(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -6352,7 +6200,6 @@ func Test_Ctx_Download(t *testing.T) {
 	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
 }
 
-// go test -race -run Test_Ctx_Download_SanitizesFilenameControls
 func Test_Ctx_Download_SanitizesFilenameControls(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -6398,7 +6245,6 @@ func Test_Ctx_Download_SanitizesFilenameControls(t *testing.T) {
 	}
 }
 
-// go test -race -run Test_Ctx_SendEarlyHints
 func Test_Ctx_SendEarlyHints(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -6432,7 +6278,6 @@ func Test_Ctx_SendEarlyHints_HTTP10(t *testing.T) {
 	require.Equal(t, "<https://cdn.com/style.css>; rel=preload; as=style", c.GetRespHeader(HeaderLink))
 }
 
-// go test -race -run Test_Ctx_SendFile
 func Test_Ctx_SendFile(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -6485,7 +6330,6 @@ func Test_Ctx_SendFile(t *testing.T) {
 	})
 }
 
-// go test -race -run Test_Ctx_SendFile_ContentType
 func Test_Ctx_SendFile_ContentType(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -6608,7 +6452,6 @@ func Test_Ctx_SendFile_EmbedFS(t *testing.T) {
 	require.Equal(t, expectFileContent, body)
 }
 
-// go test -race -run Test_Ctx_SendFile_404
 func Test_Ctx_SendFile_404(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -6844,7 +6687,6 @@ func Test_Ctx_SendFile_Multiple(t *testing.T) {
 	require.Len(t, app.sendfiles, 3)
 }
 
-// go test -race -run Test_Ctx_SendFile_Immutable
 func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -6885,7 +6727,6 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	}
 }
 
-// go test -race -run Test_Ctx_SendFile_RestoreOriginalURL
 func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -7227,7 +7068,6 @@ func ctxTestCEmptyValues(t *testing.T, c Ctx, encode func(v any) error, want [4]
 	}
 }
 
-// go test -run Test_Ctx_JSON
 func Test_Ctx_JSON(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -7255,7 +7095,6 @@ func Test_Ctx_JSON(t *testing.T) {
 	ctxTestCEmptyValues(t, c, func(v any) error { return c.JSON(v) }, [4]string{"null", `""`, "0", "[]"})
 }
 
-// go test -run=^$ -bench=Benchmark_Ctx_JSON -benchmem -count=4
 func Benchmark_Ctx_JSON(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -7276,7 +7115,6 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 	require.JSONEq(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_MsgPack
 func Test_Ctx_MsgPack(t *testing.T) {
 	t.Parallel()
 
@@ -7325,7 +7163,6 @@ func Test_Ctx_MsgPack(t *testing.T) {
 	})
 }
 
-// go test -run=^$ -bench=Benchmark_Ctx_MsgPack -benchmem -count=4
 func Benchmark_Ctx_MsgPack(b *testing.B) {
 	c := apptest.Ctx(b, New(
 		Config{
@@ -7351,7 +7188,6 @@ func Benchmark_Ctx_MsgPack(b *testing.B) {
 	require.Equal(b, "\x82\xa4Name\xa5Grame\xa3Age\x14", string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_CBOR
 func Test_Ctx_CBOR(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New(Config{
@@ -7395,7 +7231,6 @@ func Test_Ctx_CBOR(t *testing.T) {
 	require.Error(t, err)
 }
 
-// go test -run=^$ -bench=Benchmark_Ctx_CBOR -benchmem -count=4
 func Benchmark_Ctx_CBOR(b *testing.B) {
 	c := apptest.Ctx(b, New(Config{
 		CBOREncoder: cbor.Marshal,
@@ -7419,7 +7254,6 @@ func Benchmark_Ctx_CBOR(b *testing.B) {
 	require.Equal(b, `a2644e616d65654772616d656341676514`, hex.EncodeToString(c.Response().Body()))
 }
 
-// go test -run=^$ -bench=Benchmark_Ctx_JSON_Ctype -benchmem -count=4
 func Benchmark_Ctx_JSON_Ctype(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 	type SomeStruct struct {
@@ -7440,7 +7274,6 @@ func Benchmark_Ctx_JSON_Ctype(b *testing.B) {
 	require.Equal(b, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 }
 
-// go test -run Test_Ctx_JSONP
 func Test_Ctx_JSONP(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -7464,7 +7297,6 @@ func Test_Ctx_JSONP(t *testing.T) {
 	require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 }
 
-// go test -run Test_Ctx_JSONP_SanitizesCallback
 func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 	t.Parallel()
 
@@ -7576,7 +7408,6 @@ func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 	}
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
 func Benchmark_Ctx_JSONP(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
@@ -7598,7 +7429,6 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 	require.Equal(b, `emit({"Name":"Grame","Age":20});`, string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_XML
 func Test_Ctx_XML(t *testing.T) {
 	t.Parallel()
 	c := apptest.CtxAs[*DefaultCtx](t, New())
@@ -7627,8 +7457,6 @@ func ctxTestCEncoder(body string) func(any) ([]byte, error) {
 	return func(any) ([]byte, error) { return []byte(body), nil }
 }
 
-// go test -run Test_Ctx_CustomEncoder
-//
 // Every serializer encodes through the encoder its Config names, and sets the
 // Content-Type of its own format.
 func Test_Ctx_CustomEncoder(t *testing.T) {
@@ -7690,7 +7518,6 @@ func Test_Ctx_CustomEncoder(t *testing.T) {
 	}
 }
 
-// go test -run=^$ -bench=Benchmark_Ctx_XML -benchmem -count=4
 func Benchmark_Ctx_XML(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 	type SomeStruct struct {
@@ -7711,7 +7538,6 @@ func Benchmark_Ctx_XML(b *testing.B) {
 	require.Equal(b, `<SomeStruct><Name>Grame</Name><Age>20</Age></SomeStruct>`, string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_Links
 func Test_Ctx_Links(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -7736,7 +7562,6 @@ func Test_Ctx_Links(t *testing.T) {
 	require.Equal(t, `<http://example.com>; rel="next%09%01\n\r%7F"`, string(c.Response().Header.Peek(HeaderLink)))
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_Links -benchmem -count=4
 func Benchmark_Ctx_Links(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
@@ -7749,7 +7574,6 @@ func Benchmark_Ctx_Links(b *testing.B) {
 	}
 }
 
-// go test -run Test_Ctx_Location
 func Test_Ctx_Location(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -7758,7 +7582,6 @@ func Test_Ctx_Location(t *testing.T) {
 	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Ctx_Next
 func Test_Ctx_Next(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -7773,7 +7596,6 @@ func Test_Ctx_Next(t *testing.T) {
 	require.Equal(t, "Works", resp.Header.Get("X-Next-Result"))
 }
 
-// go test -run Test_Ctx_Next_Error
 func Test_Ctx_Next_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -7786,7 +7608,6 @@ func Test_Ctx_Next_Error(t *testing.T) {
 	require.Equal(t, "Works", resp.Header.Get("X-Next-Result"))
 }
 
-// go test -run Test_Ctx_Render
 func Test_Ctx_Render(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -7805,8 +7626,6 @@ func Test_Ctx_Render(t *testing.T) {
 	require.Error(t, err)
 }
 
-// go test -run Test_Ctx_Render_Variants
-//
 // What Render makes of the bind it is given, the view bind, the locals and the
 // engine, whether a file renders as a template or an engine renders it by name.
 func Test_Ctx_Render_Variants(t *testing.T) {
@@ -8175,7 +7994,6 @@ func Benchmark_Ctx_RenderViewBind(b *testing.B) {
 	require.Equal(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_RestartRouting
 func Test_Ctx_RestartRouting(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -8191,7 +8009,6 @@ func Test_Ctx_RestartRouting(t *testing.T) {
 	require.Equal(t, 3, calls, "Number of calls")
 }
 
-// go test -run Test_Ctx_RestartRoutingWithChangedPath
 func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -8215,7 +8032,6 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 	require.True(t, executedNewHandler, "Executed new handler")
 }
 
-// go test -run Test_Ctx_RestartRoutingWithChangedPathAnd404
 func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -8263,7 +8079,6 @@ func (t *testTemplateEngine) Load() error {
 	return nil
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Render_Engine -benchmem -count=4
 func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
@@ -8282,7 +8097,6 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	require.Equal(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Location_From_Route -benchmem -count=4
 func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	app := New()
 	c := apptest.CtxAs[*DefaultCtx](b, app)
@@ -8302,7 +8116,6 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -run Test_Ctx_Get_Location_From_Route_name
 func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 	t.Parallel()
 
@@ -8348,7 +8161,6 @@ func (errorTemplateEngine) Render(_ io.Writer, _ string, _ any, _ ...string) err
 
 func (errorTemplateEngine) Load() error { return nil }
 
-// go test -run Test_Ctx_Render_Engine_Error
 func Test_Ctx_Render_Engine_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -8359,7 +8171,6 @@ func Test_Ctx_Render_Engine_Error(t *testing.T) {
 	require.Error(t, err)
 }
 
-// go test -run Test_Ctx_Render_Go_Template
 func Test_Ctx_Render_Go_Template(t *testing.T) {
 	t.Parallel()
 	file, err := os.CreateTemp(os.TempDir(), "fiber")
@@ -8382,7 +8193,6 @@ func Test_Ctx_Render_Go_Template(t *testing.T) {
 	require.Equal(t, "template", string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_Send
 func Test_Ctx_Send(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -8393,7 +8203,6 @@ func Test_Ctx_Send(t *testing.T) {
 	require.Equal(t, "1337", string(c.Response().Body()))
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_Send -benchmem -count=4
 func Benchmark_Ctx_Send(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -8408,7 +8217,6 @@ func Benchmark_Ctx_Send(b *testing.B) {
 	require.Equal(b, "Hello, World!", string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_SendStatus
 func Test_Ctx_SendStatus(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -8451,7 +8259,6 @@ func Test_Ctx_SendStatusNoBodyResponses(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_SendString
 func Test_Ctx_SendString(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -8461,7 +8268,6 @@ func Test_Ctx_SendString(t *testing.T) {
 	require.Equal(t, "Don't crash please", string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_SendStream
 func Test_Ctx_SendStream(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -8479,7 +8285,6 @@ func Test_Ctx_SendStream(t *testing.T) {
 	require.Equal(t, "Hello bufio", string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_SendStreamWriter
 func Test_Ctx_SendStreamWriter(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -8507,7 +8312,6 @@ func Test_Ctx_SendStreamWriter(t *testing.T) {
 	require.Empty(t, c.Response().Body())
 }
 
-// go test -run Test_Ctx_SendStreamWriter_Interrupted
 func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -8548,7 +8352,6 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 	require.Nil(t, resp)
 }
 
-// go test -run Test_Ctx_Set
 func Test_Ctx_Set(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -8562,7 +8365,6 @@ func Test_Ctx_Set(t *testing.T) {
 	require.Equal(t, "1337", string(c.Response().Header.Peek("x-3")))
 }
 
-// go test -run Test_Ctx_Set_Splitter
 func Test_Ctx_Set_Splitter(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -8576,7 +8378,6 @@ func Test_Ctx_Set_Splitter(t *testing.T) {
 	require.NotContains(t, h, "\n")
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_Set -benchmem -count=4
 func Benchmark_Ctx_Set(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -8587,7 +8388,6 @@ func Benchmark_Ctx_Set(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Set_Canonical -benchmem -count=4
 func Benchmark_Ctx_Set_Canonical(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -8600,7 +8400,6 @@ func Benchmark_Ctx_Set_Canonical(b *testing.B) {
 	}
 }
 
-// go test -run Test_Ctx_Status
 func Test_Ctx_Status(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -8614,7 +8413,6 @@ func Test_Ctx_Status(t *testing.T) {
 }
 
 // Three-digit codes go out as given, 600..999 included (RFC 9112 §4).
-// go test -run Test_Ctx_Status_ThreeDigits
 func Test_Ctx_Status_ThreeDigits(t *testing.T) {
 	t.Parallel()
 
@@ -8634,7 +8432,6 @@ func Test_Ctx_Status_ThreeDigits(t *testing.T) {
 }
 
 // Codes that do not fit a status line are logged and sent as 500.
-// go test -run Test_Ctx_Status_Invalid
 func Test_Ctx_Status_Invalid(t *testing.T) {
 	// Not parallel: redirects the process-wide logger output.
 	var logged bytes.Buffer
@@ -8701,7 +8498,6 @@ func Benchmark_Ctx_Status(b *testing.B) {
 	require.Equal(b, StatusTeapot, c.Response().StatusCode())
 }
 
-// go test -run Test_Ctx_Type
 func Test_Ctx_Type(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -8752,8 +8548,6 @@ var registerTestMIMETypes = sync.OnceFunc(func() {
 	}
 })
 
-// go test -run Test_Ctx_Type_NeverTwoCharsets
-//
 // Whatever the machine's MIME database holds, no extension may produce two
 // charsets, with or without an explicit one. utils.GetMIME hands back the bare
 // type for an extension outside its table (utils v2.6.2 and later); with the
@@ -8784,7 +8578,6 @@ func Test_Ctx_Type_NeverTwoCharsets(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Attachment_Charset
 func Test_Ctx_Attachment_Charset(t *testing.T) {
 	t.Parallel()
 	registerTestMIMETypes()
@@ -8802,8 +8595,6 @@ func Test_Ctx_Attachment_Charset(t *testing.T) {
 	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
 }
 
-// go test -run Test_Ctx_Is_And_Accepts_ExtensionWithCharset
-//
 // Is and Accepts compare the type itself, so they match an extension only while
 // utils.GetMIME answers it without parameters: "text/x-fibercsv; charset=utf-8"
 // is not the "text/x-fibercsv" a request names.
@@ -8825,7 +8616,6 @@ func Test_Ctx_Is_And_Accepts_ExtensionWithCharset(t *testing.T) {
 	require.Equal(t, "fibertestcsv", c.Accepts("fibertestcsv"))
 }
 
-// go test -run Test_shouldIncludeCharset
 func Test_shouldIncludeCharset(t *testing.T) {
 	t.Parallel()
 
@@ -8859,7 +8649,6 @@ func Test_shouldIncludeCharset(t *testing.T) {
 	}
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_Type -benchmem -count=4
 func Benchmark_Ctx_Type(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -8870,7 +8659,6 @@ func Benchmark_Ctx_Type(b *testing.B) {
 	}
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_Type_Charset -benchmem -count=4
 func Benchmark_Ctx_Type_Charset(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
@@ -8917,7 +8705,6 @@ func ctxTestCRunVary(t *testing.T, cases []ctxTestCVaryCase) {
 	}
 }
 
-// go test -run Test_Ctx_Vary
 func Test_Ctx_Vary(t *testing.T) {
 	t.Parallel()
 
@@ -8990,7 +8777,6 @@ func Test_Ctx_Vary_CaseInsensitive(t *testing.T) {
 	})
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_Vary -benchmem -count=4
 func Benchmark_Ctx_Vary(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
@@ -9000,7 +8786,6 @@ func Benchmark_Ctx_Vary(b *testing.B) {
 	}
 }
 
-// go test -run Test_Ctx_Write
 func Test_Ctx_Write(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -9013,7 +8798,6 @@ func Test_Ctx_Write(t *testing.T) {
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Write -benchmem -count=4
 func Benchmark_Ctx_Write(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -9027,7 +8811,6 @@ func Benchmark_Ctx_Write(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -run Test_Ctx_Writef
 func Test_Ctx_Writef(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -9038,7 +8821,6 @@ func Test_Ctx_Writef(t *testing.T) {
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Writef -benchmem -count=4
 func Benchmark_Ctx_Writef(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
@@ -9052,7 +8834,6 @@ func Benchmark_Ctx_Writef(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -run Test_Ctx_WriteString
 func Test_Ctx_WriteString(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -9064,7 +8845,6 @@ func Test_Ctx_WriteString(t *testing.T) {
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_XHR
 func Test_Ctx_XHR(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -9073,7 +8853,6 @@ func Test_Ctx_XHR(t *testing.T) {
 	require.True(t, c.XHR())
 }
 
-// go test -run=^$ -bench=Benchmark_Ctx_XHR -benchmem -count=4
 func Benchmark_Ctx_XHR(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -9136,7 +8915,6 @@ func benchHeaderReadModes(b *testing.B, f func(b *testing.B, c Ctx)) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Header -benchmem -count=4
 func Benchmark_Ctx_Get_Header(b *testing.B) {
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
 		b.Helper()
@@ -9148,7 +8926,6 @@ func Benchmark_Ctx_Get_Header(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Header_Canonical -benchmem -count=4
 func Benchmark_Ctx_Get_Header_Canonical(b *testing.B) {
 	// A key already in canonical form, unlike X-Request-ID above.
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
@@ -9161,7 +8938,6 @@ func Benchmark_Ctx_Get_Header_Canonical(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Get_HeaderAbsent -benchmem -count=4
 func Benchmark_Ctx_Get_HeaderAbsent(b *testing.B) {
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
 		b.Helper()
@@ -9173,7 +8949,6 @@ func Benchmark_Ctx_Get_HeaderAbsent(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_HasHeaderValue -benchmem -count=4
 func Benchmark_Ctx_HasHeaderValue(b *testing.B) {
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
 		b.Helper()
@@ -9196,7 +8971,6 @@ func Benchmark_Ctx_HasHeader(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_HasHeaderAbsent -benchmem -count=4
 func Benchmark_Ctx_HasHeaderAbsent(b *testing.B) {
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
 		b.Helper()
@@ -9208,7 +8982,6 @@ func Benchmark_Ctx_HasHeaderAbsent(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_GetReqHeader -benchmem -count=4
 func Benchmark_Ctx_GetReqHeader(b *testing.B) {
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
 		b.Helper()
@@ -9220,8 +8993,6 @@ func Benchmark_Ctx_GetReqHeader(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_IsWebSocket -benchmem -count=4
-//
 // Covered under both settings because the two paths differ in kind, not degree:
 // the canonical one peeks, while the case-insensitive one walks the store and
 // collects the field lines, which allocates.
@@ -9259,7 +9030,6 @@ func Benchmark_Ctx_IsWebSocket(b *testing.B) {
 	}
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_SendString_B -benchmem -count=4
 func Benchmark_Ctx_SendString_B(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -9274,7 +9044,6 @@ func Benchmark_Ctx_SendString_B(b *testing.B) {
 	require.Equal(b, []byte("Hello, world!"), c.Response().Body())
 }
 
-// go test -run Test_Ctx_Queries -v
 func Test_Ctx_Queries(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -9324,7 +9093,6 @@ func Test_Ctx_Queries(t *testing.T) {
 	}
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_Queries -benchmem -count=4
 func Benchmark_Ctx_Queries(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -9344,7 +9112,6 @@ func Benchmark_Ctx_Queries(b *testing.B) {
 	require.Equal(b, "1", queries["no"])
 }
 
-// go test -run Test_Ctx_BodyStreamWriter
 func Test_Ctx_BodyStreamWriter(t *testing.T) {
 	t.Parallel()
 	ctx := &fasthttp.RequestCtx{}
@@ -9369,7 +9136,6 @@ func Test_Ctx_BodyStreamWriter(t *testing.T) {
 	require.Equal(t, expectedBody, body)
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_BodyStreamWriter -benchmem -count=4
 func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 	ctx := &fasthttp.RequestCtx{}
 	user := []byte(`{"name":"john"}`)
@@ -9397,7 +9163,6 @@ func Test_Ctx_String(t *testing.T) {
 	require.Equal(t, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", c.String())
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_String -benchmem -count=4
 func Benchmark_Ctx_String(b *testing.B) {
 	var str string
 	ctx := apptest.Ctx(b, New())
@@ -9409,8 +9174,6 @@ func Benchmark_Ctx_String(b *testing.B) {
 	require.Equal(b, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", str)
 }
 
-// go test -run Test_Ctx_IsFromLocal_X_Forwarded
-//
 // X-Forwarded-For is not trusted unless Config.TrustProxy says so, so it never
 // makes a request local.
 func Test_Ctx_IsFromLocal_X_Forwarded(t *testing.T) {
@@ -9442,7 +9205,6 @@ func Test_Ctx_IsFromLocal_X_Forwarded(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_RemoteAddr
 func Test_Ctx_RemoteAddr(t *testing.T) {
 	t.Parallel()
 
@@ -9484,7 +9246,6 @@ func Test_Ctx_RemoteAddr(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_extractIPsFromHeader -v
 func Test_Ctx_extractIPsFromHeader(t *testing.T) {
 	t.Parallel()
 
@@ -9503,7 +9264,6 @@ func Test_Ctx_extractIPsFromHeader(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_GetRespHeaders
 func Test_Ctx_GetRespHeaders(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -9545,7 +9305,6 @@ func Benchmark_Ctx_GetRespHeaders(b *testing.B) {
 	}, headers)
 }
 
-// go test -run Test_Ctx_GetReqHeaders
 func Test_Ctx_GetReqHeaders(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -9609,7 +9368,6 @@ func ctxTestCNoResponse(t *testing.T, app *App, target string, wantErr error) {
 	require.Nil(t, resp)
 }
 
-// go test -run Test_Ctx_Drop -v
 func Test_Ctx_Drop(t *testing.T) {
 	t.Parallel()
 
@@ -9635,7 +9393,6 @@ func Test_Ctx_Drop(t *testing.T) {
 	require.Equal(t, "0", resp.Header.Get("Content-Length"))
 }
 
-// go test -run Test_Ctx_DropWithMiddleware -v
 func Test_Ctx_DropWithMiddleware(t *testing.T) {
 	t.Parallel()
 
@@ -9657,7 +9414,6 @@ func Test_Ctx_DropWithMiddleware(t *testing.T) {
 	ctxTestCNoResponse(t, app, "/block-me", ErrTestGotEmptyResponse)
 }
 
-// go test -run Test_Ctx_End
 func Test_Ctx_End(t *testing.T) {
 	app := New()
 
@@ -9672,7 +9428,6 @@ func Test_Ctx_End(t *testing.T) {
 	require.Equal(t, "Hello, World!", apptest.Body(t, resp))
 }
 
-// go test -run Test_Ctx_End_after_timeout
 func Test_Ctx_End_after_timeout(t *testing.T) {
 	app := New()
 
@@ -9685,7 +9440,6 @@ func Test_Ctx_End_after_timeout(t *testing.T) {
 	ctxTestCNoResponse(t, app, "/", os.ErrDeadlineExceeded)
 }
 
-// go test -run Test_Ctx_End_with_drop_middleware
 func Test_Ctx_End_with_drop_middleware(t *testing.T) {
 	app := New()
 
@@ -9707,7 +9461,6 @@ func Test_Ctx_End_with_drop_middleware(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
-// go test -run Test_Ctx_End_after_drop
 func Test_Ctx_End_after_drop(t *testing.T) {
 	app := New()
 
@@ -9726,7 +9479,6 @@ func Test_Ctx_End_after_drop(t *testing.T) {
 	ctxTestCNoResponse(t, app, "/", ErrTestGotEmptyResponse)
 }
 
-// go test -run Test_Ctx_OverrideParam
 func Test_Ctx_OverrideParam(t *testing.T) {
 	t.Parallel()
 	t.Run("route_params", func(t *testing.T) {
@@ -9858,8 +9610,6 @@ func Test_Ctx_ForceReleaseClearsAbandon(t *testing.T) {
 	require.Nil(t, ctx.route, "ForceRelease should reset route before pooling")
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_IsProxyTrusted -benchmem -count=4
-//
 // The b.RunParallel cases must keep the "_Parallel" in their names: CI drops
 // results matching Benchmark.*_Parallel before comparing, and at a few ns/op
 // these measure available cores rather than the code.
@@ -10307,7 +10057,6 @@ func Benchmark_Ctx_IsFromLocalhost(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_OverrideParam -benchmem -count=4
 func Benchmark_Ctx_OverrideParam(b *testing.B) {
 	app := New()
 
@@ -10805,7 +10554,6 @@ func Test_Res_Set_CopiesArguments(t *testing.T) {
 // path's single pass counted it or pathSlashCount counts it later, it must be
 // the number of '/' in the detection path, under every configuration that
 // shapes that path and after trailing slashes are trimmed from it.
-// go test -race -run Test_Ctx_PathSlashCount
 func Test_Ctx_PathSlashCount(t *testing.T) {
 	t.Parallel()
 

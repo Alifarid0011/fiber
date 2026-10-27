@@ -88,7 +88,6 @@ func compressTestExpectEncoding(t *testing.T, resp *http.Response, encoding stri
 	}
 }
 
-// go test -run Test_Compress_Algorithms
 func Test_Compress_Algorithms(t *testing.T) {
 	t.Parallel()
 
@@ -113,7 +112,6 @@ func Test_Compress_Algorithms(t *testing.T) {
 	}
 }
 
-// go test -run Test_Compress_Different_Level
 func Test_Compress_Different_Level(t *testing.T) {
 	t.Parallel()
 	levels := []Level{LevelDefault, LevelBestSpeed, LevelBestCompression}
@@ -139,7 +137,6 @@ func Test_Compress_Disabled(t *testing.T) {
 	compressTestExpectEncoding(t, compressTestGet(t, app, "br"), "")
 }
 
-// go test -run Test_Compress_Vary
 func Test_Compress_Vary(t *testing.T) {
 	t.Parallel()
 
@@ -317,7 +314,6 @@ func Test_Compress_Skip_Head(t *testing.T) {
 	require.Equal(t, "\"abc\"", headResp.Header.Get(fiber.HeaderETag))
 }
 
-// go test -run Test_Compress_Skip_Status
 func Test_Compress_Skip_Status(t *testing.T) {
 	t.Parallel()
 
@@ -414,7 +410,6 @@ func Test_Compress_Next_Error(t *testing.T) {
 	require.Equal(t, "next error", apptest.Body(t, resp))
 }
 
-// go test -run Test_Compress_Next
 func Test_Compress_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -427,7 +422,6 @@ func Test_Compress_Next(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
-// go test -bench=Benchmark_Compress
 func Benchmark_Compress(b *testing.B) {
 	tests := []struct {
 		name           string
@@ -466,7 +460,6 @@ func Benchmark_Compress(b *testing.B) {
 	}
 }
 
-// go test -bench=Benchmark_Compress_Levels
 func Benchmark_Compress_Levels(b *testing.B) {
 	tests := []struct {
 		name           string
@@ -517,7 +510,6 @@ func Benchmark_Compress_Levels(b *testing.B) {
 	}
 }
 
-// go test -bench=Benchmark_Compress_Parallel
 func Benchmark_Compress_Parallel(b *testing.B) {
 	tests := []struct {
 		name           string
@@ -560,7 +552,6 @@ func Benchmark_Compress_Parallel(b *testing.B) {
 	}
 }
 
-// go test -bench=Benchmark_Compress_Levels_Parallel
 func Benchmark_Compress_Levels_Parallel(b *testing.B) {
 	tests := []struct {
 		name           string
@@ -648,7 +639,6 @@ func Test_Compress_ShouldSkip_DoesNotMaterialize_BodyStream(t *testing.T) {
 	require.Zero(t, stream.closeCalls)
 }
 
-// go test -run Test_Compress_Streaming_With_Compression
 func Test_Compress_Streaming_With_Compression(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -751,7 +741,6 @@ func Test_Compress_RequestHeaderUntouched(t *testing.T) {
 	require.Equal(t, "br;q=0.5, gzip;q=1", <-seen, "the client's header must survive negotiation")
 }
 
-// go test -run Test_Compress_Repeated_Accept_Encoding_Lines
 func Test_Compress_Repeated_Accept_Encoding_Lines(t *testing.T) {
 	t.Parallel()
 	app := compressTestApp(compressTestSendReadme)
@@ -765,7 +754,6 @@ func Test_Compress_Repeated_Accept_Encoding_Lines(t *testing.T) {
 	compressTestExpectEncoding(t, apptest.Do(t, app, req, testConfig), "gzip")
 }
 
-// go test -run Test_Compress_Cache_Control_No_Transform
 func Test_Compress_Cache_Control_No_Transform(t *testing.T) {
 	t.Parallel()
 

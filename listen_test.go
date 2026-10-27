@@ -232,7 +232,6 @@ func rootMiscBRequireNotContains(t *testing.T, out string, unwanted ...string) {
 	}
 }
 
-// go test -run Test_Listen
 func Test_Listen(t *testing.T) {
 	app := New()
 
@@ -243,7 +242,6 @@ func Test_Listen(t *testing.T) {
 	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true}))
 }
 
-// go test -run Test_Listen_ClosesListenerOnBeforeServeError
 func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
 	// Grab a free port, then release it so we can bind it via Listen.
 	probe, err := net.Listen("tcp", "127.0.0.1:0")
@@ -267,7 +265,6 @@ func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
 	require.NoError(t, ln.Close())
 }
 
-// go test -run Test_Listen_Graceful_Shutdown
 func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	t.Run("Basic Graceful Shutdown", func(t *testing.T) {
 		testGracefulShutdown(t, 0)
@@ -282,7 +279,6 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	})
 }
 
-// go test -run Test_ShutdownWithContext_PostShutdownHookReceivesError
 func Test_ShutdownWithContext_PostShutdownHookReceivesError(t *testing.T) {
 	app := New()
 	app.Get("/", func(c Ctx) error {
@@ -321,7 +317,6 @@ func Test_ShutdownWithContext_PostShutdownHookReceivesError(t *testing.T) {
 	}
 }
 
-// go test -run Test_GracefulShutdown_PostShutdownFiresOnce
 func Test_GracefulShutdown_PostShutdownFiresOnce(t *testing.T) {
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
@@ -472,7 +467,6 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 	mu.Unlock()
 }
 
-// go test -run Test_Listen_Prefork
 func Test_Listen_Prefork(t *testing.T) {
 	enableTestPreforkMaster(t)
 
@@ -486,7 +480,6 @@ func Test_Listen_Prefork(t *testing.T) {
 	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 }
 
-// go test -run Test_Listen_TLSMinVersion
 func Test_Listen_TLSMinVersion(t *testing.T) {
 	enableTestPreforkMaster(t)
 
@@ -522,7 +515,6 @@ func Test_Listen_TLSMinVersion(t *testing.T) {
 	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 }
 
-// go test -run Test_Listen_TLS
 func Test_Listen_TLS(t *testing.T) {
 	// Sequential, as the two tests behind these cases were: each case runs a server for a second.
 	tests := []struct {
@@ -552,7 +544,6 @@ func Test_Listen_TLS(t *testing.T) {
 	}
 }
 
-// go test -run Test_Listen_TLS_Prefork
 func Test_Listen_TLS_Prefork(t *testing.T) {
 	// Not parallel: enableTestPreforkMaster sets a package-level flag that the other tests read.
 	tests := []struct {
@@ -592,7 +583,6 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 	}
 }
 
-// go test -run Test_Listener
 func Test_Listener(t *testing.T) {
 	app := New()
 
@@ -616,7 +606,6 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 	require.NoError(t, app.Listener(ln))
 }
 
-// go test -run Test_Listen_TLSConfigFunc
 func Test_Listen_TLSConfigFunc(t *testing.T) {
 	var callTLSConfig bool
 	app := New()
@@ -635,7 +624,6 @@ func Test_Listen_TLSConfigFunc(t *testing.T) {
 	require.True(t, callTLSConfig)
 }
 
-// go test -run Test_Listen_TLSConfig
 func Test_Listen_TLSConfig(t *testing.T) {
 	t.Parallel()
 
@@ -686,7 +674,6 @@ func Test_Listen_TLSConfig(t *testing.T) {
 	})
 }
 
-// go test -run Test_Listen_TLSCertFiles
 func Test_Listen_TLSCertFiles(t *testing.T) {
 	t.Parallel()
 
@@ -702,7 +689,6 @@ func Test_Listen_TLSCertFiles(t *testing.T) {
 	}))
 }
 
-// go test -run Test_Listen_TLSConfig_WithTLSConfigFunc
 func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
 	t.Parallel()
 
@@ -727,7 +713,6 @@ func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
 	require.False(t, calledTLSConfigFunc)
 }
 
-// go test -run Test_Listen_TLSConfig_WarnsSupersededFields
 func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 	// Not parallel: it captures the package-level log output, and Go keeps no
 	// parallel test in flight while a serial one runs. Test_Listen_TLSConfig_WithTLSConfigFunc
@@ -766,7 +751,6 @@ func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 	)
 }
 
-// go test -run Test_Listen_TLSConfig_NoWarningWhenAlone
 func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
 	// Not parallel: captures the package-level log output.
 	cert := rootMiscBTestCert(t)
@@ -788,7 +772,6 @@ func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
 	require.NotContains(t, buf.String(), "supersedes")
 }
 
-// go test -run Test_Listener_WarnsIgnoredTLSFields
 func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
 	// Not parallel: captures the package-level log output.
 	var buf bytes.Buffer
@@ -814,7 +797,6 @@ func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
 	require.Contains(t, out, "required only if the supplied listener already asks for one")
 }
 
-// go test -run Test_Listen_AutoCert_Conflicts
 func Test_Listen_AutoCert_Conflicts(t *testing.T) {
 	t.Parallel()
 
@@ -899,7 +881,6 @@ func Test_Listen_ClientCertErrorDoesNotSetTLSHandler(t *testing.T) {
 	require.Nil(t, c.ClientHelloInfo())
 }
 
-// go test -run Test_Listen_ListenerAddrFunc
 func Test_Listen_ListenerAddrFunc(t *testing.T) {
 	var network string
 	app := New()
@@ -918,7 +899,6 @@ func Test_Listen_ListenerAddrFunc(t *testing.T) {
 	require.Equal(t, "tcp", network)
 }
 
-// go test -run Test_Listen_BeforeServeFunc
 func Test_Listen_BeforeServeFunc(t *testing.T) {
 	var handlers uint32
 	app := New()
@@ -983,7 +963,6 @@ func skipIfNoIPv6(t *testing.T) {
 	require.NoError(t, probe.Close())
 }
 
-// go test -run Test_Listen_ListenerNetwork
 func Test_Listen_ListenerNetwork(t *testing.T) {
 	skipIfNoIPv6(t)
 
@@ -1015,7 +994,6 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	require.Contains(t, network, "0.0.0.0:")
 }
 
-// go test -run Test_Listen_ListenerNetwork_Unix
 func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 	app := New()
 
@@ -1078,7 +1056,6 @@ func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 	require.Equal(t, "all good", string(resp.Body()))
 }
 
-// go test -run Test_Listen_Master_Process_Show_Startup_Message
 func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 	cfg := ListenConfig{
 		EnablePrefork: true,
@@ -1108,7 +1085,6 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 	)
 }
 
-// go test -run Test_Listen_Master_Process_Show_Startup_MessageWithAppName
 func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	// Not parallel: captureOutput redirects the process-wide stdout.
 	childTemplate := []int{11111, 22222, 33333, 44444, 55555, 60000}
@@ -1147,7 +1123,6 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	}
 }
 
-// go test -run Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustomEndpoint
 func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustomEndpoint(t *testing.T) {
 	cfg := ListenConfig{
 		EnablePrefork: false,
@@ -1256,7 +1231,6 @@ func Test_StartupMessagePreventedByHook(t *testing.T) {
 	require.True(t, post.Prevented)
 }
 
-// go test -run Test_Listen_Print_Route
 func Test_Listen_Print_Route(t *testing.T) {
 	app := New()
 	app.Get("/", emptyHandler).Name("routeName")
@@ -1266,7 +1240,6 @@ func Test_Listen_Print_Route(t *testing.T) {
 	rootMiscBRequireContains(t, printRoutesMessage, MethodGet, "/", "emptyHandler", "routeName")
 }
 
-// go test -run Test_Listen_Print_Route_With_Group
 func Test_Listen_Print_Route_With_Group(t *testing.T) {
 	app := New()
 	app.Get("/", emptyHandler)
@@ -1324,8 +1297,6 @@ func emptyHandler(_ Ctx) error {
 	return nil
 }
 
-// go test -run Test_WarnIgnoredTLSFieldsOnListener_Branches
-//
 // Listener serves the listener it is handed, so every TLS field in the config
 // is dropped. The end-to-end tests above cover CertClientFile, which returns
 // before the rest; this drives the remaining fields, the singular/plural
@@ -1420,8 +1391,6 @@ func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
 	}
 }
 
-// go test -run Test_WarnSupersededTLSFields_Branches
-//
 // TLSConfig replaces the other TLS settings rather than seeding them, so each
 // one it displaces is named. The end-to-end test above covers the pair a real
 // deployment hits; this drives the two that are otherwise unreached.

@@ -120,7 +120,6 @@ func Test_Pprof_TrailingSlash_RedirectsWithinPrefix(t *testing.T) {
 	}
 }
 
-// go test -run Test_Pprof_Next
 func Test_Pprof_Next(t *testing.T) {
 	t.Parallel()
 

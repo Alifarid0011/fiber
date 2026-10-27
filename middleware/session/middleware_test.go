@@ -707,7 +707,6 @@ func Test_Middleware_RegenerateWithContext(t *testing.T) {
 	sessionTestRequest(t, app.Handler(), fiber.MethodGet, "/regenerate", fiber.StatusOK)
 }
 
-// go test -run Test_Middleware_WithContext_ErrorPropagation
 func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
 	t.Parallel()
 
@@ -989,8 +988,6 @@ func Test_Session_ReleaseMiddleware_DoesNotRecycleAPublishedOne(t *testing.T) {
 // Benchmark_Middleware drives the whole handler, which the store benchmarks do
 // not: it is where the middleware object is acquired, published to the request
 // context and released again.
-//
-// go test -v -run=^$ -bench=Benchmark_Middleware -benchmem -count=4
 func Benchmark_Middleware(b *testing.B) {
 	for _, tc := range []struct {
 		name string

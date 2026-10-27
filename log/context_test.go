@@ -419,7 +419,6 @@ func Benchmark_DefaultContextValueTag(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_writeSanitizedString -benchmem -count=4
 func Benchmark_writeSanitizedString(b *testing.B) {
 	buf := &bytebufferpool.ByteBuffer{}
 	inputs := []string{

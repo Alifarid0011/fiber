@@ -46,7 +46,6 @@ func staticTestExpect[T apptest.Target](t *testing.T, app *fiber.App, target T, 
 	return resp
 }
 
-// go test -run Test_Static_Index_Default
 func Test_Static_Index_Default(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -66,7 +65,6 @@ func Test_Static_Index_Default(t *testing.T) {
 	require.Equal(t, "Not Found", apptest.Body(t, resp))
 }
 
-// go test -run Test_Static_Index
 func Test_Static_Direct(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -83,7 +81,6 @@ func Test_Static_Direct(t *testing.T) {
 	require.Contains(t, apptest.Body(t, resp), "test_routes")
 }
 
-// go test -run Test_Static_MaxAge
 func Test_Static_MaxAge(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -96,7 +93,6 @@ func Test_Static_MaxAge(t *testing.T) {
 	require.Equal(t, "public, max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
-// go test -run Test_Static_Custom_CacheControl
 func Test_Static_Custom_CacheControl(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -171,7 +167,6 @@ func Test_Static_NotFoundHandler(t *testing.T) {
 	require.Equal(t, "Custom 404", apptest.Body(t, resp))
 }
 
-// go test -run Test_Static_Download
 func Test_Static_Download(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -210,7 +205,6 @@ func Test_Static_Download_NonASCII(t *testing.T) {
 	require.Equal(t, expect, resp.Header.Get(fiber.HeaderContentDisposition))
 }
 
-// go test -run Test_Static_Group
 func Test_Static_Group(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

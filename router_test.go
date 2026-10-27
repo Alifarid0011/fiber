@@ -1431,7 +1431,6 @@ func acquireDefaultCtxForRouterBenchmark(b *testing.B, app *App, fctx *fasthttp.
 	return defaultCtx
 }
 
-// go test -v -run=^$ -bench=Benchmark_App_RebuildTree -benchmem -count=4
 func Benchmark_App_RebuildTree(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
@@ -1445,7 +1444,6 @@ func Benchmark_App_RebuildTree(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_App_MethodNotAllowed -benchmem -count=4
 func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	app := New()
 	h := func(c Ctx) error {
@@ -1467,7 +1465,6 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	require.Equal(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4
 func Benchmark_Router_NotFound(b *testing.B) {
 	b.ReportAllocs()
 	app := New()
@@ -1488,7 +1485,6 @@ func Benchmark_Router_NotFound(b *testing.B) {
 	require.Equal(b, "Not Found", string(c.Response.Body()))
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=4
 func Benchmark_Router_OptionalMiss(b *testing.B) {
 	for _, tc := range []struct {
 		name     string
@@ -1554,7 +1550,6 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Chain -benchmem -count=4
 func Benchmark_Router_Chain(b *testing.B) {
 	app := New()
 	handler := func(c Ctx) error {
@@ -1582,8 +1577,6 @@ func Benchmark_Router_Chain(b *testing.B) {
 //   - use_interleaved: the same with the routes in the middlewares' bucket,
 //     so that each hop steps over one
 //   - group: a global middleware, then two nested groups' middlewares
-//
-// go test -run=^$ -bench=Benchmark_Router_Chain_FilteredBucket -benchmem -count=4
 func Benchmark_Router_Chain_FilteredBucket(b *testing.B) {
 	handler := func(Ctx) error { return nil }
 	mw := func(c Ctx) error { return c.Next() }
@@ -1630,7 +1623,6 @@ func Benchmark_Router_Chain_FilteredBucket(b *testing.B) {
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_WithCompression -benchmem -count=4
 func Benchmark_Router_WithCompression(b *testing.B) {
 	app := New()
 	handler := func(c Ctx) error {
@@ -1653,7 +1645,6 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 	}
 }
 
-// go test -run=^$ -bench=Benchmark_Startup_Process -benchmem -count=9
 func Benchmark_Startup_Process(b *testing.B) {
 	for b.Loop() {
 		app := New()
@@ -1662,7 +1653,6 @@ func Benchmark_Startup_Process(b *testing.B) {
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Next -benchmem -count=4
 func Benchmark_Router_Next(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
@@ -1686,7 +1676,6 @@ func Benchmark_Router_Next(b *testing.B) {
 	require.Equal(b, 4, c.indexRoute)
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Default -benchmem -count=4
 func Benchmark_Router_Next_Default(b *testing.B) {
 	app := New()
 	app.Get("/", func(_ Ctx) error {
@@ -1706,7 +1695,6 @@ func Benchmark_Router_Next_Default(b *testing.B) {
 	}
 }
 
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_Next_Default_Parallel$ github.com/gofiber/fiber/v3 -count=1
 func Benchmark_Router_Next_Default_Parallel(b *testing.B) {
 	app := New()
 	app.Get("/", func(_ Ctx) error {
@@ -1729,7 +1717,6 @@ func Benchmark_Router_Next_Default_Parallel(b *testing.B) {
 	})
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Default_Immutable -benchmem -count=4
 func Benchmark_Router_Next_Default_Immutable(b *testing.B) {
 	app := New(Config{Immutable: true})
 	app.Get("/", func(_ Ctx) error {
@@ -1749,7 +1736,6 @@ func Benchmark_Router_Next_Default_Immutable(b *testing.B) {
 	}
 }
 
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_Next_Default_Parallel_Immutable$ github.com/gofiber/fiber/v3 -count=1
 func Benchmark_Router_Next_Default_Parallel_Immutable(b *testing.B) {
 	app := New(Config{Immutable: true})
 	app.Get("/", func(_ Ctx) error {
@@ -1772,7 +1758,6 @@ func Benchmark_Router_Next_Default_Parallel_Immutable(b *testing.B) {
 	})
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
 func Benchmark_Route_Match(b *testing.B) {
 	var match bool
 	var params [maxParams]string
@@ -1800,7 +1785,6 @@ func Benchmark_Route_Match(b *testing.B) {
 	require.Equal(b, []string{"1337"}, params[0:len(parsed.params)])
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Star -benchmem -count=4
 func Benchmark_Route_Match_Star(b *testing.B) {
 	var match bool
 	var params [maxParams]string
@@ -1829,7 +1813,6 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	require.Equal(b, []string{"user/keys/bla"}, params[0:len(parsed.params)])
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Root -benchmem -count=4
 func Benchmark_Route_Match_Root(b *testing.B) {
 	var match bool
 	var params [maxParams]string
@@ -1858,7 +1841,6 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 	require.Equal(b, []string{}, params[0:len(parsed.params)])
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4
 func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	app := New()
 	app.config.CaseSensitive = true
@@ -1875,7 +1857,6 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_Unescape -benchmem -count=4
 func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	app := New()
 	app.config.UnescapePath = true
@@ -1897,7 +1878,6 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	}
 }
 
-// go test -run=^$ -bench=Benchmark_Router_Handler_StrictRouting -benchmem -count=4
 func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	app := New()
 	app.config.CaseSensitive = true
@@ -1914,7 +1894,6 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	}
 }
 
-// go test -run=^$ -bench=Benchmark_Router_GitHub_API -benchmem -count=16
 func Benchmark_Router_GitHub_API(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
@@ -2405,7 +2384,6 @@ func Benchmark_Router_GitHub_API_Parallel(b *testing.B) {
 	}
 }
 
-// go test -run Test_Route_URL
 func Test_Route_URL(t *testing.T) {
 	t.Parallel()
 
@@ -3128,7 +3106,6 @@ func Test_App_SkipUnmatchedRoutes_CustomCtxFailingErrorHandler(t *testing.T) {
 	routerTestExpect(t, app, "/nope", StatusInternalServerError)
 }
 
-// go test -v -run=^$ -bench=Benchmark_SkipUnmatchedRoutes -benchmem -count=4
 func Benchmark_SkipUnmatchedRoutes(b *testing.B) {
 	scenarios := []struct {
 		name        string
@@ -3346,7 +3323,6 @@ func Benchmark_Router_HandlerCustom_NotFound(b *testing.B) {
 // path, a route they reject must be a route Route.match, with its own filters
 // stood down, would have rejected anyway. The filters only ever get to skip
 // work, never to change an outcome, so a false reject here is a routing bug.
-// go test -race -run Test_Route_PrefixFilter_Differential
 func Test_Route_PrefixFilter_Differential(t *testing.T) {
 	t.Parallel()
 
@@ -3460,7 +3436,6 @@ func registerFilterRoutes(t *testing.T, patterns []string, use bool) []*Route {
 // Test_Route_PrefixFilter_Fixture proves the leading-byte filter agrees with
 // Route.match across the exhaustive path-matching fixture, which covers far
 // more pattern shapes than the generated set above.
-// go test -race -run Test_Route_PrefixFilter_Fixture
 func Test_Route_PrefixFilter_Fixture(t *testing.T) {
 	t.Parallel()
 	patterns := make([]string, 0, len(routeTestCases))
@@ -3501,7 +3476,6 @@ func Test_Route_PrefixFilter_Fixture(t *testing.T) {
 // Test_Route_PrefixFilter_Rejects proves the filter is actually doing work:
 // routes whose leading constant bytes differ from the request must be skipped
 // without Route.match ever being consulted.
-// go test -race -run Test_Route_PrefixFilter_Rejects
 func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 	t.Parallel()
 
@@ -3544,7 +3518,6 @@ func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 // returns true unconditionally for a star route, so the filter must not
 // constrain it -- an earlier version only checked star inside the parametric
 // branch and 404'd every path that did not literally begin with "/*".
-// go test -race -run Test_Route_PrefixFilter_EscapedStar
 func Test_Route_PrefixFilter_EscapedStar(t *testing.T) {
 	t.Parallel()
 
@@ -3578,7 +3551,6 @@ func Test_Route_PrefixFilter_EscapedStar(t *testing.T) {
 // changes produce. This one is deterministic, so it is the benchmark to use
 // when comparing scan-side changes across builds, and it exercises the case
 // those changes target: a large route set where most candidates are rejected.
-// go test -run=^$ -bench=Benchmark_Router_GitHub_API_Serial -benchmem -count=6
 func Benchmark_Router_GitHub_API_Serial(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
@@ -3661,7 +3633,6 @@ func referenceEndpoint(app *App, method int, detectionPath, path string) (*Route
 // leading-byte filter, the slash-count bounds and the "/const/:param"
 // specialization all have to agree with the obvious implementation. It replaces
 // a golden-file comparison, so it needs no regeneration when routes are added.
-// go test -race -run Test_Router_ScanMatchesReference
 func Test_Router_ScanMatchesReference(t *testing.T) {
 	t.Parallel()
 
@@ -3856,7 +3827,6 @@ func routeLabel(r *Route) string {
 //
 // The routes here deliberately include no wildcard or root fallback: with one
 // present, tier 2 would rescue a botched tier 1 and hide the bug.
-// go test -race -run Test_ResolveSkip_StaticSlashGate
 func Test_ResolveSkip_StaticSlashGate(t *testing.T) {
 	t.Parallel()
 
@@ -3902,7 +3872,6 @@ func Test_ResolveSkip_StaticSlashGate(t *testing.T) {
 // second one: it recomputes the filter for every registered route and requires
 // it to equal what is stored. A future in-place rewrite of a route's path that
 // forgets to refresh the filter fails here.
-// go test -race -run Test_Route_PrefixFilter_NotStale
 func Test_Route_PrefixFilter_NotStale(t *testing.T) {
 	t.Parallel()
 
@@ -3971,7 +3940,6 @@ func Test_Route_PrefixFilter_NotStale(t *testing.T) {
 // a fixed >>16 every probe started below slot 65536, so a table sized past that
 // had an unreachable upper half and the lower half degraded into a linear scan
 // -- in exactly the large-route-set case the index exists to speed up.
-// go test -race -run Test_RouteTree_SlotSpreadsAcrossLargeTables
 func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
 	t.Parallel()
 
@@ -4086,7 +4054,6 @@ func routerTestBucket(app *App, method, prefix string) ([]*Route, *bucketFilter)
 // is never empty -- but the guards are what make that an assumption rather than
 // a dependency, and a filter that stayed enabled for either would reject paths
 // the route matches.
-// go test -race -run Test_Route_PrefixFilter_UnconstrainedShapes
 func Test_Route_PrefixFilter_UnconstrainedShapes(t *testing.T) {
 	t.Parallel()
 
@@ -5125,7 +5092,6 @@ func Test_Router_LargeBucket_CustomCtx(t *testing.T) {
 // parametric route, only the lower one when it is a prefix route, and every
 // count for star and root routes. Bit 0, which stands for a count the scan did
 // not compute, is always set, and bit 31 stands for 31 or more.
-// go test -race -run Test_ScanHead_SlashMask
 func Test_ScanHead_SlashMask(t *testing.T) {
 	t.Parallel()
 
@@ -5186,7 +5152,6 @@ func Test_ScanHead_SlashMask(t *testing.T) {
 // narrow fields: a probe that fits comes back as it went in, and one they
 // cannot hold, an offset past them or a mask that does not cover leading
 // lanes, leaves the head without a probe, for match to check.
-// go test -race -run Test_ScanHead_Probe
 func Test_ScanHead_Probe(t *testing.T) {
 	t.Parallel()
 
@@ -5241,7 +5206,6 @@ func Test_ScanHead_Probe(t *testing.T) {
 // the first is the route's own leading-byte filter, and the second continues
 // knownPrefix past it, which is what tells apart the routes of an API that all
 // begin "/api/v1/".
-// go test -race -run Test_ScanHead_PrefixWords
 func Test_ScanHead_PrefixWords(t *testing.T) {
 	t.Parallel()
 
@@ -5296,7 +5260,6 @@ func Test_ScanHead_PrefixWords(t *testing.T) {
 // whose probes share their from but read different slashes: "/foo/" follows
 // the first parameter's slash, "/bar" the second's. A scan that reused the
 // word one of them located for the other would reject the route it tests.
-// go test -race -run Test_Router_FilteredBucket_SharedProbeFrom
 func Test_Router_FilteredBucket_SharedProbeFrom(t *testing.T) {
 	t.Parallel()
 
@@ -5336,7 +5299,6 @@ func Test_Router_FilteredBucket_SharedProbeFrom(t *testing.T) {
 // through filtered buckets, which routeScan.endpoint walks for the methods the
 // request did not use. The Allow header must name exactly the methods with a
 // matching endpoint, through a default and a custom context alike.
-// go test -race -run Test_Router_FilteredBucket_MethodNotAllowed
 func Test_Router_FilteredBucket_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
 
@@ -5384,7 +5346,6 @@ func Test_Router_FilteredBucket_MethodNotAllowed(t *testing.T) {
 // Test_Router_FilteredBucket_CustomCtx runs the GitHub API corpus, whose
 // larger buckets are filtered, through nextCustom, the scan a custom context
 // takes, and requires the route and parameters App.next picks for each request.
-// go test -race -run Test_Router_FilteredBucket_CustomCtx
 func Test_Router_FilteredBucket_CustomCtx(t *testing.T) {
 	t.Parallel()
 
@@ -5434,7 +5395,6 @@ func Test_Router_FilteredBucket_CustomCtx(t *testing.T) {
 // routes. The heads are derived when the tree is built, from routes that are
 // final by then, so this guards that no path reaches a published tree without
 // a build.
-// go test -race -run Test_RouteTree_Heads_NotStale
 func Test_RouteTree_Heads_NotStale(t *testing.T) {
 	t.Parallel()
 

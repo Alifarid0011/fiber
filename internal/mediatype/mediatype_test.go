@@ -262,7 +262,6 @@ func Test_Unescape_AliasesWithoutEscapes(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_StripParams -benchmem -count=4
 func Benchmark_StripParams(b *testing.B) {
 	json := []byte("application/json")
 	html := []byte("text/html ; charset=utf-8")
@@ -275,7 +274,6 @@ func Benchmark_StripParams(b *testing.B) {
 	require.Equal(b, []byte("text/html"), got)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Params -benchmem -count=4
 func Benchmark_Params(b *testing.B) {
 	ct := []byte(`multipart/form-data; boundary="a;b"; charset=utf-8`)
 	var n int
@@ -288,7 +286,6 @@ func Benchmark_Params(b *testing.B) {
 	require.Positive(b, n)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Unescape -benchmem -count=4
 func Benchmark_Unescape(b *testing.B) {
 	for _, bench := range []struct {
 		name string

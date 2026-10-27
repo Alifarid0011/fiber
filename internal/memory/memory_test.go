@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// go test -run Test_Memory -v -race
 func Test_Memory(t *testing.T) {
 	t.Parallel()
 	store := New()
@@ -121,7 +120,6 @@ func Test_Memory_SubSecondTTLExpires(t *testing.T) {
 	}, 3*time.Second, 10*time.Millisecond)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Memory -benchmem -count=4
 func Benchmark_Memory(b *testing.B) {
 	keyLength := 1000
 	keys := make([]string, keyLength)

@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// go test -run Test_MemoryLock
 func Test_MemoryLock(t *testing.T) {
 	t.Parallel()
 

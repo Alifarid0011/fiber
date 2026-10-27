@@ -19,7 +19,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// go test -run Test_Session
 func Test_Session(t *testing.T) {
 	t.Parallel()
 
@@ -147,7 +146,6 @@ var sessionTestBasicValues = []struct {
 	{name: "complex128", value: complex128(13)},
 }
 
-// go test -run Test_Session_Types
 func Test_Session_Types(t *testing.T) {
 	t.Parallel()
 
@@ -199,7 +197,6 @@ func Test_Session_Types(t *testing.T) {
 	}
 }
 
-// go test -run Test_Session_Store_Reset
 func Test_Session_Store_Reset(t *testing.T) {
 	t.Parallel()
 	// session store
@@ -320,8 +317,6 @@ func Test_Session_KeyTypes(t *testing.T) {
 	}
 }
 
-// go test -run Test_Session_Save
-//
 // Saving writes the session ID to every sink of the store's extractor that can
 // be written back to: the cookie of a cookie extractor and the response header
 // of a header one, whatever the chain around them. A source that is read-only
@@ -674,7 +669,6 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_Destroy
 func Test_Session_Destroy(t *testing.T) {
 	t.Parallel()
 
@@ -714,7 +708,6 @@ func Test_Session_Destroy(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_Custom_Config
 func Test_Session_Custom_Config(t *testing.T) {
 	t.Parallel()
 
@@ -726,7 +719,6 @@ func Test_Session_Custom_Config(t *testing.T) {
 	require.Equal(t, ConfigDefault.IdleTimeout, store.IdleTimeout)
 }
 
-// go test -run Test_Session_Cookie
 func Test_Session_Cookie(t *testing.T) {
 	t.Parallel()
 	// get session
@@ -848,7 +840,6 @@ func Test_Session_Cookie_SameSite(t *testing.T) {
 	}
 }
 
-// go test -run Test_Session_Cookie_In_Response
 // Regression: https://github.com/gofiber/fiber/pull/1191
 func Test_Session_Cookie_In_Middleware_Chain(t *testing.T) {
 	store := NewStore()
@@ -877,7 +868,6 @@ func Test_Session_Cookie_In_Middleware_Chain(t *testing.T) {
 	require.Equal(t, "john", sess.Get("name"))
 }
 
-// go test -run Test_Session_Deletes_Single_Key
 // Regression: https://github.com/gofiber/fiber/issues/1365
 func Test_Session_Deletes_Single_Key(t *testing.T) {
 	t.Parallel()
@@ -895,7 +885,6 @@ func Test_Session_Deletes_Single_Key(t *testing.T) {
 	require.Nil(t, sess.Get("id"))
 }
 
-// go test -run Test_Session_Reset
 func Test_Session_Reset(t *testing.T) {
 	t.Parallel()
 	// fiber instance
@@ -1014,7 +1003,6 @@ func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
 	}
 }
 
-// go test -run Test_Session_Regenerate
 // Regression: https://github.com/gofiber/fiber/issues/1395
 func Test_Session_Regenerate(t *testing.T) {
 	t.Parallel()
@@ -1042,7 +1030,6 @@ func Test_Session_Regenerate(t *testing.T) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Session -benchmem -count=4
 func Benchmark_Session(b *testing.B) {
 	b.Run("default", func(b *testing.B) {
 		app, store := fiber.New(), NewStore()
@@ -1082,8 +1069,6 @@ func Benchmark_Session(b *testing.B) {
 // does per request. The user values are reset every iteration because a reused
 // context answers from the cached session-ID local and never reaches the
 // extractor.
-//
-// go test -v -run=^$ -bench=Benchmark_Session_ChainExtractor -benchmem -count=4
 func Benchmark_Session_ChainExtractor(b *testing.B) {
 	app := fiber.New()
 	store := NewStore(Config{
@@ -1109,7 +1094,6 @@ func Benchmark_Session_ChainExtractor(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Session_Parallel -benchmem -count=4
 func Benchmark_Session_Parallel(b *testing.B) {
 	b.Run("default", func(b *testing.B) {
 		app, store := fiber.New(), NewStore()
@@ -1155,7 +1139,6 @@ func Benchmark_Session_Parallel(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Session_Asserted -benchmem -count=4
 func Benchmark_Session_Asserted(b *testing.B) {
 	b.Run("default", func(b *testing.B) {
 		app, store := fiber.New(), NewStore()
@@ -1193,7 +1176,6 @@ func Benchmark_Session_Asserted(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Session_Asserted_Parallel -benchmem -count=4
 func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 	b.Run("default", func(b *testing.B) {
 		app, store := fiber.New(), NewStore()
@@ -1237,7 +1219,6 @@ func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 	})
 }
 
-// go test -v -race -run Test_Session_Concurrency ./...
 func Test_Session_Concurrency(t *testing.T) {
 	app := fiber.New()
 	store := NewStore()
@@ -1380,7 +1361,6 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	require.ErrorContains(t, err, "failed to decode session data", "Unexpected error")
 }
 
-// go test -run Test_Session_Fresh_Flag_Bug
 // This test verifies the fix for the fresh flag bug where calling getSession()
 // multiple times in the same request would incorrectly mark the session as fresh
 // when the ID was found in context locals.
@@ -1426,7 +1406,6 @@ func Test_Session_Fresh_Flag_Bug(t *testing.T) {
 	sess4.Release()
 }
 
-// go test -run Test_Session_CSRF_Scenario
 // This test simulates the user-reported issue with CSRF + session middleware
 // where a POST without CSRF token would result in a new session_id cookie
 func Test_Session_CSRF_Scenario(t *testing.T) {
@@ -1486,7 +1465,6 @@ func Test_Session_CSRF_Scenario(t *testing.T) {
 	sess3.Release()
 }
 
-// go test -run Test_Session_Multiple_GetSession_Calls
 // This test ensures that calling getSession() multiple times within the same
 // request context doesn't incorrectly mark the session as fresh due to the
 // session ID being stored in context locals
@@ -1533,7 +1511,6 @@ func Test_Session_Multiple_GetSession_Calls(t *testing.T) {
 	sess4.Release()
 }
 
-// go test -run Test_Session_DestroyWithContext
 func Test_Session_DestroyWithContext(t *testing.T) {
 	t.Parallel()
 
@@ -1554,7 +1531,6 @@ func Test_Session_DestroyWithContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_RegenerateWithContext
 func Test_Session_RegenerateWithContext(t *testing.T) {
 	t.Parallel()
 
@@ -1576,7 +1552,6 @@ func Test_Session_RegenerateWithContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_ResetWithContext
 func Test_Session_ResetWithContext(t *testing.T) {
 	t.Parallel()
 
@@ -1601,7 +1576,6 @@ func Test_Session_ResetWithContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_SaveWithContext
 func Test_Session_SaveWithContext(t *testing.T) {
 	t.Parallel()
 
@@ -1642,7 +1616,6 @@ func Test_Session_SaveWithContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_ResolveContext
 func Test_Session_ResolveContext(t *testing.T) {
 	t.Parallel()
 
@@ -1687,8 +1660,6 @@ func newSessionWithStorage(t *testing.T, storage fiber.Storage) *Session {
 	return sess
 }
 
-// go test -run Test_Session_WithContext
-//
 // Test_Session_WithContext runs every *WithContext operation against each way
 // the context variants have to cope with a storage backend: a storage that
 // fails, a context that is already canceled or past its deadline, and a nil
@@ -1869,8 +1840,6 @@ func sessionTestStored(t *testing.T, store *Store, id string) *Session {
 
 // A save that changed nothing still has to refresh storage: the sliding idle
 // timeout is the entire safety argument for reusing the decoded snapshot.
-//
-// go test -run Test_Session_CleanSave_WritesSnapshotToStorage
 func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 	t.Parallel()
 
@@ -1908,8 +1877,6 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 
 // A value the caller still holds can be mutated in place without Set, so any
 // save after it was handed out must re-encode rather than reuse the snapshot.
-//
-// go test -run Test_Session_AliasedValueMutatedBetweenSaves
 func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 	t.Parallel()
 
@@ -1963,8 +1930,6 @@ func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 
 // Benchmark_Session_ReadOnly measures the request shape the clean-save path
 // targets: load a stored session, read a scalar, save it unmodified.
-//
-// go test -v -run=^$ -bench=Benchmark_Session_ReadOnly -benchmem -count=4
 func Benchmark_Session_ReadOnly(b *testing.B) {
 	app := fiber.New()
 	store := NewStore(Config{Storage: memory.New()})
@@ -2017,8 +1982,6 @@ func (s *scribbleStorage) scribble() {
 
 // The retained snapshot must be a copy: fiber.Storage promises nothing about
 // the lifetime of the slice its Get returns.
-//
-// go test -run Test_Session_RetainedSnapshotSurvivesStorageBufferReuse
 func Test_Session_RetainedSnapshotSurvivesStorageBufferReuse(t *testing.T) {
 	t.Parallel()
 
@@ -2040,8 +2003,6 @@ func Test_Session_RetainedSnapshotSurvivesStorageBufferReuse(t *testing.T) {
 
 // The snapshot outlives operations that do not touch the data, and must not
 // outlive the ones that do.
-//
-// go test -run Test_Session_CleanSave_Lifecycle
 func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 	t.Parallel()
 
@@ -2130,8 +2091,6 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 
 // With AbsoluteTimeout every load reads the deadline back as a time.Time, and that
 // read must neither dirty the session nor move the deadline.
-//
-// go test -run Test_Session_CleanSave_KeepsAbsoluteExpiration
 func Test_Session_CleanSave_KeepsAbsoluteExpiration(t *testing.T) {
 	t.Parallel()
 
@@ -2156,8 +2115,6 @@ func Test_Session_CleanSave_KeepsAbsoluteExpiration(t *testing.T) {
 
 // Get writes the dirty flag while holding only RLock, so a shared session must
 // stay race-free when a save runs next to a read.
-//
-// go test -race -run Test_Session_ConcurrentAliasedReadAndSave
 func Test_Session_ConcurrentAliasedReadAndSave(t *testing.T) {
 	t.Parallel()
 

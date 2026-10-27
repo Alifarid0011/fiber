@@ -491,7 +491,6 @@ func (w errWriter) Write([]byte) (int, error) {
 	return 0, fmt.Errorf("test writer: %w", w.err)
 }
 
-// go test -v -run=^$ -bench=Benchmark_sanitizeField -benchmem -count=4
 func Benchmark_sanitizeField(b *testing.B) {
 	inputs := []string{
 		"tick",                                 // short: scalar path

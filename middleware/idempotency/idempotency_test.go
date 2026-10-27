@@ -23,7 +23,6 @@ import (
 
 const validKey = "00000000-0000-0000-0000-000000000000"
 
-// go test -run Test_Idempotency
 func Test_Idempotency(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -143,7 +142,6 @@ func Test_Idempotency(t *testing.T) {
 	require.Equal(t, "14", doReq(fiber.MethodQuery, "/", "33333333-3333-3333-3333-333333333333"))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Idempotency -benchmem -count=4
 func Benchmark_Idempotency(b *testing.B) {
 	app := fiber.New()
 
@@ -207,7 +205,6 @@ func Benchmark_Idempotency(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_scopedKey -benchmem -count=4
 func Benchmark_scopedKey(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {

@@ -33,7 +33,6 @@ func assertFlashCookieCleared(t *testing.T, setCookie string) {
 	require.Contains(t, setCookie, "path=/")
 }
 
-// go test -run Test_Redirect_To
 func Test_Redirect_To(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -49,8 +48,6 @@ func Test_Redirect_To(t *testing.T) {
 	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Redirect_WithFlashMessages
-//
 // Test_Redirect_WithFlashMessages sends flash messages, and the request's input for the rows that ask for
 // it, through each way of redirecting, and checks them twice: as the redirect collected them and as the
 // cookie carries them to the next request.
@@ -174,7 +171,6 @@ func Test_Redirect_WithFlashMessages(t *testing.T) {
 	}
 }
 
-// go test -run Test_Redirect_Route_Location
 func Test_Redirect_Route_Location(t *testing.T) {
 	t.Parallel()
 
@@ -224,7 +220,6 @@ func Test_Redirect_Route_Location(t *testing.T) {
 	}
 }
 
-// go test -run Test_Redirect_Route_WithQueries
 func Test_Redirect_Route_WithQueries(t *testing.T) {
 	t.Parallel()
 
@@ -271,7 +266,6 @@ func Test_Redirect_Route_WithQueries(t *testing.T) {
 	}
 }
 
-// go test -run Test_Redirect_Route_ParamCannotMoveTheQuery
 func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 	t.Parallel()
 
@@ -323,7 +317,6 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 	}
 }
 
-// go test -run Test_Redirect_Route_ParamCannotLeaveTheOrigin
 func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 	t.Parallel()
 
@@ -417,7 +410,6 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 	}
 }
 
-// go test -run Test_Redirect_Back
 func Test_Redirect_Back(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -436,7 +428,6 @@ func Test_Redirect_Back(t *testing.T) {
 	require.ErrorIs(t, err, ErrRedirectBackNoFallback)
 }
 
-// go test -run Test_Redirect_Back_WithReferer
 func Test_Redirect_Back_WithReferer(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -470,7 +461,6 @@ func rootMiscBExpectBackTo(t *testing.T, referer, fallback, want string) {
 	require.Equal(t, want, string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Redirect_Back_WithCrossOriginReferer
 func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	t.Parallel()
 
@@ -512,8 +502,6 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	})
 }
 
-// go test -run Test_Redirect_Back_RejectsEmptyAuthorityReferer
-//
 // Test_Redirect_Back_RejectsEmptyAuthorityReferer covers a network-path
 // reference whose authority came out empty.
 //
@@ -581,7 +569,6 @@ func Test_Redirect_Back_RejectsBrowserNormalizedReferer(t *testing.T) {
 	}
 }
 
-// go test -run Test_Redirect_Back_NormalizesSameOriginReferer
 func Test_Redirect_Back_NormalizesSameOriginReferer(t *testing.T) {
 	t.Parallel()
 
@@ -636,7 +623,6 @@ func Test_Redirect_WithInput_ReusesClearedMap(t *testing.T) {
 	require.NotContains(t, c.redirect.messages, redirectionMsg{key: "first", value: "1", isOldInput: true})
 }
 
-// go test -run Test_Redirect_parseAndClearFlashMessages
 func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	t.Parallel()
 
@@ -784,7 +770,6 @@ func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {
 	}, c.Redirect().OldInputs())
 }
 
-// go test -run Test_Redirect_CompleteFlowWithFlashMessages
 func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	t.Parallel()
 
@@ -868,7 +853,6 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_Route -benchmem -count=4
 func Benchmark_Redirect_Route(b *testing.B) {
 	app := New()
 	app.Get("/user/:name", func(c Ctx) error {
@@ -894,7 +878,6 @@ func Benchmark_Redirect_Route(b *testing.B) {
 	require.Equal(b, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_Route_WithQueries -benchmem -count=4
 func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 	app := New()
 	app.Get("/user/:name", func(c Ctx) error {
@@ -925,7 +908,6 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 	require.Equal(b, url.Values{"a": []string{"a"}, "b": []string{"b"}}, location.Query())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_Route_WithFlashMessages -benchmem -count=4
 func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
@@ -1017,7 +999,6 @@ func Test_Redirect_DisableFlashMessages(t *testing.T) {
 // incoming flash cookie on a parsed browser-style request, which the other
 // handler benchmarks miss because their hand-built requests carry no raw
 // header block.
-// go test -v -run=^$ -bench=Benchmark_Redirect_FlashCookieCheck -benchmem -count=4
 func Benchmark_Redirect_FlashCookieCheck(b *testing.B) {
 	const raw = "GET /user HTTP/1.1\r\n" +
 		"Host: example.com\r\n" +
@@ -1071,7 +1052,6 @@ var testredirectionMsgs = redirectionMsgs{
 	},
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_parseAndClearFlashMessages -benchmem -count=4
 func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
@@ -1112,7 +1092,6 @@ func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 	}, c.Redirect().OldInput("name"))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_processFlashMessages -benchmem -count=4
 func Benchmark_Redirect_processFlashMessages(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
@@ -1142,7 +1121,6 @@ func Benchmark_Redirect_processFlashMessages(b *testing.B) {
 	require.Contains(b, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_Messages -benchmem -count=4
 func Benchmark_Redirect_Messages(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
@@ -1182,7 +1160,6 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_OldInputs -benchmem -count=4
 func Benchmark_Redirect_OldInputs(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
@@ -1216,7 +1193,6 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_Message -benchmem -count=4
 func Benchmark_Redirect_Message(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
@@ -1250,7 +1226,6 @@ func Benchmark_Redirect_Message(b *testing.B) {
 	}, msg)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_OldInput -benchmem -count=4
 func Benchmark_Redirect_OldInput(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
@@ -1279,7 +1254,6 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 	}, input)
 }
 
-// go test -run Test_Redirect_FlashCookie_Attributes
 func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
 	t.Parallel()
 
@@ -1338,7 +1312,6 @@ func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
 	})
 }
 
-// go test -run Test_Redirect_FlashMessages_NoCrossRequestLeak
 func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
 	t.Parallel()
 
@@ -1400,8 +1373,6 @@ func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
 	}
 }
 
-// go test -run Test_Redirect_Back_IgnoresHeaderNameCase
-//
 // Ctx.Get compares the stored key byte for byte, so under
 // DisableHeaderNormalizing a "referer:" from a client behind an HTTP/2 or
 // HTTP/3 front end — where lower case is what the wire carries — read as no
@@ -1430,8 +1401,6 @@ func Test_Redirect_Back_IgnoresHeaderNameCase(t *testing.T) {
 	}
 }
 
-// go test -run Test_Redirect_Back_RejectsAnUnusableReferer
-//
 // Every referer that cannot be resolved back to this origin falls back rather
 // than being echoed into Location. These are the shapes that fail before the
 // same-origin comparison is even reached: one that normalizes away to nothing,

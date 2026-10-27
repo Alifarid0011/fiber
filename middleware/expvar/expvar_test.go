@@ -59,7 +59,6 @@ func Test_Expvar_Other_Path(t *testing.T) {
 	apptest.Expect(t, expvarTestApp(), "/debug/vars/303", fiber.StatusSeeOther)
 }
 
-// go test -run Test_Expvar_Next
 func Test_Expvar_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

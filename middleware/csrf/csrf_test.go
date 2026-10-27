@@ -481,7 +481,6 @@ func Test_CSRF_WithSession(t *testing.T) {
 	}
 }
 
-// go test -run Test_CSRF_WithSession_Middleware
 func Test_CSRF_WithSession_Middleware(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -533,7 +532,6 @@ func Test_CSRF_WithSession_Middleware(t *testing.T) {
 	require.Equal(t, 200, ctx.Response.StatusCode())
 }
 
-// go test -run Test_CSRF_ExpiredToken
 func Test_CSRF_ExpiredToken(t *testing.T) {
 	t.Parallel()
 
@@ -556,7 +554,6 @@ func Test_CSRF_ExpiredToken(t *testing.T) {
 	csrfTestPost(t, h, ctx, token, 403)
 }
 
-// go test -run Test_CSRF_ExpiredToken_WithSession
 func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 	t.Parallel()
 
@@ -577,7 +574,6 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 	csrfTestSessionPost(t, h, ctx, sessionID, token, token, 403)
 }
 
-// go test -run Test_CSRF_MultiUseToken
 func Test_CSRF_MultiUseToken(t *testing.T) {
 	t.Parallel()
 
@@ -603,7 +599,6 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 	require.Equal(t, token, newToken)
 }
 
-// go test -run Test_CSRF_SingleUseToken
 func Test_CSRF_SingleUseToken(t *testing.T) {
 	t.Parallel()
 
@@ -624,7 +619,6 @@ func Test_CSRF_SingleUseToken(t *testing.T) {
 	csrfTestPost(t, h, ctx, token, 403)
 }
 
-// go test -run Test_CSRF_Next
 func Test_CSRF_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -1218,7 +1212,6 @@ func Test_CSRF_Cookie_Injection_Exploit(t *testing.T) {
 }
 
 // Test_CSRF_UnsafeHeaderValue ensures that unsafe header values, such as those described in https://github.com/gofiber/fiber/issues/2045, are rejected and the bug remains fixed.
-// go test -race -run Test_CSRF_UnsafeHeaderValue
 func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -1276,7 +1269,6 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	apptest.Expect(t, app, postReq, fiber.StatusOK)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Middleware_CSRF_Check -benchmem -count=4
 func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 	app := fiber.New()
 
@@ -1320,7 +1312,6 @@ func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 	require.Equal(b, fiber.StatusTeapot, ctx.Response.Header.StatusCode())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Middleware_CSRF_GenerateToken -benchmem -count=4
 func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 	app := fiber.New()
 

@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// go test -run Test_Recover
 func Test_Recover(t *testing.T) {
 	t.Parallel()
 
@@ -74,7 +73,6 @@ func Test_Recover(t *testing.T) {
 	}
 }
 
-// go test -run Test_Recover_Next
 func Test_Recover_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

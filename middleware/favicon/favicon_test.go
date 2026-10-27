@@ -14,7 +14,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 )
 
-// go test -run Test_Middleware_Favicon
 func Test_Middleware_Favicon(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -36,7 +35,6 @@ func Test_Middleware_Favicon(t *testing.T) {
 	require.Equal(t, "GET, HEAD, OPTIONS", resp.Header.Get(fiber.HeaderAllow))
 }
 
-// go test -run Test_Middleware_Favicon_Panics
 func Test_Middleware_Favicon_Panics(t *testing.T) {
 	t.Parallel()
 
@@ -63,7 +61,6 @@ func Test_Middleware_Favicon_Panics(t *testing.T) {
 	}
 }
 
-// go test -run Test_Middleware_Favicon_Serves
 func Test_Middleware_Favicon_Serves(t *testing.T) {
 	t.Parallel()
 
@@ -127,7 +124,6 @@ func Test_Middleware_Favicon_Serves(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Middleware_Favicon -benchmem -count=4
 func Benchmark_Middleware_Favicon(b *testing.B) {
 	app := fiber.New()
 	app.Use(New())
@@ -145,7 +141,6 @@ func Benchmark_Middleware_Favicon(b *testing.B) {
 	}
 }
 
-// go test -run Test_Favicon_Next
 func Test_Favicon_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

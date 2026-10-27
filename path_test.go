@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// go test -race -run Test_Path_parseRoute
 func Test_Path_parseRoute(t *testing.T) {
 	t.Parallel()
 	var rp routeParser
@@ -159,7 +158,6 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 }
 
-// go test -race -run Test_Path_matchParams
 func Test_Path_matchParams(t *testing.T) {
 	t.Parallel()
 	var ctxParams [maxParams]string
@@ -178,7 +176,6 @@ func Test_Path_matchParams(t *testing.T) {
 	}
 }
 
-// go test -run Test_Route_OptionalParamDoesNotSwallowSlash
 func Test_Route_OptionalParamDoesNotSwallowSlash(t *testing.T) {
 	t.Parallel()
 
@@ -209,7 +206,6 @@ func Test_Path_ParameterEndChars_MatchesRouteGrammar(t *testing.T) {
 	require.Equal(t, want, parameterEndChars)
 }
 
-// go test -race -run Test_RouteParser_SlashBounds
 func Test_RouteParser_SlashBounds(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
@@ -263,7 +259,6 @@ func pathTestPairs(items []string) []string {
 // generated pattern and path, the filtered Route.match must agree with a raw
 // getMatch. It needs no hand-authored expectations, so it also binds pattern
 // shapes nobody thought to add to the fixture.
-// go test -race -run Test_Route_Match_SlashBoundsDifferential
 func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 	t.Parallel()
 
@@ -323,7 +318,6 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 // Test_Route_Match_SlashBoundsConsistency proves the slash-count quick-reject in
 // Route.match never flips the outcome of the exhaustive matching fixture. Only
 // parametric patterns are checked, since only they take the filtered path.
-// go test -race -run Test_Route_Match_SlashBoundsConsistency
 func Test_Route_Match_SlashBoundsConsistency(t *testing.T) {
 	t.Parallel()
 	for _, testCollection := range routeTestCases {
@@ -349,7 +343,6 @@ func Test_Route_Match_SlashBoundsConsistency(t *testing.T) {
 	}
 }
 
-// go test -race -run Test_RoutePatternMatch
 func Test_RoutePatternMatch(t *testing.T) {
 	t.Parallel()
 	testCaseFn := func(pattern string, cases []routeTestCase) {
@@ -535,7 +528,6 @@ func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 	require.Equal(b, ":test:bla", res)
 }
 
-// go test -race -run Test_Path_matchParams
 func Benchmark_Path_matchParams(t *testing.B) {
 	var ctxParams [maxParams]string
 	benchCaseFn := func(testCollection routeCaseCollection) {
@@ -593,7 +585,6 @@ func Benchmark_Path_OptionalMiss(b *testing.B) {
 	}
 }
 
-// go test -race -run Test_RoutePatternMatch
 func Benchmark_ConstraintExecution(b *testing.B) {
 	var ctxParams [maxParams]string
 	var match bool
@@ -1029,7 +1020,6 @@ func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
 // specialization claims. A gate that silently stops firing turns the
 // specialization into dead code, and one that fires too widely is a
 // correctness bug, so both directions are asserted.
-// go test -race -run Test_RouteParser_ConstParamShape
 func Test_RouteParser_ConstParamShape(t *testing.T) {
 	t.Parallel()
 
@@ -1060,7 +1050,6 @@ func Test_RouteParser_ConstParamShape(t *testing.T) {
 }
 
 // Test_RouteParser_Probe pins which patterns get a probe and what it holds.
-// go test -race -run Test_RouteParser_Probe
 func Test_RouteParser_Probe(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
@@ -1120,7 +1109,6 @@ func pathTestRejects(t *testing.T, probe constProbe, want bool, paths ...string)
 }
 
 // Test_ConstProbe_Rejects pins the probe compare and the paths it rejects outright.
-// go test -race -run Test_ConstProbe_Rejects
 func Test_ConstProbe_Rejects(t *testing.T) {
 	t.Parallel()
 	probe := newConstProbe("/issues/", 7, 1)
@@ -1164,7 +1152,6 @@ func Test_ConstProbe_Rejects(t *testing.T) {
 // each probe rejects on its own. Probes that share their from but not their
 // skip, as "/:a/x" and "/:a/:b/x" do, read different slashes, so the memo
 // must tell them apart.
-// go test -race -run Test_ProbeMemo_MatchesProbe
 func Test_ProbeMemo_MatchesProbe(t *testing.T) {
 	t.Parallel()
 
@@ -1214,7 +1201,6 @@ func Test_ProbeMemo_MatchesProbe(t *testing.T) {
 }
 
 // Test_wordAt checks every offset of a few strings against a byte loop.
-// go test -race -run Test_wordAt
 func Test_wordAt(t *testing.T) {
 	t.Parallel()
 	pack := func(s string) uint64 {
@@ -1232,7 +1218,6 @@ func Test_wordAt(t *testing.T) {
 }
 
 // Test_packConst pins the word and mask the prefix filter and probes are built from.
-// go test -race -run Test_packConst
 func Test_packConst(t *testing.T) {
 	t.Parallel()
 	word, mask := packConst("")
@@ -1253,7 +1238,6 @@ func Test_packConst(t *testing.T) {
 // path, the specialized and generic matchers must agree on both the outcome
 // and the captured parameter. Running the two against each other is the whole
 // safety argument for the specialization.
-// go test -race -run Test_RouteParser_ConstParamDifferential
 func Test_RouteParser_ConstParamDifferential(t *testing.T) {
 	t.Parallel()
 
@@ -1299,7 +1283,6 @@ func Test_RouteParser_ConstParamDifferential(t *testing.T) {
 // Test_RouteParser_ConstParamFixture runs the specialization against the
 // exhaustive path-matching fixture, which covers pattern and URL shapes the
 // generated set above does not reach.
-// go test -race -run Test_RouteParser_ConstParamFixture
 func Test_RouteParser_ConstParamFixture(t *testing.T) {
 	t.Parallel()
 

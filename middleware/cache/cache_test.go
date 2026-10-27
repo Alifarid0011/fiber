@@ -752,7 +752,6 @@ func cacheTestAIDApp(mw ...fiber.Handler) *fiber.App {
 	return app
 }
 
-// go test -run Test_Cache_WithNoCacheRequestDirective
 func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	t.Parallel()
 
@@ -792,7 +791,6 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	// Response not cached, returns cached response, entry id = 3
 }
 
-// go test -run Test_Cache_WithETagAndNoCacheRequestDirective
 func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	t.Parallel()
 
@@ -838,7 +836,6 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	// Response not cached, returns cached response, entry id = 2
 }
 
-// go test -run Test_Cache_WithNoStoreRequestDirective
 func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	t.Parallel()
 
@@ -4155,8 +4152,6 @@ func TestCacheSeparatesAuthorizationValues(t *testing.T) {
 // was 418, which is not in the set, so the middleware answered "unreachable"
 // every time and the benchmark measured the path that stores nothing while the
 // handler re-read the file on every iteration.
-//
-// go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
 func Benchmark_Cache(b *testing.B) {
 	app := fiber.New()
 
@@ -4288,7 +4283,6 @@ func Benchmark_Cache_Miss(b *testing.B) {
 	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Cache_Storage -benchmem -count=4
 func Benchmark_Cache_Storage(b *testing.B) {
 	app := fiber.New()
 
@@ -5633,7 +5627,6 @@ func Test_CacheInvalidator_NoDataRace(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_parseCacheControlDirectives -benchmem -count=4
 func Benchmark_parseCacheControlDirectives(b *testing.B) {
 	inputs := [][]byte{
 		[]byte("no-cache"),
@@ -5654,7 +5647,6 @@ func Benchmark_parseCacheControlDirectives(b *testing.B) {
 	_ = n
 }
 
-// go test -v -run=^$ -bench=Benchmark_hasDirective -benchmem -count=4
 func Benchmark_hasDirective(b *testing.B) {
 	inputs := []string{
 		"no-cache",

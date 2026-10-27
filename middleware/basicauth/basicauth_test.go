@@ -35,7 +35,6 @@ func sha512Hash(p string) string {
 	return "{SHA512}" + base64.StdEncoding.EncodeToString(sum[:])
 }
 
-// go test -run Test_BasicAuth_Next
 func Test_BasicAuth_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -593,7 +592,6 @@ func Test_BasicAuth_Options(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Middleware_BasicAuth -benchmem -count=4
 func Benchmark_Middleware_BasicAuth(b *testing.B) {
 	app := fiber.New()
 
@@ -624,7 +622,6 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Middleware_BasicAuth -benchmem -count=4
 func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
 	app := fiber.New()
 
@@ -832,7 +829,6 @@ func Test_containsInvalidHeaderChars_WordBoundaries(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_containsInvalidHeaderChars -benchmem -count=4
 func Benchmark_containsInvalidHeaderChars(b *testing.B) {
 	inputs := []string{
 		"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==", // typical valid header
@@ -886,7 +882,6 @@ func Test_containsCTL(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_containsCTL -benchmem -count=4
 func Benchmark_containsCTL(b *testing.B) {
 	inputs := []string{
 		"john",

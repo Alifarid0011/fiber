@@ -601,7 +601,6 @@ type skipStep struct {
 	want int
 }
 
-// go test -run Test_Limiter_Skip_Choices -v
 func Test_Limiter_Skip_Choices(t *testing.T) {
 	t.Parallel()
 
@@ -706,7 +705,6 @@ func Test_Limiter_Sliding_MaxFuncOverridesStaticMax(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusTooManyRequests)
 }
 
-// go test -run Test_Limiter_With_Max_Func_With_Zero -race -v
 func Test_Limiter_With_Max_Func_With_Zero(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -728,7 +726,6 @@ func Test_Limiter_With_Max_Func_With_Zero(t *testing.T) {
 	apptest.Expect(t, app, "/", 200)
 }
 
-// go test -run Test_Limiter_With_Max_Func -race -v
 func Test_Limiter_With_Max_Func(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -749,7 +746,6 @@ func Test_Limiter_With_Max_Func(t *testing.T) {
 	requireBurstLimited(t, app, maxRequests)
 }
 
-// go test -run Test_Limiter_ExpirationFuncOverridesStaticExpiration -race -v
 func Test_Limiter_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
 	t.Parallel()
 
@@ -923,7 +919,6 @@ func requireBurstLimited(t *testing.T, app *fiber.App, n int) {
 	apptest.Expect(t, app, "/", fiber.StatusOK)
 }
 
-// go test -run Test_Limiter_Concurrency -race -v
 func Test_Limiter_Concurrency(t *testing.T) {
 	t.Parallel()
 
@@ -964,8 +959,6 @@ func (s *stallingStorage) GetWithContext(ctx context.Context, key string) ([]byt
 }
 
 // A key stuck in a storage round-trip must not hold up requests for other keys.
-//
-// go test -run Test_Limiter_Concurrency_UnrelatedKeys -race -v
 func Test_Limiter_Concurrency_UnrelatedKeys(t *testing.T) {
 	t.Parallel()
 
@@ -1087,7 +1080,6 @@ func Test_Limiter_Sliding_Window_SkipFailedRequests_DecrementsPreviousWindow(t *
 	assert.NotEmpty(t, resp.Header.Get(xRateLimitReset))
 }
 
-// go test -run Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow -v
 func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t *testing.T) {
 	t.Parallel()
 
@@ -1143,7 +1135,6 @@ func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t 
 	assert.NotEmpty(t, resp.Header.Get(xRateLimitReset))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Limiter_Custom_Store -benchmem -count=4
 func Benchmark_Limiter_Custom_Store(b *testing.B) {
 	app := fiber.New()
 
@@ -1918,7 +1909,6 @@ func Test_Limiter_StorageRoundTrips(t *testing.T) {
 	}
 }
 
-// go test -run Test_Limiter_Next
 func Test_Limiter_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -2000,7 +1990,6 @@ func Test_Limiter_Disable_Headers(t *testing.T) {
 	require.Empty(t, string(fctx2.Response.Header.Peek("X-RateLimit-Reset")))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Limiter -benchmem -count=4
 func Benchmark_Limiter(b *testing.B) {
 	app := fiber.New()
 
@@ -2024,7 +2013,6 @@ func Benchmark_Limiter(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Limiter_Parallel_Keys -benchmem -count=4
 func Benchmark_Limiter_Parallel_Keys(b *testing.B) {
 	var clients atomic.Uint64
 
@@ -2056,8 +2044,6 @@ func Benchmark_Limiter_Parallel_Keys(b *testing.B) {
 }
 
 // Benchmark_Limiter_Admit measures requests that pass: Max is too high to reach the 429 path.
-//
-// go test -v -run=^$ -bench=Benchmark_Limiter_Admit -benchmem -count=4
 func Benchmark_Limiter_Admit(b *testing.B) {
 	oversizedKey := strings.Repeat("x", maxKeyLength*4)
 	oversized := func(fiber.Ctx) string { return oversizedKey }
@@ -2103,8 +2089,6 @@ func Benchmark_Limiter_Admit(b *testing.B) {
 }
 
 // Benchmark_Limiter_Reject measures requests the limit rejects: the handler never runs.
-//
-// go test -v -run=^$ -bench=Benchmark_Limiter_Reject -benchmem -count=4
 func Benchmark_Limiter_Reject(b *testing.B) {
 	benchmarks := []struct {
 		name string
@@ -2129,7 +2113,6 @@ func Benchmark_Limiter_Reject(b *testing.B) {
 	}
 }
 
-// go test -run Test_Sliding_Window -race -v
 func Test_Sliding_Window(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -2165,8 +2148,6 @@ func Test_Sliding_Window(t *testing.T) {
 }
 
 // A sub-second ExpirationFunc floors to a 1s window: a 0s one made the sliding rate NaN.
-//
-// go test -run Test_Limiter_SubSecondExpirationFunc -race -v
 func Test_Limiter_SubSecondExpirationFunc(t *testing.T) {
 	t.Parallel()
 

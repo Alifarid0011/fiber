@@ -151,7 +151,6 @@ func (e *typedNilBindError) Error() string {
 	return e.message
 }
 
-// go test -run Test_returnErr -v
 func Test_returnErr(t *testing.T) {
 	t.Parallel()
 
@@ -182,7 +181,6 @@ func Test_returnErr(t *testing.T) {
 	}
 }
 
-// go test -run Test_AcquireReleaseBind -v
 func Test_AcquireReleaseBind(t *testing.T) {
 	b := AcquireBind()
 	b.shouldSkipErrHandling = false
@@ -196,8 +194,6 @@ func Test_AcquireReleaseBind(t *testing.T) {
 	require.False(t, b2.shouldSkipValidation)
 	ReleaseBind(b2)
 }
-
-// go test -run Test_BindError -v
 
 func Test_BindError_Unwrap(t *testing.T) {
 	t.Parallel()
@@ -370,7 +366,6 @@ func Test_BindError_All(t *testing.T) {
 	})
 }
 
-// go test -run Test_Bind_Query -v
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New(Config{
@@ -449,7 +444,6 @@ func Test_Bind_Query(t *testing.T) {
 	require.Len(t, aq.Data, 2)
 }
 
-// go test -run Test_Bind_Query_Map -v
 func Test_Bind_Query_Map(t *testing.T) {
 	t.Parallel()
 
@@ -489,7 +483,6 @@ func Test_Bind_Query_Map(t *testing.T) {
 	require.ErrorIs(t, c.Bind().Query(&em), binder.ErrMapNotConvertible)
 }
 
-// go test -run Test_Bind_Query_MapField -v
 func Test_Bind_Query_MapField(t *testing.T) {
 	t.Parallel()
 
@@ -540,7 +533,6 @@ func Test_Bind_Query_MapField(t *testing.T) {
 	})
 }
 
-// go test -run Test_Bind_Body_MapField -v
 func Test_Bind_Body_MapField(t *testing.T) {
 	t.Parallel()
 
@@ -594,7 +586,6 @@ func Test_Bind_Body_MapField(t *testing.T) {
 	})
 }
 
-// go test -run Test_Bind_Query_Schema -v
 func Test_Bind_Query_Schema(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -700,8 +691,6 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 // Test_Bind_Sources binds structs from the sources that are filled one name at a time: the request header, the
 // response header and the cookies. The query has its own scenarios in Test_Bind_Query.
-//
-// go test -run Test_Bind_Sources -v
 func Test_Bind_Sources(t *testing.T) {
 	t.Parallel()
 
@@ -788,8 +777,6 @@ func Test_Bind_Sources(t *testing.T) {
 }
 
 // Test_Bind_Sources_Map binds maps from the same sources as Test_Bind_Sources.
-//
-// go test -run Test_Bind_Sources_Map -v
 func Test_Bind_Sources_Map(t *testing.T) {
 	t.Parallel()
 
@@ -837,8 +824,6 @@ func Test_Bind_Sources_Map(t *testing.T) {
 }
 
 // Test_Bind_Sources_Schema binds nested, required and recursive fields from the request header and the cookies.
-//
-// go test -run Test_Bind_Sources_Schema -v
 func Test_Bind_Sources_Schema(t *testing.T) {
 	t.Parallel()
 
@@ -941,8 +926,6 @@ func Test_Bind_Sources_Schema(t *testing.T) {
 //
 // Neither this test nor its subtests are parallel: binder.SetParserDecoder replaces the decoders every bind in the
 // process uses, so no other test may bind while one of them is installed.
-//
-// go test -run Test_Bind_WithSetParserDecoder -v
 func Test_Bind_WithSetParserDecoder(t *testing.T) {
 	type NonRFCTime time.Time
 
@@ -1047,7 +1030,6 @@ func Test_Bind_WithSetParserDecoder(t *testing.T) {
 	})
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Bind_Query -benchmem -count=4
 func Benchmark_Bind_Query(b *testing.B) {
 	var err error
 
@@ -1073,7 +1055,6 @@ func Benchmark_Bind_Query(b *testing.B) {
 	require.Len(b, q.Hobby, 2)
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Bind_Query_Default -benchmem -count=4
 func Benchmark_Bind_Query_Default(b *testing.B) {
 	var err error
 
@@ -1100,7 +1081,6 @@ func Benchmark_Bind_Query_Default(b *testing.B) {
 	require.Len(b, q.Hobby, 2)
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Bind_Query_Map -benchmem -count=4
 func Benchmark_Bind_Query_Map(b *testing.B) {
 	var err error
 
@@ -1117,7 +1097,6 @@ func Benchmark_Bind_Query_Map(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Bind_Query_WithParseParam -benchmem -count=4
 func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 	var err error
 
@@ -1145,7 +1124,6 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Bind_Query_Comma -benchmem -count=4
 func Benchmark_Bind_Query_Comma(b *testing.B) {
 	var err error
 
@@ -1169,7 +1147,6 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Bind_Header -benchmem -count=4
 func Benchmark_Bind_Header(b *testing.B) {
 	var err error
 
@@ -1195,7 +1172,6 @@ func Benchmark_Bind_Header(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Bind_Header_Map -benchmem -count=4
 func Benchmark_Bind_Header_Map(b *testing.B) {
 	var err error
 	c := apptest.Ctx(b, New())
@@ -1215,7 +1191,6 @@ func Benchmark_Bind_Header_Map(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Bind_RespHeader -benchmem -count=4
 func Benchmark_Bind_RespHeader(b *testing.B) {
 	var err error
 
@@ -1241,7 +1216,6 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Bind_RespHeader_Map -benchmem -count=4
 func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 	var err error
 	c := apptest.Ctx(b, New())
@@ -1261,7 +1235,6 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -run Test_Bind_Body
 func Test_Bind_Body(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -1408,7 +1381,6 @@ func Test_Bind_Body(t *testing.T) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_Body_JSON -benchmem -count=4
 func Benchmark_Bind_Body_JSON(b *testing.B) {
 	var err error
 
@@ -1435,7 +1407,6 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 	require.Equal(b, "john", d.Name)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_Body_MsgPack -benchmem -count=4
 func Benchmark_Bind_Body_MsgPack(b *testing.B) {
 	var err error
 
@@ -1466,7 +1437,6 @@ func Benchmark_Bind_Body_MsgPack(b *testing.B) {
 	require.Equal(b, "john", d.Name)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_Body_XML -benchmem -count=4
 func Benchmark_Bind_Body_XML(b *testing.B) {
 	var err error
 
@@ -1490,7 +1460,6 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 	require.Equal(b, "john", d.Name)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_Body_CBOR -benchmem -count=4
 func Benchmark_Bind_Body_CBOR(b *testing.B) {
 	var err error
 
@@ -1520,7 +1489,6 @@ func Benchmark_Bind_Body_CBOR(b *testing.B) {
 	require.Equal(b, "john", d.Name)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_Body_Form -benchmem -count=4
 func Benchmark_Bind_Body_Form(b *testing.B) {
 	var err error
 
@@ -1544,7 +1512,6 @@ func Benchmark_Bind_Body_Form(b *testing.B) {
 	require.Equal(b, "john", d.Name)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_Body_MultipartForm -benchmem -count=4
 func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	var err error
 
@@ -1575,7 +1542,6 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	require.Equal(b, "john", d.Name)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_Body_MultipartForm_Nested -benchmem -count=4
 func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 	var err error
 
@@ -1620,7 +1586,6 @@ func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 	require.Equal(b, 20, d.Persons[1].Age)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_Body_Form_Map -benchmem -count=4
 func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 	var err error
 
@@ -1641,7 +1606,6 @@ func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 	require.Equal(b, "john", d["name"])
 }
 
-// go test -run Test_Bind_URI
 func Test_Bind_URI(t *testing.T) {
 	t.Parallel()
 
@@ -1663,7 +1627,6 @@ func Test_Bind_URI(t *testing.T) {
 	apptest.Do(t, app, "/test2/111/role/222")
 }
 
-// go test -run Test_Bind_URI_Map
 func Test_Bind_URI_Map(t *testing.T) {
 	t.Parallel()
 
@@ -1682,7 +1645,6 @@ func Test_Bind_URI_Map(t *testing.T) {
 	apptest.Do(t, app, "/test2/111/role/222")
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_URI -benchmem -count=4
 func Benchmark_Bind_URI(b *testing.B) {
 	var err error
 
@@ -1717,7 +1679,6 @@ func Benchmark_Bind_URI(b *testing.B) {
 	require.Equal(b, "awesome", res.Param4)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_URI_Map -benchmem -count=4
 func Benchmark_Bind_URI_Map(b *testing.B) {
 	var err error
 
@@ -1747,7 +1708,6 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 	require.Equal(b, "awesome", res["param4"])
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Bind_Cookie -benchmem -count=4
 func Benchmark_Bind_Cookie(b *testing.B) {
 	var err error
 
@@ -1774,7 +1734,6 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Bind_Cookie_Map -benchmem -count=4
 func Benchmark_Bind_Cookie_Map(b *testing.B) {
 	var err error
 
@@ -1832,7 +1791,6 @@ func (b *customBinderReturningError) Parse(_ Ctx, _ any) error {
 	return b.err
 }
 
-// go test -run Test_Bind_CustomBinder
 func Test_Bind_CustomBinder(t *testing.T) {
 	app := New()
 	c := apptest.Ctx(t, app)
@@ -1853,7 +1811,6 @@ func Test_Bind_CustomBinder(t *testing.T) {
 	require.Equal(t, "john", d.Name)
 }
 
-// go test -run Test_Bind_CustomBinder_Source
 func Test_Bind_CustomBinder_Source(t *testing.T) {
 	t.Parallel()
 
@@ -1875,7 +1832,6 @@ func Test_Bind_CustomBinder_Source(t *testing.T) {
 	require.Equal(t, "custom", be.Source)
 }
 
-// go test -run Test_Bind_CustomBinder_Validation
 func Test_Bind_CustomBinder_Validation(t *testing.T) {
 	t.Parallel()
 
@@ -1916,7 +1872,6 @@ func Test_Bind_CustomBinder_Validation(t *testing.T) {
 	}
 }
 
-// go test -run Test_Bind_WithAutoHandling
 func Test_Bind_WithAutoHandling(t *testing.T) {
 	c := apptest.Ctx(t, New())
 
@@ -1961,7 +1916,6 @@ func (v *countingStructValidator) Validate(_ any) error {
 	return nil
 }
 
-// go test -run Test_Bind_Form_Map_SkipsStructValidator
 func Test_Bind_Form_Map_SkipsStructValidator(t *testing.T) {
 	t.Parallel()
 
@@ -1992,7 +1946,6 @@ func Test_Bind_Form_Map_SkipsStructValidator(t *testing.T) {
 	})
 }
 
-// go test -run Test_Bind_SkipValidation
 func Test_Bind_SkipValidation(t *testing.T) {
 	t.Parallel()
 
@@ -2020,7 +1973,6 @@ func Test_Bind_SkipValidation(t *testing.T) {
 	})
 }
 
-// go test -run Test_Bind_SkipValidation_Usage
 func Test_Bind_SkipValidation_Usage(t *testing.T) {
 	t.Parallel()
 
@@ -2064,7 +2016,6 @@ func Test_Bind_SkipValidation_Usage(t *testing.T) {
 	})
 }
 
-// go test -run Test_Bind_ValidateStruct_NilTarget
 func Test_Bind_ValidateStruct_NilTarget(t *testing.T) {
 	t.Parallel()
 
@@ -2075,7 +2026,6 @@ func Test_Bind_ValidateStruct_NilTarget(t *testing.T) {
 	require.Equal(t, 0, validator.calls)
 }
 
-// go test -run Test_Bind_StructValidator
 func Test_Bind_StructValidator(t *testing.T) {
 	c := apptest.Ctx(t, New(Config{StructValidator: &structValidator{}}))
 
@@ -2088,7 +2038,6 @@ func Test_Bind_StructValidator(t *testing.T) {
 	require.NoError(t, c.Bind().Query(rq))
 }
 
-// go test -run Test_Bind_RepeatParserWithSameStruct -v
 func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New(Config{
@@ -2171,7 +2120,6 @@ func (rc *RequestConfig) ApplyTo(ctx Ctx) {
 	}
 }
 
-// go test -run Test_Bind_All
 func Test_Bind_All(t *testing.T) {
 	t.Parallel()
 	type User struct {
@@ -2320,7 +2268,6 @@ func Test_Bind_All(t *testing.T) {
 	}
 }
 
-// go test -run Test_Bind_All_Uri_Precedence
 func Test_Bind_All_Uri_Precedence(t *testing.T) {
 	t.Parallel()
 	type User struct {
@@ -2349,7 +2296,6 @@ func Test_Bind_All_Uri_Precedence(t *testing.T) {
 	apptest.Expect(t, app, req, 200)
 }
 
-// go test -run Test_Bind_All_Query_Precedence
 func Test_Bind_All_Query_Precedence(t *testing.T) {
 	t.Parallel()
 	type Data struct {
@@ -2366,7 +2312,6 @@ func Test_Bind_All_Query_Precedence(t *testing.T) {
 	require.Equal(t, 5, d.ID)
 }
 
-// go test -run Test_Bind_All_StructValidator
 func Test_Bind_All_StructValidator(t *testing.T) {
 	t.Parallel()
 	app := New(Config{StructValidator: &structValidator{}})
@@ -2388,7 +2333,6 @@ func Test_Bind_All_StructValidator(t *testing.T) {
 	require.EqualError(t, err, "you should have entered right name")
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_All -benchmem -count=4
 func BenchmarkBind_All(b *testing.B) {
 	type User struct {
 		SessionID string `json:"session_id" cookie:"session_id"`
@@ -2425,7 +2369,6 @@ func BenchmarkBind_All(b *testing.B) {
 	}
 }
 
-// go test -run Test_Bind_All_CustomPrecedence
 func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2475,7 +2418,6 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	}
 }
 
-// go test -run Test_Bind_All_CustomPrecedence_InvalidTags
 func Test_Bind_All_CustomPrecedence_InvalidTags(t *testing.T) {
 	t.Parallel()
 
@@ -2506,7 +2448,6 @@ func Test_Bind_All_CustomPrecedence_InvalidTags(t *testing.T) {
 	}
 }
 
-// go test -run Test_Bind_All_CustomPrecedence_OmittedSources
 func Test_Bind_All_CustomPrecedence_OmittedSources(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2539,7 +2480,6 @@ func Test_Bind_All_CustomPrecedence_OmittedSources(t *testing.T) {
 	require.Equal(t, "from_query", req2.Name)
 }
 
-// go test -run Test_Bind_All_CustomPrecedence_DoesNotReadOmittedBody
 func Test_Bind_All_CustomPrecedence_DoesNotReadOmittedBody(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2561,7 +2501,6 @@ func Test_Bind_All_CustomPrecedence_DoesNotReadOmittedBody(t *testing.T) {
 	require.True(t, ctx.Request().IsBodyStream(), "query-only binding must not consume the request body stream")
 }
 
-// go test -run Test_Bind_All_CustomPrecedence_Duplicates
 func Test_Bind_All_CustomPrecedence_Duplicates(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2580,7 +2519,6 @@ func Test_Bind_All_CustomPrecedence_Duplicates(t *testing.T) {
 	require.Equal(t, "from_header", req.Name)
 }
 
-// go test -v -run=^$ -bench=BenchmarkBind_All_CustomPrecedence -benchmem -count=4
 func BenchmarkBind_All_CustomPrecedence(b *testing.B) {
 	type User struct {
 		BindingSource struct{} `binding_source:"query,header,cookie,body,uri"`

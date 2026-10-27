@@ -42,7 +42,6 @@ func Test_App_Mount_PreservesSubAppRegexHandler(t *testing.T) {
 	apptest.Expect(t, parent, "/mounted/resource/allow", StatusNotFound)
 }
 
-// go test -run Test_App_Mount
 func Test_App_Mount(t *testing.T) {
 	t.Parallel()
 	micro := New()
@@ -74,7 +73,6 @@ func Test_App_Mount_RootPath_Nested(t *testing.T) {
 	require.Equal(t, uint32(2), app.handlersCount)
 }
 
-// go test -run Test_App_Mount_Nested
 func Test_App_Mount_Nested(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -107,7 +105,6 @@ func Test_App_Mount_Nested(t *testing.T) {
 	require.Equal(t, uint32(6), app.handlersCount)
 }
 
-// go test -run Test_App_Mount_Express_Behavior
 func Test_App_Mount_Express_Behavior(t *testing.T) {
 	t.Parallel()
 	createTestHandler := func(body string) func(c Ctx) error {
@@ -147,7 +144,6 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 	require.Equal(t, uint32(17), app.handlersCount)
 }
 
-// go test -run Test_App_Mount_RoutePositions
 func Test_App_Mount_RoutePositions(t *testing.T) {
 	t.Parallel()
 
@@ -205,7 +201,6 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 	require.Len(t, routeStackGET, 5)
 }
 
-// go test -run Test_App_MountPath
 func Test_App_MountPath(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -223,7 +218,6 @@ func Test_App_MountPath(t *testing.T) {
 	require.Empty(t, app.MountPath())
 }
 
-// go test -run Test_App_Mount_ErrorHandler
 func Test_App_Mount_ErrorHandler(t *testing.T) {
 	t.Parallel()
 
@@ -279,7 +273,6 @@ func Test_App_Mount_ErrorHandler(t *testing.T) {
 	}
 }
 
-// go test -run Test_App_Group_Mount
 func Test_App_Group_Mount(t *testing.T) {
 	t.Parallel()
 	micro := New()
@@ -337,7 +330,6 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	apptest.ExpectBody(t, app, "/api/sub/third", 200, "hi, i'm a custom sub fiber error 2")
 }
 
-// go test -run Test_Mount_Route_Names
 func Test_Mount_Route_Names(t *testing.T) {
 	t.Parallel()
 	// create sub-app with 2 handlers:
@@ -397,7 +389,6 @@ func Test_Mount_Route_Names(t *testing.T) {
 	apptest.Expect(t, rootApp, apptest.Req(MethodPost, "/app1/users"), StatusOK)
 }
 
-// go test -run Test_Ctx_Render_Mount
 func Test_Ctx_Render_Mount(t *testing.T) {
 	t.Parallel()
 
@@ -421,7 +412,6 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	apptest.ExpectBody(t, app, "/hello/a", StatusOK, "<h1>Hello a!</h1>")
 }
 
-// go test -run Test_Ctx_Render_Mount_ParentOrSubHasViews
 func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	t.Parallel()
 

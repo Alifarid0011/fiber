@@ -166,7 +166,6 @@ func proxyTestFieldLinesUpstream(t *testing.T, body string, names ...string) (ad
 	return addr, lines
 }
 
-// go test -run Test_Proxy_DefaultClient_MaxConnsPerHost
 func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, defaultMaxConnsPerHost, sharedClient.Load().MaxConnsPerHost)
@@ -201,7 +200,6 @@ func Test_Proxy_Balancer_LeavesConfiguredClientAlone(t *testing.T) {
 	require.Eventually(t, readsMoreThan(reads.Load()+1000), 5*time.Second, time.Millisecond, "and is still reading after it")
 }
 
-// go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost
 func Test_Proxy_ConfigDefault_MaxConnsPerHost(t *testing.T) {
 	t.Parallel()
 
@@ -225,8 +223,6 @@ func Test_Proxy_ConfigDefault_MaxConnsPerHost(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_EmptyServersPanic
-//
 // Without a server to forward to there is nothing a request could be sent to, so
 // the constructors stop at startup.
 func Test_Proxy_EmptyServersPanic(t *testing.T) {
@@ -252,7 +248,6 @@ func Test_Proxy_EmptyServersPanic(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_Next
 func Test_Proxy_Next(t *testing.T) {
 	t.Parallel()
 
@@ -267,8 +262,6 @@ func Test_Proxy_Next(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
-// go test -run Test_Proxy_Balancer_Upstream
-//
 // Each row starts an upstream that answers 418, checks that it does, and has a
 // Balancer reach it from an app of its own.
 func Test_Proxy_Balancer_Upstream(t *testing.T) {
@@ -355,8 +348,6 @@ func Test_Proxy_Balancer_Upstream(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_Balancer_WithTlsConfig
-//
 // The balancer does not speak TLS itself, but the request must still reach the upstream as https.
 func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	t.Parallel()
@@ -386,8 +377,6 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	require.Equal(t, "tls balancer", body)
 }
 
-// go test -run Test_Proxy_Balancer_PlainUpstreamBehindTLS
-//
 // The other way round: the balancer sits behind a TLS listener and its upstream is plain HTTP.
 func Test_Proxy_Balancer_PlainUpstreamBehindTLS(t *testing.T) {
 	t.Parallel()
@@ -406,8 +395,6 @@ func Test_Proxy_Balancer_PlainUpstreamBehindTLS(t *testing.T) {
 	proxyTestExpectGet(t, proxyTestTLSClient(), "https://"+gatewayAddr, "plain upstream")
 }
 
-// go test -run Test_Proxy_Balancer_MixedSchemes
-//
 // Each upstream of a mixed list is reached with its own scheme, whichever one the request arrived on.
 func Test_Proxy_Balancer_MixedSchemes(t *testing.T) {
 	t.Parallel()
@@ -440,7 +427,6 @@ func Test_Proxy_Balancer_MixedSchemes(t *testing.T) {
 	require.Equal(t, map[string]int{"plain": 3, "secure": 3}, seen)
 }
 
-// go test -run Test_Proxy_Balancer_EmptyClientPanicsAtStartup
 func Test_Proxy_Balancer_EmptyClientPanicsAtStartup(t *testing.T) {
 	t.Parallel()
 
@@ -450,7 +436,6 @@ func Test_Proxy_Balancer_EmptyClientPanicsAtStartup(t *testing.T) {
 	})
 }
 
-// go test -run Test_Proxy_Forward_WithTlsConfig_To_Http
 func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	t.Parallel()
 
@@ -544,7 +529,6 @@ func Test_Proxy_DoRedirects_StreamedRequestBody(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_Forward
 func Test_Proxy_Forward(t *testing.T) {
 	t.Parallel()
 
@@ -810,7 +794,6 @@ func Test_Proxy_Do_ConnectionCannotRemoveRealIP(t *testing.T) {
 	require.Equal(t, []string{"X-Real-Ip=0.0.0.0"}, <-seen)
 }
 
-// go test -run Test_Proxy_Forward_WithClient_TLSConfig
 func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 	// Intentionally not parallel: WithClient replaces the process-wide shared client.
 	restoreGlobalProxyClient(t)
@@ -840,7 +823,6 @@ func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 	proxyTestExpectGet(t, client, "https://"+addr, "tls forward")
 }
 
-// go test -run Test_Proxy_Modify_Response
 func Test_Proxy_Modify_Response(t *testing.T) {
 	t.Parallel()
 
@@ -860,7 +842,6 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "modified response")
 }
 
-// go test -run Test_Proxy_Modify_Request
 func Test_Proxy_Modify_Request(t *testing.T) {
 	t.Parallel()
 
@@ -881,7 +862,6 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "modified request")
 }
 
-// go test -run Test_Proxy_Timeout
 func Test_Proxy_Timeout(t *testing.T) {
 	t.Parallel()
 
@@ -920,7 +900,6 @@ func Test_Proxy_Timeout(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_Buffer_Size_Response
 func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	t.Parallel()
 
@@ -944,8 +923,6 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusOK)
 }
 
-// go test -race -run Test_Proxy_DoHelpers
-//
 // Every Do helper answers with what its upstream sent, or the error it ended in,
 // and leaves the request URL of the app's own request as it was.
 func Test_Proxy_DoHelpers(t *testing.T) {
@@ -1045,7 +1022,6 @@ func Test_Proxy_DoHelpers(t *testing.T) {
 	}
 }
 
-// go test -race -run Test_Proxy_DoRedirects_AliasedAddr
 // Test_Proxy_DoRedirects_AliasedAddr covers an addr that aliases the request buffer (c.OriginalURL()):
 // doActionWithPolicy clones it once, or SetRequestURI would corrupt a *url.URL still pointing into it.
 func Test_Proxy_DoRedirects_AliasedAddr(t *testing.T) {
@@ -1068,7 +1044,6 @@ func Test_Proxy_DoRedirects_AliasedAddr(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
-// go test -race -run Test_Proxy_DoTimeout_Timeout
 func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 	// Intentionally not parallel: it measures a timeout, so it must not compete for CPU.
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
@@ -1090,7 +1065,6 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 	require.Equal(t, "/test", resp.Request.URL.String())
 }
 
-// go test -race -run Test_Proxy_DoDeadline_PastDeadline
 func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 	// Intentionally not parallel: it measures a deadline, so it must not compete for CPU.
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
@@ -1110,7 +1084,6 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 	require.Equal(t, os.ErrDeadlineExceeded, err1)
 }
 
-// go test -race -run Test_Proxy_Do_HTTP_Prefix_URL
 func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 	t.Parallel()
 
@@ -1135,7 +1108,6 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 	require.Equal(t, "hello world", apptest.Body(t, resp))
 }
 
-// go test -race -run Test_Proxy_Forward_Global_Client
 func Test_Proxy_Forward_Global_Client(t *testing.T) {
 	// Intentionally not parallel: WithClient replaces the process-wide shared client.
 	restoreGlobalProxyClient(t)
@@ -1162,7 +1134,6 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 	proxyTestExpectGet(t, clientpkg.New(), "http://"+addr, "test_global_client")
 }
 
-// go test -race -run Test_Proxy_Forward_Local_Client
 func Test_Proxy_Forward_Local_Client(t *testing.T) {
 	t.Parallel()
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
@@ -1184,7 +1155,6 @@ func Test_Proxy_Forward_Local_Client(t *testing.T) {
 	proxyTestExpectGet(t, clientpkg.New(), "http://"+addr, "test_local_client")
 }
 
-// go test -run Test_Proxy_WithClient_Nil_Panics
 func Test_Proxy_WithClient_Nil_Panics(t *testing.T) {
 	t.Parallel()
 
@@ -1193,7 +1163,6 @@ func Test_Proxy_WithClient_Nil_Panics(t *testing.T) {
 	})
 }
 
-// go test -run Test_Proxy_SelectClient_NilGlobal
 func Test_Proxy_SelectClient_NilGlobal(t *testing.T) {
 	t.Parallel()
 
@@ -1202,7 +1171,6 @@ func Test_Proxy_SelectClient_NilGlobal(t *testing.T) {
 	require.Nil(t, selectedClient)
 }
 
-// go test -run Test_Proxy_NilClientOverride_AcrossHelpers
 func Test_Proxy_NilClientOverride_AcrossHelpers(t *testing.T) {
 	t.Parallel()
 
@@ -1237,7 +1205,6 @@ func Test_Proxy_NilClientOverride_AcrossHelpers(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_Domain_Forward_Local
 func Test_Proxy_Domain_Forward_Local(t *testing.T) {
 	t.Parallel()
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
@@ -1268,7 +1235,6 @@ func Test_Proxy_Domain_Forward_Local(t *testing.T) {
 	proxyTestExpectGet(t, clientpkg.New(), "http://"+localDomain+"/test?query_test=true", "test_local_client:true")
 }
 
-// go test -run Test_Proxy_Balancer_Forward_Local
 func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 	t.Parallel()
 
@@ -1307,7 +1273,6 @@ func Test_Proxy_Balancer_ModifyRequestCanSetXRealIP(t *testing.T) {
 	require.Equal(t, "203.0.113.7", apptest.Body(t, resp))
 }
 
-// go test -run Test_Proxy_ConnectionHeader
 func Test_Proxy_ConnectionHeader(t *testing.T) {
 	t.Parallel()
 
@@ -1691,7 +1656,6 @@ func Test_Proxy_HostWithoutPort(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_NewHostClient
 func Test_Proxy_NewHostClient(t *testing.T) {
 	t.Parallel()
 
@@ -1781,7 +1745,6 @@ func Test_Proxy_NewHostClient(t *testing.T) {
 	})
 }
 
-// go test -run Test_Proxy_Balancer_MaxResponseBodySize
 func Test_Proxy_Balancer_MaxResponseBodySize(t *testing.T) {
 	t.Parallel()
 
@@ -1819,8 +1782,6 @@ func Test_Proxy_Balancer_MaxResponseBodySize(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_Balancer_WriteBufferSize
-//
 // Headers larger than WriteBufferSize must still arrive whole.
 func Test_Proxy_Balancer_WriteBufferSize(t *testing.T) {
 	t.Parallel()

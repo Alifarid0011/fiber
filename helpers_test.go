@@ -348,7 +348,6 @@ func Test_Utils_GetOffer_QualityZeroRejection(t *testing.T) {
 	require.Equal(t, "text/plain", getOffer([]byte("text/*;q=0.8, text/plain;q=0.3"), acceptsOfferType, "", "text/plain"))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
 func Benchmark_Utils_GetOffer(b *testing.B) {
 	testCases := []struct {
 		description string
@@ -550,7 +549,6 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 	}, acceptedTypes)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Sorted -benchmem -count=4
 func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 	acceptedTypes := make([]acceptedType, 3)
 	b.ReportAllocs()
@@ -565,7 +563,6 @@ func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 	require.Equal(b, "*/*", acceptedTypes[2].spec)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Unsorted -benchmem -count=4
 func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 	acceptedTypes := make([]acceptedType, 11)
 	b.ReportAllocs()
@@ -620,7 +617,6 @@ func Test_Utils_getGroupPath(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Utils_ -benchmem -count=3
 func Benchmark_Utils_getGroupPath(b *testing.B) {
 	var res string
 	b.ReportAllocs()
@@ -756,7 +752,6 @@ func Test_Utils_IsNoCache(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Utils_IsNoCache -benchmem -count=4
 func Benchmark_Utils_IsNoCache(b *testing.B) {
 	var ok bool
 	b.ReportAllocs()
@@ -778,7 +773,6 @@ type testGenericParseTypeIntCase struct {
 	bits  int
 }
 
-// go test -run Test_GenericParseTypeInts
 func Test_GenericParseTypeInts(t *testing.T) {
 	t.Parallel()
 	// The key is the width in bits that holds all of its values.
@@ -823,7 +817,6 @@ type testGenericParseTypeUintCase struct {
 	bits  int
 }
 
-// go test -run Test_GenericParseTypeUints
 func Test_GenericParseTypeUints(t *testing.T) {
 	t.Parallel()
 	// The key is the width in bits that holds all of its values.
@@ -841,7 +834,6 @@ func Test_GenericParseTypeUints(t *testing.T) {
 	testGenericTypeInteger[uint](t, "test_genericParseTypeUints", uints)
 }
 
-// go test -run Test_GenericParseTypeFloats
 func Test_GenericParseTypeFloats(t *testing.T) {
 	t.Parallel()
 
@@ -876,7 +868,6 @@ func Test_GenericParseTypeFloats(t *testing.T) {
 	})
 }
 
-// go test -run Test_GenericParseTypeBytes
 func Test_GenericParseTypeBytes(t *testing.T) {
 	t.Parallel()
 
@@ -905,7 +896,6 @@ func Test_GenericParseTypeBytes(t *testing.T) {
 	})
 }
 
-// go test -run Test_GenericParseTypeString
 func Test_GenericParseTypeString(t *testing.T) {
 	t.Parallel()
 
@@ -921,7 +911,6 @@ func Test_GenericParseTypeString(t *testing.T) {
 	}
 }
 
-// go test -run Test_GenericParseTypeBoolean
 func Test_GenericParseTypeBoolean(t *testing.T) {
 	t.Parallel()
 
@@ -958,7 +947,6 @@ func testGenericParseError[V GenericType](t *testing.T) {
 	require.Equal(t, expected, v)
 }
 
-// go test -v -run=^$ -bench=Benchmark_GenericParseTypeInts -benchmem -count=4
 func Benchmark_GenericParseTypeInts(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	ints := []testGenericParseTypeIntCase{
@@ -1049,7 +1037,6 @@ func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, t
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_GenericParseTypeUints -benchmem -count=4
 func Benchmark_GenericParseTypeUints(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	uints := []struct {
@@ -1128,7 +1115,6 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_GenericParseTypeFloats -benchmem -count=4
 func Benchmark_GenericParseTypeFloats(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	floats := []struct {
@@ -1186,7 +1172,6 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_GenericParseTypeBytes -benchmem -count=4
 func Benchmark_GenericParseTypeBytes(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	cases := []struct {
@@ -1234,7 +1219,6 @@ func Benchmark_GenericParseTypeBytes(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_GenericParseTypeString -benchmem -count=4
 func Benchmark_GenericParseTypeString(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	tests := []string{"john", "doe", "hello", "fiber"}
@@ -1256,7 +1240,6 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_GenericParseTypeBoolean -benchmem -count=4
 func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	bools := []struct {
@@ -1659,7 +1642,6 @@ func Test_bindMediaType(t *testing.T) {
 	require.Equal(t, "application/x-www-form-urlencoded; charset=UTF-8", string(h.ContentType()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_bindMediaType -benchmem -count=4
 func Benchmark_bindMediaType(b *testing.B) {
 	for _, ct := range []string{
 		"application/json",

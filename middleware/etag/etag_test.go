@@ -23,7 +23,6 @@ func etagTestHello(c fiber.Ctx) error {
 	return c.SendString("Hello, World!")
 }
 
-// go test -run Test_ETag_Next
 func Test_ETag_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -36,7 +35,6 @@ func Test_ETag_Next(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
-// go test -run Test_ETag_SSE
 func Test_ETag_SSE(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -61,7 +59,6 @@ func (s *failOnReadStream) Read(_ []byte) (int, error) {
 	return 0, errors.New("stream should not be read")
 }
 
-// go test -run Test_ETag_SSE_Stream
 // A real SSE stream must pass through untouched: hashing the body would
 // materialize the stream and break real-time delivery. The middleware must add
 // no ETag and leave the response a stream. The content type carries a charset
@@ -89,7 +86,6 @@ func Test_ETag_SSE_Stream(t *testing.T) {
 	require.Empty(t, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
 }
 
-// go test -run Test_ETag_PassThrough
 // The middleware leaves a handler error, a status other than 200 and a response
 // without a body alone.
 func Test_ETag_PassThrough(t *testing.T) {
@@ -134,7 +130,6 @@ func Test_ETag_PassThrough(t *testing.T) {
 	}
 }
 
-// go test -run Test_ETag_ConditionalGet
 // A GET with If-None-Match against a generated, a weak and a handler-set ETag:
 // it is answered with the page unless the tag the client sends matches.
 func Test_ETag_ConditionalGet(t *testing.T) {
@@ -199,7 +194,6 @@ func Test_ETag_ConditionalGet(t *testing.T) {
 	}
 }
 
-// go test -run Test_ETag_CustomEtagPut
 func Test_ETag_CustomEtagPut(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -219,7 +213,6 @@ func Test_ETag_CustomEtagPut(t *testing.T) {
 	apptest.Expect(t, app, req, fiber.StatusPreconditionFailed)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Etag -benchmem -count=4
 func Benchmark_Etag(b *testing.B) {
 	app := fiber.New()
 
@@ -245,7 +238,6 @@ func Benchmark_Etag(b *testing.B) {
 	require.Equal(b, `"13-1831710635"`, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
 }
 
-// go test -run Test_ETag_WeakComparison
 func Test_ETag_WeakComparison(t *testing.T) {
 	t.Parallel()
 
@@ -399,7 +391,6 @@ func Test_ETag_HandlerETagWithoutNormalizing(t *testing.T) {
 	require.Equal(t, []string{`"custom"`}, lines)
 }
 
-// go test -run Test_Generate_MatchesCRC
 func Test_Generate_MatchesCRC(t *testing.T) {
 	t.Parallel()
 
@@ -421,7 +412,6 @@ func Test_Generate_MatchesCRC(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Generate -benchmem -count=4
 func Benchmark_Generate(b *testing.B) {
 	for _, size := range []int{13, 100, 1 << 10, 10 << 10, 100 << 10} {
 		body := bytes.Repeat([]byte("0123456789abcdef"), size/16+1)[:size]

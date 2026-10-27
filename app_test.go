@@ -856,7 +856,6 @@ func Test_App_All_Method_Test(t *testing.T) {
 	})
 }
 
-// go test -run Test_App_GETOnly
 func Test_App_GETOnly(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -870,7 +869,6 @@ func Test_App_GETOnly(t *testing.T) {
 	apptest.Expect(t, app, apptest.Req(MethodPost, "/"), StatusMethodNotAllowed)
 }
 
-// go test -run Test_App_GETOnly_Middleware_Status
 func Test_App_GETOnly_Middleware_Status(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -894,7 +892,6 @@ func Test_App_GETOnly_Middleware_Status(t *testing.T) {
 
 // An ErrorHandler that writes only a body used to answer a transport-refused
 // request with 200. Seeding the status changes that, so pin it.
-// go test -run Test_App_GETOnly_ErrorHandler_WithoutStatus
 func Test_App_GETOnly_ErrorHandler_WithoutStatus(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -916,7 +913,6 @@ func Test_App_GETOnly_ErrorHandler_WithoutStatus(t *testing.T) {
 
 // RFC 9110 §15.5.6: a 405 lists the allowed methods, even when a custom
 // ErrorHandler rewrites the response.
-// go test -run Test_App_GETOnly_Allow
 func Test_App_GETOnly_Allow(t *testing.T) {
 	t.Parallel()
 
@@ -1628,7 +1624,6 @@ func Test_App_OptionsAsterisk(t *testing.T) {
 	require.NoError(t, controlConn.Close())
 }
 
-// go test -run Test_App_Mixed_Routes_WithSameLen
 func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1848,7 +1843,6 @@ func Test_App_Deep_Group(t *testing.T) {
 	require.Equal(t, 4, runThroughCount, "Loop count")
 }
 
-// go test -run Test_App_Next_Method
 func Test_App_Next_Method(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1863,7 +1857,6 @@ func Test_App_Next_Method(t *testing.T) {
 	apptest.Expect(t, app, "/", 404)
 }
 
-// go test -v -run=^$ -bench=Benchmark_NewError -benchmem -count=4
 func Benchmark_NewError(b *testing.B) {
 	for b.Loop() {
 		NewError(200, "test") //nolint:errcheck // not needed
@@ -1878,7 +1871,6 @@ func Benchmark_NewError_Parallel(b *testing.B) {
 	})
 }
 
-// go test -run Test_NewError
 func Test_NewError(t *testing.T) {
 	t.Parallel()
 	e := NewError(StatusForbidden, "permission denied")
@@ -1886,7 +1878,6 @@ func Test_NewError(t *testing.T) {
 	require.Equal(t, "permission denied", e.Message)
 }
 
-// go test -run Test_NewError_Format
 func Test_NewErrorf_Format(t *testing.T) {
 	t.Parallel()
 
@@ -1958,7 +1949,6 @@ func Test_NewErrorf_Format(t *testing.T) {
 	}
 }
 
-// go test -run Test_Test_Timeout
 func Test_Test_Timeout(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1991,7 +1981,6 @@ func (errorReader) Read([]byte) (int, error) {
 	return 0, errErrorReader
 }
 
-// go test -run Test_Test_DumpError
 func Test_Test_DumpError(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2003,7 +1992,6 @@ func Test_Test_DumpError(t *testing.T) {
 	require.ErrorIs(t, err, errErrorReader)
 }
 
-// go test -run Test_App_Handler
 func Test_App_Handler(t *testing.T) {
 	t.Parallel()
 	h := New().Handler()
@@ -2688,7 +2676,6 @@ func Test_App_ReloadViews_MountedViews_WithParentViews(t *testing.T) {
 	require.Equal(t, initialSubLoads+1, subView.loads)
 }
 
-// go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
 	t.Parallel()
 	app := New(Config{Views: invalidView{}})
@@ -2699,7 +2686,6 @@ func Test_App_Init_Error_View(t *testing.T) {
 	})
 }
 
-// go test -run Test_App_Stack
 func Test_App_Stack(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2727,7 +2713,6 @@ func Test_App_Stack(t *testing.T) {
 	require.Len(t, stack[app.methodInt(MethodQuery)], 2)
 }
 
-// go test -run Test_App_HandlersCount
 func Test_App_HandlersCount(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2742,7 +2727,6 @@ func Test_App_HandlersCount(t *testing.T) {
 	require.Equal(t, uint32(4), count)
 }
 
-// go test -run Test_App_RefusedRequest
 func Test_App_RefusedRequest(t *testing.T) {
 	t.Parallel()
 
@@ -2810,7 +2794,6 @@ func Test_App_RefusedRequest(t *testing.T) {
 	}
 }
 
-// go test -run Test_App_SmallReadBuffer
 func Test_App_SmallReadBuffer(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -2856,7 +2839,6 @@ func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 	apptest.Expect(t, app, apptest.Req(MethodPost, "/"), 500)
 }
 
-// go test -race -run Test_App_New_Test_Parallel
 func Test_App_New_Test_Parallel(t *testing.T) {
 	t.Parallel()
 	t.Run("Test_App_New_Test_Parallel_1", func(t *testing.T) {
@@ -3337,7 +3319,6 @@ func Test_App_State(t *testing.T) {
 	require.Equal(t, "value", str)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Communication_Flow -benchmem -count=4
 func Benchmark_Communication_Flow(b *testing.B) {
 	app := New()
 
@@ -3389,7 +3370,6 @@ func Benchmark_Communication_Flow_Parallel(b *testing.B) {
 	require.Equal(b, "Hello, World!", string(verifyCtx.Response.Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_AcquireReleaseFlow -benchmem -count=4
 func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 	app := New()
 

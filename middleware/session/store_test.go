@@ -24,7 +24,6 @@ func sessionTestResolve(t *testing.T, store *Store, ctx fiber.Ctx) extractors.Re
 	return from
 }
 
-// go test -run Test_Store_getSessionID
 func Test_Store_getSessionID(t *testing.T) {
 	t.Parallel()
 	expectedID := "test-session-id"
@@ -67,7 +66,6 @@ func Test_Store_getSessionID(t *testing.T) {
 	}
 }
 
-// go test -run Test_Store_Get
 // Regression: https://github.com/gofiber/fiber/issues/1408
 // Regression: https://github.com/gofiber/fiber/security/advisories/GHSA-98j2-3j3p-fw2v
 func Test_Store_Get(t *testing.T) {
@@ -93,7 +91,6 @@ func Test_Store_Get(t *testing.T) {
 	})
 }
 
-// go test -run Test_Store_DeleteSession
 func Test_Store_DeleteSession(t *testing.T) {
 	t.Parallel()
 	// fiber instance
@@ -376,8 +373,6 @@ func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
 	}
 }
 
-// go test -run Test_Store_FixationGuard
-//
 // Test_Store_FixationGuard pins the session-fixation guard: an ID that reaches a
 // store through a read-only source loads the existing session it names, and
 // saving that session must not pin the ID into a cookie, whichever way the

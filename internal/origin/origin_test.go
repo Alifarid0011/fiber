@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// go test -run -v Test_NormalizeOrigin
 func Test_Normalize_AnyScheme(t *testing.T) {
 	t.Parallel()
 
@@ -69,8 +68,6 @@ func benchSubdomains(n int) []Subdomain {
 // Benchmark_SubdomainMatch_PerPatternNormalize reproduces the pre-PR loop,
 // which ran normalizeOrigin (one url.Parse) for every pattern. allocs/op scale
 // with the pattern count.
-//
-// go test -v -run=^$ -bench=Benchmark_SubdomainMatch_PerPatternNormalize -benchmem -count=4
 func Benchmark_SubdomainMatch_PerPatternNormalize(b *testing.B) {
 	subdomains := benchSubdomains(16)
 	origin := "https://api.service.example.org" // matches none -> full scan
@@ -90,8 +87,6 @@ func Benchmark_SubdomainMatch_PerPatternNormalize(b *testing.B) {
 // Benchmark_MatchSubdomainOrigin normalizes once regardless of pattern
 // count; allocs/op stay flat as the slice grows. Compare against
 // Benchmark_SubdomainMatch_PerPatternNormalize on the same input.
-//
-// go test -v -run=^$ -bench=Benchmark_MatchSubdomainOrigin -benchmem -count=4
 func Benchmark_MatchSubdomainOrigin(b *testing.B) {
 	subdomains := benchSubdomains(16)
 	origin := "https://api.service.example.org" // matches none -> full scan

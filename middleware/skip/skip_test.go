@@ -8,7 +8,6 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/skip"
 )
 
-// go test -run Test_Skip
 func Test_Skip(t *testing.T) {
 	t.Parallel()
 

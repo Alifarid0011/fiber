@@ -107,7 +107,6 @@ func executeExpectations(t *testing.T, app *fiber.App, remoteAddr string, expect
 	}
 }
 
-// go test -run Test_EarlyData
 func Test_EarlyData(t *testing.T) {
 	t.Parallel()
 

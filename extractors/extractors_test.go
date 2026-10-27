@@ -269,7 +269,6 @@ func extractorsTestParam(t *testing.T, app *fiber.App, pattern, target string, e
 	return value, err
 }
 
-// go test -run Test_Extractors_Missing
 func Test_Extractors_Missing(t *testing.T) {
 	t.Parallel()
 
@@ -284,7 +283,6 @@ func Test_Extractors_Missing(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractors
 func Test_Extractors(t *testing.T) {
 	t.Parallel()
 
@@ -319,7 +317,6 @@ func Test_Extractors(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractor_Chain
 func Test_Extractor_Chain(t *testing.T) {
 	t.Parallel()
 
@@ -446,7 +443,6 @@ func Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractor_FromAuthHeader_EdgeCases
 func Test_Extractor_FromAuthHeader_EdgeCases(t *testing.T) {
 	t.Parallel()
 
@@ -463,7 +459,6 @@ func Test_Extractor_FromAuthHeader_EdgeCases(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractor_Chain_Introspection
 func Test_Extractor_Chain_Introspection(t *testing.T) {
 	t.Parallel()
 
@@ -529,7 +524,6 @@ func Test_Extractor_Contains(t *testing.T) {
 	}
 }
 
-// go test -run Test_Extractor_FromCustom
 func Test_Extractor_FromCustom(t *testing.T) {
 	t.Parallel()
 
@@ -589,7 +583,6 @@ func Test_Extractor_FromCustom(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractor_Chain_Error_Propagation
 func Test_Extractor_Chain_Error_Propagation(t *testing.T) {
 	t.Parallel()
 
@@ -637,7 +630,6 @@ func Test_Extractor_Chain_Error_Propagation(t *testing.T) {
 	}
 }
 
-// go test -run Test_Extractor_FromAuthHeader_RFC_Compliance
 func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	t.Parallel()
 
@@ -697,7 +689,6 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractor_FromAuthHeader_Token68_Validation
 func Test_Extractor_FromAuthHeader_Token68_Validation(t *testing.T) {
 	t.Parallel()
 
@@ -728,7 +719,6 @@ func Test_Extractor_FromAuthHeader_Token68_Validation(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractor_FromAuthHeader_NoScheme
 func Test_Extractor_FromAuthHeader_NoScheme(t *testing.T) {
 	t.Parallel()
 
@@ -738,7 +728,6 @@ func Test_Extractor_FromAuthHeader_NoScheme(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractor_FromAuthHeader_Metadata
 func Test_Extractor_FromAuthHeader_Metadata(t *testing.T) {
 	t.Parallel()
 
@@ -758,7 +747,6 @@ func Test_Extractor_FromAuthHeader_Metadata(t *testing.T) {
 	}
 }
 
-// go test -run Test_Extractor_Chain_MixedScenarios
 func Test_Extractor_Chain_MixedScenarios(t *testing.T) {
 	t.Parallel()
 
@@ -785,7 +773,6 @@ func Test_Extractor_Chain_MixedScenarios(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractor_Chain_Cycle_Prevention
 func Test_Extractor_Chain_Cycle_Prevention(t *testing.T) {
 	t.Parallel()
 
@@ -843,7 +830,6 @@ func Test_Extractor_Chain_ReusedAcrossMiddleware(t *testing.T) {
 	apptest.Expect(t, app, req, fiber.StatusNoContent)
 }
 
-// go test -run Test_Extractor_SourceTypes
 func Test_Extractor_SourceTypes(t *testing.T) {
 	t.Parallel()
 
@@ -871,7 +857,6 @@ func Test_Extractor_SourceTypes(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractor_URL_Encoded
 func Test_Extractor_URL_Encoded(t *testing.T) {
 	t.Parallel()
 
@@ -938,7 +923,6 @@ func Test_isValidToken68(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_isValidToken68 -benchmem -count=4
 func Benchmark_isValidToken68(b *testing.B) {
 	inputs := []string{
 		benchToken,             // JWT-sized credential
@@ -1015,7 +999,6 @@ func Test_Extractor_IgnoresHeaderNameCase(t *testing.T) {
 	}
 }
 
-// go test -run Test_Resolve
 func Test_Resolve(t *testing.T) {
 	t.Parallel()
 
@@ -1112,7 +1095,6 @@ func Test_Resolve(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractor_Chain_ExtractSource
 func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 	t.Parallel()
 

@@ -135,8 +135,6 @@ func Test_Security_SchemeAllowed(t *testing.T) {
 	require.True(t, schemeAllowed("ftp", []string{"ftp"}))
 }
 
-// go test -run Test_Security_ValidateUpstream_Rejects
-//
 // Test_Security_ValidateUpstream_Rejects pins what validateUpstream refuses: an
 // address the strict policy blocks (the private-IP filtering that
 // FuzzValidateUpstream leaves to this test), a scheme outside the allowlist, and

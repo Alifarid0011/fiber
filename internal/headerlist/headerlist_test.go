@@ -134,7 +134,6 @@ func Test_Contains(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Contains -benchmem -count=4
 func Benchmark_Contains(b *testing.B) {
 	var ok bool
 	b.ReportAllocs()
