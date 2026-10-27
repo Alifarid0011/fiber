@@ -25,6 +25,13 @@ func acquireReclaimTestCtx(t *testing.T) (*App, *DefaultCtx) {
 	return app, dc
 }
 
+// ctxExpectReclaimed requires that c is returned to the pool, observable as
+// IsAbandoned flipping back to false, and that msg holds when it is.
+func ctxExpectReclaimed(t *testing.T, c *DefaultCtx, msg string) {
+	t.Helper()
+	require.Eventually(t, func() bool { return !c.IsAbandoned() }, time.Second, 5*time.Millisecond, msg)
+}
+
 // TestDefaultCtx_ScheduleReclaim_HappyPath covers the dominant timed-out flow:
 // after ScheduleReclaim is armed and both signals fire (handlerDone closes and
 // the request handler releases the context), the context is returned to the
@@ -41,9 +48,7 @@ func TestDefaultCtx_ScheduleReclaim_HappyPath(t *testing.T) {
 	require.True(t, c.IsAbandoned(), "ctx must stay abandoned until ReleaseCtx fires")
 
 	app.ReleaseCtx(c)
-	require.Eventually(t, func() bool {
-		return !c.IsAbandoned()
-	}, time.Second, 5*time.Millisecond, "ctx must be reclaimed once both signals fire")
+	ctxExpectReclaimed(t, c, "ctx must be reclaimed once both signals fire")
 }
 
 // TestDefaultCtx_ScheduleReclaim_ReleaseBeforeHandlerDone covers the reverse
@@ -71,47 +76,44 @@ func TestDefaultCtx_ScheduleReclaim_ReleaseBeforeHandlerDone(t *testing.T) {
 			require.True(t, c.IsAbandoned(), "an abandoned ctx must not be pooled until handlerDone closes")
 
 			close(handlerDone)
-			require.Eventually(t, func() bool {
-				return !c.IsAbandoned()
-			}, time.Second, 5*time.Millisecond, "the release must wire signalReleased into the latch")
+			ctxExpectReclaimed(t, c, "the release must wire signalReleased into the latch")
 		})
 	}
 }
 
-// TestDefaultCtx_ScheduleReclaim_CancelInvoked verifies the cancel hook fires
-// exactly once when the handler goroutine finishes.
-func TestDefaultCtx_ScheduleReclaim_CancelInvoked(t *testing.T) {
+// TestDefaultCtx_ScheduleReclaim_Cancel verifies the cancel hook fires exactly
+// once when the handler goroutine finishes, and that a nil cancel does not block
+// reclamation.
+func TestDefaultCtx_ScheduleReclaim_Cancel(t *testing.T) {
 	t.Parallel()
-	app, c := acquireReclaimTestCtx(t)
+	for _, tc := range []struct {
+		name      string
+		nilCancel bool
+	}{
+		{name: "cancel invoked"},
+		{name: "nil cancel", nilCancel: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, c := acquireReclaimTestCtx(t)
 
-	var calls atomic.Int32
-	cancel := func() { calls.Add(1) }
+			var calls atomic.Int32
+			cancel := func() { calls.Add(1) }
+			if tc.nilCancel {
+				cancel = nil
+			}
 
-	handlerDone := make(chan struct{})
-	c.ScheduleReclaim(handlerDone, cancel)
+			handlerDone := make(chan struct{})
+			c.ScheduleReclaim(handlerDone, cancel)
 
-	close(handlerDone)
-	app.ReleaseCtx(c)
+			close(handlerDone)
+			app.ReleaseCtx(c)
 
-	require.Eventually(t, func() bool {
-		return calls.Load() == 1 && !c.IsAbandoned()
-	}, time.Second, 5*time.Millisecond, "cancel must fire once and ctx must be reclaimed")
-}
-
-// TestDefaultCtx_ScheduleReclaim_NilCancel exercises the cancel==nil branch.
-func TestDefaultCtx_ScheduleReclaim_NilCancel(t *testing.T) {
-	t.Parallel()
-	app, c := acquireReclaimTestCtx(t)
-
-	handlerDone := make(chan struct{})
-	c.ScheduleReclaim(handlerDone, nil)
-
-	close(handlerDone)
-	app.ReleaseCtx(c)
-
-	require.Eventually(t, func() bool {
-		return !c.IsAbandoned()
-	}, time.Second, 5*time.Millisecond, "nil cancel must not block reclamation")
+			require.Eventually(t, func() bool {
+				return (tc.nilCancel || calls.Load() == 1) && !c.IsAbandoned()
+			}, time.Second, 5*time.Millisecond, "cancel must fire once, if there is one, and ctx must be reclaimed")
+		})
+	}
 }
 
 // TestDefaultCtx_signalReleased_NoReclaim guards that calling signalReleased on
@@ -140,9 +142,7 @@ func TestDefaultCtx_signalReleased_Idempotent(t *testing.T) {
 	})
 
 	close(handlerDone)
-	require.Eventually(t, func() bool {
-		return !c.IsAbandoned()
-	}, time.Second, 5*time.Millisecond, "ctx must still be reclaimed exactly once")
+	ctxExpectReclaimed(t, c, "ctx must still be reclaimed exactly once")
 }
 
 // TestApp_releaseDefaultCtx_NotAbandonedPools verifies the non-abandoned branch

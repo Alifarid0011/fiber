@@ -524,13 +524,6 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 	require.Panics(t, func() { app.Add([]string{"JANE"}, "/jane", testEmptyHandler) })
 }
 
-func Test_Ctx_Accepts_EmptyAccept(t *testing.T) {
-	t.Parallel()
-	c := apptest.Ctx(t, New(Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}))
-
-	require.Equal(t, ".forwarded", c.Accepts(".forwarded"))
-}
-
 // ctxTestAAcceptsCase is one scenario of an Accept-family method: the offers are
 // negotiated against a request whose header carries lines, one field line each
 // (none leaves the header out), and want is the offer that wins, or empty when
@@ -576,6 +569,7 @@ func Test_Ctx_Accepts_HeaderForms(t *testing.T) {
 		{name: "uppercase Q orders by weight", lines: []string{"text/html;Q=0.2, application/json;q=0.8"}, offers: []string{"html", "json"}, want: "json"},
 
 		{name: "repeated field lines", lines: []string{"text/plain;q=0.5", "application/json"}, offers: []string{"text/plain", "application/json"}, want: "application/json"},
+		{name: "no Accept header", offers: []string{".forwarded"}, want: ".forwarded"},
 	})
 }
 
@@ -1127,28 +1121,27 @@ func ctxBenchCompressedBody(b *testing.B, immutable bool, contentEncoding string
 	})
 }
 
-func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
+// ctxBenchCompressedBodies runs the Body decoding sub-benchmarks on an app with
+// the given Config.Immutable: a gzip body, an unsupported coding, a deflate body
+// and a gzip,deflate chain whose inner layer is not deflate.
+//
+//nolint:revive // flag-parameter: this selects which of the two benchmarks runs
+func ctxBenchCompressedBodies(b *testing.B, immutable bool) {
+	b.Helper()
 	input := []byte("john=doe")
 	gzipped, deflated := ctxTestACompress(b, StrGzip, input), ctxTestACompress(b, StrDeflate, input)
 	// deflated, then gzipped: the reverse of the order "gzip,deflate" names
 	gzippedDeflated := ctxTestACompress(b, StrGzip, deflated)
 	b.ReportAllocs()
-	ctxBenchCompressedBody(b, false, "gzip", gzipped, input)
-	ctxBenchCompressedBody(b, false, "gzip,invalid", gzipped, []byte(ErrUnsupportedMediaType.Error()))
-	ctxBenchCompressedBody(b, false, StrDeflate, deflated, input)
-	ctxBenchCompressedBody(b, false, "gzip,deflate", gzippedDeflated, []byte(zlib.ErrHeader.Error()))
+	ctxBenchCompressedBody(b, immutable, "gzip", gzipped, input)
+	ctxBenchCompressedBody(b, immutable, "gzip,invalid", gzipped, []byte(ErrUnsupportedMediaType.Error()))
+	ctxBenchCompressedBody(b, immutable, StrDeflate, deflated, input)
+	ctxBenchCompressedBody(b, immutable, "gzip,deflate", gzippedDeflated, []byte(zlib.ErrHeader.Error()))
 }
 
-func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
-	input := []byte("john=doe")
-	gzipped, deflated := ctxTestACompress(b, StrGzip, input), ctxTestACompress(b, StrDeflate, input)
-	gzippedDeflated := ctxTestACompress(b, StrGzip, deflated)
-	b.ReportAllocs()
-	ctxBenchCompressedBody(b, true, "gzip", gzipped, input)
-	ctxBenchCompressedBody(b, true, "gzip,invalid", gzipped, []byte(ErrUnsupportedMediaType.Error()))
-	ctxBenchCompressedBody(b, true, StrDeflate, deflated, input)
-	ctxBenchCompressedBody(b, true, "gzip,deflate", gzippedDeflated, []byte(zlib.ErrHeader.Error()))
-}
+func Benchmark_Ctx_Body_With_Compression(b *testing.B) { ctxBenchCompressedBodies(b, false) }
+
+func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) { ctxBenchCompressedBodies(b, true) }
 
 func Test_Ctx_RequestCtx(t *testing.T) {
 	t.Parallel()
@@ -1639,18 +1632,6 @@ func Benchmark_Ctx_Format(b *testing.B) {
 		ResFmt{MediaType: MIMEApplicationMsgPack, Handler: ok})
 }
 
-// Test_Ctx_AutoFormat_Vary verifies that AutoFormat marks the response as
-// varying on the Accept header (RFC 9110 §12.5.5), since the representation
-// is selected via proactive negotiation.
-func Test_Ctx_AutoFormat_Vary(t *testing.T) {
-	t.Parallel()
-	c := apptest.Ctx(t, New())
-
-	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
-	require.NoError(t, c.AutoFormat("Hello, World!"))
-	require.Equal(t, HeaderAccept, c.GetRespHeader(HeaderVary))
-}
-
 func Test_Ctx_AutoFormat(t *testing.T) {
 	t.Parallel()
 	type Message struct {
@@ -1726,6 +1707,8 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 					require.NoError(t, err)
 					require.Equal(t, tc.contentType, c.GetRespHeader(HeaderContentType))
 					require.Equal(t, tc.want, string(c.Response().Body()))
+					// the representation is selected by proactive negotiation (RFC 9110 §12.5.5)
+					require.Equal(t, HeaderAccept, c.GetRespHeader(HeaderVary))
 				})
 			}
 		})
@@ -2485,13 +2468,6 @@ func Benchmark_Ctx_Hostname(b *testing.B) {
 	require.Equal(b, "google.com", hostname)
 }
 
-func Test_Ctx_Port(t *testing.T) {
-	t.Parallel()
-	c := apptest.Ctx(t, New())
-
-	require.Equal(t, "0", c.Port())
-}
-
 func Test_Ctx_Port_RemoteAddrVariants(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -2538,6 +2514,14 @@ func Test_Ctx_IP(t *testing.T) {
 	require.Equal(t, "0.0.0.0", c.IP())
 }
 
+// ctxFromIP returns a context of app for a request whose TCP peer is ip.
+func ctxFromIP(tb testing.TB, app *App, ip string) Ctx {
+	tb.Helper()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP(ip)})
+	return apptest.CtxFor(tb, app, fctx)
+}
+
 func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 	t.Parallel()
 
@@ -2576,10 +2560,7 @@ func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 
 				t.Run(fmt.Sprintf("%s, EnableIPValidation=%t, %s", proxyHeaderName, enableIPValidation, tc.name), func(t *testing.T) {
 					t.Parallel()
-					fastCtx := &fasthttp.RequestCtx{}
-					fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
-					c := apptest.CtxFor(t, app, fastCtx)
-
+					c := ctxFromIP(t, app, "0.0.0.0")
 					c.Request().Header.Set(proxyHeaderName, tc.value)
 					require.Equal(t, want, c.IP())
 				})
@@ -2624,11 +2605,12 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 	proxies := func(ips ...string) Config { return forwardedFor(TrustProxyConfig{Proxies: ips}) }
 
 	tests := []struct {
-		name     string
 		config   Config
+		name     string
 		remoteIP string
-		header   string
+		header   string // set as the X-Forwarded-For header, when not empty
 		expected string
+		lines    []string // added to it as field lines of their own
 	}{
 		{
 			name: "strip multiple trusted proxies from right", config: proxies("10.0.0.1", "10.0.0.2"),
@@ -2695,16 +2677,22 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 			name: "trailing empty chain element", config: proxies("10.0.0.1"),
 			remoteIP: "10.0.0.1", header: "203.0.113.50, 10.0.0.1,", expected: "203.0.113.50",
 		},
+		{
+			name: "repeated field lines", config: proxies("127.0.0.1"),
+			remoteIP: "127.0.0.1", lines: []string{"9.9.9.9", "198.51.100.77, 127.0.0.1"}, expected: "198.51.100.77",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := New(tc.config)
-			fastCtx := &fasthttp.RequestCtx{}
-			fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP(tc.remoteIP)}))
-			c := apptest.CtxFor(t, app, fastCtx)
-			c.Request().Header.Set(HeaderXForwardedFor, tc.header)
+			c := ctxFromIP(t, New(tc.config), tc.remoteIP)
+			if tc.header != "" {
+				c.Request().Header.Set(HeaderXForwardedFor, tc.header)
+			}
+			for _, line := range tc.lines {
+				c.Request().Header.Add(HeaderXForwardedFor, line)
+			}
 			require.Equal(t, tc.expected, c.IP())
 		})
 	}
@@ -2720,23 +2708,6 @@ func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
 	// The left-to-right walk trims HTAB as OWS too (RFC 9110 Section 5.6.3)
 	c.Request().Header.Set(HeaderXForwardedFor, "invalid,\t203.0.113.50\t,\t10.0.0.1")
 	require.Equal(t, "203.0.113.50", c.extractIPFromHeader(HeaderXForwardedFor))
-}
-
-func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines(t *testing.T) {
-	t.Parallel()
-	app := New(Config{
-		ProxyHeader:        HeaderXForwardedFor,
-		TrustProxy:         true,
-		EnableIPValidation: true,
-		TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"127.0.0.1"}},
-	})
-	fastCtx := &fasthttp.RequestCtx{}
-	fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
-	c := apptest.CtxFor(t, app, fastCtx)
-	c.Request().Header.Add(HeaderXForwardedFor, "9.9.9.9")
-	c.Request().Header.Add(HeaderXForwardedFor, "198.51.100.77, 127.0.0.1")
-
-	require.Equal(t, "198.51.100.77", c.IP())
 }
 
 // Repeated field lines must also be combined when the request is parsed off
@@ -2983,9 +2954,7 @@ func Benchmark_Ctx_IPs_v6_With_IP_Validation(b *testing.B) {
 // X-Forwarded-For header, and checks the IP it returns.
 func ctxBenchIPBehindProxy(b *testing.B, config *Config, remoteIP, forwardedFor, want string) {
 	b.Helper()
-	fastCtx := &fasthttp.RequestCtx{}
-	fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP(remoteIP)}))
-	c := apptest.CtxFor(b, New(*config), fastCtx)
+	c := ctxFromIP(b, New(*config), remoteIP)
 	c.Request().Header.Set(HeaderXForwardedFor, forwardedFor)
 	var res string
 	b.ReportAllocs()
@@ -3341,19 +3310,7 @@ func Test_Ctx_Context(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
 
-	t.Run("Nil_Context", func(t *testing.T) {
-		t.Parallel()
-		ctx := c.Context()
-		require.Equal(t, ctx, context.Background())
-	})
-
-	t.Run("ValueContext", func(t *testing.T) {
-		t.Parallel()
-		var testKey testContextKey
-		testValue := "Test Value"
-		ctx := context.WithValue(context.Background(), testKey, testValue)
-		require.Equal(t, testValue, ctx.Value(testKey))
-	})
+	require.Equal(t, context.Background(), c.Context())
 }
 
 func Test_Ctx_Context_AfterHandlerPanics(t *testing.T) {
@@ -3906,17 +3863,10 @@ func Test_Ctx_Scheme(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{tc.proxy}}})
-			newCtx := func(t *testing.T) Ctx {
-				t.Helper()
-				freq := &fasthttp.RequestCtx{}
-				freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
-				return apptest.CtxFor(t, app, freq)
-			}
-
 			for _, announcement := range announcements {
 				t.Run(announcement.name, func(t *testing.T) {
 					t.Parallel()
-					c := newCtx(t)
+					c := ctxFromIP(t, app, "0.0.0.0")
 					// too short to be an X-Forwarded-* header, Scheme must skip it
 					c.Request().Header.Set("X-Forwarded", "invalid")
 					c.Request().Header.Set(announcement.header, announcement.value)
@@ -3926,7 +3876,7 @@ func Test_Ctx_Scheme(t *testing.T) {
 
 			t.Run("no announcement", func(t *testing.T) {
 				t.Parallel()
-				require.Equal(t, schemeHTTP, newCtx(t).Scheme())
+				require.Equal(t, schemeHTTP, ctxFromIP(t, app, "0.0.0.0").Scheme())
 			})
 		})
 	}
@@ -3936,10 +3886,7 @@ func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
 	t.Parallel()
 	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}})
 
-	freq := &fasthttp.RequestCtx{}
-	freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
-
-	c := apptest.CtxFor(t, app, freq)
+	c := ctxFromIP(t, app, "0.0.0.0")
 
 	// A scheme Fiber does not serve must never reach BaseURL or the
 	// same-origin comparisons that consume Scheme.
@@ -4712,23 +4659,34 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	apptest.Expect(t, app, ctxTestBHelloWorldUpload(t), StatusOK)
 }
 
-func Test_Ctx_SaveFileToStorage_LargeUpload(t *testing.T) {
+func Test_Ctx_SaveFileToStorage_Stores(t *testing.T) {
 	t.Parallel()
-	const (
-		bodyLimit = 8 * 1024 * 1024
-		fileSize  = 5 * 1024 * 1024
-	)
+	for _, tc := range []struct {
+		name      string
+		filename  string
+		payload   []byte
+		bodyLimit int
+		zeroLimit bool // bypass the app default coercion of BodyLimit to exercise the fallback branch
+	}{
+		{name: "large upload", filename: "large.bin", payload: bytes.Repeat([]byte{'a'}, 5*1024*1024), bodyLimit: 8 * 1024 * 1024},
+		{name: "default body limit fallback", filename: "small.txt", payload: []byte("hello"), zeroLimit: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{BodyLimit: tc.bodyLimit})
+			if tc.zeroLimit {
+				app.config.BodyLimit = 0
+			}
+			storage := memory.New()
+			ctx := apptest.Ctx(t, app)
 
-	app := New(Config{BodyLimit: bodyLimit})
-	storage := memory.New()
-	ctx := apptest.Ctx(t, app)
+			require.NoError(t, ctx.SaveFileToStorage(createMultipartFileHeader(t, tc.filename, tc.payload), "key", storage))
 
-	fileHeader := createMultipartFileHeader(t, "large.bin", bytes.Repeat([]byte{'a'}, fileSize))
-	require.NoError(t, ctx.SaveFileToStorage(fileHeader, "test", storage))
-
-	stored, err := storage.Get("test")
-	require.NoError(t, err)
-	require.Len(t, stored, fileSize)
+			stored, err := storage.Get("key")
+			require.NoError(t, err)
+			require.Equal(t, tc.payload, stored)
+		})
+	}
 }
 
 func Test_Ctx_SaveFileToStorage_LimitExceeded(t *testing.T) {
@@ -4911,32 +4869,22 @@ func (s *mockContextAwareStorage) SetWithContext(ctx context.Context, _ string, 
 	return nil
 }
 
-func Test_Ctx_SaveFileToStorage_NilFileHeader(t *testing.T) {
+func Test_Ctx_Save_NilFileHeader(t *testing.T) {
 	t.Parallel()
-	err := apptest.Ctx(t, New()).SaveFileToStorage(nil, "test", memory.New())
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrFileHeaderNil)
-}
-
-func Test_Ctx_SaveFile_NilFileHeader(t *testing.T) {
-	t.Parallel()
-	err := apptest.Ctx(t, New()).SaveFile(nil, "test")
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrFileHeaderNil)
-}
-
-func Test_Ctx_SaveFileToStorage_DefaultBodyLimitFallback(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.config.BodyLimit = 0 // bypass app default coercion to exercise the fallback branch
-	storage := memory.New()
-	ctx := apptest.Ctx(t, app)
-	fileHeader := createMultipartFileHeader(t, "small.txt", []byte("hello"))
-	require.NoError(t, ctx.SaveFileToStorage(fileHeader, "key", storage))
-
-	stored, err := storage.Get("key")
-	require.NoError(t, err)
-	require.Equal(t, []byte("hello"), stored)
+	for _, tc := range []struct {
+		save func(c Ctx) error
+		name string
+	}{
+		{name: "SaveFileToStorage", save: func(c Ctx) error { return c.SaveFileToStorage(nil, "test", memory.New()) }},
+		{name: "SaveFile", save: func(c Ctx) error { return c.SaveFile(nil, "test") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.save(apptest.Ctx(t, New()))
+			require.Error(t, err)
+			require.ErrorIs(t, err, ErrFileHeaderNil)
+		})
+	}
 }
 
 func Test_Ctx_SaveFileToStorage_StoreErrorIncludesPath(t *testing.T) {

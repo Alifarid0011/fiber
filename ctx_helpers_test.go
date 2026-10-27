@@ -32,23 +32,28 @@ var (
 	_ Res = Ctx(nil)
 )
 
+// ctxReqFor returns a context of a default app for the request that prepare builds.
+func ctxReqFor(t *testing.T, prepare func(req *fasthttp.Request)) Ctx {
+	t.Helper()
+	fctx := &fasthttp.RequestCtx{}
+	prepare(&fctx.Request)
+	return apptest.CtxFor(t, New(), fctx)
+}
+
 func Test_Req_RequestHelpersOnReq(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.SetRequestURI("/path/here?q=1")
-	fctx.Request.Header.SetMethod(MethodPost)
-	fctx.Request.Header.SetHost("example.com")
-	fctx.Request.Header.SetUserAgent("fiber-test")
-	fctx.Request.Header.SetReferer("https://referer.example")
-	fctx.Request.Header.Set(HeaderAcceptLanguage, "en-US, de")
-	fctx.Request.Header.Set(HeaderAcceptEncoding, "gzip, br")
-	fctx.Request.Header.Set(HeaderAccept, MIMEApplicationJSON)
-	fctx.Request.Header.SetContentType(MIMEApplicationJSON + "; charset=utf-8")
-	fctx.Request.SetBody([]byte(`{"a":1}`))
-
-	c := apptest.CtxFor(t, app, fctx)
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.SetRequestURI("/path/here?q=1")
+		req.Header.SetMethod(MethodPost)
+		req.Header.SetHost("example.com")
+		req.Header.SetUserAgent("fiber-test")
+		req.Header.SetReferer("https://referer.example")
+		req.Header.Set(HeaderAcceptLanguage, "en-US, de")
+		req.Header.Set(HeaderAcceptEncoding, "gzip, br")
+		req.Header.Set(HeaderAccept, MIMEApplicationJSON)
+		req.Header.SetContentType(MIMEApplicationJSON + "; charset=utf-8")
+		req.SetBody([]byte(`{"a":1}`))
+	})
 
 	r := c.Req()
 
@@ -86,11 +91,7 @@ func Test_Req_RequestHelpersOnReq(t *testing.T) {
 
 func Test_Req_PathOverride(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.SetRequestURI("/original")
-	c := apptest.CtxFor(t, app, fctx)
+	c := ctxReqFor(t, func(req *fasthttp.Request) { req.SetRequestURI("/original") })
 
 	require.Equal(t, "/original", c.Req().Path())
 	require.Equal(t, "/rewritten", c.Req().Path("/rewritten"))
@@ -100,12 +101,10 @@ func Test_Req_PathOverride(t *testing.T) {
 
 func Test_Req_GetAll(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.Add("X-Test", "first")
-	fctx.Request.Header.Add("X-Test", "second")
-	c := apptest.CtxFor(t, app, fctx)
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.Header.Add("X-Test", "first")
+		req.Header.Add("X-Test", "second")
+	})
 
 	require.Equal(t, []string{"first", "second"}, c.Req().GetAll("X-Test"))
 	require.Equal(t, []string{"first", "second"}, c.Req().GetAll("x-test"))
@@ -126,9 +125,7 @@ func Test_Req_ContentLength(t *testing.T) {
 	apptest.Do(t, app, httptest.NewRequest(MethodPost, "/", strings.NewReader("0123456789")))
 	require.Equal(t, 10, length)
 
-	chunked := &fasthttp.RequestCtx{}
-	chunked.Request.Header.SetContentLength(-1)
-	cc := apptest.CtxFor(t, app, chunked)
+	cc := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.SetContentLength(-1) })
 
 	require.Equal(t, -1, cc.Req().ContentLength(), "chunked bodies report an unknown length")
 	require.True(t, cc.Req().HasBody(), "an unknown length still means there is a body")
@@ -169,11 +166,7 @@ func Test_Req_GetAll_AbsentSlottedHeaders(t *testing.T) {
 
 func Test_Req_ContentType(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetContentType(MIMEApplicationJSON + "; charset=utf-8")
-	c := apptest.CtxFor(t, app, fctx)
+	c := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.SetContentType(MIMEApplicationJSON + "; charset=utf-8") })
 
 	require.Equal(t, MIMEApplicationJSONCharsetUTF8, c.Req().ContentType())                      //nolint:testifylint // this is comparing content-type headers, not JSON content
 	require.Equal(t, MIMEApplicationJSON, c.Req().MediaType(), "MediaType drops the parameters") //nolint:testifylint // same
@@ -187,16 +180,10 @@ func Test_Req_ContentType(t *testing.T) {
 
 func Test_Req_BodyStream(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	buffered := &fasthttp.RequestCtx{}
-	buffered.Request.SetBody([]byte("buffered"))
-	bc := apptest.CtxFor(t, app, buffered)
+	bc := ctxReqFor(t, func(req *fasthttp.Request) { req.SetBody([]byte("buffered")) })
 	require.Nil(t, bc.Req().BodyStream(), "a buffered body is not a stream")
 
-	streamed := &fasthttp.RequestCtx{}
-	streamed.Request.SetBodyStream(strings.NewReader("streamed"), 8)
-	sc := apptest.CtxFor(t, app, streamed)
+	sc := ctxReqFor(t, func(req *fasthttp.Request) { req.SetBodyStream(strings.NewReader("streamed"), 8) })
 
 	stream := sc.Req().BodyStream()
 	require.NotNil(t, stream)
@@ -207,12 +194,10 @@ func Test_Req_BodyStream(t *testing.T) {
 
 func Test_Req_URI(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.SetRequestURI("/search?q=fiber#frag")
-	fctx.Request.Header.SetHost("example.com")
-	c := apptest.CtxFor(t, app, fctx)
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.SetRequestURI("/search?q=fiber#frag")
+		req.Header.SetHost("example.com")
+	})
 
 	uri := c.Req().URI()
 	require.NotNil(t, uri)
@@ -224,21 +209,15 @@ func Test_Req_URI(t *testing.T) {
 
 func Test_Req_Origin(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.Set(HeaderOrigin, "https://example.com")
-	c := apptest.CtxFor(t, app, fctx)
+	c := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.Set(HeaderOrigin, "https://example.com") })
 	require.Equal(t, "https://example.com", c.Req().Origin())
 
-	bare := apptest.Ctx(t, app)
+	bare := apptest.Ctx(t, New())
 	require.Empty(t, bare.Req().Origin())
 }
 
 func Test_Req_Authorization(t *testing.T) {
 	t.Parallel()
-	app := New()
-
 	tests := []struct {
 		name        string
 		header      string
@@ -259,11 +238,11 @@ func Test_Req_Authorization(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			fctx := &fasthttp.RequestCtx{}
-			if tc.header != "" {
-				fctx.Request.Header.Set(HeaderAuthorization, tc.header)
-			}
-			c := apptest.CtxFor(t, app, fctx)
+			c := ctxReqFor(t, func(req *fasthttp.Request) {
+				if tc.header != "" {
+					req.Header.Set(HeaderAuthorization, tc.header)
+				}
+			})
 
 			scheme, credentials := c.Req().Authorization()
 			require.Equal(t, tc.scheme, scheme)
@@ -275,8 +254,6 @@ func Test_Req_Authorization(t *testing.T) {
 
 func Test_Req_IsSafe_IsIdempotent(t *testing.T) {
 	t.Parallel()
-	app := New()
-
 	tests := []struct {
 		method     string
 		safe       bool
@@ -295,9 +272,7 @@ func Test_Req_IsSafe_IsIdempotent(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.method, func(t *testing.T) {
 			t.Parallel()
-			fctx := &fasthttp.RequestCtx{}
-			fctx.Request.Header.SetMethod(tc.method)
-			c := apptest.CtxFor(t, app, fctx)
+			c := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.SetMethod(tc.method) })
 
 			require.Equal(t, tc.safe, c.Req().IsSafe())
 			require.Equal(t, tc.idempotent, c.Req().IsIdempotent())
@@ -307,33 +282,27 @@ func Test_Req_IsSafe_IsIdempotent(t *testing.T) {
 
 func Test_Req_CookieNames_AllCookies(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetCookie("session", "abc")
-	fctx.Request.Header.SetCookie("theme", "dark")
-	c := apptest.CtxFor(t, app, fctx)
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.Header.SetCookie("session", "abc")
+		req.Header.SetCookie("theme", "dark")
+	})
 
 	require.ElementsMatch(t, []string{"session", "theme"}, c.Req().CookieNames())
 	require.Equal(t, map[string]string{"session": "abc", "theme": "dark"}, c.Req().AllCookies())
 
-	shadowed := &fasthttp.RequestCtx{}
-	shadowed.Request.Header.Set(HeaderCookie, "a=first; a=second")
-	sc := apptest.CtxFor(t, app, shadowed)
+	sc := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.Set(HeaderCookie, "a=first; a=second") })
 
 	require.Equal(t, "first", sc.Req().Cookies("a"))
 	require.Equal(t, "first", sc.Req().AllCookies()["a"])
 	require.Equal(t, []string{"a", "a"}, sc.Req().CookieNames(), "the repetition itself stays visible")
 
-	bare := apptest.Ctx(t, app)
+	bare := apptest.Ctx(t, New())
 	require.Empty(t, bare.Req().CookieNames())
 	require.Empty(t, bare.Req().AllCookies())
 }
 
 func Test_Req_IfNoneMatch(t *testing.T) {
 	t.Parallel()
-	app := New()
-
 	tests := []struct {
 		name  string
 		lines []string // the If-None-Match field lines
@@ -350,11 +319,11 @@ func Test_Req_IfNoneMatch(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			fctx := &fasthttp.RequestCtx{}
-			for _, line := range tc.lines {
-				fctx.Request.Header.Add(HeaderIfNoneMatch, line)
-			}
-			c := apptest.CtxFor(t, app, fctx)
+			c := ctxReqFor(t, func(req *fasthttp.Request) {
+				for _, line := range tc.lines {
+					req.Header.Add(HeaderIfNoneMatch, line)
+				}
+			})
 
 			require.Equal(t, tc.want, c.Req().IfNoneMatch())
 		})
@@ -363,23 +332,19 @@ func Test_Req_IfNoneMatch(t *testing.T) {
 
 func Test_Req_IfModifiedSince(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	bare := apptest.Ctx(t, app)
+	bare := apptest.Ctx(t, New())
 	_, err := bare.Req().IfModifiedSince()
 	require.ErrorIs(t, err, ErrHeaderNotFound)
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
-	c := apptest.CtxFor(t, app, fctx)
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
+	})
 
 	got, err := c.Req().IfModifiedSince()
 	require.NoError(t, err)
 	require.True(t, got.Equal(time.Date(2015, time.October, 21, 7, 28, 0, 0, time.UTC)))
 
-	malformed := &fasthttp.RequestCtx{}
-	malformed.Request.Header.Set(HeaderIfModifiedSince, "not a date")
-	mc := apptest.CtxFor(t, app, malformed)
+	mc := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.Set(HeaderIfModifiedSince, "not a date") })
 
 	_, err = mc.Req().IfModifiedSince()
 	require.Error(t, err)
@@ -414,15 +379,6 @@ func Test_Res_Body_ResetBody_Written(t *testing.T) {
 	require.Empty(t, c.Res().Body())
 	require.False(t, c.Res().Written())
 	require.Equal(t, StatusCreated, c.Res().StatusCode(), "ResetBody keeps the status")
-}
-
-func Test_Res_Written_BodyStream(t *testing.T) {
-	t.Parallel()
-	c := apptest.Ctx(t, New())
-
-	require.NoError(t, c.SendStream(strings.NewReader("streamed"), 8))
-	require.True(t, c.Res().Written())
-	require.True(t, c.Response().IsBodyStream())
 }
 
 func Test_Res_Del(t *testing.T) {
@@ -657,14 +613,6 @@ func Test_Res_NoContent_OverHTTP(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Delete("/item", func(c Ctx) error { return c.Res().NoContent() })
-
-	resp := apptest.ExpectBody(t, app, apptest.Req(MethodDelete, "/item"), StatusNoContent, "")
-	require.Empty(t, resp.Header.Get(HeaderContentType))
-}
-
-func Test_Res_NoContent_DiffersFromSendStatus(t *testing.T) {
-	t.Parallel()
-	app := New()
 	app.Get("/sendstatus", func(c Ctx) error {
 		c.Type("json")
 		return c.SendStatus(StatusNoContent)
@@ -674,22 +622,35 @@ func Test_Res_NoContent_DiffersFromSendStatus(t *testing.T) {
 		return c.Res().NoContent()
 	})
 
-	sent := apptest.Expect(t, app, "/sendstatus", StatusNoContent)
-	require.NotEmpty(t, sent.Header.Get(HeaderContentType))
-
-	none := apptest.Expect(t, app, "/nocontent", StatusNoContent)
-	require.Empty(t, none.Header.Get(HeaderContentType))
+	for _, tc := range []struct {
+		name            string
+		method          string
+		path            string
+		wantContentType bool // SendStatus keeps the Content-Type the handler set, NoContent drops it
+	}{
+		{name: "NoContent", method: MethodDelete, path: "/item"},
+		{name: "NoContent after Type", method: MethodGet, path: "/nocontent"},
+		{name: "SendStatus after Type", method: MethodGet, path: "/sendstatus", wantContentType: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp := apptest.ExpectBody(t, app, apptest.Req(tc.method, tc.path), StatusNoContent, "")
+			if tc.wantContentType {
+				require.NotEmpty(t, resp.Header.Get(HeaderContentType))
+			} else {
+				require.Empty(t, resp.Header.Get(HeaderContentType))
+			}
+		})
+	}
 }
 
 func Test_Ctx_BodyContentLengthCookiesPreferRequest(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.SetBody([]byte("request body"))
-	fctx.Request.Header.SetContentLength(len("request body"))
-	fctx.Request.Header.SetCookie("who", "client")
-	c := apptest.CtxFor(t, app, fctx)
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.SetBody([]byte("request body"))
+		req.Header.SetContentLength(len("request body"))
+		req.Header.SetCookie("who", "client")
+	})
 
 	require.NoError(t, c.SendString("response body"))
 	c.Cookie(&Cookie{Name: "who", Value: "server"})
@@ -1115,14 +1076,12 @@ func Test_Req_FreshWithoutNormalizing(t *testing.T) {
 
 func Test_Req_HeaderFieldSkipsEmptyFirstLine(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.Add("X-Thing", "")
-	fctx.Request.Header.Add("X-Thing", "v2")
-	fctx.Request.Header.Add(HeaderAuthorization, "")
-	fctx.Request.Header.Add(HeaderAuthorization, "Bearer tok")
-	c := apptest.CtxFor(t, app, fctx)
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.Header.Add("X-Thing", "")
+		req.Header.Add("X-Thing", "v2")
+		req.Header.Add(HeaderAuthorization, "")
+		req.Header.Add(HeaderAuthorization, "Bearer tok")
+	})
 
 	require.True(t, c.Req().HasHeader("X-Thing"))
 	require.Equal(t, []string{"v2"}, c.Req().GetAll("X-Thing"))
