@@ -8,7 +8,6 @@ import (
 	"iter"
 	"maps"
 	"mime/multipart"
-	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,10 +17,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 // clientTestBRequest returns a pooled request that is released when the test ends.
@@ -156,7 +153,7 @@ func (e clientTestBMultiValue[T]) runIter(t *testing.T, all func(r T) iter.Seq2[
 	t.Run("populated iterator", func(t *testing.T) {
 		t.Parallel()
 		r := e.fresh(t)
-		e.addMany(r, map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
+		e.addMany(r, clientAMultiEntries)
 
 		got := maps.Collect(all(r))
 
@@ -228,6 +225,47 @@ func (e clientTestBSingleValue[T]) run(t *testing.T) {
 		require.Empty(t, e.get(r, "foo"))
 		require.Equal(t, "foo", e.get(r, "bar"))
 	})
+}
+
+// runIter registers the scenario of the iterator over all entries, which all returns
+// for a T.
+func (e clientTestBSingleValue[T]) runIter(t *testing.T, all func(r T) iter.Seq2[string, string]) {
+	t.Helper()
+
+	t.Run("iterate "+e.noun+"s", func(t *testing.T) {
+		t.Parallel()
+		r := e.setMany(e.fresh(t), map[string]string{"foo": "bar", "bar": "foo"})
+
+		got := maps.Collect(all(r))
+
+		require.Equal(t, "bar", got["foo"])
+		require.Equal(t, "foo", got["bar"])
+
+		require.NotPanics(t, func() {
+			for _, v := range all(r) {
+				if v == "bar" {
+					break
+				}
+			}
+		})
+
+		require.Len(t, got, 2)
+	})
+}
+
+// clientAMultiEntries is the multi-valued entries the iterator tests and benchmarks add.
+var clientAMultiEntries = map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}}
+
+// clientABenchRequest returns a pooled request that setup has filled, for a benchmark of
+// an iterator over its entries. It reports allocations, so call it right before the loop.
+func clientABenchRequest(b *testing.B, setup func(r *Request)) *Request {
+	b.Helper()
+
+	req := AcquireRequest()
+	setup(req)
+	b.ReportAllocs()
+
+	return req
 }
 
 // The kinds of entry a request holds.
@@ -347,8 +385,8 @@ func Test_Request_Header(t *testing.T) {
 
 func Test_Request_Headers(t *testing.T) {
 	t.Parallel()
-	req := AcquireRequest()
-	req.AddHeaders(map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
+	req := clientTestBRequest(t)
+	req.AddHeaders(clientAMultiEntries)
 
 	headers := make(map[string][]string)
 	for k, v := range req.Headers() {
@@ -362,10 +400,7 @@ func Test_Request_Headers(t *testing.T) {
 }
 
 func Benchmark_Request_Headers(b *testing.B) {
-	req := AcquireRequest()
-	req.AddHeaders(map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
-
-	b.ReportAllocs()
+	req := clientABenchRequest(b, func(r *Request) { r.AddHeaders(clientAMultiEntries) })
 
 	for b.Loop() {
 		for k, v := range req.Headers() {
@@ -452,10 +487,7 @@ func Test_Request_Params(t *testing.T) {
 }
 
 func Benchmark_Request_Params(b *testing.B) {
-	req := AcquireRequest()
-	req.AddParams(map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
-
-	b.ReportAllocs()
+	req := clientABenchRequest(b, func(r *Request) { r.AddParams(clientAMultiEntries) })
 
 	for b.Loop() {
 		for k, v := range req.Params() {
@@ -468,34 +500,11 @@ func Benchmark_Request_Params(b *testing.B) {
 func Test_Request_Cookie(t *testing.T) {
 	t.Parallel()
 	clientTestBCookies.run(t)
-}
-
-func Test_Request_Cookies(t *testing.T) {
-	t.Parallel()
-	req := AcquireRequest()
-	req.SetCookies(map[string]string{"foo": "bar", "bar": "foo"})
-
-	cookies := maps.Collect(req.Cookies())
-
-	require.Equal(t, "bar", cookies["foo"])
-	require.Equal(t, "foo", cookies["bar"])
-
-	require.NotPanics(t, func() {
-		for _, v := range req.Cookies() {
-			if v == "bar" {
-				break
-			}
-		}
-	})
-
-	require.Len(t, cookies, 2)
+	clientTestBCookies.runIter(t, (*Request).Cookies)
 }
 
 func Benchmark_Request_Cookies(b *testing.B) {
-	req := AcquireRequest()
-	req.SetCookies(map[string]string{"foo": "bar", "bar": "foo"})
-
-	b.ReportAllocs()
+	req := clientABenchRequest(b, func(r *Request) { r.SetCookies(map[string]string{"foo": "bar", "bar": "foo"}) })
 
 	for b.Loop() {
 		for k, v := range req.Cookies() {
@@ -508,6 +517,7 @@ func Benchmark_Request_Cookies(b *testing.B) {
 func Test_Request_PathParam(t *testing.T) {
 	t.Parallel()
 	clientTestBPathParams.run(t)
+	clientTestBPathParams.runIter(t, (*Request).PathParams)
 
 	t.Run("clear path params", func(t *testing.T) {
 		t.Parallel()
@@ -521,32 +531,8 @@ func Test_Request_PathParam(t *testing.T) {
 	})
 }
 
-func Test_Request_PathParams(t *testing.T) {
-	t.Parallel()
-	req := AcquireRequest()
-	req.SetPathParams(map[string]string{"foo": "bar", "bar": "foo"})
-
-	pathParams := maps.Collect(req.PathParams())
-
-	require.Equal(t, "bar", pathParams["foo"])
-	require.Equal(t, "foo", pathParams["bar"])
-
-	require.Len(t, pathParams, 2)
-
-	require.NotPanics(t, func() {
-		for _, v := range req.PathParams() {
-			if v == "bar" {
-				break
-			}
-		}
-	})
-}
-
 func Benchmark_Request_PathParams(b *testing.B) {
-	req := AcquireRequest()
-	req.SetPathParams(map[string]string{"foo": "bar", "bar": "foo"})
-
-	b.ReportAllocs()
+	req := clientABenchRequest(b, func(r *Request) { r.SetPathParams(map[string]string{"foo": "bar", "bar": "foo"}) })
 
 	for b.Loop() {
 		for k, v := range req.PathParams() {
@@ -614,11 +600,9 @@ func Test_Request_Files(t *testing.T) {
 }
 
 func Benchmark_Request_Files(b *testing.B) {
-	req := AcquireRequest()
-	req.AddFile("../.github/index.html")
-	req.AddFiles(AcquireFile(SetFileName("tmp.txt")))
-
-	b.ReportAllocs()
+	req := clientABenchRequest(b, func(r *Request) {
+		r.AddFile("../.github/index.html").AddFiles(AcquireFile(SetFileName("tmp.txt")))
+	})
 
 	for b.Loop() {
 		for k, v := range req.Files() {
@@ -635,19 +619,29 @@ func Test_Request_Timeout(t *testing.T) {
 	require.Equal(t, 5*time.Second, req.Timeout())
 }
 
-func Test_Request_Invalid_URL(t *testing.T) {
+func Test_Request_URL_Format(t *testing.T) {
 	t.Parallel()
-	resp, err := AcquireRequest().Get("http://example.com\r\n\r\nGET /\r\n\r\n")
+	for _, tc := range []struct{ name, url string }{
+		{name: "invalid URL", url: "http://example.com\r\n\r\nGET /\r\n\r\n"},
+		{name: "missing scheme separator", url: "http//example"},
+		{name: "unsupported protocol", url: "ftp://example.com"},
+	} {
+		for _, from := range []struct {
+			request func() *Request
+			name    string
+		}{
+			{name: "request", request: AcquireRequest},
+			{name: "client", request: func() *Request { return New().R() }},
+		} {
+			t.Run(tc.name+"/"+from.name, func(t *testing.T) {
+				t.Parallel()
+				resp, err := from.request().Get(tc.url)
 
-	require.Equal(t, ErrURLFormat, err)
-	require.Equal(t, (*Response)(nil), resp)
-}
-
-func Test_Request_Unsupported_Protocol(t *testing.T) {
-	t.Parallel()
-	resp, err := AcquireRequest().Get("ftp://example.com")
-	require.Equal(t, ErrURLFormat, err)
-	require.Equal(t, (*Response)(nil), resp)
+				require.Equal(t, ErrURLFormat, err)
+				require.Equal(t, (*Response)(nil), resp)
+			})
+		}
+	}
 }
 
 // Test_Request_Methods_With_Server sends five requests through each method that
@@ -658,11 +652,6 @@ func Test_Request_Methods_With_Server(t *testing.T) {
 	t.Parallel()
 	const target = "http://example.com"
 
-	// What the routes answer with.
-	hostname := func(c fiber.Ctx) error { return c.SendString(c.Hostname()) }
-	form := func(c fiber.Ctx) error { return c.SendString(c.FormValue("foo")) }
-	created := func(c fiber.Ctx) error { return c.Status(fiber.StatusCreated).SendString(c.FormValue("foo")) }
-	echo := func(c fiber.Ctx) error { return c.Send(c.Body()) }
 	reply := func(status int, body string) fiber.Handler {
 		return func(c fiber.Ctx) error { return c.Status(status).SendString(body) }
 	}
@@ -683,17 +672,17 @@ func Test_Request_Methods_With_Server(t *testing.T) {
 		body     string
 		status   int
 	}{
-		{name: "get", register: (*fiber.App).Get, handler: hostname, call: (*Request).Get, status: fiber.StatusOK, body: "example.com"},
-		{name: "post", register: (*fiber.App).Post, handler: created, setup: withForm, call: (*Request).Post, status: fiber.StatusCreated, body: "bar"},
+		{name: "get", register: (*fiber.App).Get, handler: clientAHostname, call: (*Request).Get, status: fiber.StatusOK, body: "example.com"},
+		{name: "post", register: (*fiber.App).Post, handler: clientACreated, setup: withForm, call: (*Request).Post, status: fiber.StatusCreated, body: "bar"},
 		// A response to HEAD carries no body, whatever the handler sends.
-		{name: "head", register: (*fiber.App).Head, handler: hostname, call: (*Request).Head, status: fiber.StatusOK},
-		{name: "put", register: (*fiber.App).Put, handler: form, setup: withForm, call: (*Request).Put, status: fiber.StatusOK, body: "bar"},
+		{name: "head", register: (*fiber.App).Head, handler: clientAHostname, call: (*Request).Head, status: fiber.StatusOK},
+		{name: "put", register: (*fiber.App).Put, handler: clientAForm, setup: withForm, call: (*Request).Put, status: fiber.StatusOK, body: "bar"},
 		// A 204 response carries no body, whatever the handler sends.
 		{name: "delete", register: (*fiber.App).Delete, handler: reply(fiber.StatusNoContent, "deleted"), call: (*Request).Delete, status: fiber.StatusNoContent},
 		{name: "options", register: (*fiber.App).Options, handler: reply(fiber.StatusOK, "options"), call: (*Request).Options, status: fiber.StatusOK, body: "options"},
 		{name: "send", register: (*fiber.App).Post, handler: reply(fiber.StatusOK, "post"), call: send, status: fiber.StatusOK, body: "post"},
-		{name: "patch", register: (*fiber.App).Patch, handler: form, setup: withForm, call: (*Request).Patch, status: fiber.StatusOK, body: "bar"},
-		{name: "query", register: (*fiber.App).Query, handler: echo, setup: withRawBody, call: (*Request).Query, status: fiber.StatusOK, body: "query body"},
+		{name: "patch", register: (*fiber.App).Patch, handler: clientAForm, setup: withForm, call: (*Request).Patch, status: fiber.StatusOK, body: "bar"},
+		{name: "query", register: (*fiber.App).Query, handler: clientAEcho, setup: withRawBody, call: (*Request).Query, status: fiber.StatusOK, body: "query body"},
 	}
 
 	for _, tc := range tests {
@@ -903,10 +892,7 @@ func Test_Request_AllFormData(t *testing.T) {
 }
 
 func Benchmark_Request_AllFormData(b *testing.B) {
-	req := AcquireRequest()
-	req.AddFormDataWithMap(map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
-
-	b.ReportAllocs()
+	req := clientABenchRequest(b, func(r *Request) { r.AddFormDataWithMap(clientAMultiEntries) })
 
 	for b.Loop() {
 		for k, v := range req.AllFormData() {
@@ -963,24 +949,18 @@ func Test_Request_Timeout_With_Server(t *testing.T) {
 
 func Test_Request_MaxRedirects(t *testing.T) {
 	t.Parallel()
-	ln := fasthttputil.NewInmemoryListener()
-
-	app := fiber.New()
-
-	app.Get("/", func(c fiber.Ctx) error {
-		if c.Request().URI().QueryArgs().Has("foo") {
-			return c.Redirect().To("/foo")
-		}
-		return c.Redirect().To("/")
+	client := clientTestAClient(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			if c.Request().URI().QueryArgs().Has("foo") {
+				return c.Redirect().To("/foo")
+			}
+			return c.Redirect().To("/")
+		})
+		app.Get("/foo", func(c fiber.Ctx) error { return c.SendString("redirect") })
 	})
-	app.Get("/foo", func(c fiber.Ctx) error { return c.SendString("redirect") })
-
-	go func() { assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
-
 		resp, err := AcquireRequest().SetClient(client).SetMaxRedirects(1).Get("http://example.com?foo")
 		body := resp.String()
 		code := resp.StatusCode()
@@ -994,8 +974,6 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
-		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
-
 		resp, err := AcquireRequest().SetClient(client).SetMaxRedirects(1).Get("http://example.com")
 
 		require.Nil(t, resp)
@@ -1004,8 +982,6 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 	t.Run("MaxRedirects", func(t *testing.T) {
 		t.Parallel()
-		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
-
 		req := AcquireRequest().SetClient(client).SetMaxRedirects(3)
 
 		require.Equal(t, 3, req.MaxRedirects())
@@ -1014,18 +990,13 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 func Test_Request_Query_Redirect(t *testing.T) {
 	t.Parallel()
-	ln := fasthttputil.NewInmemoryListener()
-
-	app := fiber.New()
-	// 308 preserves method and body, so QUERY must follow it and keep its body.
-	app.Query("/start", func(c fiber.Ctx) error {
-		return c.Redirect().Status(fiber.StatusPermanentRedirect).To("/end")
+	client := clientTestAClient(t, func(app *fiber.App) {
+		// 308 preserves method and body, so QUERY must follow it and keep its body.
+		app.Query("/start", func(c fiber.Ctx) error {
+			return c.Redirect().Status(fiber.StatusPermanentRedirect).To("/end")
+		})
+		app.Query("/end", func(c fiber.Ctx) error { return c.Send(c.Body()) })
 	})
-	app.Query("/end", func(c fiber.Ctx) error { return c.Send(c.Body()) })
-
-	go func() { assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
-
-	client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
 	resp, err := AcquireRequest().SetClient(client).SetMaxRedirects(1).SetRawBody([]byte("query body")).
 		Query("http://example.com/start")

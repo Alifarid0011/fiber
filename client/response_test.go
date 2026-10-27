@@ -2,19 +2,14 @@ package client
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/xml"
 	"errors"
 	"io"
 	"maps"
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/gofiber/fiber/v3/internal/tlstest"
-
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/gofiber/fiber/v3"
@@ -146,21 +141,10 @@ func Test_Response_Protocol(t *testing.T) {
 
 	t.Run("https", func(t *testing.T) {
 		t.Parallel()
-		serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
-		require.NoError(t, err)
-
-		ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-		require.NoError(t, err)
-
-		ln = tls.NewListener(ln, serverTLSConf)
-
-		app := fiber.New()
-		app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Scheme()) })
-
-		go func() { assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
+		_, addr, clientTLSConf := clientAStartTLS(t, func(c fiber.Ctx) error { return c.SendString(c.Scheme()) })
 
 		client := New()
-		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
+		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + addr)
 
 		require.NoError(t, err)
 		require.Equal(t, clientTLSConf, client.TLSConfig())
@@ -546,38 +530,36 @@ func Test_Response_IsStreaming(t *testing.T) {
 
 func Test_Response_Save_Streaming(t *testing.T) {
 	t.Parallel()
-	t.Run("save streaming response to file", func(t *testing.T) {
-		t.Parallel()
-		resp := clientTestBServe(t, "streaming file content", true)
+	for _, tc := range []struct {
+		name   string
+		body   string
+		stream bool
+		toFile bool // save to a file in the test's directory instead of an io.Writer
+	}{
+		{name: "save streaming response to file", body: "streaming file content", stream: true, toFile: true},
+		{name: "save streaming response to io.Writer", body: "streaming writer content", stream: true},
+		{name: "save non-streaming response to file using BodyStream", body: "regular file content", toFile: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp := clientTestBServe(t, tc.body, tc.stream)
 
-		testFile := filepath.Join(t.TempDir(), "stream_test.txt")
-		require.NoError(t, resp.Save(testFile))
+			var saved string
+			if tc.toFile {
+				target := filepath.Join(t.TempDir(), "saved.txt")
+				require.NoError(t, resp.Save(target))
+				data, err := os.ReadFile(target)
+				require.NoError(t, err)
+				saved = string(data)
+			} else {
+				var buf bytes.Buffer
+				require.NoError(t, resp.Save(&buf))
+				saved = buf.String()
+			}
 
-		data, err := os.ReadFile(testFile)
-		require.NoError(t, err)
-		require.Equal(t, "streaming file content", string(data))
-	})
-
-	t.Run("save streaming response to io.Writer", func(t *testing.T) {
-		t.Parallel()
-		resp := clientTestBServe(t, "streaming writer content", true)
-
-		var buf bytes.Buffer
-		require.NoError(t, resp.Save(&buf))
-		require.Equal(t, "streaming writer content", buf.String())
-	})
-
-	t.Run("save non-streaming response to file using BodyStream", func(t *testing.T) {
-		t.Parallel()
-		resp := clientTestBServe(t, "regular file content", false)
-
-		testFile := filepath.Join(t.TempDir(), "regular_test.txt")
-		require.NoError(t, resp.Save(testFile))
-
-		data, err := os.ReadFile(testFile)
-		require.NoError(t, err)
-		require.Equal(t, "regular file content", string(data))
-	})
+			require.Equal(t, tc.body, saved)
+		})
+	}
 
 	t.Run("save to io.WriteCloser closes writer", func(t *testing.T) {
 		t.Parallel()
