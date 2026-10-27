@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"bufio"
-	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -44,8 +43,7 @@ func rawRequest(t *testing.T, app *fiber.App, target, host string) *fasthttp.Res
 func listenUpstream(t *testing.T, upstream *fiber.App) string {
 	t.Helper()
 
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := proxyTestListen(t)
 	t.Cleanup(func() {
 		ln.Close() //nolint:errcheck // It is fine to ignore the error here
 	})

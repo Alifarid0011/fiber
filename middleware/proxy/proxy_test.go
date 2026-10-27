@@ -3,8 +3,8 @@ package proxy
 import (
 	"bufio"
 	"crypto/tls"
+	"errors"
 	"net"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
@@ -75,6 +75,15 @@ func createProxyTestServerIPv6(t *testing.T, handler fiber.Handler) (target *fib
 	return createProxyTestServer(t, handler, fiber.NetworkTCP6, "[::1]:0")
 }
 
+// proxyTestListen returns a loopback TCP listener on a free port, for a server the test starts.
+func proxyTestListen(t *testing.T) net.Listener {
+	t.Helper()
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	return ln
+}
+
 func createRedirectServer(t *testing.T) string {
 	t.Helper()
 	app := fiber.New()
@@ -86,8 +95,7 @@ func createRedirectServer(t *testing.T) string {
 	})
 	app.Get("/final", func(c fiber.Ctx) error { return c.SendString("final") })
 
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := proxyTestListen(t)
 	t.Cleanup(func() {
 		ln.Close() //nolint:errcheck // It is fine to ignore the error here
 	})
@@ -120,9 +128,7 @@ func proxyTestTLSListener(t *testing.T) net.Listener {
 
 	tlsConf, _, err := tlstest.GetTLSConfigs()
 	require.NoError(t, err)
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	return tls.NewListener(ln, tlsConf)
+	return tls.NewListener(proxyTestListen(t), tlsConf)
 }
 
 // proxyTestTLSClient returns a client that reaches a server presenting the test
@@ -144,6 +150,28 @@ func proxyTestExpectGet(t *testing.T, client *clientpkg.Client, target, body str
 	defer resp.Close()
 	require.Equal(t, fiber.StatusOK, resp.StatusCode(), string(resp.Body()))
 	require.Equal(t, body, string(resp.Body()))
+}
+
+// proxyTestExpectGetOverTLS serves app behind a TLS listener and requires a GET of it, from a client
+// that trusts the test certificate, to answer 200 with the given body.
+func proxyTestExpectGetOverTLS(t *testing.T, app *fiber.App, body string) {
+	t.Helper()
+
+	ln := proxyTestTLSListener(t)
+	startServer(app, ln)
+	proxyTestExpectGet(t, proxyTestTLSClient(), "https://"+ln.Addr().String(), body)
+}
+
+// proxyTestRedirectUpstream starts an upstream that answers every request with a 302 to location and
+// returns its address.
+func proxyTestRedirectUpstream(t *testing.T, location string) string {
+	t.Helper()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		c.Location(location)
+		return c.SendStatus(fiber.StatusFound)
+	})
+	return addr
 }
 
 // proxyTestFieldLinesUpstream starts an upstream that answers body and hands
@@ -328,14 +356,10 @@ func Test_Proxy_Balancer_PlainUpstreamBehindTLS(t *testing.T) {
 	t.Parallel()
 	_, upstreamAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString("plain upstream") })
 
-	ln := proxyTestTLSListener(t)
-	gatewayAddr := ln.Addr().String()
-
 	app := fiber.New()
 	app.Use(Balancer(Config{Servers: []string{"http://" + upstreamAddr}}))
-	startServer(app, ln)
 
-	proxyTestExpectGet(t, proxyTestTLSClient(), "https://"+gatewayAddr, "plain upstream")
+	proxyTestExpectGetOverTLS(t, app, "plain upstream")
 }
 
 // Each upstream of a mixed list is reached with its own scheme, whichever one the request arrived on.
@@ -376,14 +400,10 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	t.Parallel()
 	_, targetAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString("hello from target") })
 
-	proxyServerLn := proxyTestTLSListener(t)
-	proxyAddr := proxyServerLn.Addr().String()
-
 	app := fiber.New()
 	app.Use(Forward("http://" + targetAddr))
-	startServer(app, proxyServerLn)
 
-	proxyTestExpectGet(t, proxyTestTLSClient(), "https://"+proxyAddr, "hello from target")
+	proxyTestExpectGetOverTLS(t, app, "hello from target")
 }
 
 // Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS pins that every hop is sent with the scheme of
@@ -391,19 +411,12 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 func Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS(t *testing.T) {
 	t.Parallel()
 	_, finalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString("final") })
-	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		c.Location("http://" + finalAddr + "/")
-		return c.Status(fiber.StatusFound).SendString("redirect")
-	})
-
-	ln := proxyTestTLSListener(t)
-	gatewayAddr := ln.Addr().String()
+	redirectAddr := proxyTestRedirectUpstream(t, "http://"+finalAddr+"/")
 
 	app := fiber.New()
 	app.Get("/", func(c fiber.Ctx) error { return DoRedirects(c, "http://"+redirectAddr+"/", 3) })
-	startServer(app, ln)
 
-	proxyTestExpectGet(t, proxyTestTLSClient(), "https://"+gatewayAddr, "final")
+	proxyTestExpectGetOverTLS(t, app, "final")
 }
 
 // Test_Proxy_DoRedirects_StreamedRequestBody pins that a method-keeping redirect of a streamed
@@ -425,8 +438,7 @@ func Test_Proxy_DoRedirects_StreamedRequestBody(t *testing.T) {
 			t.Parallel()
 			var finals atomic.Int32 // requests that reached the target of the redirect
 			upstream := fiber.New()
-			ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-			require.NoError(t, err)
+			ln := proxyTestListen(t)
 			addr := ln.Addr().String()
 			upstream.Post("/start", func(c fiber.Ctx) error {
 				return c.Redirect().Status(fiber.StatusTemporaryRedirect).To("http://" + addr + "/final")
@@ -542,8 +554,7 @@ func Test_Proxy_Forward_RealIPFromProxyHeader(t *testing.T) {
 	})
 	app.Use(Forward("http://" + addr))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set("X-Real-IP", "203.0.113.9")
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Real-IP", "203.0.113.9"))
 
 	apptest.ExpectBody(t, app, req, fiber.StatusOK, "203.0.113.9")
 }
@@ -718,39 +729,65 @@ func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 	proxyTestExpectGet(t, client, "https://"+addr, "tls forward")
 }
 
-func Test_Proxy_Modify_Response(t *testing.T) {
+// Test_Proxy_Balancer_Modify runs the ModifyRequest and ModifyResponse hooks of a Balancer: what they change
+// reaches the upstream or the client, and an error either returns ends in a 500.
+func Test_Proxy_Balancer_Modify(t *testing.T) {
 	t.Parallel()
-	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.Status(500).SendString("not modified") })
-
-	app := fiber.New()
-	app.Use(Balancer(Config{
-		Servers: []string{addr},
-		ModifyResponse: func(c fiber.Ctx) error {
-			c.Response().SetStatusCode(fiber.StatusOK)
-			return c.SendString("modified response")
+	failed := errors.New("modify failed")
+	for _, tc := range []struct {
+		upstream fiber.Handler
+		name     string
+		body     string // the body the client gets back, unchecked when empty
+		cfg      Config
+		status   int
+	}{
+		{
+			name:     "ModifyResponse",
+			upstream: func(c fiber.Ctx) error { return c.Status(500).SendString("not modified") },
+			cfg: Config{ModifyResponse: func(c fiber.Ctx) error {
+				c.Response().SetStatusCode(fiber.StatusOK)
+				return c.SendString("modified response")
+			}},
+			status: fiber.StatusOK, body: "modified response",
 		},
-	}))
-
-	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "modified response")
-}
-
-func Test_Proxy_Modify_Request(t *testing.T) {
-	t.Parallel()
-	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		b := c.Request().Body()
-		return c.SendString(string(b))
-	})
-
-	app := fiber.New()
-	app.Use(Balancer(Config{
-		Servers: []string{addr},
-		ModifyRequest: func(c fiber.Ctx) error {
-			c.Request().SetBody([]byte("modified request"))
-			return nil
+		{
+			name:     "ModifyRequest",
+			upstream: func(c fiber.Ctx) error { return c.SendString(string(c.Request().Body())) },
+			cfg: Config{ModifyRequest: func(c fiber.Ctx) error {
+				c.Request().SetBody([]byte("modified request"))
+				return nil
+			}},
+			status: fiber.StatusOK, body: "modified request",
 		},
-	}))
+		{
+			name:     "ModifyRequest error",
+			upstream: func(c fiber.Ctx) error { return c.SendString("ok") },
+			cfg:      Config{ModifyRequest: func(fiber.Ctx) error { return failed }},
+			status:   fiber.StatusInternalServerError,
+		},
+		{
+			name:     "ModifyResponse error",
+			upstream: func(c fiber.Ctx) error { return c.SendString("ok") },
+			cfg:      Config{ModifyResponse: func(fiber.Ctx) error { return failed }},
+			status:   fiber.StatusInternalServerError,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, addr := createProxyTestServerIPv4(t, tc.upstream)
 
-	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "modified request")
+			cfg := tc.cfg
+			cfg.Servers = []string{addr}
+			app := fiber.New()
+			app.Use(Balancer(cfg))
+
+			if tc.body == "" {
+				apptest.Expect(t, app, "/", tc.status)
+				return
+			}
+			apptest.ExpectBody(t, app, "/", tc.status, tc.body)
+		})
+	}
 }
 
 func Test_Proxy_Timeout(t *testing.T) {
@@ -912,11 +949,9 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 	app := fiber.New()
 	app.Get("/test", func(c fiber.Ctx) error { return DoDeadline(c, "http://"+addr, time.Now().Add(2*time.Second)) })
 
-	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
-		Timeout:       1 * time.Second,
-		FailOnTimeout: true,
-	})
-	require.Equal(t, os.ErrDeadlineExceeded, err1)
+	cfg := fiber.TestConfig{Timeout: time.Second, FailOnTimeout: true}
+	_, err := app.Test(apptest.Req(fiber.MethodGet, "/test"), cfg)
+	require.Equal(t, os.ErrDeadlineExceeded, err)
 }
 
 func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
@@ -942,8 +977,7 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 func Test_Proxy_Forward_Global_Client(t *testing.T) {
 	// Intentionally not parallel: WithClient replaces the process-wide shared client.
 	restoreGlobalProxyClient(t)
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := proxyTestListen(t)
 	WithClient(&fasthttp.Client{NoDefaultUserAgentHeader: true, DisablePathNormalizing: true, MaxConnsPerHost: 123})
 	loadedClient := sharedClient.Load()
 	require.NotNil(t, loadedClient)
@@ -961,8 +995,7 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 
 func Test_Proxy_Forward_Local_Client(t *testing.T) {
 	t.Parallel()
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := proxyTestListen(t)
 	app := fiber.New()
 	app.Get("/test_local_client", func(c fiber.Ctx) error { return c.SendString("test_local_client") })
 
@@ -1015,12 +1048,10 @@ func Test_Proxy_NilClientOverride_AcrossHelpers(t *testing.T) {
 
 func Test_Proxy_Domain_Forward_Local(t *testing.T) {
 	t.Parallel()
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := proxyTestListen(t)
 	app := fiber.New()
 
-	ln1, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0") // the target server
-	require.NoError(t, err)
+	ln1 := proxyTestListen(t) // the target server
 	app1 := fiber.New()
 
 	app1.Get("/test", func(c fiber.Ctx) error { return c.SendString("test_local_client:" + c.Query("query_test")) })
@@ -1052,9 +1083,7 @@ func Test_Proxy_Balancer_ModifyRequestCanSetXRealIP(t *testing.T) {
 		},
 	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = addr
-	req.Header.Set("X-Real-IP", "6.6.6.6")
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost(addr), apptest.WithHeader("X-Real-IP", "6.6.6.6"))
 
 	apptest.ExpectBody(t, app, req, fiber.StatusOK, "203.0.113.7")
 }
@@ -1181,9 +1210,7 @@ func Test_Proxy_DomainForward_HostMatch(t *testing.T) {
 func sendRaw(t *testing.T, app *fiber.App, raw string) string {
 	t.Helper()
 
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
-	return sendParsed(t, app, req, raw)
+	return sendParsed(t, app, proxyTestRequest(t), raw)
 }
 
 // sendRawUnnormalized is sendRaw with the header names kept exactly as
@@ -1191,8 +1218,7 @@ func sendRaw(t *testing.T, app *fiber.App, raw string) string {
 func sendRawUnnormalized(t *testing.T, app *fiber.App, raw string) string {
 	t.Helper()
 
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	req := proxyTestRequest(t)
 	req.Header.DisableNormalizing()
 	return sendParsed(t, app, req, raw)
 }
@@ -1294,10 +1320,7 @@ func Test_Proxy_CrossHostCredentialsStrippedWhateverTheirCase(t *testing.T) {
 	// comparing the authority as written rather than where it resolves — so
 	// name the same listener "localhost" instead of binding a second loopback
 	// address. 127.0.0.2 is bound by default only on Linux.
-	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		c.Location("http://" + loopbackAlias(t, finalAddr) + "/")
-		return c.SendStatus(fiber.StatusFound)
-	})
+	redirectAddr := proxyTestRedirectUpstream(t, "http://"+loopbackAlias(t, finalAddr)+"/")
 
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 	app.Use(func(c fiber.Ctx) error { return DoRedirects(c, "http://"+redirectAddr, 3) })
@@ -1325,10 +1348,7 @@ func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
 		"Cookie2",
 	)
 
-	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		c.Location("http://" + loopbackAlias(t, finalAddr) + "/")
-		return c.SendStatus(fiber.StatusFound)
-	})
+	redirectAddr := proxyTestRedirectUpstream(t, "http://"+loopbackAlias(t, finalAddr)+"/")
 
 	app := fiber.New()
 	app.Use(func(c fiber.Ctx) error { return DoRedirects(c, "http://"+redirectAddr, 3) })
@@ -1366,10 +1386,7 @@ func Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting(t *testing.T) {
 		c.Response().Header.Set("te", "trailers")
 		return c.SendString("upstream")
 	})
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := ln.Addr().String()
-	startServer(upstream, ln)
+	addr := listenUpstream(t, upstream)
 
 	cli := &fasthttp.Client{DisableHeaderNamesNormalizing: true}
 
@@ -1398,9 +1415,7 @@ func Test_Proxy_Forward_RestoresHost(t *testing.T) {
 	})
 	app.Use(Forward("http://" + addr))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = "public.example.com"
-	apptest.Expect(t, app, req, fiber.StatusOK)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost("public.example.com")), fiber.StatusOK)
 	require.Equal(t, "public.example.com", <-seen)
 }
 
@@ -1549,8 +1564,7 @@ func Test_Proxy_Balancer_WriteBufferSize(t *testing.T) {
 	app.Use(Balancer(Config{Servers: []string{addr}, WriteBufferSize: 256}))
 
 	cookie := "session=" + strings.Repeat("a", 2000)
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderCookie, cookie)
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, cookie))
 
 	apptest.ExpectBody(t, app, req, fiber.StatusOK, strconv.Itoa(len(cookie)))
 }

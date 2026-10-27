@@ -55,6 +55,15 @@ func extractorsTestCtx(t *testing.T, tc *extractorsTestCase) fiber.Ctx {
 	return ctx
 }
 
+// extractorsTestQueryCtx returns a context from a fresh app whose request URI carries token=from-query.
+func extractorsTestQueryCtx(t *testing.T) fiber.Ctx {
+	t.Helper()
+
+	ctx := apptest.Ctx(t, fiber.New())
+	ctx.Request().SetRequestURI("/?token=from-query")
+	return ctx
+}
+
 // extractorsTestRun runs one parallel subtest per case. Each builds the case's
 // request on a fresh context, or sends it to the case's route, and requires the
 // case's extractor to yield want, or ErrNotFound when want is empty.
@@ -219,6 +228,20 @@ func extractorsTestFixed(key, value string, err error) Extractor {
 		Key:     key,
 		Source:  SourceCustom,
 	}
+}
+
+// extractorsTestDecorate returns e with an Extract that runs e's own and hands its value to after, as a
+// caller decorating an extractor for validation or normalization does. An error of e's own is returned as is.
+func extractorsTestDecorate(e Extractor, after func(c fiber.Ctx, value string) (string, error)) Extractor {
+	base := e.Extract
+	e.Extract = func(c fiber.Ctx) (string, error) {
+		v, err := base(c)
+		if err != nil {
+			return "", err
+		}
+		return after(c, v)
+	}
+	return e
 }
 
 // extractorsTestCyclic returns a chain whose only child extracts through the
@@ -963,43 +986,31 @@ func Test_Resolve(t *testing.T) {
 		ctx := apptest.Ctx(t, fiber.New())
 		ctx.Request().Header.Set("X-Token", "raw-header")
 
-		e := FromHeader("X-Token")
 		// Callers may decorate Extract for validation/normalization.
 		// Resolve always uses Extract for leaves, so the override wins.
-		e.Extract = func(c fiber.Ctx) (string, error) {
-			v, err := FromHeader("X-Token").Extract(c)
-			if err != nil {
-				return "", err
-			}
-			return "normalized:" + v, nil
-		}
+		e := extractorsTestDecorate(FromHeader("X-Token"),
+			func(_ fiber.Ctx, v string) (string, error) { return "normalized:" + v, nil })
 
 		extractorsTestExpectResolved(t, e, ctx, "normalized:raw-header", SourceHeader)
 	})
 
 	t.Run("honors_chain_level_Extract_override", func(t *testing.T) {
 		t.Parallel()
-		ctx := apptest.Ctx(t, fiber.New())
+		ctx := extractorsTestQueryCtx(t)
 		// Only query is present. An undecorated chain would accept it; a
 		// chain-level Extract override that rejects query-sourced values must
 		// still win under Resolve.
-		ctx.Request().SetRequestURI("/?token=from-query")
 
-		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
-		base := chain.Extract
 		rejectQuery := errors.New("query tokens not allowed")
-		chain.Extract = func(c fiber.Ctx) (string, error) {
-			v, err := base(c)
-			if err != nil {
-				return "", err
-			}
-			// Simulate a decorator that only permits header-sourced credentials.
-			// The value is present via query; reject it.
-			if c.Query("token") == v {
-				return "", rejectQuery
-			}
-			return v, nil
-		}
+		chain := extractorsTestDecorate(Chain(FromHeader("X-Token"), FromQuery("token")),
+			func(c fiber.Ctx, v string) (string, error) {
+				// Simulate a decorator that only permits header-sourced credentials.
+				// The value is present via query; reject it.
+				if c.Query("token") == v {
+					return "", rejectQuery
+				}
+				return v, nil
+			})
 
 		extractorsTestExpectErr(t, chain, ctx, rejectQuery)
 
@@ -1038,10 +1049,9 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("reports_winning_child_source", func(t *testing.T) {
 		t.Parallel()
-		ctx := apptest.Ctx(t, fiber.New())
+		ctx := extractorsTestQueryCtx(t)
 		// Header missing; query wins. Static chain Source stays SourceHeader,
 		// but ExtractSource must report SourceQuery.
-		ctx.Request().SetRequestURI("/?token=from-query")
 
 		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
 		require.Equal(t, SourceHeader, chain.Source)
@@ -1105,9 +1115,8 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("public_Chain_slice_mutation_does_not_affect_Extract", func(t *testing.T) {
 		t.Parallel()
-		ctx := apptest.Ctx(t, fiber.New())
+		ctx := extractorsTestQueryCtx(t)
 		ctx.Request().Header.Set("X-Token", "from-header")
-		ctx.Request().SetRequestURI("/?token=from-query")
 
 		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
 		require.Len(t, chain.Chain, 2)
@@ -1141,9 +1150,8 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("replaced_Extract_without_base_uses_static_Source", func(t *testing.T) {
 		t.Parallel()
-		ctx := apptest.Ctx(t, fiber.New())
+		ctx := extractorsTestQueryCtx(t)
 		ctx.Request().Header.SetCookie("session", "cookie-value")
-		ctx.Request().SetRequestURI("/?token=from-query")
 
 		// Full Extract replacement (does not call base): must not peek Chain
 		// children and mis-tag the replacement value as SourceQuery.
@@ -1156,8 +1164,7 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("shared_guard_blocks_cross_entry_during_source_path", func(t *testing.T) {
 		t.Parallel()
-		ctx := apptest.Ctx(t, fiber.New())
-		ctx.Request().SetRequestURI("/?token=from-query")
+		ctx := extractorsTestQueryCtx(t)
 
 		// First child re-enters the outer chain via Extract while the chain's
 		// Extract is active; second child would succeed if the cycle were ignored.
@@ -1193,8 +1200,7 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("clearing_public_Chain_makes_provenance_unresolved", func(t *testing.T) {
 		t.Parallel()
-		ctx := apptest.Ctx(t, fiber.New())
-		ctx.Request().SetRequestURI("/?token=from-query")
+		ctx := extractorsTestQueryCtx(t)
 
 		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
 		// The public Chain is how a record is tied back to the chain that made
@@ -1212,9 +1218,8 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("bare_Extract_does_not_pollute_later_Resolve", func(t *testing.T) {
 		t.Parallel()
-		ctx := apptest.Ctx(t, fiber.New())
+		ctx := extractorsTestQueryCtx(t)
 		ctx.Request().Header.SetCookie("session", "cookie-value")
-		ctx.Request().SetRequestURI("/?token=from-query")
 
 		// Legacy path: Extract alone must not leave a winner that a later
 		// source-aware call on an unrelated leaf would mis-attribute.
@@ -1226,22 +1231,16 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("rejected_nested_chain_does_not_poison_fallback_source", func(t *testing.T) {
 		t.Parallel()
-		ctx := apptest.Ctx(t, fiber.New())
+		ctx := extractorsTestQueryCtx(t)
 		ctx.Request().Header.SetCookie("session", "cookie-value")
-		ctx.Request().SetRequestURI("/?token=from-query")
 
 		// Nested chain would win via cookie, but a decorator rejects after
 		// base Extract. Outer fallback is query — source must be SourceQuery,
 		// not the rejected nested cookie capture.
-		inner := Chain(FromCookie("session"), FromHeader("X-Missing"))
-		base := inner.Extract
-		reject := errors.New("cookie rejected")
-		inner.Extract = func(c fiber.Ctx) (string, error) {
-			if _, err := base(c); err != nil {
-				return "", err
-			}
-			return "", reject
-		}
+		inner := extractorsTestDecorate(Chain(FromCookie("session"), FromHeader("X-Missing")),
+			func(fiber.Ctx, string) (string, error) {
+				return "", errors.New("cookie rejected")
+			})
 		outer := Chain(inner, FromQuery("token"))
 
 		extractorsTestExpectResolved(t, outer, ctx, "from-query", SourceQuery)
@@ -1249,18 +1248,12 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 	t.Run("chain_override_success_still_reports_winning_source", func(t *testing.T) {
 		t.Parallel()
-		ctx := apptest.Ctx(t, fiber.New())
-		ctx.Request().SetRequestURI("/?token=from-query")
+		ctx := extractorsTestQueryCtx(t)
 
-		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
-		base := chain.Extract
-		chain.Extract = func(c fiber.Ctx) (string, error) {
-			v, err := base(c)
-			if err != nil {
-				return "", err
-			}
-			return "normalized:" + v, nil
-		}
+		chain := extractorsTestDecorate(Chain(FromHeader("X-Token"), FromQuery("token")),
+			func(_ fiber.Ctx, v string) (string, error) {
+				return "normalized:" + v, nil
+			})
 
 		extractorsTestExpectResolved(t, chain, ctx, "normalized:from-query", SourceQuery)
 	})
@@ -1321,8 +1314,7 @@ func Test_Resolve_BareChain(t *testing.T) {
 
 	t.Run("winner reports its own source", func(t *testing.T) {
 		t.Parallel()
-		ctx := apptest.Ctx(t, fiber.New())
-		ctx.Request().SetRequestURI("/?token=from-query")
+		ctx := extractorsTestQueryCtx(t)
 
 		bare := Extractor{Chain: []Extractor{FromHeader("X-Token"), FromQuery("token")}}
 
@@ -1428,9 +1420,8 @@ func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 // Not parallel: AllocsPerRun counts allocations process-wide, and Go pauses
 // parallel tests while a sequential one runs.
 func Test_Chain_NoAllocations(t *testing.T) {
-	ctx := apptest.Ctx(t, fiber.New())
+	ctx := extractorsTestQueryCtx(t)
 	ctx.Request().Header.Set("X-Token", "from-header")
-	ctx.Request().SetRequestURI("/?token=from-query")
 
 	flat := Chain(FromCookie("token"), FromQuery("token"))
 	nested := Chain(FromHeader("X-Missing"), Chain(FromCookie("token"), FromQuery("token")))
@@ -1680,23 +1671,17 @@ func Test_ChainState_PoolHoldsSomethingElse(t *testing.T) {
 // source instead of the child that supplied it.
 func Test_Resolve_NestedCapturePreservesWinner(t *testing.T) {
 	t.Parallel()
-	ctx := apptest.Ctx(t, fiber.New())
-	ctx.Request().SetRequestURI("/?token=from-query")
+	ctx := extractorsTestQueryCtx(t)
 	ctx.Request().Header.SetCookie("other", "cookie-value")
 
-	chain := Chain(FromHeader("X-Missing"), FromQuery("token"))
-	base := chain.Extract
-	chain.Extract = func(c fiber.Ctx) (string, error) {
-		v, err := base(c)
-		if err != nil {
-			return "", err
-		}
-		// An unrelated source-aware lookup, after the winner was recorded.
-		if _, _, err := resolveSource(FromCookie("other"), c); err != nil {
-			return "", err
-		}
-		return v, nil
-	}
+	chain := extractorsTestDecorate(Chain(FromHeader("X-Missing"), FromQuery("token")),
+		func(c fiber.Ctx, v string) (string, error) {
+			// An unrelated source-aware lookup, after the winner was recorded.
+			if _, _, err := resolveSource(FromCookie("other"), c); err != nil {
+				return "", err
+			}
+			return v, nil
+		})
 
 	extractorsTestExpectResolved(t, chain, ctx, "from-query", SourceQuery, "the query child supplied the value")
 }

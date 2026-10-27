@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -466,8 +464,7 @@ func Test_Security_ClientDialer_DelegatesWhenPrivateAllowed(t *testing.T) {
 		{name: "dual stack", dualStack: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ln, err := net.Listen("tcp", "127.0.0.1:0")
-			require.NoError(t, err)
+			ln := proxyTestListen(t)
 			defer ln.Close() //nolint:errcheck // best-effort close
 
 			conn, err := newDialGuard(tc.dualStack).clientDialer(nil)(ln.Addr().String())
@@ -503,8 +500,7 @@ func Test_Security_InstallHostClientGuard_DialTimeout(t *testing.T) {
 // the request's timeout, or fasthttp's default when it left none, where DialTimeout would fail at once.
 func Test_Security_DefaultDialTimeout_ConnectsThroughFasthttp(t *testing.T) {
 	t.Parallel()
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := proxyTestListen(t)
 	t.Cleanup(func() { ln.Close() }) //nolint:errcheck // best-effort close in cleanup
 
 	for _, dualStack := range []bool{false, true} {
@@ -675,8 +671,7 @@ func Test_Security_RequestTimeout_ReachesTheConnect(t *testing.T) {
 		*dials = nil
 		app := fiber.New()
 		app.Get("/", handler)
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
-		require.NoError(t, err, name)
+		resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
 		require.NoError(t, resp.Body.Close(), name) // the stand-in connection answers nothing, so the request fails
 
 		require.NotEmpty(t, *dials, name)

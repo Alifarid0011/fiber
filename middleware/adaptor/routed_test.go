@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -293,22 +293,20 @@ func Test_FiberHandler_RoutesTheURL(t *testing.T) {
 	t.Parallel()
 	h := func(c fiber.Ctx) error { return c.SendString(c.Path() + "|" + c.OriginalURL()) }
 
-	rec := httptest.NewRecorder()
-	http.StripPrefix("/app", FiberHandler(h)).ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/app/users/%41?x=1", http.NoBody))
+	stripped := http.StripPrefix("/app", FiberHandler(h))
+	rec := adaptorTestServe(stripped, apptest.Req(fiber.MethodGet, "/app/users/%41?x=1"))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "/users/A|/users/%41?x=1", rec.Body.String())
 
 	built, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://example.com/built/%41?x=1", http.NoBody)
 	require.NoError(t, err)
 	require.Empty(t, built.RequestURI)
-	rec = httptest.NewRecorder()
-	FiberHandler(h).ServeHTTP(rec, built)
+	rec = adaptorTestServe(FiberHandler(h), built)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "/built/A|/built/%41?x=1", rec.Body.String())
 
 	// As served by net/http, the two agree and the request line is used as is.
-	rec = httptest.NewRecorder()
-	FiberHandler(h).ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/served/%41?x=1", http.NoBody))
+	rec = adaptorTestServe(FiberHandler(h), apptest.Req(fiber.MethodGet, "/served/%41?x=1"))
 	require.Equal(t, "/served/A|/served/%41?x=1", rec.Body.String())
 }
 
@@ -349,8 +347,7 @@ func Test_FiberHandler_ConnectAuthorityForm(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			rec := httptest.NewRecorder()
-			tc.handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodConnect, tc.target, http.NoBody))
+			rec := adaptorTestServe(tc.handler, apptest.Req(fiber.MethodConnect, tc.target))
 			require.Equal(t, http.StatusOK, rec.Code)
 			path, host, ok := strings.Cut(rec.Body.String(), "|")
 			require.True(t, ok, rec.Body.String())
@@ -565,8 +562,7 @@ func Test_FiberHandler_RoutesRawBytes(t *testing.T) {
 		"/p/café": "café",
 		"/p/%41":  "A",
 	} {
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		rec := adaptorTestServe(h, apptest.Req(fiber.MethodGet, target))
 		require.Equal(t, http.StatusOK, rec.Code, target)
 		require.Equal(t, want, rec.Body.String(), target)
 	}

@@ -170,11 +170,27 @@ func Test_Security_ValidateUpstream_Rejects(t *testing.T) {
 	}
 }
 
-func Test_Security_ValidateUpstream_AllowsPrivateOptIn(t *testing.T) {
+// Test_Security_ValidateUpstream_Accepts pins the upstreams validateUpstream hands back: a private
+// address once the policy opts in, and a public IP literal under the strict defaults.
+func Test_Security_ValidateUpstream_Accepts(t *testing.T) {
 	t.Parallel()
-	u, err := validateUpstream("http://127.0.0.1:8080", proxyTestAllowPrivatePolicy(), nil)
-	require.NoError(t, err)
-	require.Equal(t, "127.0.0.1:8080", u.Host)
+	for _, tc := range []struct {
+		name, upstream, host string
+		policy               SecurityPolicy
+	}{
+		{
+			name: "private IP with the opt-in", upstream: "http://127.0.0.1:8080", host: "127.0.0.1:8080",
+			policy: proxyTestAllowPrivatePolicy(),
+		},
+		{name: "public IP literal", upstream: "http://8.8.8.8", host: "8.8.8.8", policy: DefaultSecurityPolicy()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			u, err := validateUpstream(tc.upstream, tc.policy, nil)
+			require.NoError(t, err)
+			require.Equal(t, tc.host, u.Host)
+		})
+	}
 }
 
 func Test_Security_Forward_BlocksPrivateByDefault(t *testing.T) {
@@ -344,8 +360,7 @@ func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { httpsLn.Close() }) //nolint:errcheck // best effort
 
-	plaintextLn, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	plaintextLn := proxyTestListen(t)
 	t.Cleanup(func() { plaintextLn.Close() }) //nolint:errcheck // best effort
 
 	plaintextAddr := plaintextLn.Addr().String()
@@ -487,13 +502,12 @@ func Test_Security_JoinUpstreamPath(t *testing.T) {
 func Test_Security_FollowRedirects_ReappliesSchemePerHop(t *testing.T) {
 	t.Parallel()
 	var secondHopScheme string
-	followRecording(t, "http://origin.example/", map[string]redirectStep{
-		"http://origin.example/": {status: fasthttp.StatusFound, location: "https://origin.example/secure"},
-	}, nil, func(req *fasthttp.Request) {
-		if string(req.URI().Path()) == "/secure" {
-			secondHopScheme = string(req.URI().Scheme())
-		}
-	})
+	followRecording(t, "http://origin.example/", fasthttp.StatusFound, "https://origin.example/secure",
+		nil, func(req *fasthttp.Request) {
+			if string(req.URI().Path()) == "/secure" {
+				secondHopScheme = string(req.URI().Scheme())
+			}
+		})
 
 	require.Equal(t, "https", secondHopScheme, "scheme upgrade must carry through to the next hop")
 }
@@ -745,16 +759,11 @@ func Test_Security_ResolveRedirect(t *testing.T) {
 func proxyTestFollow(t *testing.T, client *fasthttp.Client, start string, maxRedirects int, policy SecurityPolicy) error {
 	t.Helper()
 
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	t.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-		fasthttp.ReleaseResponse(resp)
-	})
+	req := proxyTestRequest(t)
 	req.SetRequestURI(start)
 	req.Header.SetMethod(fasthttp.MethodGet)
 
-	return followRedirects(client, req, resp, maxRedirects, mustParseTestURL(t, start), policy)
+	return followRedirects(client, req, proxyTestResponse(t), maxRedirects, mustParseTestURL(t, start), policy)
 }
 
 // Test_Security_FollowRedirects_NegativeMaxBecomesZero ensures a
@@ -785,23 +794,22 @@ func Test_Security_FollowRedirects_LeavesCallerRequestIntact(t *testing.T) {
 	t.Parallel()
 	type seen struct{ method, body, contentType, auth, cookie string }
 	var hops []seen
-	req := followRecording(t, "http://first.example/start", map[string]redirectStep{
-		"http://first.example/start": {status: fasthttp.StatusSeeOther, location: "http://second.example/after"},
-	}, func(req *fasthttp.Request) {
-		req.Header.SetMethod(fasthttp.MethodPost)
-		req.Header.SetContentType(fiber.MIMEApplicationForm)
-		req.SetBodyString("token=secret&b=2")
-		withCredentials(req)
-		require.Equal(t, "secret", string(req.PostArgs().Peek("token")), "the handler read the form")
-	}, func(req *fasthttp.Request) {
-		hops = append(hops, seen{
-			method:      string(req.Header.Method()),
-			body:        string(req.Body()),
-			contentType: string(req.Header.ContentType()),
-			auth:        string(req.Header.Peek(fiber.HeaderAuthorization)),
-			cookie:      string(req.Header.Peek(fiber.HeaderCookie)),
+	req := followRecording(t, "http://first.example/start", fasthttp.StatusSeeOther, "http://second.example/after",
+		func(req *fasthttp.Request) {
+			req.Header.SetMethod(fasthttp.MethodPost)
+			req.Header.SetContentType(fiber.MIMEApplicationForm)
+			req.SetBodyString("token=secret&b=2")
+			withCredentials(req)
+			require.Equal(t, "secret", string(req.PostArgs().Peek("token")), "the handler read the form")
+		}, func(req *fasthttp.Request) {
+			hops = append(hops, seen{
+				method:      string(req.Header.Method()),
+				body:        string(req.Body()),
+				contentType: string(req.Header.ContentType()),
+				auth:        string(req.Header.Peek(fiber.HeaderAuthorization)),
+				cookie:      string(req.Header.Peek(fiber.HeaderCookie)),
+			})
 		})
-	})
 
 	require.Equal(t, []seen{
 		{method: fasthttp.MethodPost, body: "token=secret&b=2", contentType: fiber.MIMEApplicationForm, auth: "Bearer secret", cookie: "session=abc"},
@@ -829,15 +837,14 @@ func Test_Security_FollowRedirects_KeepsMultipartForm(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, mw.Close())
 
-	req := followRecording(t, "http://example.com/start", map[string]redirectStep{
-		"http://example.com/start": {status: fasthttp.StatusSeeOther, location: "http://example.com/after"},
-	}, func(req *fasthttp.Request) {
-		req.Header.SetMethod(fasthttp.MethodPost)
-		req.Header.SetMultipartFormBoundary(mw.Boundary())
-		req.SetBody(body.Bytes())
-		_, formErr := req.MultipartForm()
-		require.NoError(t, formErr)
-	}, nil)
+	req := followRecording(t, "http://example.com/start", fasthttp.StatusSeeOther, "http://example.com/after",
+		func(req *fasthttp.Request) {
+			req.Header.SetMethod(fasthttp.MethodPost)
+			req.Header.SetMultipartFormBoundary(mw.Boundary())
+			req.SetBody(body.Bytes())
+			_, formErr := req.MultipartForm()
+			require.NoError(t, formErr)
+		}, nil)
 
 	form, err := req.MultipartForm()
 	require.NoError(t, err)
@@ -951,38 +958,6 @@ func Test_Security_RoundRobin_ConcurrentSelection(t *testing.T) {
 
 	for i := range counts {
 		require.Equal(t, int32(100), counts[i].Load())
-	}
-}
-
-func Test_Security_ValidateUpstream_PublicIPLiteral(t *testing.T) {
-	t.Parallel()
-	u, err := validateUpstream("http://8.8.8.8", DefaultSecurityPolicy(), nil)
-	require.NoError(t, err)
-	require.Equal(t, "8.8.8.8", u.Host)
-}
-
-func Test_Security_Balancer_ModifyErrorPropagates(t *testing.T) {
-	t.Parallel()
-	sentinel := errors.New("modify failed")
-
-	for _, tc := range []struct {
-		name string
-		cfg  Config
-	}{
-		{name: "ModifyRequest", cfg: Config{ModifyRequest: func(fiber.Ctx) error { return sentinel }}},
-		{name: "ModifyResponse", cfg: Config{ModifyResponse: func(fiber.Ctx) error { return sentinel }}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString("ok") })
-
-			cfg := tc.cfg
-			cfg.Servers = []string{addr}
-			app := fiber.New()
-			app.Use(Balancer(cfg))
-
-			apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
-		})
 	}
 }
 
@@ -1115,17 +1090,50 @@ func mustParseTestURL(tb testing.TB, raw string) *url.URL {
 	return u
 }
 
-// followRecording follows start through steps with a GET that setup may reshape, and hands record
-// each request as it reaches the transport. It returns the caller's request, valid until test end.
-func followRecording(t *testing.T, start string, steps map[string]redirectStep, setup, record func(req *fasthttp.Request)) *fasthttp.Request {
+// proxyTestRequest returns a blank fasthttp request that goes back to the pool when tb ends.
+func proxyTestRequest(tb testing.TB) *fasthttp.Request {
+	tb.Helper()
+
+	req := fasthttp.AcquireRequest()
+	tb.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	return req
+}
+
+// proxyTestResponse returns a blank fasthttp response that goes back to the pool when tb ends.
+func proxyTestResponse(tb testing.TB) *fasthttp.Response {
+	tb.Helper()
+
+	resp := fasthttp.AcquireResponse()
+	tb.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
+	return resp
+}
+
+// followRecording follows a GET for start that setup may reshape through a redirect to location with
+// status, and hands record each request as it reaches the transport. It returns the caller's request.
+func followRecording(
+	t *testing.T, start string, status int, location string, setup, record func(req *fasthttp.Request),
+) *fasthttp.Request {
 	t.Helper()
 
-	req, err := followRecordingErr(t, start, steps, setup, record)
+	req, err := followRecordingErr(t, start, status, location, setup, record)
 	require.NoError(t, err)
 	return req
 }
 
-func followRecordingErr(t *testing.T, start string, steps map[string]redirectStep, setup, record func(req *fasthttp.Request)) (*fasthttp.Request, error) {
+// followRecordingErr is followRecording that returns the error the loop ends in.
+func followRecordingErr(
+	t *testing.T, start string, status int, location string, setup, record func(req *fasthttp.Request),
+) (*fasthttp.Request, error) {
+	t.Helper()
+
+	steps := map[string]redirectStep{start: {status: status, location: location}}
+	return followRecordingChain(t, start, steps, setup, record)
+}
+
+// followRecordingChain follows start through steps, as followRecordingErr does for one.
+func followRecordingChain(
+	t *testing.T, start string, steps map[string]redirectStep, setup, record func(req *fasthttp.Request),
+) (*fasthttp.Request, error) {
 	t.Helper()
 
 	policy := proxyTestAllowPrivatePolicy()
@@ -1133,12 +1141,8 @@ func followRecordingErr(t *testing.T, start string, steps map[string]redirectSte
 	client, _ := newCountingRedirectClient(steps)
 	client.onRequest = record
 
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	t.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-		fasthttp.ReleaseResponse(resp)
-	})
+	req := proxyTestRequest(t)
+	resp := proxyTestResponse(t)
 	req.SetRequestURI(start)
 	req.Header.SetMethod(fasthttp.MethodGet)
 	if setup != nil {
@@ -1184,8 +1188,7 @@ func Test_Security_RedirectRequest(t *testing.T) {
 	for _, tc := range redirectRewriteCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			req := fasthttp.AcquireRequest()
-			defer fasthttp.ReleaseRequest(req)
+			req := proxyTestRequest(t)
 			req.Header.SetMethod(tc.method)
 			req.Header.SetContentType("text/plain")
 			req.SetBodyString("payload")
@@ -1215,8 +1218,7 @@ func Test_Security_RedirectRequest(t *testing.T) {
 // handler's body alone.
 func Test_Security_RedirectRequest_LeavesTheHandlerBody(t *testing.T) {
 	t.Parallel()
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	req := proxyTestRequest(t)
 	req.Header.SetMethod(fasthttp.MethodPut)
 	req.SetBodyString("payload-of-request-A")
 	held := req.Body()
@@ -1225,8 +1227,7 @@ func Test_Security_RedirectRequest_LeavesTheHandlerBody(t *testing.T) {
 	redirectRequest(hop)
 
 	// Another request takes a pooled body buffer, as another connection would.
-	other := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(other)
+	other := proxyTestRequest(t)
 	other.SetBodyString("payload-of-request-B")
 
 	require.Equal(t, "payload-of-request-A", string(held))
@@ -1239,8 +1240,7 @@ func Test_Security_RedirectRequest_DropsParsedForm(t *testing.T) {
 	for _, method := range []string{fasthttp.MethodPost, fasthttp.MethodPut} {
 		t.Run(method, func(t *testing.T) {
 			t.Parallel()
-			req := fasthttp.AcquireRequest()
-			defer fasthttp.ReleaseRequest(req)
+			req := proxyTestRequest(t)
 			req.SetRequestURI("http://example.com/start")
 			req.Header.SetMethod(method)
 			req.Header.SetContentType(fiber.MIMEApplicationForm)
@@ -1263,8 +1263,7 @@ func Test_Security_RedirectRequest_DropsFraming(t *testing.T) {
 	t.Parallel()
 	const raw = "POST /start HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nTrailer: X-Sum\r\n\r\n" +
 		"3\r\nabc\r\n0\r\nX-Sum: 1\r\n\r\n"
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	req := proxyTestRequest(t)
 	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
 	require.Equal(t, -1, req.Header.ContentLength(), "the request is chunked")
 
@@ -1288,14 +1287,13 @@ func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var hops []string
-			followRecording(t, "http://example.com/start", map[string]redirectStep{
-				"http://example.com/start": {status: tc.status, location: "http://example.com/after"},
-			}, func(req *fasthttp.Request) {
-				req.Header.SetMethod(tc.method)
-				req.SetBodyString("payload")
-			}, func(req *fasthttp.Request) {
-				hops = append(hops, string(req.Header.Method())+" "+string(req.Body()))
-			})
+			followRecording(t, "http://example.com/start", tc.status, "http://example.com/after",
+				func(req *fasthttp.Request) {
+					req.Header.SetMethod(tc.method)
+					req.SetBodyString("payload")
+				}, func(req *fasthttp.Request) {
+					hops = append(hops, string(req.Header.Method())+" "+string(req.Body()))
+				})
 
 			second := tc.wantMethod + " "
 			if tc.wantBody {
@@ -1327,14 +1325,13 @@ func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T)
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			var sawAuth, sawCookie string
-			followRecording(t, tc.start, map[string]redirectStep{
-				tc.start: {status: fasthttp.StatusFound, location: tc.location},
-			}, withCredentials, func(req *fasthttp.Request) {
-				if string(req.URI().Path()) == "/next" {
-					sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
-					sawCookie = string(req.Header.Peek(fiber.HeaderCookie))
-				}
-			})
+			followRecording(t, tc.start, fasthttp.StatusFound, tc.location,
+				withCredentials, func(req *fasthttp.Request) {
+					if string(req.URI().Path()) == "/next" {
+						sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
+						sawCookie = string(req.Header.Peek(fiber.HeaderCookie))
+					}
+				})
 
 			require.Equal(t, tc.wantAuth, sawAuth)
 			if tc.wantAuth == "" {
@@ -1363,11 +1360,10 @@ func Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart(t *testing.T
 		"Content-Length: " + strconv.Itoa(form.Len()) + "\r\n\r\n" + form.String()
 
 	var bodies []string
-	req := followRecording(t, "http://first.example/start", map[string]redirectStep{
-		"http://first.example/start": {status: fasthttp.StatusTemporaryRedirect, location: "http://second.example/next"},
-	}, func(req *fasthttp.Request) {
-		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
-	}, func(req *fasthttp.Request) { bodies = append(bodies, string(req.Body())) })
+	req := followRecording(t, "http://first.example/start", fasthttp.StatusTemporaryRedirect,
+		"http://second.example/next", func(req *fasthttp.Request) {
+			require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+		}, func(req *fasthttp.Request) { bodies = append(bodies, string(req.Body())) })
 
 	require.Len(t, bodies, 2)
 	for hop, body := range bodies {
@@ -1400,14 +1396,13 @@ func Test_Security_FollowRedirects_CopiedHopKeepsBody(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			var hops []string
-			followRecording(t, "http://first.example/start", map[string]redirectStep{
-				"http://first.example/start": {status: tc.status, location: "http://second.example/next"},
-			}, func(req *fasthttp.Request) {
-				req.Header.SetMethod(tc.method)
-				req.SetBodyString(tc.body)
-			}, func(req *fasthttp.Request) {
-				hops = append(hops, string(req.Header.Method())+" "+string(req.Body()))
-			})
+			followRecording(t, "http://first.example/start", tc.status, "http://second.example/next",
+				func(req *fasthttp.Request) {
+					req.Header.SetMethod(tc.method)
+					req.SetBodyString(tc.body)
+				}, func(req *fasthttp.Request) {
+					hops = append(hops, string(req.Header.Method())+" "+string(req.Body()))
+				})
 
 			want := tc.method + " " + tc.body
 			require.Equal(t, []string{want, want}, hops)
@@ -1443,9 +1438,7 @@ func Test_Security_FollowRedirects_CopiedHopKeepsTimeoutAndUserValues(t *testing
 			t.Parallel()
 			closer := &closeCounter{}
 			var hops []hopState
-			followRecording(t, "http://first.example/", map[string]redirectStep{
-				"http://first.example/": {status: tc.status, location: tc.location},
-			}, func(req *fasthttp.Request) {
+			followRecording(t, "http://first.example/", tc.status, tc.location, func(req *fasthttp.Request) {
 				req.Header.SetMethod(tc.method)
 				req.SetTimeout(750 * time.Millisecond)
 				req.SetUserValue("trace", "abc")
@@ -1477,20 +1470,19 @@ func Test_Security_FollowRedirects_StreamedBody(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var methods []string
-			_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
-				"http://example.com/start": {status: tc.status, location: "http://example.com/after"},
-			}, func(req *fasthttp.Request) {
-				req.Header.SetMethod(tc.method)
-				req.SetBodyStream(strings.NewReader("payload"), len("payload"))
-			}, func(req *fasthttp.Request) {
-				methods = append(methods, string(req.Header.Method()))
-				if req.IsBodyStream() { // sending the request consumes the stream
-					body, readErr := io.ReadAll(req.BodyStream())
-					require.NoError(t, readErr)
-					require.Equal(t, "payload", string(body))
-					require.NoError(t, req.CloseBodyStream())
-				}
-			})
+			_, err := followRecordingErr(t, "http://example.com/start", tc.status, "http://example.com/after",
+				func(req *fasthttp.Request) {
+					req.Header.SetMethod(tc.method)
+					req.SetBodyStream(strings.NewReader("payload"), len("payload"))
+				}, func(req *fasthttp.Request) {
+					methods = append(methods, string(req.Header.Method()))
+					if req.IsBodyStream() { // sending the request consumes the stream
+						body, readErr := io.ReadAll(req.BodyStream())
+						require.NoError(t, readErr)
+						require.Equal(t, "payload", string(body))
+						require.NoError(t, req.CloseBodyStream())
+					}
+				})
 
 			if tc.wantBody {
 				require.ErrorIs(t, err, fasthttp.ErrRedirectBodyStream)
@@ -1537,13 +1529,12 @@ func Test_Security_FollowRedirects_ServerStreamedBody(t *testing.T) {
 				t.Run(tc.name+" "+strconv.Itoa(status)+" to "+location, func(t *testing.T) {
 					t.Parallel()
 					var wires []string
-					_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
-						"http://example.com/start": {status: status, location: location},
-					}, func(req *fasthttp.Request) {
-						streamedRequest(t, req, "POST /start HTTP/1.1\r\nHost: example.com\r\n"+tc.framing+"\r\n\r\n"+tc.onWire)
-					}, func(req *fasthttp.Request) {
-						wires = append(wires, req.String()) // sending the request consumes the stream
-					})
+					_, err := followRecordingErr(t, "http://example.com/start", status, location,
+						func(req *fasthttp.Request) {
+							streamedRequest(t, req, "POST /start HTTP/1.1\r\nHost: example.com\r\n"+tc.framing+"\r\n\r\n"+tc.onWire)
+						}, func(req *fasthttp.Request) {
+							wires = append(wires, req.String()) // sending the request consumes the stream
+						})
 
 					if tc.wantErr {
 						require.ErrorIs(t, err, fasthttp.ErrRedirectBodyStream)
@@ -1575,7 +1566,7 @@ func Test_Security_FollowRedirects_StreamedBodyEndsWithTheMethod(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			var methods []string
-			_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
+			_, err := followRecordingChain(t, "http://example.com/start", map[string]redirectStep{
 				"http://example.com/start": {status: fasthttp.StatusSeeOther, location: "http://example.com/mid"},
 				"http://example.com/mid":   {status: fasthttp.StatusTemporaryRedirect, location: "http://example.com/end"},
 			}, func(req *fasthttp.Request) {
@@ -1596,12 +1587,11 @@ func Test_Security_FollowRedirects_StreamedBodyEndsWithTheMethod(t *testing.T) {
 func Test_Security_FollowRedirects_UnreadStream(t *testing.T) {
 	t.Parallel()
 	reader := &countingReader{Reader: strings.NewReader("payload")}
-	_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
-		"http://example.com/start": {status: fasthttp.StatusTemporaryRedirect, location: "http://example.com/after"},
-	}, func(req *fasthttp.Request) {
-		req.Header.SetMethod(fasthttp.MethodPost)
-		req.SetBodyStream(reader, len("payload"))
-	}, nil)
+	_, err := followRecordingErr(t, "http://example.com/start", fasthttp.StatusTemporaryRedirect,
+		"http://example.com/after", func(req *fasthttp.Request) {
+			req.Header.SetMethod(fasthttp.MethodPost)
+			req.SetBodyStream(reader, len("payload"))
+		}, nil)
 
 	require.ErrorIs(t, err, fasthttp.ErrRedirectBodyStream)
 	require.Zero(t, reader.read.Load(), "the stream stays unread")
@@ -1631,8 +1621,7 @@ func Test_Security_RedirectRequest_DropsContentFields(t *testing.T) {
 	for name, canonical := range map[string]bool{"canonical names": true, "names as sent": false} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			req := fasthttp.AcquireRequest()
-			defer fasthttp.ReleaseRequest(req)
+			req := proxyTestRequest(t)
 			if !canonical {
 				req.Header.DisableNormalizing()
 			}
@@ -1672,23 +1661,22 @@ func Test_Security_FollowRedirects_ContentFieldsFollowTheBody(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			var hops [][]string
-			followRecording(t, "http://example.com/start", map[string]redirectStep{
-				"http://example.com/start": {status: tc.status, location: "http://example.com/after"},
-			}, func(req *fasthttp.Request) {
-				req.Header.SetMethod(fasthttp.MethodPost)
-				req.SetBodyString("payload")
-				for _, field := range contentFieldNames {
-					req.Header.Set(field, "x")
-				}
-			}, func(req *fasthttp.Request) {
-				var present []string
-				for _, field := range contentFieldNames {
-					if len(req.Header.Peek(field)) > 0 {
-						present = append(present, field)
+			followRecording(t, "http://example.com/start", tc.status, "http://example.com/after",
+				func(req *fasthttp.Request) {
+					req.Header.SetMethod(fasthttp.MethodPost)
+					req.SetBodyString("payload")
+					for _, field := range contentFieldNames {
+						req.Header.Set(field, "x")
 					}
-				}
-				hops = append(hops, present)
-			})
+				}, func(req *fasthttp.Request) {
+					var present []string
+					for _, field := range contentFieldNames {
+						if len(req.Header.Peek(field)) > 0 {
+							present = append(present, field)
+						}
+					}
+					hops = append(hops, present)
+				})
 
 			require.Len(t, hops, 2)
 			require.Equal(t, contentFieldNames, hops[0])

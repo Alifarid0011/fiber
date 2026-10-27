@@ -24,21 +24,33 @@ func newBenchCtx(b *testing.B, cfg ...fiber.Config) fiber.Ctx {
 	return apptest.Ctx(b, fiber.New(cfg...))
 }
 
+// newBenchHeaderCtx returns a context whose request carries the header name: value.
+func newBenchHeaderCtx(b *testing.B, name, value string) fiber.Ctx {
+	b.Helper()
+	c := newBenchCtx(b)
+	c.Request().Header.Set(name, value)
+	return c
+}
+
+// newBenchURICtx returns a context whose request is for uri.
+func newBenchURICtx(b *testing.B, uri string) fiber.Ctx {
+	b.Helper()
+	c := newBenchCtx(b)
+	c.Request().SetRequestURI(uri)
+	return c
+}
+
 // newBenchKeyCtx returns a context whose request carries benchToken in X-API-Key.
 func newBenchKeyCtx(b *testing.B) fiber.Ctx {
 	b.Helper()
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-API-Key", benchToken)
-	return c
+	return newBenchHeaderCtx(b, "X-API-Key", benchToken)
 }
 
 // newBenchQueryCtx returns a context whose request carries api_key=abc123 in its
 // query string.
 func newBenchQueryCtx(b *testing.B) fiber.Ctx {
 	b.Helper()
-	c := newBenchCtx(b)
-	c.Request().SetRequestURI("/api?api_key=abc123")
-	return c
+	return newBenchURICtx(b, "/api?api_key=abc123")
 }
 
 func benchExtract(b *testing.B, e Extractor, c fiber.Ctx) {
@@ -90,9 +102,7 @@ func Benchmark_Extractor_FromHeader_Hit(b *testing.B) {
 }
 
 func Benchmark_Extractor_FromHeader_Miss(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-Other", "x")
-	benchExtract(b, FromHeader("X-API-Key"), c)
+	benchExtract(b, FromHeader("X-API-Key"), newBenchHeaderCtx(b, "X-Other", "x"))
 }
 
 func Benchmark_Extractor_FromHeader_Hit_ManyHeaders(b *testing.B) {
@@ -121,15 +131,12 @@ func Benchmark_Extractor_FromHeader_Hit_Immutable(b *testing.B) {
 }
 
 func Benchmark_Extractor_FromAuthHeader_Bearer_Hit(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set(fiber.HeaderAuthorization, "Bearer "+benchToken)
-	benchExtract(b, FromAuthHeader("Bearer"), c)
+	benchExtract(b, FromAuthHeader("Bearer"), newBenchHeaderCtx(b, fiber.HeaderAuthorization, "Bearer "+benchToken))
 }
 
 func Benchmark_Extractor_FromAuthHeader_Basic_Hit(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set(fiber.HeaderAuthorization, "Basic dXNlcjpwYXNzd29yZA==")
-	benchExtract(b, FromAuthHeader("Basic"), c)
+	benchExtract(b, FromAuthHeader("Basic"),
+		newBenchHeaderCtx(b, fiber.HeaderAuthorization, "Basic dXNlcjpwYXNzd29yZA=="))
 }
 
 func Benchmark_Extractor_FromAuthHeader_Miss(b *testing.B) {
@@ -137,15 +144,12 @@ func Benchmark_Extractor_FromAuthHeader_Miss(b *testing.B) {
 }
 
 func Benchmark_Extractor_FromAuthHeader_WrongScheme(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set(fiber.HeaderAuthorization, "Basic dXNlcjpwYXNzd29yZA==")
-	benchExtract(b, FromAuthHeader("Bearer"), c)
+	benchExtract(b, FromAuthHeader("Bearer"),
+		newBenchHeaderCtx(b, fiber.HeaderAuthorization, "Basic dXNlcjpwYXNzd29yZA=="))
 }
 
 func Benchmark_Extractor_FromAuthHeader_NoScheme(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set(fiber.HeaderAuthorization, "Bearer "+benchToken)
-	benchExtract(b, FromAuthHeader(""), c)
+	benchExtract(b, FromAuthHeader(""), newBenchHeaderCtx(b, fiber.HeaderAuthorization, "Bearer "+benchToken))
 }
 
 func Benchmark_Extractor_FromCookie_Hit(b *testing.B) {
@@ -162,15 +166,11 @@ func Benchmark_Extractor_FromCookie_Miss(b *testing.B) {
 }
 
 func Benchmark_Extractor_FromQuery_Hit(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().SetRequestURI("/api?format=json&token=abc123")
-	benchExtract(b, FromQuery("token"), c)
+	benchExtract(b, FromQuery("token"), newBenchURICtx(b, "/api?format=json&token=abc123"))
 }
 
 func Benchmark_Extractor_FromQuery_Miss(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().SetRequestURI("/api?format=json")
-	benchExtract(b, FromQuery("token"), c)
+	benchExtract(b, FromQuery("token"), newBenchURICtx(b, "/api?format=json"))
 }
 
 func Benchmark_Extractor_FromForm_Hit(b *testing.B) {
