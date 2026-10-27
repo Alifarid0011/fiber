@@ -91,17 +91,9 @@ func Test_ETag_PassThrough(t *testing.T) {
 		name    string
 		status  int
 	}{
-		{
-			name:    "skip error",
-			handler: func(_ fiber.Ctx) error { return fiber.ErrForbidden },
-			status:  fiber.StatusForbidden,
-		},
-		{
-			name:    "not status OK",
-			handler: func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) },
-			status:  fiber.StatusCreated,
-		},
-		{name: "no body", handler: func(_ fiber.Ctx) error { return nil }, status: fiber.StatusOK},
+		{func(_ fiber.Ctx) error { return fiber.ErrForbidden }, "skip error", fiber.StatusForbidden},
+		{func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }, "not status OK", fiber.StatusCreated},
+		{func(_ fiber.Ctx) error { return nil }, "no body", fiber.StatusOK},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -178,9 +170,7 @@ func Test_ETag_ConditionalGet(t *testing.T) {
 func Test_ETag_CustomEtagPut(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
 	app.Use(New())
-
 	app.Put("/", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderETag, `"custom"`)
 		if !bytes.Equal(c.Request().Header.Peek(fiber.HeaderIfMatch), []byte(`"custom"`)) {
@@ -189,18 +179,14 @@ func Test_ETag_CustomEtagPut(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	req := httptest.NewRequest(fiber.MethodPut, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderIfMatch, `"non-match"`)
+	req := apptest.Req(fiber.MethodPut, "/", apptest.WithHeader(fiber.HeaderIfMatch, `"non-match"`))
 	apptest.Expect(t, app, req, fiber.StatusPreconditionFailed)
 }
 
 func Benchmark_Etag(b *testing.B) {
 	app := fiber.New()
-
 	app.Use(New())
-
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
-
+	app.Get("/", etagTestHello)
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
@@ -260,7 +246,6 @@ func Test_ETag_WeakComparison(t *testing.T) {
 
 func Test_ETag_IfNoneMatchOnlyForGetHead(t *testing.T) {
 	t.Parallel()
-
 	// RFC 9110 §13.1.2 reserves 304 for GET and HEAD.
 	testCases := []struct {
 		method         string
@@ -311,15 +296,30 @@ func Test_ETag_SplitIfNoneMatch(t *testing.T) {
 	apptest.Expect(t, app, req, fiber.StatusNotModified)
 }
 
-func Test_ETag_HandlerETagSpellingsWithoutNormalizing(t *testing.T) {
+// Test_ETag_HandlerETagWithoutNormalizing covers a handler's own ETag under
+// DisableHeaderNormalizing, set through c.Set and under every spelling of the
+// name: the middleware must keep it and add no second ETag line.
+func Test_ETag_HandlerETagWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-	for _, spelling := range []string{"ETag", "Etag", "etag", "ETAG", "eTaG"} {
-		t.Run(spelling, func(t *testing.T) {
+	// Without a spelling the handler sets its ETag through c.Set.
+	for _, tc := range []struct{ name, spelling, etag string }{
+		{"c.Set", "", `"custom"`},
+		{"ETag", "ETag", `"upstream"`},
+		{"Etag", "Etag", `"upstream"`},
+		{"etag", "etag", `"upstream"`},
+		{"ETAG", "ETAG", `"upstream"`},
+		{"eTaG", "eTaG", `"upstream"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 			app.Use(New())
 			app.Get("/", func(c fiber.Ctx) error {
-				c.Response().Header.Set(spelling, `"upstream"`)
+				if tc.spelling == "" {
+					c.Set("ETag", tc.etag)
+				} else {
+					c.Response().Header.Set(tc.spelling, tc.etag)
+				}
 				return c.SendString("Hello, World!")
 			})
 
@@ -336,34 +336,9 @@ func Test_ETag_HandlerETagSpellingsWithoutNormalizing(t *testing.T) {
 					lines = append(lines, string(v))
 				}
 			}
-			require.Equal(t, []string{`"upstream"`}, lines)
+			require.Equal(t, []string{tc.etag}, lines)
 		})
 	}
-}
-
-func Test_ETag_HandlerETagWithoutNormalizing(t *testing.T) {
-	t.Parallel()
-	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
-	app.Use(New())
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Set("ETag", `"custom"`)
-		return c.SendString("Hello, World!")
-	})
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.SetRequestURI("/")
-	fctx.Request.Header.SetMethod(fiber.MethodGet)
-	fctx.Request.Header.DisableNormalizing()
-	fctx.Response.Header.DisableNormalizing()
-	app.Handler()(fctx)
-
-	var lines []string
-	for k, v := range fctx.Response.Header.All() {
-		if utils.EqualFold(string(k), fiber.HeaderETag) {
-			lines = append(lines, string(v))
-		}
-	}
-	require.Equal(t, []string{`"custom"`}, lines)
 }
 
 func Test_Generate_MatchesCRC(t *testing.T) {

@@ -2,8 +2,6 @@ package hostauthorization
 
 import (
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -22,6 +20,7 @@ func Test_ConfigDefault(t *testing.T) {
 // Test_ConfigPanics covers the configurations that must be rejected at startup.
 func Test_ConfigPanics(t *testing.T) {
 	t.Parallel()
+	longHost, longLabel := strings.Repeat("a", 254), strings.Repeat("a", 64)+".example.com"
 	for _, tc := range []struct {
 		fn   func()
 		name string
@@ -29,13 +28,9 @@ func Test_ConfigPanics(t *testing.T) {
 		{name: "no hosts or func", fn: func() { configDefault(Config{}) }},
 		{name: "empty slice", fn: func() { configDefault(Config{AllowedHosts: []string{}}) }},
 		{name: "no args", fn: func() { configDefault() }},
-		{name: "host exceeds RFC 1035 total length", fn: func() {
-			New(Config{AllowedHosts: []string{strings.Repeat("a", 254)}})
-		}},
+		{name: "host exceeds RFC 1035 total length", fn: func() { New(Config{AllowedHosts: []string{longHost}}) }},
 		{name: "leading dot form", fn: func() { New(Config{AllowedHosts: []string{".myapp.com"}}) }},
-		{name: "label exceeds RFC 1035 length", fn: func() {
-			New(Config{AllowedHosts: []string{strings.Repeat("a", 64) + ".example.com"}})
-		}},
+		{name: "label exceeds RFC 1035 length", fn: func() { New(Config{AllowedHosts: []string{longLabel}}) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -348,23 +343,14 @@ func Test_HostAuthorization_XForwardedHost(t *testing.T) {
 		status     int
 		trustProxy bool
 	}{
-		{
-			name: "trust proxy, forwarded host allowed", trustProxy: true,
-			allowed: "example.com", host: "proxy.internal", forwarded: "example.com", status: fiber.StatusOK,
-		},
-		{
-			name: "trust proxy, forwarded host rejected", trustProxy: true,
-			allowed: "example.com", host: "example.com", forwarded: "evil.com", status: fiber.StatusForbidden,
-		},
+		{"trust proxy, forwarded host allowed", "example.com", "proxy.internal", "example.com", fiber.StatusOK, true},
+		{"trust proxy, forwarded host rejected", "example.com", "example.com", "evil.com", fiber.StatusForbidden, true},
 		{
 			name: "trust proxy, malformed forwarded authority rejected", trustProxy: true,
 			allowed: "allowed.com", host: "proxy.internal", forwarded: "allowed.com:443@attacker.example", status: fiber.StatusForbidden,
 		},
 		// X-Forwarded-Host should be ignored without TrustProxy.
-		{
-			name: "no trust proxy, forwarded host ignored", trustProxy: false,
-			allowed: "example.com", host: "example.com", forwarded: "evil.com", status: fiber.StatusOK,
-		},
+		{"no trust proxy, forwarded host ignored", "example.com", "example.com", "evil.com", fiber.StatusOK, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -386,7 +372,6 @@ func Test_HostAuthorization_XForwardedHost(t *testing.T) {
 
 func Test_ErrForbiddenHostString(t *testing.T) {
 	t.Parallel()
-
 	// Locked in so callers matching on err.Error() get a failing test on change.
 	require.Equal(t, "hostauthorization: forbidden host", ErrForbiddenHost.Error())
 }
@@ -400,12 +385,10 @@ func Test_AllowedHostsFuncFallback(t *testing.T) {
 		return false
 	}
 
-	result := matchHost("example.com", parsed, fn)
-	require.True(t, result)
+	require.True(t, matchHost("example.com", parsed, fn))
 	require.Equal(t, 0, called, "AllowedHostsFunc must not be called when a static host matches")
 
-	result = matchHost("other.com", parsed, fn)
-	require.False(t, result)
+	require.False(t, matchHost("other.com", parsed, fn))
 	require.Equal(t, 1, called, "AllowedHostsFunc must be called when no static rule matches")
 }
 
@@ -456,12 +439,8 @@ func Benchmark_matchHost_ManyWildcards(b *testing.B) {
 }
 
 func Benchmark_HostAuthorization_ExactMatch(b *testing.B) {
-	app := fiber.New()
-	app.Use(New(Config{AllowedHosts: []string{"example.com"}}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = "example.com"
+	app := hostAuthApp(Config{AllowedHosts: []string{"example.com"}})
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost("example.com"))
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -475,12 +454,8 @@ func Benchmark_HostAuthorization_ExactMatch(b *testing.B) {
 }
 
 func Benchmark_HostAuthorization_Mixed(b *testing.B) {
-	app := fiber.New()
-	app.Use(New(Config{AllowedHosts: []string{"example.com", "*.myapp.com", "127.0.0.1"}}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = "api.myapp.com"
+	app := hostAuthApp(Config{AllowedHosts: []string{"example.com", "*.myapp.com", "127.0.0.1"}})
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost("api.myapp.com"))
 
 	b.ReportAllocs()
 	b.ResetTimer()

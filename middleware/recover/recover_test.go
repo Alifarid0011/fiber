@@ -15,40 +15,18 @@ import (
 
 func Test_Recover(t *testing.T) {
 	t.Parallel()
+	recovered := func(c fiber.Ctx, r any) error { return fmt.Errorf("[RECOVERED]: %w", DefaultPanicHandler(c, r)) }
+	errPanic := errors.New("hi, I'm an error object")
 	tests := []struct {
 		name         string
 		panicVal     any
 		panicHandler func(c fiber.Ctx, r any) error
 		errorMsg     string
 	}{
-		{
-			name:         "non-error panic will be handled by default",
-			panicVal:     "Hi, I'm an error!",
-			panicHandler: nil,
-			errorMsg:     "Hi, I'm an error!",
-		},
-		{
-			name:         "error panic will be handled by default",
-			panicVal:     errors.New("hi, I'm an error object"),
-			panicHandler: nil,
-			errorMsg:     "hi, I'm an error object",
-		},
-		{
-			name:     "non-error panic will be handled",
-			panicVal: "Hi, I'm an error!",
-			panicHandler: func(c fiber.Ctx, r any) error {
-				return fmt.Errorf("[RECOVERED]: %w", DefaultPanicHandler(c, r))
-			},
-			errorMsg: "[RECOVERED]: Hi, I'm an error!",
-		},
-		{
-			name:     "error panic will be handled",
-			panicVal: errors.New("hi, I'm an error object"),
-			panicHandler: func(c fiber.Ctx, r any) error {
-				return fmt.Errorf("[RECOVERED]: %w", DefaultPanicHandler(c, r))
-			},
-			errorMsg: "[RECOVERED]: hi, I'm an error object",
-		},
+		{"non-error panic will be handled by default", "Hi, I'm an error!", nil, "Hi, I'm an error!"},
+		{"error panic will be handled by default", errPanic, nil, "hi, I'm an error object"},
+		{"non-error panic will be handled", "Hi, I'm an error!", recovered, "[RECOVERED]: Hi, I'm an error!"},
+		{"error panic will be handled", errPanic, recovered, "[RECOVERED]: hi, I'm an error object"},
 	}
 
 	for _, tc := range tests {
@@ -62,9 +40,7 @@ func Test_Recover(t *testing.T) {
 			})
 
 			app.Use(New(Config{PanicHandler: tc.panicHandler}))
-
 			app.Get("/panic", func(_ fiber.Ctx) error { panic(tc.panicVal) })
-
 			apptest.Expect(t, app, "/panic", fiber.StatusTeapot)
 		})
 	}
@@ -82,7 +58,6 @@ func Test_Recover_EnableStackTrace(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{EnableStackTrace: true}))
-
 	app.Get("/panic", func(_ fiber.Ctx) error { panic("Hi, I'm an error!") })
 
 	apptest.Expect(t, app, "/panic", fiber.StatusInternalServerError)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -17,19 +18,15 @@ import (
 func Test_RequestID(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
 	app.Use(New())
-
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World 👋!") })
 
 	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
-
 	reqid := resp.Header.Get(fiber.HeaderXRequestID)
 	require.Len(t, reqid, 43)
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add(fiber.HeaderXRequestID, reqid)
-
 	resp = apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, reqid, resp.Header.Get(fiber.HeaderXRequestID))
 }
@@ -41,89 +38,66 @@ func Test_RequestID_InvalidHeaderValue(t *testing.T) {
 	require.Equal(t, "clean-generated-id", rid)
 }
 
-// requestidTestID serves one request through an app whose middleware draws its
-// IDs from generate and returns the X-Request-ID it answers with.
-func requestidTestID(t *testing.T, generate func() string) string {
-	t.Helper()
+// Test_RequestID_Generator covers the ID a custom Generator yields: used when
+// it is a valid header value, replaced by a SecureToken when it is not.
+func Test_RequestID_Generator(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, generated string
+		want            string // "" for a 43-byte SecureToken fallback
+	}{
+		{name: "invalid generated value", generated: "bad\r\nid"},
+		// Always invalid due to null byte, so it falls back after 3 invalid attempts.
+		{name: "generator always invalid", generated: "invalid\x00id"},
+		{name: "custom generator", generated: "custom-valid-id", want: "custom-valid-id"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Generator: func() string { return tc.generated }}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
-	app := fiber.New()
-	app.Use(New(Config{Generator: generate}))
-
-	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-
-	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
-
-	return resp.Header.Get(fiber.HeaderXRequestID)
+			rid := apptest.Expect(t, app, "/", fiber.StatusOK).Header.Get(fiber.HeaderXRequestID)
+			if tc.want != "" {
+				require.Equal(t, tc.want, rid)
+				return
+			}
+			require.NotEmpty(t, rid)
+			require.NotContains(t, rid, "\r")
+			require.NotContains(t, rid, "\n")
+			require.Len(t, rid, 43, "Fallback should produce a SecureToken")
+		})
+	}
 }
 
-func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
+// Test_isValidRequestID covers the visible ASCII a request ID may hold. The
+// long inputs put valid and invalid bytes at whole-word, overlapping-tail-word
+// and scalar-tail positions of the word-at-a-time scan.
+func Test_isValidRequestID(t *testing.T) {
 	t.Parallel()
-	rid := requestidTestID(t, func() string { return "bad\r\nid" })
-
-	require.NotEmpty(t, rid)
-	require.NotContains(t, rid, "\r")
-	require.NotContains(t, rid, "\n")
-	require.Len(t, rid, 43, "Fallback should produce a SecureToken")
-}
-
-func Test_RequestID_GeneratorAlwaysInvalid(t *testing.T) {
-	t.Parallel()
-	rid := requestidTestID(t, func() string {
-		return "invalid\x00id" // Always invalid due to null byte
-	})
-
-	require.NotEmpty(t, rid)
-	require.Len(t, rid, 43, "Should fall back to SecureToken after 3 invalid attempts")
-}
-
-func Test_RequestID_CustomGenerator(t *testing.T) {
-	t.Parallel()
-	rid := requestidTestID(t, func() string { return "custom-valid-id" })
-
-	require.Equal(t, "custom-valid-id", rid)
-}
-
-func Test_isValidRequestID_VisibleASCII(t *testing.T) {
-	t.Parallel()
-	require.True(t, isValidRequestID("request-id-09AZaz ~"))
-}
-
-func Test_isValidRequestID_Boundaries(t *testing.T) {
-	t.Parallel()
-	t.Run("allows space and tilde", func(t *testing.T) {
-		t.Parallel()
-		require.True(t, isValidRequestID(" ~"))
-	})
-
-	t.Run("rejects out of range", func(t *testing.T) {
-		t.Parallel()
-		require.False(t, isValidRequestID(string([]byte{0x1f})))
-		require.False(t, isValidRequestID(string([]byte{0x7f})))
-		require.False(t, isValidRequestID("a\tb"))
-	})
-
-	t.Run("rejects empty", func(t *testing.T) {
-		t.Parallel()
-		require.False(t, isValidRequestID(""))
-	})
-}
-
-func Test_isValidRequestID_RejectsObsText(t *testing.T) {
-	t.Parallel()
-	require.False(t, isValidRequestID("valid\xff"))
-}
-
-func Test_isValidRequestID_WordBoundaries(t *testing.T) {
-	t.Parallel()
-
-	// Word-at-a-time coverage: valid and invalid bytes at whole-word,
-	// overlapping-tail-word, and scalar-tail positions.
-	require.True(t, isValidRequestID("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))
-	require.True(t, isValidRequestID("abcdefgh"))
-	require.False(t, isValidRequestID("abcdefg\x1f"))
-	require.False(t, isValidRequestID("abcdefgh\x7f"))
-	require.False(t, isValidRequestID("abcdefghij\x00klm"))
-	require.False(t, isValidRequestID("ab\x00"))
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"request-id-09AZaz ~", true},
+		{" ~", true}, // space and tilde are the bounds
+		{string([]byte{0x1f}), false},
+		{string([]byte{0x7f}), false},
+		{"a\tb", false},
+		{"", false},
+		{"valid\xff", false}, // obs-text
+		{"6ba7b810-9dad-11d1-80b4-00c04fd430c8", true},
+		{"abcdefgh", true},
+		{"abcdefg\x1f", false},
+		{"abcdefgh\x7f", false},
+		{"abcdefghij\x00klm", false},
+		{"ab\x00", false},
+	} {
+		t.Run(strconv.Quote(tc.in), func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, isValidRequestID(tc.in))
+		})
+	}
 }
 
 func Test_RequestID_Next(t *testing.T) {

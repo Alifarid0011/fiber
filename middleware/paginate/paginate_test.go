@@ -18,43 +18,37 @@ import (
 
 // --- Config tests ---
 
+// Test_ConfigDefault covers the config New runs with: the documented defaults,
+// filled in for what a config leaves out or sets out of range.
 func Test_ConfigDefault(t *testing.T) {
 	t.Parallel()
-	cfg := configDefault()
-	require.Equal(t, "page", cfg.PageKey)
-	require.Equal(t, 1, cfg.DefaultPage)
-	require.Equal(t, "limit", cfg.LimitKey)
-	require.Equal(t, 10, cfg.DefaultLimit)
-	require.Equal(t, DefaultMaxLimit, cfg.MaxLimit)
-}
+	// defaults spells ConfigDefault out, so a change to it fails here.
+	defaults := Config{
+		PageKey: "page", DefaultPage: 1, LimitKey: "limit", DefaultLimit: 10, MaxLimit: DefaultMaxLimit,
+		DefaultSort: "id", OffsetKey: "offset", CursorKey: "cursor",
+	}
+	override, cursor, maxLimit := defaults, defaults, defaults
+	override.PageKey, override.LimitKey, override.DefaultPage, override.DefaultLimit = "p", "l", 5, 50
+	cursor.CursorKey, cursor.CursorParam = "after", "starting_after"
+	maxLimit.MaxLimit = 50
 
-func Test_ConfigOverride(t *testing.T) {
-	t.Parallel()
-	cfg := configDefault(Config{PageKey: "p", LimitKey: "l", DefaultPage: 5, DefaultLimit: 50})
-	require.Equal(t, "p", cfg.PageKey)
-	require.Equal(t, "l", cfg.LimitKey)
-	require.Equal(t, 5, cfg.DefaultPage)
-	require.Equal(t, 50, cfg.DefaultLimit)
-}
-
-func Test_ConfigDefaultCursorKey(t *testing.T) {
-	t.Parallel()
-	cfg := configDefault()
-	require.Equal(t, "cursor", cfg.CursorKey)
-}
-
-func Test_ConfigOverrideCursorKey(t *testing.T) {
-	t.Parallel()
-	cfg := configDefault(Config{CursorKey: "after", CursorParam: "starting_after"})
-	require.Equal(t, "after", cfg.CursorKey)
-	require.Equal(t, "starting_after", cfg.CursorParam)
-}
-
-func Test_ConfigNegativeDefaults(t *testing.T) {
-	t.Parallel()
-	cfg := configDefault(Config{DefaultPage: -1, DefaultLimit: -1})
-	require.Equal(t, 1, cfg.DefaultPage)
-	require.Equal(t, 10, cfg.DefaultLimit)
+	for _, tc := range []struct {
+		name string
+		cfg  []Config
+		want Config
+	}{
+		{"no config", nil, defaults},
+		{"override", []Config{{PageKey: "p", LimitKey: "l", DefaultPage: 5, DefaultLimit: 50}}, override},
+		{"override cursor key", []Config{{CursorKey: "after", CursorParam: "starting_after"}}, cursor},
+		{"negative defaults", []Config{{DefaultPage: -1, DefaultLimit: -1}}, defaults},
+		{"zero MaxLimit is normalized", []Config{{MaxLimit: 0}}, defaults},
+		{"MaxLimit is kept", []Config{{MaxLimit: 50}}, maxLimit},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, configDefault(tc.cfg...))
+		})
+	}
 }
 
 // --- PageInfo tests ---
@@ -95,6 +89,8 @@ func Test_PageInfoStart(t *testing.T) {
 		{"Page 3, limit 20", PageInfo{Page: 3, Limit: 20}, 40},
 		{"With offset", PageInfo{Page: 2, Limit: 10, Offset: 25}, 25},
 		{"Zero page", PageInfo{Page: 0, Limit: 10}, 0},
+		// In cursor mode, Page is 0 (not set). Start() should return 0, not negative.
+		{"Cursor mode", PageInfo{Page: 0, Limit: 20}, 0},
 		{"Overflow clamps to MaxInt", PageInfo{Page: int(^uint(0) >> 1), Limit: 100}, int(^uint(0) >> 1)},
 	}
 
@@ -118,44 +114,39 @@ func Test_PageInfoSortBy(t *testing.T) {
 	require.Equal(t, DESC, p.Sort[1].Order)
 }
 
-// Test_PageInfoPageURLs covers PageInfo.NextPageURL and PageInfo.PreviousPageURL.
+// Test_PageInfoPageURLs covers the next and previous page links, with the
+// default query keys and with custom ones.
 func Test_PageInfoPageURLs(t *testing.T) {
 	t.Parallel()
-	const baseURL = "https://example.com/users"
+	const users, items = "https://example.com/users", "https://example.com/items"
+	const filtered = users + "?filter=active"
+	capped := "/items?limit=10&page=" + strconv.Itoa(math.MaxInt)
+	next, prev := (*PageInfo).NextPageURL, (*PageInfo).PreviousPageURL
+	nextWithKeys := func(p *PageInfo, base string) string { return p.NextPageURLWithKeys(base, "p", "per_page") }
+	prevWithKeys := func(p *PageInfo, base string) string { return p.PreviousPageURLWithKeys(base, "p", "size") }
 
 	for _, tc := range []struct {
-		pageURL  func(*PageInfo, string) string
-		name     string
-		expected string
-		pageInfo PageInfo
+		pageURL    func(*PageInfo, string) string
+		name, base string
+		expected   string
+		pageInfo   PageInfo
 	}{
-		{name: "Next, middle page", pageURL: (*PageInfo).NextPageURL, pageInfo: PageInfo{Page: 2, Limit: 10}, expected: baseURL + "?limit=10&page=3"},
-		{name: "Next, first page", pageURL: (*PageInfo).NextPageURL, pageInfo: PageInfo{Page: 1, Limit: 20}, expected: baseURL + "?limit=20&page=2"},
-		{name: "Previous, middle page", pageURL: (*PageInfo).PreviousPageURL, pageInfo: PageInfo{Page: 2, Limit: 10}, expected: baseURL + "?limit=10&page=1"},
-		{name: "Previous, first page returns empty", pageURL: (*PageInfo).PreviousPageURL, pageInfo: PageInfo{Page: 1, Limit: 20}, expected: ""},
+		{next, "Next, middle page", users, users + "?limit=10&page=3", PageInfo{Page: 2, Limit: 10}},
+		{next, "Next, first page", users, users + "?limit=20&page=2", PageInfo{Page: 1, Limit: 20}},
+		{prev, "Previous, middle page", users, users + "?limit=10&page=1", PageInfo{Page: 2, Limit: 10}},
+		{prev, "Previous, first page returns empty", users, "", PageInfo{Page: 1, Limit: 20}},
+		{next, "Next keeps the query", filtered, filtered + "&limit=10&page=3", PageInfo{Page: 2, Limit: 10}},
+		{prev, "Previous keeps the query", filtered, filtered + "&limit=10&page=2", PageInfo{Page: 3, Limit: 10}},
+		{next, "Next does not overflow", "/items", capped, PageInfo{Page: math.MaxInt, Limit: 10}},
+		{nextWithKeys, "Next with keys", users, users + "?p=3&per_page=10", PageInfo{Page: 2, Limit: 10}},
+		{prevWithKeys, "Previous with keys", items, items + "?p=2&size=15", PageInfo{Page: 3, Limit: 15}},
+		{prevWithKeys, "Previous with keys, first page returns empty", items, "", PageInfo{Page: 1, Limit: 15}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.expected, tc.pageURL(&tc.pageInfo, baseURL))
+			require.Equal(t, tc.expected, tc.pageURL(&tc.pageInfo, tc.base))
 		})
 	}
-}
-
-func Test_PageInfoStartCursorMode(t *testing.T) {
-	t.Parallel()
-
-	// In cursor mode, Page is 0 (not set). Start() should return 0, not negative.
-	p := &PageInfo{Page: 0, Limit: 20}
-	require.Equal(t, 0, p.Start())
-}
-
-func Test_PageInfoNextPageURLWithExistingQueryParams(t *testing.T) {
-	t.Parallel()
-	p := PageInfo{Page: 2, Limit: 10}
-	result := p.NextPageURL("https://example.com/users?filter=active")
-	require.Contains(t, result, "filter=active")
-	require.Contains(t, result, "page=3")
-	require.Contains(t, result, "limit=10")
 }
 
 func Test_encodeQueryValues(t *testing.T) {
@@ -171,15 +162,6 @@ func Test_encodeQueryValues(t *testing.T) {
 	for _, q := range cases {
 		require.Equal(t, q.Encode(), encodeQueryValues(q))
 	}
-}
-
-func Test_PageInfoPreviousPageURLWithExistingQueryParams(t *testing.T) {
-	t.Parallel()
-	p := PageInfo{Page: 3, Limit: 10}
-	result := p.PreviousPageURL("https://example.com/users?filter=active")
-	require.Contains(t, result, "filter=active")
-	require.Contains(t, result, "page=2")
-	require.Contains(t, result, "limit=10")
 }
 
 func Test_PageInfoCursorFields(t *testing.T) {
@@ -228,23 +210,35 @@ func Test_CursorValuesUndecodable(t *testing.T) {
 	}
 }
 
+// Test_NextCursorURL covers the next cursor link, with the default query keys
+// and with custom ones, for a page with and without a next cursor.
 func Test_NextCursorURL(t *testing.T) {
 	t.Parallel()
-	t.Run("with HasMore", func(t *testing.T) {
-		t.Parallel()
-		p := &PageInfo{Limit: 20}
-		require.NoError(t, p.SetNextCursor(map[string]any{"id": float64(42)}))
+	const users = "https://example.com/users"
+	withKeys := func(p *PageInfo, base string) string { return p.NextCursorURLWithKeys(base, "after", "per_page") }
 
-		nextURL := p.NextCursorURL("https://example.com/users")
-		expected := fmt.Sprintf("https://example.com/users?cursor=%s&limit=20", p.NextCursor)
-		require.Equal(t, expected, nextURL)
-	})
-
-	t.Run("without HasMore", func(t *testing.T) {
-		t.Parallel()
-		p := &PageInfo{Limit: 20}
-		require.Empty(t, p.NextCursorURL("https://example.com/users"))
-	})
+	for _, tc := range []struct {
+		cursorURL func(*PageInfo, string) string
+		name      string
+		expected  string // %s stands for the next cursor
+		hasMore   bool
+	}{
+		{(*PageInfo).NextCursorURL, "with HasMore", users + "?cursor=%s&limit=20", true},
+		{(*PageInfo).NextCursorURL, "without HasMore", "", false},
+		{withKeys, "with keys, has more", users + "?after=%s&per_page=20", true},
+		{withKeys, "with keys, no more", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := &PageInfo{Limit: 20}
+			expected := tc.expected
+			if tc.hasMore {
+				require.NoError(t, p.SetNextCursor(map[string]any{"id": float64(42)}))
+				expected = fmt.Sprintf(expected, p.NextCursor)
+			}
+			require.Equal(t, expected, tc.cursorURL(p, users))
+		})
+	}
 }
 
 func Test_SetNextCursorSetsFields(t *testing.T) {
@@ -273,17 +267,6 @@ func paginateTestApp(cfg ...Config) *fiber.App {
 	})
 
 	return app
-}
-
-// paginateTestGet requests target from paginateTestApp(cfg...) and returns the
-// PageInfo it answers with. The answer must be a 200.
-func paginateTestGet(t *testing.T, target string, cfg ...Config) PageInfo {
-	t.Helper()
-
-	resp := apptest.Expect(t, paginateTestApp(cfg...), target, fiber.StatusOK)
-	var got PageInfo
-	require.NoError(t, json.Unmarshal(apptest.BodyBytes(t, resp), &got))
-	return got
 }
 
 // paginateResponse is what Test_PaginateWithQueries' handler derives from the
@@ -322,10 +305,8 @@ func Test_PaginateWithQueries(t *testing.T) {
 	})
 
 	resp := apptest.Expect(t, app, "/?page=2&limit=20", fiber.StatusOK)
-	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
-
 	var body paginateResponse
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.NoError(t, json.Unmarshal(apptest.BodyBytes(t, resp), &body))
 
 	require.Equal(t, 2, body.Page)
 	require.Equal(t, 20, body.Limit)
@@ -337,13 +318,21 @@ func Test_PaginateWithQueries(t *testing.T) {
 }
 
 // Test_PaginateRequests covers what the middleware reads from the query (page,
-// limit, offset and cursor), the configuration that renames or defaults those
-// parameters and the PageInfo a handler then finds on the request context.
+// limit, offset, sort and cursor), the configuration that renames, defaults or
+// bounds those parameters and the PageInfo a handler then finds on the request
+// context.
 func Test_PaginateRequests(t *testing.T) {
 	t.Parallel()
 	idAsc := []SortField{{Field: "id", Order: ASC}}
+	nameAsc := []SortField{{Field: "name", Order: ASC}}
+	nameThenDateDesc := []SortField{{Field: "name", Order: ASC}, {Field: "date", Order: DESC}}
+	nameThenIDDesc := []SortField{{Field: "name", Order: ASC}, {Field: "id", Order: DESC}}
 	cursor42 := base64.RawURLEncoding.EncodeToString([]byte(`{"id":42}`))
 	cursor1 := base64.RawURLEncoding.EncodeToString([]byte(`{"id":1}`))
+	byID := []Config{{DefaultSort: "id"}}
+	edge := []Config{{DefaultSort: "id", DefaultLimit: 10}}
+	maxed := []Config{{DefaultSort: "id", DefaultLimit: 10, MaxLimit: 50}}
+	sorted := []Config{{SortKey: "sort", DefaultSort: "id", AllowedSorts: []string{"id", "name", "date"}}}
 
 	for _, tc := range []struct {
 		name   string
@@ -352,96 +341,88 @@ func Test_PaginateRequests(t *testing.T) {
 		want   PageInfo
 		start  int // want.Start()
 	}{
+		{"offset", "/?offset=20&limit=20", nil, PageInfo{Page: 1, Limit: 20, Offset: 20, Sort: idAsc}, 20},
+		{"defaults when no queries", "/", nil, PageInfo{Page: 1, Limit: 10, Sort: idAsc}, 0},
+		{"defaults when no page", "/?limit=20", nil, PageInfo{Page: 1, Limit: 20, Sort: idAsc}, 0},
+		{"defaults when no limit", "/?page=2", nil, PageInfo{Page: 2, Limit: 10, Sort: idAsc}, 10},
 		{
-			name:   "offset",
-			target: "/?offset=20&limit=20",
-			want:   PageInfo{Page: 1, Limit: 20, Offset: 20, Sort: idAsc},
-			start:  20,
-		},
-		{name: "defaults when no queries", target: "/", want: PageInfo{Page: 1, Limit: 10, Sort: idAsc}},
-		{name: "defaults when no page", target: "/?limit=20", want: PageInfo{Page: 1, Limit: 20, Sort: idAsc}},
-		{
-			name:   "defaults when no limit",
-			target: "/?page=2",
-			want:   PageInfo{Page: 2, Limit: 10, Sort: idAsc},
-			start:  10,
+			"config default page and default limit", "/",
+			[]Config{{DefaultPage: 100, DefaultLimit: DefaultMaxLimit, DefaultSort: "name"}},
+			PageInfo{Page: 100, Limit: DefaultMaxLimit, Sort: nameAsc},
+			9900,
 		},
 		{
-			name:   "config default page and default limit",
-			cfg:    []Config{{DefaultPage: 100, DefaultLimit: DefaultMaxLimit, DefaultSort: "name"}},
-			target: "/",
-			want:   PageInfo{Page: 100, Limit: DefaultMaxLimit, Sort: []SortField{{Field: "name", Order: ASC}}},
-			start:  9900,
+			"config page key and limit key", "/?site=2&size=5",
+			[]Config{{PageKey: "site", LimitKey: "size", DefaultSort: "id"}},
+			PageInfo{Page: 2, Limit: 5, Sort: idAsc},
+			5,
 		},
 		{
-			name:   "config page key and limit key",
-			cfg:    []Config{{PageKey: "site", LimitKey: "size", DefaultSort: "id"}},
-			target: "/?site=2&size=5",
-			want:   PageInfo{Page: 2, Limit: 5, Sort: idAsc},
-			start:  5,
+			"negative default page and default limit values", "/",
+			[]Config{{DefaultPage: -1, DefaultLimit: -1, DefaultSort: "id"}},
+			PageInfo{Page: 1, Limit: 10, Sort: idAsc},
+			0,
+		},
+		{"Negative page", "/?page=-1", edge, PageInfo{Page: 1, Limit: 10, Sort: idAsc}, 0},
+		{"Page zero", "/?page=0", edge, PageInfo{Page: 1, Limit: 10, Sort: idAsc}, 0},
+		{"Negative limit", "/?limit=-10", edge, PageInfo{Page: 1, Limit: 10, Sort: idAsc}, 0},
+		{"Limit zero", "/?limit=0", edge, PageInfo{Page: 1, Limit: 10, Sort: idAsc}, 0},
+		{"Limit exceeds max", "/?limit=200", edge, PageInfo{Page: 1, Limit: DefaultMaxLimit, Sort: idAsc}, 0},
+		{"Limit within custom max", "/?limit=40", maxed, PageInfo{Page: 1, Limit: 40, Sort: idAsc}, 0},
+		{"Limit exceeds custom max", "/?limit=200", maxed, PageInfo{Page: 1, Limit: 50, Sort: idAsc}, 0},
+		{"Default Sort", "/", sorted, PageInfo{Page: 1, Limit: 10, Sort: idAsc}, 0},
+		{"Single Sort", "/?sort=name", sorted, PageInfo{Page: 1, Limit: 10, Sort: nameAsc}, 0},
+		{"Multiple Sort", "/?sort=name,-date", sorted, PageInfo{Page: 1, Limit: 10, Sort: nameThenDateDesc}, 0},
+		{"Invalid Sort", "/?sort=invalid", sorted, PageInfo{Page: 1, Limit: 10, Sort: idAsc}, 0},
+		{"no cursor falls back to page mode", "/?page=3&limit=15", byID, PageInfo{Page: 3, Limit: 15, Sort: idAsc}, 30},
+		{
+			"cursor with limit", "/?cursor=" + cursor42 + "&limit=20", byID,
+			PageInfo{Cursor: cursor42, Limit: 20, Sort: idAsc},
+			0,
 		},
 		{
-			name:   "negative default page and default limit values",
-			cfg:    []Config{{DefaultPage: -1, DefaultLimit: -1, DefaultSort: "id"}},
-			target: "/",
-			want:   PageInfo{Page: 1, Limit: 10, Sort: idAsc},
+			"cursor takes priority over page", "/?cursor=" + cursor42 + "&page=5&limit=10", nil,
+			PageInfo{Cursor: cursor42, Limit: 10, Sort: idAsc}, // no Page
+			0,
+		},
+		{"empty cursor is the first page", "/?cursor=&limit=10", nil, PageInfo{Page: 1, Limit: 10, Sort: idAsc}, 0},
+		{
+			"cursor with sort", "/?cursor=" + cursor42 + "&sort=name,-id",
+			[]Config{{SortKey: "sort", DefaultSort: "id", AllowedSorts: []string{"id", "name"}}},
+			PageInfo{Cursor: cursor42, Limit: 10, Sort: nameThenIDDesc},
+			0,
 		},
 		{
-			name:   "no cursor falls back to page mode",
-			cfg:    []Config{{DefaultSort: "id"}},
-			target: "/?page=3&limit=15",
-			want:   PageInfo{Page: 3, Limit: 15, Sort: idAsc},
-			start:  30,
+			"cursor with custom key", "/?after=" + cursor1,
+			[]Config{{CursorKey: "after"}},
+			PageInfo{Cursor: cursor1, Limit: 10, Sort: idAsc},
+			0,
 		},
 		{
-			name:   "cursor with limit",
-			cfg:    []Config{{DefaultSort: "id"}},
-			target: "/?cursor=" + cursor42 + "&limit=20",
-			want:   PageInfo{Cursor: cursor42, Limit: 20, Sort: idAsc},
-		},
-		{
-			name:   "cursor takes priority over page",
-			target: "/?cursor=" + cursor42 + "&page=5&limit=10",
-			want:   PageInfo{Cursor: cursor42, Limit: 10, Sort: idAsc}, // no Page
-		},
-		{
-			name:   "empty cursor is the first page",
-			target: "/?cursor=&limit=10",
-			want:   PageInfo{Page: 1, Limit: 10, Sort: idAsc},
-		},
-		{
-			name:   "cursor with sort",
-			cfg:    []Config{{SortKey: "sort", DefaultSort: "id", AllowedSorts: []string{"id", "name"}}},
-			target: "/?cursor=" + cursor42 + "&sort=name,-id",
-			want:   PageInfo{Cursor: cursor42, Limit: 10, Sort: []SortField{{Field: "name", Order: ASC}, {Field: "id", Order: DESC}}},
-		},
-		{
-			name:   "cursor with custom key",
-			cfg:    []Config{{CursorKey: "after"}},
-			target: "/?after=" + cursor1,
-			want:   PageInfo{Cursor: cursor1, Limit: 10, Sort: idAsc},
-		},
-		{
-			name:   "cursor with param alias",
-			cfg:    []Config{{CursorParam: "starting_after"}},
-			target: "/?starting_after=" + cursor1,
-			want:   PageInfo{Cursor: cursor1, Limit: 10, Sort: idAsc},
+			"cursor with param alias", "/?starting_after=" + cursor1,
+			[]Config{{CursorParam: "starting_after"}},
+			PageInfo{Cursor: cursor1, Limit: 10, Sort: idAsc},
+			0,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := paginateTestGet(t, tc.target, tc.cfg...)
+			resp := apptest.Expect(t, paginateTestApp(tc.cfg...), tc.target, fiber.StatusOK)
+			var got PageInfo
+			require.NoError(t, json.Unmarshal(apptest.BodyBytes(t, resp), &got))
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.start, got.Start())
 		})
 	}
 }
 
-func Test_PaginateFromContextWithoutNew(t *testing.T) {
+// Test_PaginateBadRequest covers the requests a handler finds no PageInfo for,
+// because the middleware did not run, and the cursors the middleware refuses.
+func Test_PaginateBadRequest(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-
-	app.Get("/", func(c fiber.Ctx) error {
+	notJSON := base64.RawURLEncoding.EncodeToString([]byte("not-json"))
+	withoutNew := fiber.New()
+	withoutNew.Get("/", func(c fiber.Ctx) error {
 		_, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
@@ -449,69 +430,28 @@ func Test_PaginateFromContextWithoutNew(t *testing.T) {
 		return c.JSON(nil)
 	})
 
-	apptest.Expect(t, app, "/", fiber.StatusBadRequest)
-}
-
-func Test_PaginateNextSkip(t *testing.T) {
-	t.Parallel()
-	app := paginateTestApp(Config{Next: func(_ fiber.Ctx) bool { return true }})
-
-	apptest.Expect(t, app, "/", fiber.StatusBadRequest)
-}
-
-func Test_PaginateEdgeCases(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		name          string
-		url           string
-		expectedPage  int
-		expectedLimit int
+	for _, tc := range []struct {
+		app    *fiber.App
+		name   string
+		target string
 	}{
-		{"Negative page", "/?page=-1", 1, 10},
-		{"Page zero", "/?page=0", 1, 10},
-		{"Negative limit", "/?limit=-10", 1, 10},
-		{"Limit zero", "/?limit=0", 1, 10},
-		{"Limit exceeds max", "/?limit=200", 1, DefaultMaxLimit},
-	}
-
-	for _, tc := range testCases {
+		{withoutNew, "FromContext without New", "/"},
+		{paginateTestApp(Config{Next: func(_ fiber.Ctx) bool { return true }}), "Next skips the middleware", "/"},
+		{paginateTestApp(), "Invalid base64 cursor", "/?cursor=not-valid!!!"},
+		{paginateTestApp(), "Valid base64 cursor but invalid JSON", "/?cursor=" + notJSON},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			result := paginateTestGet(t, tc.url, Config{DefaultSort: "id", DefaultLimit: 10})
-			require.Equal(t, tc.expectedPage, result.Page)
-			require.Equal(t, tc.expectedLimit, result.Limit)
-		})
-	}
-}
-
-func Test_PaginateWithMultipleSorting(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		name         string
-		url          string
-		expectedSort []SortField
-	}{
-		{"Default Sort", "/", []SortField{{Field: "id", Order: ASC}}},
-		{"Single Sort", "/?sort=name", []SortField{{Field: "name", Order: ASC}}},
-		{"Multiple Sort", "/?sort=name,-date", []SortField{{Field: "name", Order: ASC}, {Field: "date", Order: DESC}}},
-		{"Invalid Sort", "/?sort=invalid", []SortField{{Field: "id", Order: ASC}}},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			result := paginateTestGet(t, tc.url, Config{
-				SortKey:      "sort",
-				DefaultSort:  "id",
-				AllowedSorts: []string{"id", "name", "date"},
-			})
-			require.Equal(t, tc.expectedSort, result.Sort)
+			apptest.Expect(t, tc.app, tc.target, fiber.StatusBadRequest)
 		})
 	}
 }
 
 func Test_ParseSortQuery(t *testing.T) {
 	t.Parallel()
+	all := []string{"id", "name", "date"}
+	idAsc := []SortField{{Field: "id", Order: ASC}}
+	nameAsc := []SortField{{Field: "name", Order: ASC}}
 	tests := []struct {
 		name         string
 		query        string
@@ -519,51 +459,18 @@ func Test_ParseSortQuery(t *testing.T) {
 		defaultSort  string
 		expected     []SortField
 	}{
-		{"Empty query", "", []string{"id", "name", "date"}, "id", []SortField{{Field: "id", Order: ASC}}},
+		{"Empty query", "", all, "id", idAsc},
+		{"Single allowed field", "name", all, "id", nameAsc},
 		{
-			"Single allowed field",
-			"name",
-			[]string{"id", "name", "date"},
-			"id",
-			[]SortField{{Field: "name", Order: ASC}},
-		},
-		{
-			"Multiple fields with mixed order",
-			"name,-date,id",
-			[]string{"id", "name", "date"},
-			"id",
+			"Multiple fields with mixed order", "name,-date,id", all, "id",
 			[]SortField{{Field: "name", Order: ASC}, {Field: "date", Order: DESC}, {Field: "id", Order: ASC}},
 		},
-		{
-			"Disallowed field",
-			"email,name",
-			[]string{"id", "name", "date"},
-			"id",
-			[]SortField{{Field: "name", Order: ASC}},
-		},
-		{
-			"All disallowed fields",
-			"email,phone",
-			[]string{"id", "name", "date"},
-			"id",
-			[]SortField{{Field: "id", Order: ASC}},
-		},
-		{
-			"Nil AllowedSorts falls back to default sort",
-			"email,-phone",
-			nil,
-			"id",
-			[]SortField{{Field: "id", Order: ASC}},
-		},
-		{
-			"Empty AllowedSorts falls back to default sort",
-			"email,-phone",
-			[]string{},
-			"id",
-			[]SortField{{Field: "id", Order: ASC}},
-		},
-		{"Bare dash is skipped", "-", nil, "id", []SortField{{Field: "id", Order: ASC}}},
-		{"Dash in comma list is skipped", "name,-,email", nil, "id", []SortField{{Field: "id", Order: ASC}}},
+		{"Disallowed field", "email,name", all, "id", nameAsc},
+		{"All disallowed fields", "email,phone", all, "id", idAsc},
+		{"Nil AllowedSorts falls back to default sort", "email,-phone", nil, "id", idAsc},
+		{"Empty AllowedSorts falls back to default sort", "email,-phone", []string{}, "id", idAsc},
+		{"Bare dash is skipped", "-", nil, "id", idAsc},
+		{"Dash in comma list is skipped", "name,-,email", nil, "id", idAsc},
 	}
 
 	for _, tt := range tests {
@@ -572,175 +479,6 @@ func Test_ParseSortQuery(t *testing.T) {
 			result := parseSortQuery(tt.query, tt.allowedSorts, tt.defaultSort)
 			require.Equal(t, tt.expected, result)
 		})
-	}
-}
-
-// --- Cursor tests ---
-
-func Test_PaginateInvalidCursorReturns400(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		name   string
-		cursor string
-	}{
-		{"Invalid base64", "not-valid!!!"},
-		{"Valid base64 but invalid JSON", base64.RawURLEncoding.EncodeToString([]byte("not-json"))},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			apptest.Expect(t, paginateTestApp(), "/?cursor="+tc.cursor, fiber.StatusBadRequest)
-		})
-	}
-}
-
-func Test_NextPageURLWithKeys(t *testing.T) {
-	t.Parallel()
-	p := PageInfo{Page: 2, Limit: 10}
-	result := p.NextPageURLWithKeys("https://example.com/users", "p", "per_page")
-	require.Equal(t, "https://example.com/users?p=3&per_page=10", result)
-}
-
-func Test_PreviousPageURLWithKeys(t *testing.T) {
-	t.Parallel()
-	t.Run("has previous", func(t *testing.T) {
-		t.Parallel()
-		p := PageInfo{Page: 3, Limit: 15}
-		result := p.PreviousPageURLWithKeys("https://example.com/items", "p", "size")
-		require.Equal(t, "https://example.com/items?p=2&size=15", result)
-	})
-
-	t.Run("first page returns empty", func(t *testing.T) {
-		t.Parallel()
-		p := PageInfo{Page: 1, Limit: 15}
-		result := p.PreviousPageURLWithKeys("https://example.com/items", "p", "size")
-		require.Empty(t, result)
-	})
-}
-
-func Test_NextCursorURLWithKeys(t *testing.T) {
-	t.Parallel()
-	t.Run("has more", func(t *testing.T) {
-		t.Parallel()
-		p := &PageInfo{Limit: 20}
-		require.NoError(t, p.SetNextCursor(map[string]any{"id": float64(42)}))
-
-		result := p.NextCursorURLWithKeys("https://example.com/users", "after", "per_page")
-		expected := fmt.Sprintf("https://example.com/users?after=%s&per_page=20", p.NextCursor)
-		require.Equal(t, expected, result)
-	})
-
-	t.Run("no more", func(t *testing.T) {
-		t.Parallel()
-		p := &PageInfo{Limit: 20}
-		result := p.NextCursorURLWithKeys("https://example.com/users", "after", "per_page")
-		require.Empty(t, result)
-	})
-}
-
-func Test_PaginateCustomMaxLimit(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		name          string
-		url           string
-		expectedLimit int
-	}{
-		{"Limit within custom max", "/?limit=40", 40},
-		{"Limit exceeds custom max", "/?limit=200", 50},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			result := paginateTestGet(t, tc.url, Config{DefaultSort: "id", DefaultLimit: 10, MaxLimit: 50})
-			require.Equal(t, tc.expectedLimit, result.Limit)
-		})
-	}
-}
-
-func Test_ConfigDefaultMaxLimitNormalization(t *testing.T) {
-	t.Parallel()
-	cfg := configDefault(Config{MaxLimit: 0})
-	require.Equal(t, DefaultMaxLimit, cfg.MaxLimit)
-
-	cfg2 := configDefault(Config{MaxLimit: 50})
-	require.Equal(t, 50, cfg2.MaxLimit)
-}
-
-// --- Benchmarks ---
-
-func Benchmark_PaginateMiddleware(b *testing.B) {
-	app := fiber.New()
-	app.Use(New())
-
-	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, _ := FromContext(c)
-		return c.JSON(pageInfo)
-	})
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/?page=2&limit=20&sort=name,-date", http.NoBody)
-		resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
-		if err != nil {
-			b.Fatal(err)
-		}
-		resp.Body.Close() //nolint:errcheck // close error not relevant in tests
-	}
-}
-
-func Benchmark_PaginateMiddlewareWithCustomConfig(b *testing.B) {
-	app := fiber.New()
-	app.Use(New(Config{
-		PageKey:      "p",
-		LimitKey:     "l",
-		SortKey:      "s",
-		DefaultPage:  1,
-		DefaultLimit: 30,
-		DefaultSort:  "id",
-		AllowedSorts: []string{"id", "name", "date"},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, _ := FromContext(c)
-		return c.JSON(pageInfo)
-	})
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/?p=3&l=25&s=name,-id", http.NoBody)
-		resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
-		if err != nil {
-			b.Fatal(err)
-		}
-		resp.Body.Close() //nolint:errcheck // close error not relevant in tests
-	}
-}
-
-func Benchmark_PaginateCursorMiddleware(b *testing.B) {
-	app := fiber.New()
-	app.Use(New(Config{SortKey: "sort", DefaultSort: "id", AllowedSorts: []string{"id", "name", "date"}}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, _ := FromContext(c)
-		return c.JSON(pageInfo)
-	})
-
-	cursorJSON := `{"id":42,"created_at":"2026-01-01T00:00:00Z"}`
-	cursor := base64.RawURLEncoding.EncodeToString([]byte(cursorJSON))
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/?cursor="+cursor+"&limit=20&sort=name,-id", http.NoBody)
-		resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
-		if err != nil {
-			b.Fatal(err)
-		}
-		resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	}
 }
 
@@ -763,9 +501,72 @@ func Test_Paginate_EmptySortKey_IgnoresQuery(t *testing.T) {
 	}
 }
 
-func Test_PageInfo_NextPageURL_NoOverflow(t *testing.T) {
-	t.Parallel()
-	p := &PageInfo{Page: math.MaxInt, Limit: 10}
-	require.NotContains(t, p.NextPageURL("/items"), "-")
-	require.Contains(t, p.NextPageURL("/items"), "page="+strconv.Itoa(math.MaxInt))
+// --- Benchmarks ---
+
+// benchApp returns an app that runs New(cfg...) in front of GET /, which
+// answers with the PageInfo as JSON.
+func benchApp(cfg ...Config) *fiber.App {
+	app := fiber.New()
+	app.Use(New(cfg...))
+	app.Get("/", func(c fiber.Ctx) error {
+		pageInfo, _ := FromContext(c)
+		return c.JSON(pageInfo)
+	})
+	return app
+}
+
+func Benchmark_PaginateMiddleware(b *testing.B) {
+	app := benchApp()
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/?page=2&limit=20&sort=name,-date", http.NoBody)
+		resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
+		if err != nil {
+			b.Fatal(err)
+		}
+		resp.Body.Close() //nolint:errcheck // close error not relevant in tests
+	}
+}
+
+func Benchmark_PaginateMiddlewareWithCustomConfig(b *testing.B) {
+	app := benchApp(Config{
+		PageKey:      "p",
+		LimitKey:     "l",
+		SortKey:      "s",
+		DefaultPage:  1,
+		DefaultLimit: 30,
+		DefaultSort:  "id",
+		AllowedSorts: []string{"id", "name", "date"},
+	})
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/?p=3&l=25&s=name,-id", http.NoBody)
+		resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
+		if err != nil {
+			b.Fatal(err)
+		}
+		resp.Body.Close() //nolint:errcheck // close error not relevant in tests
+	}
+}
+
+func Benchmark_PaginateCursorMiddleware(b *testing.B) {
+	app := benchApp(Config{SortKey: "sort", DefaultSort: "id", AllowedSorts: []string{"id", "name", "date"}})
+
+	cursorJSON := `{"id":42,"created_at":"2026-01-01T00:00:00Z"}`
+	cursor := base64.RawURLEncoding.EncodeToString([]byte(cursorJSON))
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/?cursor="+cursor+"&limit=20&sort=name,-id", http.NoBody)
+		resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
+		if err != nil {
+			b.Fatal(err)
+		}
+		resp.Body.Close() //nolint:errcheck // close error not relevant in tests
+	}
 }

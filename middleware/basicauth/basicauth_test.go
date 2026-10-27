@@ -25,14 +25,17 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func sha256Hash(p string) string {
-	sum := sha256.Sum256([]byte(p))
-	return "{SHA256}" + base64.StdEncoding.EncodeToString(sum[:])
-}
+func sha256Hash(p string) string { return "{SHA256}" + base64.StdEncoding.EncodeToString(sha256Sum(p)) }
 
-func sha512Hash(p string) string {
-	sum := sha512.Sum512([]byte(p))
-	return "{SHA512}" + base64.StdEncoding.EncodeToString(sum[:])
+func sha512Hash(p string) string { return "{SHA512}" + base64.StdEncoding.EncodeToString(sha512Sum(p)) }
+
+// teapotApp returns an app that answers GET / with 418 behind New(*cfg). cfg
+// is a pointer because Config is 80 bytes and gocritic refuses the copy.
+func teapotApp(cfg *Config, appCfg ...fiber.Config) *fiber.App {
+	app := fiber.New(appCfg...)
+	app.Use(New(*cfg))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
+	return app
 }
 
 func Test_BasicAuth_Next(t *testing.T) {
@@ -293,10 +296,7 @@ func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 
 func Test_BasicAuth_AuthorizationHeader(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
-
+	app := teapotApp(&Config{Users: map[string]string{"john": sha256Hash("doe")}})
 	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
 
 	tests := []struct {
@@ -350,10 +350,7 @@ func Test_BasicAuth_RepeatedAuthorizationIsRefused(t *testing.T) {
 	t.Parallel()
 	creds := "Basic " + base64.StdEncoding.EncodeToString([]byte("john:doe"))
 	newApp := func(config ...fiber.Config) *fiber.App {
-		app := fiber.New(config...)
-		app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}}))
-		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
-		return app
+		return teapotApp(&Config{Users: map[string]string{"john": sha256Hash("doe")}}, config...)
 	}
 
 	t.Run("lines under the canonical name", func(t *testing.T) {
@@ -433,12 +430,10 @@ func Test_BasicAuth_CredentialPolicies(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			called := false
-			app := fiber.New()
-			app.Use(New(Config{
+			app := teapotApp(&Config{
 				Charset:    "UTF-8",
 				Authorizer: func(_, _ string, _ fiber.Ctx) bool { called = true; return true },
-			}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
+			})
 
 			resp := apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials(test.credentials)), test.status)
 			if test.status == fiber.StatusBadRequest {
@@ -485,10 +480,9 @@ func Test_BasicAuth_InvalidHeaderBytes(t *testing.T) {
 
 func Test_BasicAuth_UTF8Normalization(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
 	decomposed := "e\u0301" // e + combining acute accent
 	called := false
-	app.Use(New(Config{
+	app := teapotApp(&Config{
 		Charset: "UTF-8",
 		Authorizer: func(u, p string, _ fiber.Ctx) bool {
 			called = true
@@ -496,8 +490,7 @@ func Test_BasicAuth_UTF8Normalization(t *testing.T) {
 			require.Equal(t, "doe", p)
 			return true
 		},
-	}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
+	})
 
 	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials(decomposed+":doe")), fiber.StatusTeapot)
 	require.True(t, called)
@@ -530,24 +523,14 @@ func Test_BasicAuth_Options(t *testing.T) {
 		tc := &tests[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New(tc.appConfig)
-			app.Use(New(tc.config))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
-
+			app := teapotApp(&tc.config, tc.appConfig)
 			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:doe")), tc.status)
 		})
 	}
 }
 
 func Benchmark_Middleware_BasicAuth(b *testing.B) {
-	app := fiber.New()
-
-	hashedJohn := sha256Hash("doe")
-
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
-
-	h := app.Handler()
+	h := teapotApp(&Config{Users: map[string]string{"john": sha256Hash("doe")}}).Handler()
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
@@ -564,14 +547,7 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 }
 
 func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
-	app := fiber.New()
-
-	hashedJohn := sha256Hash("doe")
-
-	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
-
-	h := app.Handler()
+	h := teapotApp(&Config{Users: map[string]string{"john": sha256Hash("doe")}}).Handler()
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
@@ -719,10 +695,7 @@ func Test_BasicAuth_HashVariants(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New()
-			app.Use(New(Config{Users: map[string]string{"john": tt.hashed}}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
-
+			app := teapotApp(&Config{Users: map[string]string{"john": tt.hashed}})
 			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:"+pass)), fiber.StatusTeapot)
 			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:"+wrong)), fiber.StatusUnauthorized)
 		})
@@ -829,26 +802,15 @@ func Benchmark_containsCTL(b *testing.B) {
 // of being accepted as a verifier that can never match.
 func Test_BasicAuth_RejectsWrongDigestLength(t *testing.T) {
 	t.Parallel()
+	b64 := base64.StdEncoding.EncodeToString
 	tests := []struct {
 		wantErr error
 		name    string
 		hash    string
 	}{
-		{
-			name:    "sha256 too short",
-			hash:    "{SHA256}" + base64.StdEncoding.EncodeToString([]byte("short")),
-			wantErr: ErrInvalidSHA256PasswordLength,
-		},
-		{
-			name:    "sha512 too short",
-			hash:    "{SHA512}" + base64.StdEncoding.EncodeToString([]byte("short")),
-			wantErr: ErrInvalidSHA512PasswordLength,
-		},
-		{
-			name:    "sha512 holds a sha256 digest",
-			hash:    "{SHA512}" + base64.StdEncoding.EncodeToString(sha256Sum("hello")),
-			wantErr: ErrInvalidSHA512PasswordLength,
-		},
+		{ErrInvalidSHA256PasswordLength, "sha256 too short", "{SHA256}" + b64([]byte("short"))},
+		{ErrInvalidSHA512PasswordLength, "sha512 too short", "{SHA512}" + b64([]byte("short"))},
+		{ErrInvalidSHA512PasswordLength, "sha512 holds a sha256 digest", "{SHA512}" + b64(sha256Sum("hello"))},
 	}
 
 	for _, tt := range tests {
@@ -860,9 +822,7 @@ func Test_BasicAuth_RejectsWrongDigestLength(t *testing.T) {
 	}
 
 	// A correctly sized digest still builds and verifies.
-	verifiers, _, err := buildVerifiers(map[string]string{
-		"john": "{SHA512}" + base64.StdEncoding.EncodeToString(sha512Sum("doe")),
-	})
+	verifiers, _, err := buildVerifiers(map[string]string{"john": "{SHA512}" + b64(sha512Sum("doe"))})
 	require.NoError(t, err)
 	require.True(t, verifiers["john"]("doe"))
 	require.False(t, verifiers["john"]("nope"))

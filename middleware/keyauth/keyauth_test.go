@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 
@@ -38,45 +37,25 @@ const (
 )
 
 func Test_AuthSources(t *testing.T) {
-	// define test cases
+	t.Parallel()
 	testSources := []string{headerExtractorName, authHeaderExtractorName, cookieExtractorName, queryExtractorName, paramExtractorName, formExtractorName}
 
 	tests := []struct {
-		route         string
 		authTokenName string
 		description   string
 		APIKey        string
 		expectedBody  string
 		expectedCode  int
 	}{
-		{
-			route:         "/",
-			authTokenName: "access_token",
-			description:   "auth with correct key",
-			APIKey:        CorrectKey,
-			expectedCode:  200,
-			expectedBody:  "Success!",
-		},
-		{
-			route:         "/",
-			authTokenName: "access_token",
-			description:   "auth with no key",
-			APIKey:        "",
-			expectedCode:  401, // 404 in case of param authentication
-			expectedBody:  ErrMissingOrMalformedAPIKey.Error(),
-		},
-		{
-			route:         "/",
-			authTokenName: "access_token",
-			description:   "auth with wrong key",
-			APIKey:        "WRONGKEY",
-			expectedCode:  401,
-			expectedBody:  ErrMissingOrMalformedAPIKey.Error(),
-		},
+		{"access_token", "auth with correct key", CorrectKey, "Success!", 200},
+		// 404 in case of param authentication
+		{"access_token", "auth with no key", "", ErrMissingOrMalformedAPIKey.Error(), 401},
+		{"access_token", "auth with wrong key", "WRONGKEY", ErrMissingOrMalformedAPIKey.Error(), 401},
 	}
 
 	for _, authSource := range testSources {
 		t.Run(authSource, func(t *testing.T) {
+			t.Parallel()
 			for _, test := range tests {
 				app := fiber.New(fiber.Config{UnescapePath: true})
 
@@ -166,19 +145,12 @@ func Test_AuthSources(t *testing.T) {
 					// nothing to do for paramExtractorName
 				}
 
-				res, err := app.Test(req, testConfig)
-				require.NoError(t, err, test.description)
-
+				res := apptest.Do(t, app, req, testConfig)
 				body := apptest.Body(t, res)
-				errClose := res.Body.Close()
-				require.NoError(t, errClose)
+				require.NoError(t, res.Body.Close())
 
 				expectedCode := test.expectedCode
 				expectedBody := test.expectedBody
-				if test.APIKey == "" || test.APIKey == "WRONGKEY" {
-					expectedBody = ErrMissingOrMalformedAPIKey.Error()
-				}
-
 				if authSource == paramExtractorName && testKey == "" {
 					expectedCode = 404
 					expectedBody = "Not Found"
@@ -208,34 +180,29 @@ func rejectAllKeys(fiber.Ctx, string) (bool, error) {
 var bearerCorrectKey = apptest.WithHeader(fiber.HeaderAuthorization, "Bearer "+CorrectKey)
 
 func TestMultipleKeyLookup(t *testing.T) {
+	t.Parallel()
 	const (
 		desc    = "auth with correct key"
 		success = "Success!"
 	)
 
-	// set up the fiber endpoint
 	app := fiber.New()
-
-	customExtractor := extractors.Chain(
-		extractors.FromAuthHeader("Bearer"),
-		extractors.FromHeader("key"),
-		extractors.FromCookie("key"),
-		extractors.FromQuery("key"),
-	)
-
-	authMiddleware := New(Config{
-		Extractor: customExtractor,
+	app.Use(New(Config{
+		Extractor: extractors.Chain(
+			extractors.FromAuthHeader("Bearer"),
+			extractors.FromHeader("key"),
+			extractors.FromCookie("key"),
+			extractors.FromQuery("key"),
+		),
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
 			}
 			return false, errors.New("invalid key")
 		},
-	})
-	app.Use(authMiddleware)
+	}))
 	app.Get("/foo", func(c fiber.Ctx) error { return c.SendString(success) })
 
-	// construct the test HTTP request
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", http.NoBody)
 	require.NoError(t, err)
 	q := req.URL.Query()
@@ -243,12 +210,10 @@ func TestMultipleKeyLookup(t *testing.T) {
 	req.URL.RawQuery = q.Encode()
 
 	res := apptest.Do(t, app, req, testConfig)
-
-	// test the status and the body of the request
 	require.Equal(t, 200, res.StatusCode, desc)
 	require.Equal(t, success, apptest.Body(t, res), desc)
 
-	// construct a second request without proper key
+	// A second request without the key is refused.
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", http.NoBody)
 	require.NoError(t, err)
 	res = apptest.Do(t, app, req, testConfig)
@@ -256,7 +221,7 @@ func TestMultipleKeyLookup(t *testing.T) {
 }
 
 func Test_MultipleKeyAuth(t *testing.T) {
-	// set up the fiber endpoint
+	t.Parallel()
 	app := fiber.New()
 
 	// set up keyauth for /auth1 and /auth2, each with a different password
@@ -274,12 +239,9 @@ func Test_MultipleKeyAuth(t *testing.T) {
 	}
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("No auth needed!") })
-
 	app.Get("/auth1", func(c fiber.Ctx) error { return c.SendString("Successfully authenticated for auth1!") })
-
 	app.Get("/auth2", func(c fiber.Ctx) error { return c.SendString("Successfully authenticated for auth2!") })
 
-	// define test cases
 	tests := []struct {
 		route        string
 		description  string
@@ -288,62 +250,17 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		expectedCode int
 	}{
 		// No auth needed for /
-		{
-			route:        "/",
-			description:  "No password needed",
-			APIKey:       "",
-			expectedCode: 200,
-			expectedBody: "No auth needed!",
-		},
-
+		{"/", "No password needed", "", "No auth needed!", 200},
 		// auth needed for auth1
-		{
-			route:        "/auth1",
-			description:  "Normal Authentication Case",
-			APIKey:       "password1",
-			expectedCode: 200,
-			expectedBody: "Successfully authenticated for auth1!",
-		},
-		{
-			route:        "/auth1",
-			description:  "Wrong API Key",
-			APIKey:       "WRONG KEY",
-			expectedCode: 401,
-			expectedBody: ErrMissingOrMalformedAPIKey.Error(),
-		},
-		{
-			route:        "/auth1",
-			description:  "Wrong API Key",
-			APIKey:       "", // NO KEY
-			expectedCode: 401,
-			expectedBody: ErrMissingOrMalformedAPIKey.Error(),
-		},
-
+		{"/auth1", "Normal Authentication Case", "password1", "Successfully authenticated for auth1!", 200},
+		{"/auth1", "Wrong API Key", "WRONG KEY", ErrMissingOrMalformedAPIKey.Error(), 401},
+		{"/auth1", "Wrong API Key", "", ErrMissingOrMalformedAPIKey.Error(), 401}, // NO KEY
 		// Auth 2 has a different password
-		{
-			route:        "/auth2",
-			description:  "Normal Authentication Case for auth2",
-			APIKey:       "password2",
-			expectedCode: 200,
-			expectedBody: "Successfully authenticated for auth2!",
-		},
-		{
-			route:        "/auth2",
-			description:  "Wrong API Key",
-			APIKey:       "WRONG KEY",
-			expectedCode: 401,
-			expectedBody: ErrMissingOrMalformedAPIKey.Error(),
-		},
-		{
-			route:        "/auth2",
-			description:  "Wrong API Key",
-			APIKey:       "", // NO KEY
-			expectedCode: 401,
-			expectedBody: ErrMissingOrMalformedAPIKey.Error(),
-		},
+		{"/auth2", "Normal Authentication Case for auth2", "password2", "Successfully authenticated for auth2!", 200},
+		{"/auth2", "Wrong API Key", "WRONG KEY", ErrMissingOrMalformedAPIKey.Error(), 401},
+		{"/auth2", "Wrong API Key", "", ErrMissingOrMalformedAPIKey.Error(), 401}, // NO KEY
 	}
 
-	// run the tests
 	for _, test := range tests {
 		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, test.route, http.NoBody)
 		require.NoError(t, err)
@@ -352,14 +269,13 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		}
 
 		res := apptest.Do(t, app, req, testConfig)
-
-		// test the status and the body of the request
 		require.Equal(t, test.expectedCode, res.StatusCode, test.description)
 		require.Equal(t, test.expectedBody, apptest.Body(t, res), test.description)
 	}
 }
 
 func Test_CustomSuccessAndFailureHandlers(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -372,20 +288,17 @@ func Test_CustomSuccessAndFailureHandlers(t *testing.T) {
 		Validator: validateCorrectKey,
 	}))
 
-	// Define a test handler that should not be called
 	app.Get("/", func(_ fiber.Ctx) error {
 		t.Error("Test handler should not be called")
 		return nil
 	})
 
-	// A request without an API key is handled by the custom error handler
 	apptest.ExpectBody(t, app, "/", http.StatusUnauthorized, "API key is invalid and request was handled by custom error handler")
-
-	// A request with a valid API key in the Authorization header is handled by the custom success handler
 	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", bearerCorrectKey), http.StatusOK, "API key is valid and request was handled by custom success handler")
 }
 
 func Test_CustomNextFunc(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -393,25 +306,19 @@ func Test_CustomNextFunc(t *testing.T) {
 		Validator: validateCorrectKey,
 	}))
 
-	// Define a test handler
 	app.Get("/allowed", func(c fiber.Ctx) error {
 		return c.SendString("API key is valid and request was allowed by custom filter")
 	})
 	app.Get("/not-allowed", func(c fiber.Ctx) error { return c.SendString("Should be protected") })
 
-	// A request with the "/allowed" path is let through
 	apptest.ExpectBody(t, app, "/allowed", http.StatusOK, "API key is valid and request was allowed by custom filter")
-
-	// A request with a different path and without the correct key is refused
 	apptest.ExpectBody(t, app, "/not-allowed", http.StatusUnauthorized, ErrMissingOrMalformedAPIKey.Error())
-
-	// A request with a different path and with the correct key is let through
 	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/not-allowed", bearerCorrectKey), http.StatusOK, "Should be protected")
 }
 
 func Test_TokenFromContext_None(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
-	// Define a test handler that checks TokenFromContext
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
 
 	// Verify a "" is sent back if nothing sets the token on the context.
@@ -419,10 +326,9 @@ func Test_TokenFromContext_None(t *testing.T) {
 }
 
 func Test_TokenFromContext(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
-	// Wire up keyauth middleware to set TokenFromContext now
 	app.Use(New(Config{Extractor: extractors.FromAuthHeader("Basic"), Validator: validateCorrectKey}))
-	// Define a test handler that checks TokenFromContext
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
 
 	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, "Basic "+CorrectKey)), http.StatusOK, CorrectKey)
@@ -570,141 +476,114 @@ func Test_Challenge(t *testing.T) {
 	answerStatus := func(status int, text string) fiber.ErrorHandler {
 		return func(c fiber.Ctx, _ error) error { return c.Status(status).SendString(text) }
 	}
+	const bearer, apiKey = `Bearer realm="Restricted"`, `ApiKey realm="Restricted"`
+	queryThenScheme := extractors.Chain(extractors.FromQuery("q"), extractors.FromAuthHeader("MyScheme"))
+	queryThenCookie := extractors.Chain(extractors.FromQuery("q"), extractors.FromCookie("c"))
+	twoSchemes := extractors.Chain(extractors.FromAuthHeader("Bearer"), extractors.FromAuthHeader("ApiKey"))
 
 	tests := []struct {
-		headers       map[string]string
 		name          string
 		authorization string
+		www           string // the WWW-Authenticate header of the answer, "" for none
+		proxy         string // the Proxy-Authenticate header of the answer, "" for none
 		config        Config
 		status        int
 	}{
 		{
-			name:          "default config on failure",
-			config:        Config{Validator: failing},
-			authorization: "Bearer somekey",
-			status:        fiber.StatusUnauthorized,
-			headers:       map[string]string{fiber.HeaderWWWAuthenticate: `Bearer realm="Restricted"`},
+			name: "default config on failure", config: Config{Validator: failing}, authorization: "Bearer somekey",
+			status: fiber.StatusUnauthorized, www: bearer,
 		},
 		{
-			name:          "custom realm on failure",
-			config:        Config{Validator: failing, Realm: "My Custom Realm"},
-			authorization: "Bearer somekey",
-			status:        fiber.StatusUnauthorized,
-			headers:       map[string]string{fiber.HeaderWWWAuthenticate: `Bearer realm="My Custom Realm"`},
+			name: "custom realm on failure", config: Config{Validator: failing, Realm: "My Custom Realm"},
+			authorization: "Bearer somekey", status: fiber.StatusUnauthorized, www: `Bearer realm="My Custom Realm"`,
 		},
 		{
-			name:    "default header for non-auth-header extractor",
-			config:  Config{Validator: failing, Extractor: extractors.FromQuery("api_key")},
-			status:  fiber.StatusUnauthorized,
-			headers: map[string]string{fiber.HeaderWWWAuthenticate: `ApiKey realm="Restricted"`},
+			name: "default header for non-auth-header extractor", status: fiber.StatusUnauthorized, www: apiKey,
+			config: Config{Validator: failing, Extractor: extractors.FromQuery("api_key")},
 		},
 		{
-			name:          "no header on success",
-			config:        Config{Validator: valid},
-			authorization: "Bearer somekey",
-			status:        fiber.StatusOK,
-			headers:       map[string]string{fiber.HeaderWWWAuthenticate: ""},
+			name: "no header on success", config: Config{Validator: valid}, authorization: "Bearer somekey",
+			status: fiber.StatusOK,
 		},
 		{
-			name:    "chained extractor with auth header",
-			config:  Config{Validator: failing, Extractor: extractors.Chain(extractors.FromQuery("q"), extractors.FromAuthHeader("MyScheme"))},
-			status:  fiber.StatusUnauthorized,
-			headers: map[string]string{fiber.HeaderWWWAuthenticate: `MyScheme realm="Restricted"`},
+			name: "chained extractor with auth header", status: fiber.StatusUnauthorized,
+			config: Config{Validator: failing, Extractor: queryThenScheme}, www: `MyScheme realm="Restricted"`,
 		},
 		{
-			name:    "chained extractor without auth header",
-			config:  Config{Validator: failing, Extractor: extractors.Chain(extractors.FromQuery("q"), extractors.FromCookie("c"))},
-			status:  fiber.StatusUnauthorized,
-			headers: map[string]string{fiber.HeaderWWWAuthenticate: `ApiKey realm="Restricted"`},
+			name: "chained extractor without auth header", status: fiber.StatusUnauthorized, www: apiKey,
+			config: Config{Validator: failing, Extractor: queryThenCookie},
 		},
 		{
-			name:    "default error handler without a key",
-			config:  Config{Validator: rejectAllKeys},
-			status:  http.StatusUnauthorized,
-			headers: map[string]string{fiber.HeaderWWWAuthenticate: `Bearer realm="Restricted"`},
+			name: "default error handler without a key", config: Config{Validator: rejectAllKeys},
+			status: http.StatusUnauthorized, www: bearer,
 		},
 		{
-			name:    "custom challenge",
-			config:  Config{Validator: invalid, Extractor: extractors.FromQuery("api_key"), Challenge: `ApiKey realm="Restricted"`},
-			status:  http.StatusUnauthorized,
-			headers: map[string]string{fiber.HeaderWWWAuthenticate: `ApiKey realm="Restricted"`},
-		},
-		{
-			name: "bearer error fields",
+			name: "custom challenge", status: http.StatusUnauthorized, www: apiKey,
 			config: Config{
-				Validator:        invalid,
-				Error:            "invalid_token",
-				ErrorDescription: "token expired",
-				ErrorURI:         "https://example.com",
-			},
-			authorization: "Bearer something",
-			status:        http.StatusUnauthorized,
-			headers: map[string]string{
-				fiber.HeaderWWWAuthenticate: `Bearer realm="Restricted", error="invalid_token", error_description="token expired", error_uri="https://example.com"`,
+				Validator: invalid, Extractor: extractors.FromQuery("api_key"), Challenge: `ApiKey realm="Restricted"`,
 			},
 		},
 		{
-			name:          "bearer error URI only",
-			config:        Config{Validator: invalid, Error: "invalid_token", ErrorURI: "https://example.com/docs"},
-			authorization: "Bearer something",
-			status:        http.StatusUnauthorized,
-			headers: map[string]string{
-				fiber.HeaderWWWAuthenticate: `Bearer realm="Restricted", error="invalid_token", error_uri="https://example.com/docs"`,
-			},
-		},
-		{
-			name:          "bearer insufficient scope",
-			config:        Config{Validator: invalid, Error: ErrorInsufficientScope, Scope: "read"},
-			authorization: "Bearer something",
-			status:        http.StatusUnauthorized,
-			headers: map[string]string{
-				fiber.HeaderWWWAuthenticate: `Bearer realm="Restricted", error="insufficient_scope", scope="read"`,
-			},
-		},
-		{
-			name:          "no challenge unless the answer is a 401",
-			config:        Config{Validator: invalid, ErrorHandler: answerStatus(fiber.StatusForbidden, "forbidden")},
-			authorization: "Bearer bad",
-			status:        http.StatusForbidden,
-			headers:       map[string]string{fiber.HeaderWWWAuthenticate: ""},
-		},
-		{
-			name:    "default challenge for a non-auth extractor",
-			config:  Config{Validator: rejectAllKeys, Extractor: extractors.FromQuery("api_key")},
-			status:  http.StatusUnauthorized,
-			headers: map[string]string{fiber.HeaderWWWAuthenticate: `ApiKey realm="Restricted"`},
-		},
-		{
-			name: "one challenge per auth scheme",
+			name: "bearer error fields", authorization: "Bearer something", status: http.StatusUnauthorized,
 			config: Config{
-				Validator: invalid,
-				Extractor: extractors.Chain(extractors.FromAuthHeader("Bearer"), extractors.FromAuthHeader("ApiKey")),
+				Validator: invalid, Error: "invalid_token",
+				ErrorDescription: "token expired", ErrorURI: "https://example.com",
 			},
-			status:  http.StatusUnauthorized,
-			headers: map[string]string{fiber.HeaderWWWAuthenticate: `Bearer realm="Restricted", ApiKey realm="Restricted"`},
+			www: bearer + `, error="invalid_token", error_description="token expired", error_uri="https://example.com"`,
 		},
 		{
-			name:          "proxy authentication required",
-			config:        Config{Validator: invalid, ErrorHandler: answerStatus(fiber.StatusProxyAuthRequired, "proxy auth")},
-			authorization: "Bearer bad",
-			status:        http.StatusProxyAuthRequired,
-			headers: map[string]string{
-				fiber.HeaderProxyAuthenticate: `Bearer realm="Restricted"`,
-				fiber.HeaderWWWAuthenticate:   "",
-			},
+			name: "bearer error URI only", authorization: "Bearer something", status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Error: "invalid_token", ErrorURI: "https://example.com/docs"},
+			www:    bearer + `, error="invalid_token", error_uri="https://example.com/docs"`,
+		},
+		{
+			name: "bearer insufficient scope", authorization: "Bearer something", status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Error: ErrorInsufficientScope, Scope: "read"},
+			www:    bearer + `, error="insufficient_scope", scope="read"`,
+		},
+		{
+			name: "no challenge unless the answer is a 401", authorization: "Bearer bad", status: http.StatusForbidden,
+			config: Config{Validator: invalid, ErrorHandler: answerStatus(fiber.StatusForbidden, "forbidden")},
+		},
+		{
+			name: "default challenge for a non-auth extractor", status: http.StatusUnauthorized, www: apiKey,
+			config: Config{Validator: rejectAllKeys, Extractor: extractors.FromQuery("api_key")},
+		},
+		{
+			name: "one challenge per auth scheme", status: http.StatusUnauthorized, www: bearer + ", " + apiKey,
+			config: Config{Validator: invalid, Extractor: twoSchemes},
+		},
+		{
+			name: "proxy authentication required", authorization: "Bearer bad",
+			status: http.StatusProxyAuthRequired, proxy: bearer,
+			config: Config{Validator: invalid, ErrorHandler: answerStatus(fiber.StatusProxyAuthRequired, "proxy auth")},
 		},
 		// The challenge must be set when the ErrorHandler returns the *fiber.Error instead of writing it.
 		{
-			name:    "returned unauthorized error",
-			config:  Config{Validator: rejectAllKeys, ErrorHandler: answerWith(fiber.ErrUnauthorized)},
-			status:  fiber.StatusUnauthorized,
-			headers: map[string]string{fiber.HeaderWWWAuthenticate: `Bearer realm="Restricted"`},
+			name: "returned unauthorized error", status: fiber.StatusUnauthorized, www: bearer,
+			config: Config{Validator: rejectAllKeys, ErrorHandler: answerWith(fiber.ErrUnauthorized)},
 		},
 		{
-			name:    "returned proxy auth required error",
-			config:  Config{Validator: rejectAllKeys, ErrorHandler: answerWith(fiber.ErrProxyAuthRequired)},
-			status:  fiber.StatusProxyAuthRequired,
-			headers: map[string]string{fiber.HeaderProxyAuthenticate: `Bearer realm="Restricted"`},
+			name: "returned proxy auth required error", status: fiber.StatusProxyAuthRequired, proxy: bearer,
+			config: Config{Validator: rejectAllKeys, ErrorHandler: answerWith(fiber.ErrProxyAuthRequired)},
+		},
+		// Both default challenges use HTTP quoted-string escaping rather than Go syntax.
+		{
+			name: "default ApiKey challenge escaping", status: http.StatusUnauthorized,
+			config: Config{Extractor: extractors.FromQuery("key"), Realm: "area \"A\"\\\x01\n", Validator: invalid},
+			www:    `ApiKey realm="area \"A\"\\%01\n"`,
+		},
+		{
+			name: "Bearer parameters escaping", authorization: "Bearer bad", status: http.StatusUnauthorized,
+			config: Config{
+				Realm:            "area \"A\"\\\x01",
+				Error:            ErrorInvalidToken,
+				ErrorDescription: "bad \"token\"\\\x02\n",
+				ErrorURI:         `https://example.com/docs?q="x"`,
+				Validator:        invalid,
+			},
+			www: `Bearer realm="area \"A\"\\%01", error="invalid_token", ` +
+				`error_description="bad \"token\"\\%02\n", error_uri="https://example.com/docs?q=\"x\""`,
 		},
 	}
 
@@ -721,49 +600,10 @@ func Test_Challenge(t *testing.T) {
 				req.Header.Add(fiber.HeaderAuthorization, tc.authorization)
 			}
 			resp := apptest.Expect(t, app, req, tc.status)
-
-			for name, want := range tc.headers {
-				assert.Equal(t, want, resp.Header.Get(name), name)
-			}
+			require.Equal(t, tc.www, resp.Header.Get(fiber.HeaderWWWAuthenticate), fiber.HeaderWWWAuthenticate)
+			require.Equal(t, tc.proxy, resp.Header.Get(fiber.HeaderProxyAuthenticate), fiber.HeaderProxyAuthenticate)
 		})
 	}
-}
-
-// Test_ChallengeQuotedStringEscaping verifies both default ApiKey and Bearer
-// challenges use HTTP quoted-string escaping rather than Go syntax.
-func Test_ChallengeQuotedStringEscaping(t *testing.T) {
-	t.Parallel()
-	t.Run("default ApiKey challenge", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{
-			Extractor: extractors.FromQuery("key"),
-			Realm:     "area \"A\"\\\x01\n",
-			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return false, errors.New("invalid") },
-		}))
-
-		res := apptest.Do(t, app, "/")
-		require.Equal(t, `ApiKey realm="area \"A\"\\%01\n"`, res.Header.Get(fiber.HeaderWWWAuthenticate))
-	})
-
-	t.Run("Bearer parameters", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{
-			Realm:            "area \"A\"\\\x01",
-			Error:            ErrorInvalidToken,
-			ErrorDescription: "bad \"token\"\\\x02\n",
-			ErrorURI:         `https://example.com/docs?q="x"`,
-			Validator:        func(_ fiber.Ctx, _ string) (bool, error) { return false, errors.New("invalid") },
-		}))
-
-		res := apptest.Do(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, "Bearer bad")))
-		require.Equal(
-			t,
-			`Bearer realm="area \"A\"\\%01", error="invalid_token", error_description="bad \"token\"\\%02\n", error_uri="https://example.com/docs?q=\"x\""`,
-			res.Header.Get(fiber.HeaderWWWAuthenticate),
-		)
-	})
 }
 
 // Test_New_InvalidConfig covers the configurations New refuses with a panic.

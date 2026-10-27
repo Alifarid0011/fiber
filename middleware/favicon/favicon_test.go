@@ -17,18 +17,13 @@ import (
 func Test_Middleware_Favicon(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
 	app.Use(New())
-
 	app.Get("/", func(_ fiber.Ctx) error { return nil })
 
-	// Skip Favicon middleware
+	// A path other than the favicon's passes through the middleware.
 	apptest.Expect(t, app, "/", fiber.StatusOK)
-
 	apptest.Expect(t, app, "/favicon.ico", fiber.StatusNoContent)
-
 	apptest.Expect(t, app, apptest.Req(fiber.MethodOptions, "/favicon.ico"), fiber.StatusOK)
-
 	resp := apptest.Expect(t, app, apptest.Req(fiber.MethodPut, "/favicon.ico"), fiber.StatusMethodNotAllowed)
 	require.Equal(t, "GET, HEAD, OPTIONS", resp.Header.Get(fiber.HeaderAllow))
 }
@@ -57,7 +52,8 @@ func Test_Middleware_Favicon_Panics(t *testing.T) {
 
 func Test_Middleware_Favicon_Serves(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../.github/testdata/favicon.ico")
+	const dir, file, year = "../../.github/testdata", "../../.github/testdata/favicon.ico", "public, max-age=31536000"
+	data, err := os.ReadFile(file)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -66,34 +62,13 @@ func Test_Middleware_Favicon_Serves(t *testing.T) {
 		cacheControl string // not checked when empty
 		config       Config
 	}{
+		{"file", "/favicon.ico", year, Config{File: file}},
+		{"custom URL", "/favicon.svg", "", Config{File: file, URL: "/favicon.svg"}},
+		{"data", "/favicon.ico", year, Config{Data: data}},
+		{"file system", "/favicon.ico", year, Config{File: "favicon.ico", FileSystem: os.DirFS(dir)}},
 		{
-			name:         "file",
-			config:       Config{File: "../../.github/testdata/favicon.ico"},
-			target:       "/favicon.ico",
-			cacheControl: "public, max-age=31536000",
-		},
-		{
-			name:   "custom URL",
-			config: Config{File: "../../.github/testdata/favicon.ico", URL: "/favicon.svg"},
-			target: "/favicon.svg",
-		},
-		{
-			name:         "data",
-			config:       Config{Data: data},
-			target:       "/favicon.ico",
-			cacheControl: "public, max-age=31536000",
-		},
-		{
-			name:         "file system",
-			config:       Config{File: "favicon.ico", FileSystem: os.DirFS("../../.github/testdata")},
-			target:       "/favicon.ico",
-			cacheControl: "public, max-age=31536000",
-		},
-		{
-			name:         "custom cache control",
-			config:       Config{CacheControl: "public, max-age=100", File: "../../.github/testdata/favicon.ico"},
-			target:       "/favicon.ico",
-			cacheControl: "public, max-age=100",
+			"custom cache control", "/favicon.ico", "public, max-age=100",
+			Config{CacheControl: "public, max-age=100", File: file},
 		},
 	}
 
@@ -101,9 +76,7 @@ func Test_Middleware_Favicon_Serves(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
-
 			app.Use(New(tc.config))
-
 			app.Get("/", func(_ fiber.Ctx) error { return nil })
 
 			resp := apptest.Expect(t, app, tc.target, fiber.StatusOK)

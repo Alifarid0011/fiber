@@ -33,22 +33,15 @@ func Test_EnvVarStructWithExportVars(t *testing.T) {
 func Test_EnvVarHandler(t *testing.T) {
 	t.Setenv("testKey", "testVal")
 
-	expectedEnvVarResponse, err := json.Marshal(
-		struct {
-			Vars map[string]string `json:"vars"`
-		}{
-			Vars: map[string]string{"testKey": "testVal"},
-		},
-	)
-	require.NoError(t, err)
-
 	app := fiber.New()
 	app.Use("/envvars", New(Config{ExportVars: map[string]string{"testKey": ""}}))
 
-	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "http://localhost/envvars"), fiber.StatusOK, string(expectedEnvVarResponse))
+	req := apptest.Req(fiber.MethodGet, "http://localhost/envvars")
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, `{"vars":{"testKey":"testVal"}}`)
 }
 
 func Test_EnvVarHandlerNotMatched(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use("/envvars", New(Config{ExportVars: map[string]string{"testKey": ""}}))
 
@@ -66,12 +59,12 @@ func Test_EnvVarHandlerDefaultConfig(t *testing.T) {
 	app := fiber.New()
 	app.Use("/envvars", New())
 
-	envVars := envvarTestVars(t, app, "http://localhost/envvars")
-	_, exists := envVars.Vars["testEnvKey"]
+	_, exists := envvarTestVars(t, app, "http://localhost/envvars").Vars["testEnvKey"]
 	require.False(t, exists)
 }
 
 func Test_EnvVarHandlerMethod(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use("/envvars", New())
 
@@ -80,13 +73,12 @@ func Test_EnvVarHandlerMethod(t *testing.T) {
 }
 
 func Test_EnvVarHandlerHead(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use("/envvars", New())
 
 	resp := apptest.Expect(t, app, apptest.Req(fiber.MethodHead, "http://localhost/envvars"), fiber.StatusOK)
-
-	body := apptest.Body(t, resp)
-	require.Empty(t, body)
+	require.Empty(t, apptest.Body(t, resp))
 }
 
 func Test_EnvVarHandlerSpecialValue(t *testing.T) {
@@ -98,11 +90,7 @@ func Test_EnvVarHandlerSpecialValue(t *testing.T) {
 	app.Use("/envvars/export", New(Config{ExportVars: map[string]string{testEnvKey: ""}}))
 	app.Use("/envvars", New())
 
-	envVars := envvarTestVars(t, app, "http://localhost/envvars")
-	_, exists := envVars.Vars[testEnvKey]
+	_, exists := envvarTestVars(t, app, "http://localhost/envvars").Vars[testEnvKey]
 	require.False(t, exists)
-
-	envVarsExport := envvarTestVars(t, app, "http://localhost/envvars/export")
-	val := envVarsExport.Vars[testEnvKey]
-	require.Equal(t, fakeBase64, val)
+	require.Equal(t, fakeBase64, envvarTestVars(t, app, "http://localhost/envvars/export").Vars[testEnvKey])
 }

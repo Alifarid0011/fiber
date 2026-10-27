@@ -23,18 +23,10 @@ func TestResponseTimeMiddleware(t *testing.T) {
 		skipWithNext          bool
 	}{
 		{name: "sets duration header", expectedStatus: fiber.StatusOK, expectHeader: true},
+		{name: "skips when Next returns true", expectedStatus: fiber.StatusOK, expectHeader: false, skipWithNext: true},
 		{
-			name:           "skips when Next returns true",
-			expectedStatus: fiber.StatusOK,
-			expectHeader:   false,
-			skipWithNext:   true,
-		},
-		{
-			name:                  "propagates errors",
-			expectedStatus:        fiber.StatusTeapot,
-			useCustomErrorHandler: true,
-			returnError:           true,
-			expectHeader:          true,
+			name: "propagates errors", expectedStatus: fiber.StatusTeapot,
+			useCustomErrorHandler: true, returnError: true, expectHeader: true,
 		},
 	}
 

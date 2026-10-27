@@ -94,6 +94,15 @@ func Test_SSE_EventFrames(t *testing.T) {
 		{name: "writes byte slice data", event: Event{Data: []byte("hello\nworld")}, want: "data: hello\ndata: world\n\n"},
 		{name: "preserves trailing data newline", event: Event{Data: "hello\n"}, want: "data: hello\ndata: \n\n"},
 		{name: "preserves intentional blank data line", event: Event{Data: "hello\n\n"}, want: "data: hello\ndata: \ndata: \n\n"},
+		{
+			name:  "JSON encodes data",
+			event: Event{Name: "message", Data: map[string]string{"hello": "world"}},
+			want:  "event: message\ndata: {\"hello\":\"world\"}\n\n",
+		},
+		{
+			name: "sub-millisecond retry rounds up", event: Event{Data: "x", Retry: 500 * time.Microsecond},
+			want: "retry: 1\ndata: x\n\n",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -108,13 +117,6 @@ func Test_SSE_EventRejectsFieldInjection(t *testing.T) {
 	w := bufio.NewWriter(&buf)
 
 	require.ErrorIs(t, writeEvent(w, Event{ID: "42\nretry: 1", Data: "ignored"}), errInvalidField)
-}
-
-func Test_SSE_EventJSONEncodesData(t *testing.T) {
-	t.Parallel()
-	frame := sseTestFrame(t, Event{Name: "message", Data: map[string]string{"hello": "world"}})
-
-	require.JSONEq(t, `{"hello":"world"}`, stringsTrimData(frame))
 }
 
 func Test_SSE_NewUsesAppJSONEncoder(t *testing.T) {
@@ -414,12 +416,6 @@ func Test_SSE_StartHeartbeatReturnsNilForNonPositiveInterval(t *testing.T) {
 	require.Nil(t, stream.startHeartbeat(-time.Second))
 }
 
-func stringsTrimData(frame string) string {
-	const prefix = "event: message\ndata: "
-	frame = strings.TrimPrefix(frame, prefix)
-	return strings.TrimSuffix(frame, "\n\n")
-}
-
 type errWriter struct {
 	err error
 }
@@ -445,14 +441,8 @@ func Benchmark_sanitizeField(b *testing.B) {
 	_, _ = s, err
 }
 
-func Test_SSE_Retry_SubMillisecondRoundsUp(t *testing.T) {
-	t.Parallel()
-	require.Contains(t, sseTestFrame(t, Event{Data: "x", Retry: 500 * time.Microsecond}), "retry: 1\n")
-}
-
 func Test_SSE_RetryMillisecondsStaysPositive(t *testing.T) {
 	t.Parallel()
-
 	// Rounding must not overflow into a negative "retry:" value.
 	require.Positive(t, retryMilliseconds(time.Duration(math.MaxInt64)))
 	require.Positive(t, retryMilliseconds(time.Duration(math.MaxInt64)-1))

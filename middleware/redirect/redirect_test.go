@@ -91,27 +91,21 @@ func redirectTestRun(t *testing.T, unescape bool, pattern string, cases []redire
 }
 
 func Test_Redirect(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
-
 	app.Use(New(Config{
-		RuleList:   []Rule{{From: "/default", To: "google.com"}},
-		StatusCode: fiber.StatusMovedPermanently,
+		RuleList: []Rule{{From: "/default", To: "google.com"}}, StatusCode: fiber.StatusMovedPermanently,
 	}))
 	app.Use(New(Config{
-		RuleList:   []Rule{{From: "/default/*", To: "fiber.wiki"}},
-		StatusCode: fiber.StatusTemporaryRedirect,
+		RuleList: []Rule{{From: "/default/*", To: "fiber.wiki"}}, StatusCode: fiber.StatusTemporaryRedirect,
 	}))
 	app.Use(New(Config{RuleList: []Rule{{From: "/redirect/*", To: "$1"}}, StatusCode: fiber.StatusSeeOther}))
 	app.Use(New(Config{RuleList: []Rule{{From: "/pattern/*", To: "golang.org"}}, StatusCode: fiber.StatusFound}))
-
 	app.Use(New(Config{RuleList: []Rule{{From: "/", To: "/swagger"}}, StatusCode: fiber.StatusMovedPermanently}))
 	app.Use(New(Config{
-		RuleList:   []Rule{{From: "/params", To: "/with_params"}},
-		StatusCode: fiber.StatusMovedPermanently,
+		RuleList: []Rule{{From: "/params", To: "/with_params"}}, StatusCode: fiber.StatusMovedPermanently,
 	}))
-
 	app.Get("/api/*", func(c fiber.Ctx) error { return c.SendString("API") })
-
 	app.Get("/new", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
 	tests := []struct {
@@ -121,47 +115,27 @@ func Test_Redirect(t *testing.T) {
 		statusCode int
 	}{
 		{
-			name:       "should be returns status StatusFound without a wildcard",
-			url:        "/default",
-			redirectTo: "google.com",
-			statusCode: fiber.StatusMovedPermanently,
+			"should be returns status StatusFound without a wildcard",
+			"/default", "google.com", fiber.StatusMovedPermanently,
 		},
 		{
-			name:       "should be returns status StatusTemporaryRedirect  using wildcard",
-			url:        "/default/xyz",
-			redirectTo: "fiber.wiki",
-			statusCode: fiber.StatusTemporaryRedirect,
+			"should be returns status StatusTemporaryRedirect  using wildcard",
+			"/default/xyz", "fiber.wiki", fiber.StatusTemporaryRedirect,
 		},
 		{
-			name:       "should be returns status StatusSeeOther without set redirectTo to use the default",
-			url:        "/redirect/github.com/gofiber/redirect",
-			redirectTo: "github.com/gofiber/redirect",
-			statusCode: fiber.StatusSeeOther,
+			"should be returns status StatusSeeOther without set redirectTo to use the default",
+			"/redirect/github.com/gofiber/redirect", "github.com/gofiber/redirect", fiber.StatusSeeOther,
 		},
-		{
-			name:       "should return the status code default",
-			url:        "/pattern/xyz",
-			redirectTo: "golang.org",
-			statusCode: fiber.StatusFound,
-		},
-		{name: "access URL without rule", url: "/new", statusCode: fiber.StatusOK},
-		{
-			name:       "redirect to swagger route",
-			url:        "/",
-			redirectTo: "/swagger",
-			statusCode: fiber.StatusMovedPermanently,
-		},
-		{name: "no redirect to swagger route", url: "/api/", statusCode: fiber.StatusOK},
-		{name: "no redirect to swagger route #2", url: "/api/test", statusCode: fiber.StatusOK},
-		{
-			name:       "redirect with query params",
-			url:        "/params?query=abc",
-			redirectTo: "/with_params?query=abc",
-			statusCode: fiber.StatusMovedPermanently,
-		},
+		{"should return the status code default", "/pattern/xyz", "golang.org", fiber.StatusFound},
+		{"access URL without rule", "/new", "", fiber.StatusOK},
+		{"redirect to swagger route", "/", "/swagger", fiber.StatusMovedPermanently},
+		{"no redirect to swagger route", "/api/", "", fiber.StatusOK},
+		{"no redirect to swagger route #2", "/api/test", "", fiber.StatusOK},
+		{"redirect with query params", "/params?query=abc", "/with_params?query=abc", fiber.StatusMovedPermanently},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			status, location := get(t, app, tt.url)
 			require.Equal(t, tt.statusCode, status)
 			require.Equal(t, tt.redirectTo, location)
@@ -315,7 +289,6 @@ func Test_AsBrowserReads(t *testing.T) {
 
 func Test_Redirect_SameOriginTargets_QueryPreserved(t *testing.T) {
 	t.Parallel()
-
 	// The query is appended after the location is made same-origin, so it survives the collapse.
 	requireRule(t, false, "/api/*", "/$1", "/api//evil.com?a=1&b=2", "/evil.com?a=1&b=2")
 }
@@ -550,7 +523,6 @@ func Test_Redirect_FirstMatchWins(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			// The path both match goes to whichever rule the author put first.
 			requireWin(t, []Rule{tc.narrow, tc.broad}, tc.shared, tc.narrow.To)
 			// What only the broader rule matches still reaches it.
@@ -573,48 +545,34 @@ func Test_Redirect_DeprecatedMapOrderIsBySpecificity(t *testing.T) {
 	}{
 		{
 			// Same prefix, so only what each pins past the wildcard separates them.
-			name:  "a suffix past the wildcard is more specific",
+			name: "a suffix past the wildcard is more specific", path: "/cdn/foox", want: "/narrow",
 			rules: map[string]string{"/cdn/*": "/broad", "/cdn/*x": "/narrow"},
-			path:  "/cdn/foox",
-			want:  "/narrow",
 		},
 		{
-			name:  "and the broader rule still takes what the narrower does not",
+			name: "and the broader rule still takes what the narrower does not", path: "/cdn/foo", want: "/broad",
 			rules: map[string]string{"/cdn/*": "/broad", "/cdn/*x": "/narrow"},
-			path:  "/cdn/foo",
-			want:  "/broad",
 		},
 		{
-			name:  "an extension is a suffix like any other",
+			name: "an extension is a suffix like any other", path: "/p/q.png", want: "/img",
 			rules: map[string]string{"/p/*": "/any", "/p/*.png": "/img"},
-			path:  "/p/q.png",
-			want:  "/img",
 		},
 		{
 			// The prefix comparison still decides first: an anchored prefix is the stronger claim.
-			name:  "a longer prefix outranks a longer total",
+			name: "a longer prefix outranks a longer total", path: "/old/z", want: "/new",
 			rules: map[string]string{"/*": "/catchall", "/old/*": "/new"},
-			path:  "/old/z",
-			want:  "/new",
 		},
 		{
-			name:  "a deeper prefix wins too",
+			name: "a deeper prefix wins too", path: "/a/b/c", want: "/two",
 			rules: map[string]string{"/a/*": "/one", "/a/b/*": "/two"},
-			path:  "/a/b/c",
-			want:  "/two",
 		},
 		{
 			// The two pin the same prefix and total, and a wildcard matches a run of any length, so the class is narrower.
-			name:  "a character class outranks a wildcard",
+			name: "a character class outranks a wildcard", path: "/api/a?token=secret", want: "/class?token=secret",
 			rules: map[string]string{"/api/*": "/wild/$1", "/api/[ab]": "/class"},
-			path:  "/api/a?token=secret",
-			want:  "/class?token=secret",
 		},
 		{
-			name:  "the wildcard still takes paths outside the class",
+			name: "the wildcard still takes paths outside the class", path: "/api/z", want: "/wild/z",
 			rules: map[string]string{"/api/*": "/wild/$1", "/api/[ab]": "/class"},
-			path:  "/api/z",
-			want:  "/wild/z",
 		},
 	}
 
@@ -804,33 +762,22 @@ func Test_RuleList(t *testing.T) {
 		require.Equal(t, list, orderedRules(Config{RuleList: list}))
 	})
 
+	type ruleMap = map[string]string
 	for _, tc := range []struct {
 		name  string
-		rules map[string]string
+		rules ruleMap
 		want  []string
 	}{
+		// A rule with no wildcard at all pins the whole of what it spells.
 		{
-			// A rule with no wildcard at all pins the whole of what it spells.
-			name:  "more pinned before the wildcard wins",
-			rules: map[string]string{"/api/*": "/a", "/api/users": "/b"},
-			want:  []string{"/api/users", "/api/*"},
+			"more pinned before the wildcard wins",
+			ruleMap{"/api/*": "/a", "/api/users": "/b"},
+			[]string{"/api/users", "/api/*"},
 		},
-		{
-			name:  "then more pinned in total",
-			rules: map[string]string{"/cdn/*": "/a", "/cdn/*x": "/b"},
-			want:  []string{"/cdn/*x", "/cdn/*"},
-		},
-		{
-			name:  "then fewer wildcards",
-			rules: map[string]string{"/p/*a*b": "/a", "/p/*ab": "/b"},
-			want:  []string{"/p/*ab", "/p/*a*b"},
-		},
-		{
-			// Nothing else separates them, so the key itself keeps it total.
-			name:  "then the key itself",
-			rules: map[string]string{"/p/b*": "/b", "/p/a*": "/a"},
-			want:  []string{"/p/a*", "/p/b*"},
-		},
+		{"then more pinned in total", ruleMap{"/cdn/*": "/a", "/cdn/*x": "/b"}, []string{"/cdn/*x", "/cdn/*"}},
+		{"then fewer wildcards", ruleMap{"/p/*a*b": "/a", "/p/*ab": "/b"}, []string{"/p/*ab", "/p/*a*b"}},
+		// Nothing else separates them, so the key itself keeps it total.
+		{"then the key itself", ruleMap{"/p/b*": "/b", "/p/a*": "/a"}, []string{"/p/a*", "/p/b*"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

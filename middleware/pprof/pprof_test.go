@@ -121,9 +121,7 @@ func Test_Pprof_Next(t *testing.T) {
 func Test_Pprof_Sibling_Prefix_Path(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
 	app.Use(New())
-
 	app.Get("/debug/pprofiler", func(c fiber.Ctx) error { return c.SendString("app route") })
 
 	apptest.ExpectBody(t, app, "/debug/pprofiler", fiber.StatusOK, "app route")

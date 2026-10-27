@@ -36,7 +36,7 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 
 	app.Use(New())
 
-	// Middleware to test IsEarly func
+	// Fail the request unless IsEarly agrees with the header and the method.
 	const localsKeyTestValid = "earlydata_testvalid"
 	app.Use(func(c fiber.Ctx) error {
 		isEarly := IsEarly(c)
@@ -105,7 +105,6 @@ func executeExpectations(t *testing.T, app *fiber.App, remoteAddr string, expect
 
 func Test_EarlyData(t *testing.T) {
 	t.Parallel()
-
 	// Early data on a safe method is only allowed from a trusted proxy, and on
 	// any other method it never is. QUERY is safe (RFC 10008), so it behaves
 	// like GET.
@@ -135,18 +134,15 @@ func Test_EarlyData(t *testing.T) {
 		{name: "empty config", remoteAddr: untrustedRemoteAddr},
 		{name: "default config", config: &fiber.Config{}, remoteAddr: untrustedRemoteAddr},
 		{
-			name:       "config with TrustProxy and untrusted remote",
-			config:     &fiber.Config{TrustProxy: true},
-			remoteAddr: untrustedRemoteAddr,
+			name: "config with TrustProxy and untrusted remote", remoteAddr: untrustedRemoteAddr,
+			config: &fiber.Config{TrustProxy: true},
 		},
 		{
-			name: "config with TrustProxy and trusted TrustProxyConfig.Proxies",
+			name:       "config with TrustProxy and trusted TrustProxyConfig.Proxies",
+			remoteAddr: trustedRemoteAddr, trusted: true,
 			config: &fiber.Config{
-				TrustProxy:       true,
-				TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
+				TrustProxy: true, TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
 			},
-			remoteAddr: trustedRemoteAddr,
-			trusted:    true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -157,11 +153,9 @@ func Test_EarlyData(t *testing.T) {
 	}
 }
 
-// Test_EarlyDataNext verifies that the middleware skips its logic when Next returns true.
 func Test_EarlyDataNext(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
 	app.Use(New(Config{Next: func(fiber.Ctx) bool { return true }}))
 
 	called := false
@@ -199,16 +193,13 @@ func Test_configDefault_WithConfig(t *testing.T) {
 
 	cfg := configDefault(custom)
 
-	// Next should be preserved and not invoked by configDefault.
+	// Next is preserved and not invoked by configDefault, as is the custom error.
 	require.False(t, called)
 	require.Equal(t, reflect.ValueOf(custom.Next).Pointer(), reflect.ValueOf(cfg.Next).Pointer())
-	// Custom error must be preserved.
 	require.Equal(t, expectedErr, cfg.Error)
-	// Missing fields should be set to defaults.
+	// Missing fields are set to the defaults, which behave as documented.
 	require.NotNil(t, cfg.IsEarlyData)
 	require.NotNil(t, cfg.AllowEarlyData)
-
-	// Verify default functions behave as expected.
 	c := apptest.Ctx(t, fiber.New())
 	c.Request().Header.Set(DefaultHeaderName, DefaultHeaderTrueValue)
 	c.Request().Header.SetMethod(fiber.MethodGet)

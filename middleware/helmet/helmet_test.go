@@ -2,6 +2,7 @@ package helmet
 
 import (
 	"crypto/tls"
+	"maps"
 	"net"
 	"net/http"
 	"testing"
@@ -16,11 +17,8 @@ import (
 // helmetTestApp returns an app that serves "Hello, World!" at / behind New(cfg...).
 func helmetTestApp(cfg ...Config) *fiber.App {
 	app := fiber.New()
-
 	app.Use(New(cfg...))
-
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
-
 	return app
 }
 
@@ -29,30 +27,33 @@ func helmetTestApp(cfg ...Config) *fiber.App {
 func Test_Headers(t *testing.T) {
 	t.Parallel()
 	const realWorldCSP = "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests"
+	defaults := map[string]string{
+		fiber.HeaderXXSSProtection:          "0",
+		fiber.HeaderXContentTypeOptions:     "nosniff",
+		fiber.HeaderXFrameOptions:           "SAMEORIGIN",
+		fiber.HeaderContentSecurityPolicy:   "",
+		fiber.HeaderReferrerPolicy:          "no-referrer",
+		fiber.HeaderPermissionsPolicy:       "",
+		"Cross-Origin-Embedder-Policy":      "require-corp",
+		"Cross-Origin-Opener-Policy":        "same-origin",
+		"Cross-Origin-Resource-Policy":      "same-origin",
+		"Origin-Agent-Cluster":              "?1",
+		"X-DNS-Prefetch-Control":            "off",
+		"X-Download-Options":                "noopen",
+		"X-Permitted-Cross-Domain-Policies": "none",
+	}
+	// The real-world config sets every header to its default value but the CSP
+	// and the permissions policy.
+	realWorld := maps.Clone(defaults)
+	realWorld[fiber.HeaderContentSecurityPolicy] = realWorldCSP
+	realWorld[fiber.HeaderPermissionsPolicy] = "geolocation=(self)"
 
 	for _, tc := range []struct {
 		want map[string]string // the value of each header; "" means it must be empty
 		name string
 		cfg  []Config // none: the middleware is created without a config
 	}{
-		{
-			name: "default",
-			want: map[string]string{
-				fiber.HeaderXXSSProtection:          "0",
-				fiber.HeaderXContentTypeOptions:     "nosniff",
-				fiber.HeaderXFrameOptions:           "SAMEORIGIN",
-				fiber.HeaderContentSecurityPolicy:   "",
-				fiber.HeaderReferrerPolicy:          "no-referrer",
-				fiber.HeaderPermissionsPolicy:       "",
-				"Cross-Origin-Embedder-Policy":      "require-corp",
-				"Cross-Origin-Opener-Policy":        "same-origin",
-				"Cross-Origin-Resource-Policy":      "same-origin",
-				"Origin-Agent-Cluster":              "?1",
-				"X-DNS-Prefetch-Control":            "off",
-				"X-Download-Options":                "noopen",
-				"X-Permitted-Cross-Domain-Policies": "none",
-			},
-		},
+		{name: "default", want: defaults},
 		{
 			name: "custom values for all headers",
 			cfg: []Config{{
@@ -108,21 +109,7 @@ func Test_Headers(t *testing.T) {
 				XDownloadOptions:          "noopen",
 				XPermittedCrossDomain:     "none",
 			}},
-			want: map[string]string{
-				fiber.HeaderXXSSProtection:          "0",
-				fiber.HeaderXContentTypeOptions:     "nosniff",
-				fiber.HeaderXFrameOptions:           "SAMEORIGIN",
-				fiber.HeaderContentSecurityPolicy:   realWorldCSP,
-				fiber.HeaderReferrerPolicy:          "no-referrer",
-				fiber.HeaderPermissionsPolicy:       "geolocation=(self)",
-				"Cross-Origin-Embedder-Policy":      "require-corp",
-				"Cross-Origin-Opener-Policy":        "same-origin",
-				"Cross-Origin-Resource-Policy":      "same-origin",
-				"Origin-Agent-Cluster":              "?1",
-				"X-DNS-Prefetch-Control":            "off",
-				"X-Download-Options":                "noopen",
-				"X-Permitted-Cross-Domain-Policies": "none",
-			},
+			want: realWorld,
 		},
 		{
 			name: "content security policy",
@@ -176,23 +163,15 @@ func Test_HSTSHeaders(t *testing.T) {
 		expected string
 		config   Config
 	}{
+		{"TLS request with max age sets header", "https", "max-age=60; includeSubDomains", Config{HSTSMaxAge: 60}},
 		{
-			name:     "TLS request with max age sets header",
-			config:   Config{HSTSMaxAge: 60},
-			scheme:   "https",
-			expected: "max-age=60; includeSubDomains",
+			name: "TLS request with excluded subdomains sets bare max-age", scheme: "https", expected: "max-age=60",
+			config: Config{HSTSMaxAge: 60, HSTSExcludeSubdomains: true},
 		},
 		{
-			name:     "TLS request with excluded subdomains sets bare max-age",
-			config:   Config{HSTSMaxAge: 60, HSTSExcludeSubdomains: true},
-			scheme:   "https",
-			expected: "max-age=60",
-		},
-		{
-			name:     "TLS request with preload includes subdomains",
-			config:   Config{HSTSMaxAge: 31536000, HSTSPreloadEnabled: true},
-			scheme:   "https",
+			name: "TLS request with preload includes subdomains", scheme: "https",
 			expected: "max-age=31536000; includeSubDomains; preload",
+			config:   Config{HSTSMaxAge: 31536000, HSTSPreloadEnabled: true},
 		},
 		{name: "TLS request with zero max age omits header", config: Config{HSTSMaxAge: 0}, scheme: "https"},
 		{name: "HTTP request with max age omits header", config: Config{HSTSMaxAge: 60}, scheme: "http"},

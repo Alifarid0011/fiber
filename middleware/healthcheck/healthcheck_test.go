@@ -28,6 +28,19 @@ func shouldGiveNotFound(t *testing.T, app *fiber.App, path string) {
 	shouldGiveStatus(t, app, path, fiber.StatusNotFound)
 }
 
+// failing is a probe that always fails.
+func failing(fiber.Ctx) bool { return false }
+
+// defaultProbesApp returns an app configured by cfg that serves New() at the
+// liveness, readiness and startup endpoints.
+func defaultProbesApp(cfg ...fiber.Config) *fiber.App {
+	app := fiber.New(cfg...)
+	app.Get(LivenessEndpoint, New())
+	app.Get(ReadinessEndpoint, New())
+	app.Get(StartupEndpoint, New())
+	return app
+}
+
 // Test_HealthCheck_Default serves the default endpoints with and without
 // StrictRouting: only the answer for a trailing slash differs.
 func Test_HealthCheck_Default(t *testing.T) {
@@ -42,11 +55,7 @@ func Test_HealthCheck_Default(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New(fiber.Config{StrictRouting: tc.strict})
-			app.Get(LivenessEndpoint, New())
-			app.Get(ReadinessEndpoint, New())
-			app.Get(StartupEndpoint, New())
-
+			app := defaultProbesApp(fiber.Config{StrictRouting: tc.strict})
 			for _, path := range []string{"/readyz", "/livez", "/startupz"} {
 				shouldGiveOK(t, app, path)
 				shouldGiveStatus(t, app, path+"/", tc.trailingSlash)
@@ -71,23 +80,15 @@ func Test_HealthCheck_Custom(t *testing.T) {
 			}
 		},
 	}))
-	app.Get(StartupEndpoint, New(Config{Probe: func(_ fiber.Ctx) bool { return false }}))
+	app.Get(StartupEndpoint, New(Config{Probe: failing}))
 
-	// Setup custom liveness and readiness probes to simulate application health status
-	// Live should return 200 with GET request
 	shouldGiveOK(t, app, "/live")
-	// Live should return 404 with POST request
 	apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "/live"), fiber.StatusMethodNotAllowed)
-
-	// Ready should return 404 with POST request
 	apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "/ready"), fiber.StatusMethodNotAllowed)
 
-	// Ready should return 503 with GET request before the channel is closed
+	// Ready answers 503 until the probe's channel has a value, then 200.
 	shouldGiveStatus(t, app, "/ready", fiber.StatusServiceUnavailable)
-
 	shouldGiveStatus(t, app, "/startupz", fiber.StatusServiceUnavailable)
-
-	// Ready should return 200 with GET request after the channel is closed
 	c1 <- struct{}{}
 	shouldGiveOK(t, app, "/ready")
 }
@@ -109,19 +110,15 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 		},
 	}))
 
-	// Testing custom health check endpoints with nested paths
 	shouldGiveOK(t, app, "/probe/live")
 	shouldGiveStatus(t, app, "/probe/ready", fiber.StatusServiceUnavailable)
 	shouldGiveOK(t, app, "/probe/live/")
 	shouldGiveStatus(t, app, "/probe/ready/", fiber.StatusServiceUnavailable)
-	shouldGiveNotFound(t, app, "/probe/livez")
-	shouldGiveNotFound(t, app, "/probe/readyz")
-	shouldGiveNotFound(t, app, "/probe/livez/")
-	shouldGiveNotFound(t, app, "/probe/readyz/")
-	shouldGiveNotFound(t, app, "/livez")
-	shouldGiveNotFound(t, app, "/readyz")
-	shouldGiveNotFound(t, app, "/readyz/")
-	shouldGiveNotFound(t, app, "/livez/")
+	for _, path := range []string{
+		"/probe/livez", "/probe/readyz", "/probe/livez/", "/probe/readyz/", "/livez", "/readyz", "/readyz/", "/livez/",
+	} {
+		shouldGiveNotFound(t, app, path)
+	}
 
 	c1 <- struct{}{}
 	shouldGiveOK(t, app, "/probe/ready")
@@ -133,7 +130,7 @@ func Test_HealthCheck_Head(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Get(LivenessEndpoint, New())
-	app.Get(ReadinessEndpoint, New(Config{Probe: func(_ fiber.Ctx) bool { return false }}))
+	app.Get(ReadinessEndpoint, New(Config{Probe: failing}))
 	app.All("/healthz", New())
 
 	// HEAD must mirror the GET status (RFC 9110 9.3.2) with an empty body
@@ -169,9 +166,7 @@ func Test_HealthCheck_Head(t *testing.T) {
 func Test_HealthCheck_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
 	checker := New(Config{Next: func(_ fiber.Ctx) bool { return true }})
-
 	app.Get(LivenessEndpoint, checker)
 	app.Get(ReadinessEndpoint, checker)
 	app.Get(StartupEndpoint, checker)
@@ -184,13 +179,7 @@ func Test_HealthCheck_Next(t *testing.T) {
 }
 
 func Benchmark_HealthCheck(b *testing.B) {
-	app := fiber.New()
-
-	app.Get(LivenessEndpoint, New())
-	app.Get(ReadinessEndpoint, New())
-	app.Get(StartupEndpoint, New())
-
-	h := app.Handler()
+	h := defaultProbesApp().Handler()
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/livez")
@@ -205,13 +194,7 @@ func Benchmark_HealthCheck(b *testing.B) {
 }
 
 func Benchmark_HealthCheck_Parallel(b *testing.B) {
-	app := fiber.New()
-
-	app.Get(LivenessEndpoint, New())
-	app.Get(ReadinessEndpoint, New())
-	app.Get(StartupEndpoint, New())
-
-	h := app.Handler()
+	h := defaultProbesApp().Handler()
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -230,19 +213,12 @@ func Benchmark_HealthCheck_Parallel(b *testing.B) {
 func Test_HealthCheck_Text_Format(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
+	app.Get(LivenessEndpoint, New()) // the default format is text
+	app.Get(ReadinessEndpoint, New(Config{ResponseFormat: FormatText, Probe: failing}))
 
-	// Test default format (text)
-	app.Get(LivenessEndpoint, New())
-	app.Get(ReadinessEndpoint, New(Config{
-		ResponseFormat: FormatText,
-		Probe:          func(_ fiber.Ctx) bool { return false },
-	}))
-
-	// Test successful healthcheck with default text format
 	resp := apptest.ExpectBody(t, app, LivenessEndpoint, fiber.StatusOK, "OK")
 	require.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 
-	// Test failed healthcheck with text format
 	resp = apptest.ExpectBody(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable, "Service Unavailable")
 	require.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 }
@@ -251,7 +227,6 @@ func Test_HealthCheck_Text_Format(t *testing.T) {
 // responses of a passing and of a failing probe.
 func Test_HealthCheck_Structured_Formats(t *testing.T) {
 	t.Parallel()
-
 	// decoded checks a body that unmarshal decodes to exactly one "status" field.
 	decoded := func(unmarshal func([]byte, any) error) func(*testing.T, []byte, string) {
 		return func(t *testing.T, body []byte, status string) {
@@ -274,56 +249,39 @@ func Test_HealthCheck_Structured_Formats(t *testing.T) {
 		format      ResponseFormat
 	}{
 		{
-			name:        "JSON",
-			format:      FormatJSON,
-			contentType: "application/json; charset=utf-8",
+			name: "JSON", format: FormatJSON, contentType: "application/json; charset=utf-8",
 			check: func(t *testing.T, body []byte, status string) {
 				t.Helper()
-
 				require.JSONEq(t, `{"status":"`+status+`"}`, string(body))
 			},
 		},
 		{
-			name:        "XML",
-			format:      FormatXML,
-			contentType: "application/xml; charset=utf-8",
+			name: "XML", format: FormatXML, contentType: "application/xml; charset=utf-8",
 			check: func(t *testing.T, body []byte, status string) {
 				t.Helper()
-
 				require.Contains(t, string(body), "<healthResponse>")
 				require.Contains(t, string(body), "<status>"+status+"</status>")
 			},
 		},
 		{
-			name:        "MsgPack",
-			app:         fiber.Config{MsgPackEncoder: msgpack.Marshal},
-			format:      FormatMsgPack,
-			contentType: "application/vnd.msgpack",
-			check:       decoded(msgpack.Unmarshal),
+			name: "MsgPack", app: fiber.Config{MsgPackEncoder: msgpack.Marshal}, format: FormatMsgPack,
+			contentType: "application/vnd.msgpack", check: decoded(msgpack.Unmarshal),
 		},
 		{
-			name:        "CBOR",
-			app:         fiber.Config{CBOREncoder: cbor.Marshal},
-			format:      FormatCBOR,
-			contentType: "application/cbor",
-			check:       decoded(cbor.Unmarshal),
+			name: "CBOR", app: fiber.Config{CBOREncoder: cbor.Marshal}, format: FormatCBOR,
+			contentType: "application/cbor", check: decoded(cbor.Unmarshal),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New(tc.app)
 			app.Get(LivenessEndpoint, New(Config{ResponseFormat: tc.format}))
-			app.Get(ReadinessEndpoint, New(Config{
-				ResponseFormat: tc.format,
-				Probe:          func(_ fiber.Ctx) bool { return false },
-			}))
+			app.Get(ReadinessEndpoint, New(Config{ResponseFormat: tc.format, Probe: failing}))
 
-			// Test successful healthcheck
 			resp := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)
 			require.Equal(t, tc.contentType, resp.Header.Get("Content-Type"))
 			tc.check(t, apptest.BodyBytes(t, resp), "OK")
 
-			// Test failed healthcheck
 			resp = apptest.Expect(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable)
 			require.Equal(t, tc.contentType, resp.Header.Get("Content-Type"))
 			tc.check(t, apptest.BodyBytes(t, resp), "Service Unavailable")
