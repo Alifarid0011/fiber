@@ -400,10 +400,7 @@ func Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent(t *testing.T) {
 // goroutines is race-free (run under -race) and leaves one working hook.
 func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 	t.Parallel()
-	for name, withHook := range map[string]bool{
-		"nil ConfigureClient":          false,
-		"pre-existing ConfigureClient": true,
-	} {
+	for name, withHook := range map[string]bool{"nil ConfigureClient": false, "pre-existing ConfigureClient": true} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			var hookCalls atomic.Int32

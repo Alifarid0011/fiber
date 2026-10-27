@@ -1202,17 +1202,11 @@ func Test_Domain_UseMountCustomConstraint(t *testing.T) {
 // engine. Keyed by path alone they would displace each other.
 func Test_Domain_UseMountPerHostConfig(t *testing.T) {
 	t.Parallel()
-	subA := New(Config{
-		Views:        domainTestEngine(t, "testdata2"),
-		ErrorHandler: domainTestErrorHandler(591, "a error"),
-	})
+	subA := New(Config{Views: domainTestEngine(t, "testdata2"), ErrorHandler: domainTestErrorHandler(591, "a error")})
 	subA.Get("/boom", domainTestBoom)
 	subA.Get("/view", func(c Ctx) error { return c.Render("bruh.tmpl", Map{}) })
 
-	subB := New(Config{
-		Views:        domainTestEngine(t, "testdata3"),
-		ErrorHandler: domainTestErrorHandler(592, "b error"),
-	})
+	subB := New(Config{Views: domainTestEngine(t, "testdata3"), ErrorHandler: domainTestErrorHandler(592, "b error")})
 	subB.Get("/boom", domainTestBoom)
 	subB.Get("/view", func(c Ctx) error { return c.Render("hello_world.tmpl", Map{"Name": "b"}) })
 

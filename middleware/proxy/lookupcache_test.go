@@ -182,7 +182,6 @@ func Test_Security_FollowRedirects_UnguardedClientHopsAreJudgedByFreshLookups(t 
 	})
 	client.onRequest = func(req *fasthttp.Request) { hops = append(hops, req.URI().String()) }
 
-	err := proxyTestFollow(t, client.client, "http://start.example/", 5, DefaultSecurityPolicy())
-	require.ErrorIs(t, err, ErrUpstreamHostBlocked, "the second hop to the rebound name is judged by its new answer")
+	require.ErrorIs(t, proxyTestFollow(t, client.client, "http://start.example/", 5, DefaultSecurityPolicy()), ErrUpstreamHostBlocked, "the second hop to the rebound name is judged by its new answer")
 	require.Equal(t, []string{"http://start.example/", "http://rebind.test/a"}, hops, "and never sent")
 }

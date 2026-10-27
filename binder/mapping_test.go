@@ -302,9 +302,7 @@ func Test_decoderPoolMapInit(t *testing.T) {
 
 func TestSetParserDecoderConcurrentAccess(t *testing.T) {
 	t.Parallel()
-	t.Cleanup(func() {
-		SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
-	})
+	t.Cleanup(func() { SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true}) })
 
 	type queryUser struct {
 		Name string `query:"name"`

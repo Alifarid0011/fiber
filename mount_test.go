@@ -317,9 +317,7 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 
 	sub := New(Config{Views: engine})
 
-	sub.Get("/:name", func(c Ctx) error {
-		return c.Render("hello_world.tmpl", Map{"Name": c.Params("name")})
-	})
+	sub.Get("/:name", func(c Ctx) error { return c.Render("hello_world.tmpl", Map{"Name": c.Params("name")}) })
 
 	app := New()
 	app.Use("/hello", sub)
@@ -357,9 +355,7 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 
 	micro := New(Config{Views: engine})
 
-	micro.Get("/doe", func(c Ctx) error {
-		return c.Render("hello_world.tmpl", Map{"Name": "doe"})
-	})
+	micro.Get("/doe", func(c Ctx) error { return c.Render("hello_world.tmpl", Map{"Name": "doe"}) })
 
 	app := New()
 	v1 := app.Group("/v1")

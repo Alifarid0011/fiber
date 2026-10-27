@@ -26,11 +26,7 @@ type notationTarget struct {
 func Test_Notation_FormAndQuery(t *testing.T) {
 	t.Parallel()
 	runFormSources(t, []formCase[notationTarget]{
-		{
-			name:  "repeated key",
-			input: "colors=red&colors=blue",
-			want:  notationTarget{Colors: []string{"red", "blue"}},
-		},
+		{name: "repeated key", input: "colors=red&colors=blue", want: notationTarget{Colors: []string{"red", "blue"}}},
 		{
 			name:  "empty brackets",
 			input: "colors[]=red&colors[]=blue",

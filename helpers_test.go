@@ -386,11 +386,7 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 		},
 		{description: "mime extension", accept: "utf-8, iso-8859-1;q=0.5", offers: []string{"utf-8"}},
 		{description: "mime extension", accept: "utf-8, iso-8859-1;q=0.5", offers: []string{"iso-8859-1"}},
-		{
-			description: "mime extension",
-			accept:      "utf-8, iso-8859-1;q=0.5",
-			offers:      []string{"iso-8859-1", "utf-8"},
-		},
+		{description: "mime extension", accept: "utf-8, iso-8859-1;q=0.5", offers: []string{"iso-8859-1", "utf-8"}},
 		{description: "mime extension", accept: "gzip, deflate", offers: []string{"deflate"}},
 		{
 			description: "web browser",

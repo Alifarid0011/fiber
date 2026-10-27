@@ -221,9 +221,7 @@ func hstsHeaderForRequest(t *testing.T, config *Config, scheme string) string {
 
 	tlsListener := tls.NewListener(ln, serverTLSConf)
 	errCh := make(chan error, 1)
-	go func() {
-		errCh <- app.Listener(tlsListener, fiber.ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errCh <- app.Listener(tlsListener, fiber.ListenConfig{DisableStartupMessage: true}) }()
 
 	client := &http.Client{Timeout: time.Second, Transport: &http.Transport{TLSClientConfig: clientTLSConf}}
 

@@ -342,18 +342,8 @@ func TestHasPartialMatchBoundary(t *testing.T) {
 		{name: "greater than length", path: "/demo", matchedLength: 6, expected: false},
 		{name: "exact match", path: "/demo", matchedLength: len("/demo"), expected: true},
 		{name: "zero length", path: "/demo", matchedLength: 0, expected: false},
-		{
-			name:          "previous rune slash",
-			path:          "/demo/child",
-			matchedLength: len("/demo/"),
-			expected:      true,
-		},
-		{
-			name:          "next rune slash",
-			path:          "/demo/child",
-			matchedLength: len("/demo"),
-			expected:      true,
-		},
+		{name: "previous rune slash", path: "/demo/child", matchedLength: len("/demo/"), expected: true},
+		{name: "next rune slash", path: "/demo/child", matchedLength: len("/demo"), expected: true},
 		{name: "no boundary", path: "/demo/child", matchedLength: len("/dem"), expected: false},
 	}
 

@@ -157,9 +157,7 @@ func Test_Response_Protocol(t *testing.T) {
 		app := fiber.New()
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Scheme()) })
 
-		go func() {
-			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
-		}()
+		go func() { assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
 
 		client := New()
 		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
@@ -383,9 +381,7 @@ func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 				resp.RawResponse.SetBodyString(tc.body)
 
 				decoded := payload{}
-				require.NotPanics(t, func() {
-					require.ErrorIs(t, tc.decode(resp, &decoded), ErrClientNil)
-				})
+				require.NotPanics(t, func() { require.ErrorIs(t, tc.decode(resp, &decoded), ErrClientNil) })
 			})
 		}
 	})

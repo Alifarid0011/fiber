@@ -1945,9 +1945,7 @@ func Test_Bind_All(t *testing.T) {
 		SessionID string                `json:"session_id" cookie:"session_id"`
 		ID        int                   `uri:"id" query:"id" json:"id" form:"id"`
 	}
-	newBind := func(app *App) *Bind {
-		return &Bind{ctx: app.AcquireCtx(&fasthttp.RequestCtx{})}
-	}
+	newBind := func(app *App) *Bind { return &Bind{ctx: app.AcquireCtx(&fasthttp.RequestCtx{})} }
 
 	tests := []struct {
 		out      any
@@ -1958,16 +1956,10 @@ func Test_Bind_All(t *testing.T) {
 	}{
 		{name: "Invalid output type", out: 123, wantErr: true},
 		{
-			name:   "Successful binding",
-			out:    new(User),
-			config: bindTestAllRequest(),
-			expected: &User{
-				ID:        1,
-				Name:      "john",
-				Email:     "john@doe.com",
-				Role:      "admin",
-				SessionID: "abc1234",
-			},
+			name:     "Successful binding",
+			out:      new(User),
+			config:   bindTestAllRequest(),
+			expected: &User{ID: 1, Name: "john", Email: "john@doe.com", Role: "admin", SessionID: "abc1234"},
 		},
 		{
 			name:     "Missing fields (partial JSON only)",
@@ -2001,13 +1993,9 @@ func Test_Bind_All(t *testing.T) {
 			expected: &User{Name: "queryname"},
 		},
 		{
-			name: "Skip empty body despite content-type",
-			out:  new(User),
-			config: &RequestConfig{
-				ContentType: MIMEApplicationJSON,
-				Body:        []byte{},
-				Query:       "name=queryname",
-			},
+			name:     "Skip empty body despite content-type",
+			out:      new(User),
+			config:   &RequestConfig{ContentType: MIMEApplicationJSON, Body: []byte{}, Query: "name=queryname"},
 			expected: &User{Name: "queryname"},
 		},
 	}
@@ -2406,9 +2394,7 @@ func (b *ctxTypeBinder) Parse(c Ctx, _ any) error {
 
 func Test_Bind_CustomBinder_CustomCtx(t *testing.T) {
 	t.Parallel()
-	app := NewWithCustomCtx(func(app *App) CustomCtx {
-		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
-	})
+	app := NewWithCustomCtx(func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} })
 	typeBinder := &ctxTypeBinder{}
 	app.RegisterCustomBinder(typeBinder)
 

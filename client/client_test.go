@@ -92,9 +92,7 @@ func clientTestAStartTLSServer(t *testing.T, body string, tune ...func(server, c
 	app := fiber.New()
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString(body) })
 
-	go func() {
-		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
-	}()
+	go func() { assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
 	time.Sleep(1 * time.Second)
 
 	return app, ln.Addr().String(), clientTLSConf
@@ -1314,11 +1312,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 	go start()
 
-	fasthttpClient := &fasthttp.Client{
-		Dial:                     dial,
-		NoDefaultUserAgentHeader: true,
-		DisablePathNormalizing:   true,
-	}
+	fasthttpClient := &fasthttp.Client{Dial: dial, NoDefaultUserAgentHeader: true, DisablePathNormalizing: true}
 
 	proxyServer := fiber.New()
 

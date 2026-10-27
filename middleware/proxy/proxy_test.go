@@ -270,11 +270,7 @@ func Test_Proxy_Balancer_Upstream(t *testing.T) {
 			client: func(addr string) *fasthttp.LBClient {
 				return &fasthttp.LBClient{
 					Clients: []fasthttp.BalancingClient{
-						&fasthttp.HostClient{
-							NoDefaultUserAgentHeader: true,
-							DisablePathNormalizing:   true,
-							Addr:                     addr,
-						},
+						&fasthttp.HostClient{NoDefaultUserAgentHeader: true, DisablePathNormalizing: true, Addr: addr},
 					},
 					Timeout: time.Second,
 				}
@@ -948,11 +944,7 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 	restoreGlobalProxyClient(t)
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
-	WithClient(&fasthttp.Client{
-		NoDefaultUserAgentHeader: true,
-		DisablePathNormalizing:   true,
-		MaxConnsPerHost:          123,
-	})
+	WithClient(&fasthttp.Client{NoDefaultUserAgentHeader: true, DisablePathNormalizing: true, MaxConnsPerHost: 123})
 	loadedClient := sharedClient.Load()
 	require.NotNil(t, loadedClient)
 	require.Equal(t, 123, loadedClient.MaxConnsPerHost)

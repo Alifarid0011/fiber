@@ -159,13 +159,9 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	nestedTLSHost := &fasthttp.HostClient{Addr: "example.net:80", TLSConfig: &tls.Config{ServerName: "example", MinVersion: tls.VersionTLS12}}
 	multiLevelHost := &fasthttp.HostClient{Addr: "example.edu:80"}
 
-	nestedDialHost.Dial = func(string) (net.Conn, error) {
-		return nil, errors.New("original dial")
-	}
+	nestedDialHost.Dial = func(string) (net.Conn, error) { return nil, errors.New("original dial") }
 
-	multiLevelHost.Dial = func(string) (net.Conn, error) {
-		return nil, errors.New("multi-level dial")
-	}
+	multiLevelHost.Dial = func(string) (net.Conn, error) { return nil, errors.New("multi-level dial") }
 
 	nestedDialLB := clientTestCWrapLB(nestedDialHost)
 	nestedTLSLB := clientTestCWrapLB(nestedTLSHost)
@@ -1044,10 +1040,7 @@ func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 				ctx.SetStatusCode(fasthttp.StatusOK)
 			})
 
-			transport := newStandardClientTransport(&fasthttp.Client{
-				DisablePathNormalizing: tc.disable,
-				Dial:                   dial,
-			})
+			transport := newStandardClientTransport(&fasthttp.Client{DisablePathNormalizing: tc.disable, Dial: dial})
 
 			req, resp := clientTestCReqResp(t)
 			req.SetRequestURI("http://example.com/a//b")

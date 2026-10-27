@@ -387,10 +387,7 @@ func Test_RegexRules_InvalidRegexPanics(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	require.Panics(t, func() {
-		app.Use(New(Config{
-			RuleList:   []Rule{{From: "(", To: "google.com"}},
-			StatusCode: fiber.StatusMovedPermanently,
-		}))
+		app.Use(New(Config{RuleList: []Rule{{From: "(", To: "google.com"}}, StatusCode: fiber.StatusMovedPermanently}))
 	})
 }
 

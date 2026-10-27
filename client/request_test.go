@@ -661,9 +661,7 @@ func Test_Request_Methods_With_Server(t *testing.T) {
 	// What the routes answer with.
 	hostname := func(c fiber.Ctx) error { return c.SendString(c.Hostname()) }
 	form := func(c fiber.Ctx) error { return c.SendString(c.FormValue("foo")) }
-	created := func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusCreated).SendString(c.FormValue("foo"))
-	}
+	created := func(c fiber.Ctx) error { return c.Status(fiber.StatusCreated).SendString(c.FormValue("foo")) }
 	echo := func(c fiber.Ctx) error { return c.Send(c.Body()) }
 	reply := func(status int, body string) fiber.Handler {
 		return func(c fiber.Ctx) error { return c.Status(status).SendString(body) }

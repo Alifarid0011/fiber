@@ -404,9 +404,7 @@ func Test_LogServices(t *testing.T) {
 
 func Test_NewConfiguredServicesNil(t *testing.T) {
 	t.Parallel()
-	require.PanicsWithError(t, "fiber: service at index 0 is nil", func() {
-		New(Config{Services: []Service{nil}})
-	})
+	require.PanicsWithError(t, "fiber: service at index 0 is nil", func() { New(Config{Services: []Service{nil}}) })
 }
 
 func Test_ServiceContextProviders(t *testing.T) {
