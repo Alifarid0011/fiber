@@ -174,6 +174,8 @@ func Test_Redirect_SameOriginTargets(t *testing.T) {
 		{"ordinary capture", "/api/*", "/$1", "/api/users", "/users"},
 		{"capture below a prefix", "/old/*", "/new/$1", "/old//evil.com", "/new//evil.com"},
 		{"relative reference", "/g", "google.com", "/g", "google.com"},
+		// The query is appended after the location is made same-origin, so it survives the collapse.
+		{"query is preserved", "/api/*", "/$1", "/api//evil.com?a=1&b=2", "/evil.com?a=1&b=2"},
 
 		// A target naming its own authority is the author's call, so it is left as configured.
 		{"absolute target", "/ext/*", "https://cdn.example.com/$1", "/ext/a", "https://cdn.example.com/a"},
@@ -196,17 +198,17 @@ func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 	})
 }
 
-// Test_Redirect_TenthCaptureInAuthority pins the guard on a two-digit "$N" token inside the authority.
-func Test_Redirect_TenthCaptureInAuthority(t *testing.T) {
-	t.Parallel()
-	requireRule(t, false, "/t/*/*/*/*/*/*/*/*/*/*", "https://$10.cdn.example.com/",
-		"/t/evil.com/x/b/c/d/e/f/g/h/i/tenant", "")
-}
-
-// Test_Redirect_TwoDigitCaptures pins that "$10" names the tenth capture rather than "$1" followed by "0".
+// Test_Redirect_TwoDigitCaptures pins that "$10" names the tenth capture rather than "$1" followed by "0", and that
+// the guard on the authority sees a two-digit "$N" token too.
 func Test_Redirect_TwoDigitCaptures(t *testing.T) {
 	t.Parallel()
-	requireRule(t, false, "/t/*/*/*/*/*/*/*/*/*/*/*", "/r/$11/$10/$1", "/t/a/b/c/d/e/f/g/h/i/j/k", "/r/k/j/a")
+	redirectTestRun(t, false, "", []redirectTestCase{
+		{"tenth capture composes", "/t/*/*/*/*/*/*/*/*/*/*/*", "/r/$11/$10/$1", "/t/a/b/c/d/e/f/g/h/i/j/k", "/r/k/j/a"},
+		{
+			"tenth capture in the authority", "/t/*/*/*/*/*/*/*/*/*/*", "https://$10.cdn.example.com/",
+			"/t/evil.com/x/b/c/d/e/f/g/h/i/tenant", "",
+		},
+	})
 }
 
 // Test_Redirect_ExtraSlashesBeforeTheCapture covers a target opening its authority with more than two slashes.
@@ -285,12 +287,6 @@ func Test_AsBrowserReads(t *testing.T) {
 	} {
 		require.Equal(t, tc.want, urlnorm.AsBrowserReads(tc.in), "input %q", tc.in)
 	}
-}
-
-func Test_Redirect_SameOriginTargets_QueryPreserved(t *testing.T) {
-	t.Parallel()
-	// The query is appended after the location is made same-origin, so it survives the collapse.
-	requireRule(t, false, "/api/*", "/$1", "/api//evil.com?a=1&b=2", "/evil.com?a=1&b=2")
 }
 
 func Test_SchemeEnd(t *testing.T) {
@@ -383,12 +379,39 @@ func Test_Redirect_ConfigOutcomes(t *testing.T) {
 	}
 }
 
-func Test_RegexRules_InvalidRegexPanics(t *testing.T) {
+// Test_Redirect_NewValidatesRules pins which rule configurations New refuses. A config setting the deprecated map
+// and the ordered list at once is refused: the two disagree about what decides precedence, and picking one silently
+// is the bug RuleList replaced.
+func Test_Redirect_NewValidatesRules(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	require.Panics(t, func() {
-		app.Use(New(Config{RuleList: []Rule{{From: "(", To: "google.com"}}, StatusCode: fiber.StatusMovedPermanently}))
-	})
+	deep := "/p/" + strings.Repeat("(?:", 16000) + "a" + strings.Repeat(")", 16000)
+	oldToNew := []Rule{{From: "/old", To: "/new"}}
+	oldToNewMap := map[string]string{"/old": "/new"}
+
+	for _, tc := range []struct {
+		name   string
+		cfg    Config
+		panics bool
+	}{
+		{name: "invalid regex", cfg: Config{RuleList: []Rule{{From: "(", To: "google.com"}}}, panics: true},
+		{name: "unterminated quote", cfg: Config{RuleList: []Rule{{From: `/p/*\Qab*`, To: "/safe"}}}, panics: true},
+		{name: "map and list together", cfg: Config{Rules: oldToNewMap, RuleList: oldToNew}, panics: true},
+		{name: "map alone", cfg: Config{Rules: oldToNewMap}},
+		{name: "list alone", cfg: Config{RuleList: oldToNew}},
+		{
+			name: "deep nesting is bounded",
+			cfg:  Config{RuleList: []Rule{{From: deep, To: "/x"}, {From: "/p/a", To: "/y"}}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.panics {
+				require.Panics(t, func() { New(tc.cfg) })
+			} else {
+				require.NotPanics(t, func() { New(tc.cfg) })
+			}
+		})
+	}
 }
 
 // Test_Redirect_TargetIsReadAsTheClientWillRead pins the guard on the target the parser sees, tabs, LFs and CRs gone.
@@ -540,6 +563,12 @@ func Test_Redirect_DeprecatedMapOrderIsBySpecificity(t *testing.T) {
 		path  string
 		want  string
 	}{
+		// The deprecated field goes on working, since it has to for the whole of v3.
+		{
+			name: "a wildcard rule still redirects", path: "/api/users", want: "/users",
+			rules: map[string]string{"/api/*": "/$1"},
+		},
+		{name: "an exact rule still redirects", rules: map[string]string{"/old": "/new"}, path: "/old", want: "/new"},
 		{
 			// Same prefix, so only what each pins past the wildcard separates them.
 			name: "a suffix past the wildcard is more specific", path: "/cdn/foox", want: "/narrow",
@@ -636,29 +665,28 @@ func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 	}
 }
 
-// Test_Redirect_NestedAlternationLosesTheTieBreak covers two rules that tie on both specificity measures.
-func Test_Redirect_FiniteRepetitionIsCounted(t *testing.T) {
+// Test_Redirect_RuleListMatching pins which of two rules answers a request when their patterns overlap in the ways
+// the regexp syntax allows.
+func Test_Redirect_RuleListMatching(t *testing.T) {
 	t.Parallel()
-	requireWin(t, []Rule{{From: `/p/[a][ab]?`, To: "/narrow"}, {From: `/p/[ab]{1,2}`, To: "/broad"}}, "/p/a", "/narrow")
-}
+	hex := []Rule{{From: `/p/\x{61}`, To: "/exact"}, {From: "/p/[a-z]", To: "/class"}}
+	narrowBroad := func(narrow, broad string) []Rule {
+		return []Rule{{From: narrow, To: "/narrow"}, {From: broad, To: "/broad"}}
+	}
 
-// Test_Redirect_UnboundedRulesKeepTheirBreadth covers two rules that both run on: "/p/[z]+" and "/p/[a-z]+".
-func Test_Redirect_UnboundedRulesKeepTheirBreadth(t *testing.T) {
-	t.Parallel()
-	requireWin(t, []Rule{{From: `/p/[z]+`, To: "/narrow"}, {From: `/p/[a-z]+`, To: "/broad"}}, "/p/z", "/narrow")
-}
-
-// Test_Redirect_EscapedByteIsOneMember covers the class escape spelling one byte: "[\.]" lists the dot alone.
-func Test_Redirect_UnterminatedQuoteRuleIsRejected(t *testing.T) {
-	t.Parallel()
-	require.Panics(t, func() { New(Config{RuleList: []Rule{{From: `/p/*\Qab*`, To: "/safe"}}}) })
-}
-
-func Test_Redirect_HexEscapeOutranksAClass(t *testing.T) {
-	t.Parallel()
-	rules := []Rule{{From: `/p/\x{61}`, To: "/exact"}, {From: "/p/[a-z]", To: "/class"}}
-	for _, tc := range []struct{ request, want string }{{"/p/a", "/exact"}, {"/p/b", "/class"}} {
-		requireWin(t, rules, tc.request, tc.want)
+	for _, tc := range []struct {
+		name, request, want string
+		rules               []Rule
+	}{
+		{"finite repetition is counted", "/p/a", "/narrow", narrowBroad(`/p/[a][ab]?`, `/p/[ab]{1,2}`)},
+		{"unbounded rules keep their breadth", "/p/z", "/narrow", narrowBroad(`/p/[z]+`, `/p/[a-z]+`)},
+		{"hex escape outranks a class", "/p/a", "/exact", hex},
+		{"the class still takes the rest", "/p/b", "/class", hex},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			requireWin(t, tc.rules, tc.request, tc.want)
+		})
 	}
 }
 
@@ -684,35 +712,6 @@ func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
 		// Two slashes still open an authority, so the capture is the host there.
 		{name: "capture as the file host", target: "file://$1/x", request: "/p/evil.com"},
 	})
-}
-
-// Test_Redirect_LiteralBracesHideNoRun covers "{x*}", whose braces bound no repetition and hide no run.
-func Test_Redirect_DeepNestingIsBounded(t *testing.T) {
-	t.Parallel()
-	deep := "/p/" + strings.Repeat("(?:", 16000) + "a" + strings.Repeat(")", 16000)
-	require.NotPanics(t, func() { New(Config{RuleList: []Rule{{From: deep, To: "/x"}, {From: "/p/a", To: "/y"}}}) })
-}
-
-// Test_Redirect_BothRuleFieldsPanic pins that a config setting the deprecated
-// map and the ordered list at once is refused: the two disagree about what
-// decides precedence, and picking one silently is the bug this API replaced.
-func Test_Redirect_BothRuleFieldsPanic(t *testing.T) {
-	t.Parallel()
-	require.Panics(t, func() {
-		New(Config{Rules: map[string]string{"/old": "/new"}, RuleList: []Rule{{From: "/old", To: "/new"}}})
-	})
-
-	// Either alone is fine.
-	require.NotPanics(t, func() { New(Config{Rules: map[string]string{"/old": "/new"}}) })
-	require.NotPanics(t, func() { New(Config{RuleList: []Rule{{From: "/old", To: "/new"}}}) })
-}
-
-// Test_Redirect_DeprecatedMapStillRedirects pins that the deprecated field goes
-// on working, since it has to for the whole of v3.
-func Test_Redirect_DeprecatedMapStillRedirects(t *testing.T) {
-	t.Parallel()
-	requireWinMap(t, map[string]string{"/api/*": "/$1"}, "/api/users", "/users")
-	requireWinMap(t, map[string]string{"/old": "/new"}, "/old", "/new")
 }
 
 // Test_ShadowedRules pins which rule orders leave a rule dead. Reported rather

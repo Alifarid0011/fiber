@@ -278,9 +278,12 @@ func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 	require.Equal(t, "value=SomeThing", string(ctx.Response.Body()))
 }
 
+// generateKeyLengths are the key lengths GenerateKey accepts.
+var generateKeyLengths = []int{16, 24, 32}
+
 func Test_GenerateKey(t *testing.T) {
 	t.Parallel()
-	for _, length := range []int{16, 24, 32} {
+	for _, length := range generateKeyLengths {
 		t.Run(strconv.Itoa(length)+"_length", func(t *testing.T) {
 			t.Parallel()
 			decodedKey, err := base64.StdEncoding.DecodeString(GenerateKey(length))
@@ -462,23 +465,23 @@ func Benchmark_Encrypt_Cookie_Custom_Encryptor_Parallel(b *testing.B) {
 }
 
 func Benchmark_GenerateKey(b *testing.B) {
-	for _, tt := range []struct{ length int }{{length: 16}, {length: 24}, {length: 32}} {
-		b.Run(strconv.Itoa(tt.length), func(b *testing.B) {
+	for _, length := range generateKeyLengths {
+		b.Run(strconv.Itoa(length), func(b *testing.B) {
 			for b.Loop() {
-				GenerateKey(tt.length)
+				GenerateKey(length)
 			}
 		})
 	}
 }
 
 func Benchmark_GenerateKey_Parallel(b *testing.B) {
-	for _, tt := range []struct{ length int }{{length: 16}, {length: 24}, {length: 32}} {
-		b.Run(strconv.Itoa(tt.length), func(b *testing.B) {
+	for _, length := range generateKeyLengths {
+		b.Run(strconv.Itoa(length), func(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					GenerateKey(tt.length)
+					GenerateKey(length)
 				}
 			})
 		})

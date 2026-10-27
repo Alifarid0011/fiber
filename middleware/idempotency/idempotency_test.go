@@ -100,18 +100,18 @@ func Test_Idempotency(t *testing.T) {
 	require.Equal(t, "3", doReq(fiber.MethodPost, "/", ""))
 	require.Equal(t, "4", doReq(fiber.MethodPost, "/", ""))
 
-	require.Equal(t, "5", doReq(fiber.MethodGet, "/", "00000000-0000-0000-0000-000000000000"))
-	require.Equal(t, "6", doReq(fiber.MethodGet, "/", "00000000-0000-0000-0000-000000000000"))
+	require.Equal(t, "5", doReq(fiber.MethodGet, "/", validKey))
+	require.Equal(t, "6", doReq(fiber.MethodGet, "/", validKey))
 
-	require.Equal(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
-	require.Equal(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
+	require.Equal(t, "7", doReq(fiber.MethodPost, "/", validKey))
+	require.Equal(t, "7", doReq(fiber.MethodPost, "/", validKey))
 	require.Equal(t, "8", doReq(fiber.MethodPost, "/", ""))
 	require.Equal(t, "9", doReq(fiber.MethodPost, "/", "11111111-1111-1111-1111-111111111111"))
 
-	require.Equal(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
+	require.Equal(t, "7", doReq(fiber.MethodPost, "/", validKey))
 	time.Sleep(4 * lifetime)
-	require.Equal(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
-	require.Equal(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
+	require.Equal(t, "10", doReq(fiber.MethodPost, "/", validKey))
+	require.Equal(t, "10", doReq(fiber.MethodPost, "/", validKey))
 
 	// Test raciness
 	{
@@ -157,7 +157,7 @@ func Benchmark_Idempotency(b *testing.B) {
 	}
 
 	b.Run("hit", func(b *testing.B) {
-		c := post("X-Idempotency-Key", "00000000-0000-0000-0000-000000000000")
+		c := post("X-Idempotency-Key", validKey)
 
 		b.ReportAllocs()
 		for b.Loop() {
@@ -180,7 +180,7 @@ func Benchmark_Idempotency(b *testing.B) {
 	hs := scoped.Handler()
 
 	b.Run("scoped hit", func(b *testing.B) {
-		c := post("X-Idempotency-Key", "00000000-0000-0000-0000-000000000000", "X-User", "alice")
+		c := post("X-Idempotency-Key", validKey, "X-User", "alice")
 
 		b.ReportAllocs()
 		for b.Loop() {

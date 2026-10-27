@@ -23,15 +23,14 @@ func Test_CORS_DefaultOrEmptyConfig(t *testing.T) {
 			app.Use(New(cfg...))
 			h := app.Handler()
 
-			ctx := corsTestRequest(h, fiber.MethodGet, "http://localhost")
-			require.Equal(t, "*", corsTestAllowOrigin(ctx))
-			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
-			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
-
-			ctx = corsTestPreflight(h, "http://localhost")
-			require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH, QUERY", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)))
-			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
-			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
+			corsTestExpectHeaders(t, corsTestRequest(h, fiber.MethodGet, "http://localhost"),
+				fiber.HeaderAccessControlAllowOrigin, "*",
+				fiber.HeaderAccessControlAllowCredentials, "",
+				fiber.HeaderAccessControlExposeHeaders, "")
+			corsTestExpectHeaders(t, corsTestPreflight(h, "http://localhost"),
+				fiber.HeaderAccessControlAllowMethods, "GET, POST, HEAD, PUT, DELETE, PATCH, QUERY",
+				fiber.HeaderAccessControlAllowHeaders, "",
+				fiber.HeaderAccessControlMaxAge, "")
 		})
 	}
 }
@@ -58,9 +57,24 @@ func corsTestPreflight(h fasthttp.RequestHandler, origin string) *fasthttp.Reque
 	return corsTestRequest(h, fiber.MethodOptions, origin, fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 }
 
+// corsTestHeader returns the response header name of the answer in ctx.
+func corsTestHeader(ctx *fasthttp.RequestCtx, name string) string {
+	return string(ctx.Response.Header.Peek(name))
+}
+
+// corsTestExpectHeaders fails the test unless each response header named in kv has the value that follows its name,
+// where "" means the header is absent.
+func corsTestExpectHeaders(t *testing.T, ctx *fasthttp.RequestCtx, kv ...string) {
+	t.Helper()
+
+	for i := 0; i+1 < len(kv); i += 2 {
+		require.Equal(t, kv[i+1], corsTestHeader(ctx, kv[i]), kv[i])
+	}
+}
+
 // corsTestAllowOrigin returns the Access-Control-Allow-Origin of the answer in ctx.
 func corsTestAllowOrigin(ctx *fasthttp.RequestCtx) string {
-	return string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin))
+	return corsTestHeader(ctx, fiber.HeaderAccessControlAllowOrigin)
 }
 
 // corsTestRaw reads the raw HTTP request raw, which keeps its header names as
@@ -86,13 +100,12 @@ func Test_CORS_WildcardHeaders(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{AllowMethods: []string{"*"}, AllowHeaders: []string{"*"}, ExposeHeaders: []string{"*"}}))
 
-	ctx := corsTestPreflight(app.Handler(), "http://localhost")
-
-	require.Equal(t, "*", corsTestAllowOrigin(ctx))
-	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
-	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)))
-	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
-	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
+	corsTestExpectHeaders(t, corsTestPreflight(app.Handler(), "http://localhost"),
+		fiber.HeaderAccessControlAllowOrigin, "*",
+		fiber.HeaderAccessControlAllowCredentials, "",
+		fiber.HeaderAccessControlAllowMethods, "*",
+		fiber.HeaderAccessControlAllowHeaders, "*",
+		fiber.HeaderAccessControlExposeHeaders, "*")
 }
 
 func Test_CORS_Negative_MaxAge(t *testing.T) {
@@ -100,9 +113,7 @@ func Test_CORS_Negative_MaxAge(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{MaxAge: -1}))
 
-	ctx := corsTestPreflight(app.Handler(), "http://localhost")
-
-	require.Equal(t, "0", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
+	corsTestExpectHeaders(t, corsTestPreflight(app.Handler(), "http://localhost"), fiber.HeaderAccessControlMaxAge, "0")
 }
 
 func Test_CORS_MaxAge_NotSetOnSimpleRequest(t *testing.T) {
@@ -110,9 +121,8 @@ func Test_CORS_MaxAge_NotSetOnSimpleRequest(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{MaxAge: 100}))
 
-	ctx := corsTestRequest(app.Handler(), fiber.MethodGet, "http://localhost")
-
-	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
+	corsTestExpectHeaders(t, corsTestRequest(app.Handler(), fiber.MethodGet, "http://localhost"),
+		fiber.HeaderAccessControlMaxAge, "")
 }
 
 func Test_CORS_AllowOrigins_Vary(t *testing.T) {
@@ -124,11 +134,11 @@ func Test_CORS_AllowOrigins_Vary(t *testing.T) {
 
 	// Test Vary header non-Cors request
 	ctx := corsTestRequest(h, fiber.MethodGet, "")
-	require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin, "Vary header should be set")
+	require.Contains(t, corsTestHeader(ctx, fiber.HeaderVary), fiber.HeaderOrigin, "Vary header should be set")
 
 	// Test Vary header Cors request
 	ctx = corsTestPreflight(h, "http://localhost")
-	require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin, "Vary header should be set")
+	require.Contains(t, corsTestHeader(ctx, fiber.HeaderVary), fiber.HeaderOrigin, "Vary header should be set")
 }
 
 func Test_CORS_Wildcard(t *testing.T) {
@@ -139,16 +149,19 @@ func Test_CORS_Wildcard(t *testing.T) {
 	handler := app.Handler()
 
 	ctx := corsTestPreflight(handler, "http://localhost")
-	require.Equal(t, "*", corsTestAllowOrigin(ctx)) // Validates request is not reflecting origin in the response
-	require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin, "Vary header should be set")
-	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
-	require.Equal(t, "3600", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
-	require.Equal(t, "Authentication", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
+	// "*" validates that the request is not reflecting the origin in the response
+	corsTestExpectHeaders(t, ctx,
+		fiber.HeaderAccessControlAllowOrigin, "*",
+		fiber.HeaderAccessControlAllowCredentials, "",
+		fiber.HeaderAccessControlMaxAge, "3600",
+		fiber.HeaderAccessControlAllowHeaders, "Authentication")
+	require.Contains(t, corsTestHeader(ctx, fiber.HeaderVary), fiber.HeaderOrigin, "Vary header should be set")
 
 	ctx = corsTestRequest(handler, fiber.MethodGet, "http://localhost")
-	require.NotContains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin, "Vary header should not be set")
-	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
-	require.Equal(t, "X-Request-ID", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
+	require.NotContains(t, corsTestHeader(ctx, fiber.HeaderVary), fiber.HeaderOrigin, "Vary header should not be set")
+	corsTestExpectHeaders(t, ctx,
+		fiber.HeaderAccessControlAllowCredentials, "",
+		fiber.HeaderAccessControlExposeHeaders, "X-Request-ID")
 }
 
 func Test_CORS_Origin_AllowCredentials(t *testing.T) {
@@ -163,15 +176,14 @@ func Test_CORS_Origin_AllowCredentials(t *testing.T) {
 	}))
 	handler := app.Handler()
 
-	ctx := corsTestPreflight(handler, "http://localhost")
-	require.Equal(t, "http://localhost", corsTestAllowOrigin(ctx))
-	require.Equal(t, "true", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
-	require.Equal(t, "3600", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
-	require.Equal(t, "Authentication", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
-
-	ctx = corsTestRequest(handler, fiber.MethodGet, "http://localhost")
-	require.Equal(t, "true", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
-	require.Equal(t, "X-Request-ID", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
+	corsTestExpectHeaders(t, corsTestPreflight(handler, "http://localhost"),
+		fiber.HeaderAccessControlAllowOrigin, "http://localhost",
+		fiber.HeaderAccessControlAllowCredentials, "true",
+		fiber.HeaderAccessControlMaxAge, "3600",
+		fiber.HeaderAccessControlAllowHeaders, "Authentication")
+	corsTestExpectHeaders(t, corsTestRequest(handler, fiber.MethodGet, "http://localhost"),
+		fiber.HeaderAccessControlAllowCredentials, "true",
+		fiber.HeaderAccessControlExposeHeaders, "X-Request-ID")
 }
 
 // Test for fiber-ghsa-fmg4-x8pw-hjhg
@@ -311,6 +323,10 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	handler := app.Handler()
 
+	// QUERY (RFC 10008) is not CORS-safelisted (the safelisted set is GET/HEAD/POST per the Fetch spec), so a
+	// CORS-aware user agent must preflight it: its preflight is answered with QUERY in Access-Control-Allow-Methods,
+	// and the actual request gets a simple response (Allow-Origin set, no Allow-Methods), i.e. QUERY is gated by the
+	// preflight and not treated as server-side safelisted.
 	const allMethods = "GET, POST, HEAD, PUT, DELETE, PATCH, QUERY"
 	methods := []string{
 		fiber.MethodGet, fiber.MethodPost, fiber.MethodPut, fiber.MethodDelete,
@@ -352,8 +368,8 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 				ctx := corsTestRequest(handler, reqMethod, tc.origin, kv...)
 				require.Equal(t, tc.status, ctx.Response.StatusCode(), method)
 				require.Equal(t, tc.wantOrigin, corsTestAllowOrigin(ctx), method)
-				require.Equal(t, tc.wantMethods, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), method)
-				require.Equal(t, tc.wantHeaders, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), method)
+				require.Equal(t, tc.wantMethods, corsTestHeader(ctx, fiber.HeaderAccessControlAllowMethods), method)
+				require.Equal(t, tc.wantHeaders, corsTestHeader(ctx, fiber.HeaderAccessControlAllowHeaders), method)
 			}
 		})
 	}
@@ -537,8 +553,9 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 
 			ctx := corsTestPreflight(app.Handler(), tc.RequestOrigin)
 
-			require.Equal(t, tc.ResponseCredentials, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
-			require.Equal(t, tc.ResponseOrigin, corsTestAllowOrigin(ctx))
+			corsTestExpectHeaders(t, ctx,
+				fiber.HeaderAccessControlAllowCredentials, tc.ResponseCredentials,
+				fiber.HeaderAccessControlAllowOrigin, tc.ResponseOrigin)
 		})
 	}
 }
@@ -581,45 +598,9 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 			}
 			ctx := corsTestRequest(app.Handler(), tc.method, "https://example.com", kv...)
 
-			require.Equal(t, tc.want, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")))
+			require.Equal(t, tc.want, corsTestHeader(ctx, "Access-Control-Allow-Private-Network"))
 		})
 	}
-}
-
-// Test_CORS_Query_RequiresPreflight documents RFC 10008: QUERY is not a
-// CORS-safelisted method (the safelisted set is GET/HEAD/POST per the Fetch
-// spec), so a CORS-aware user agent must preflight it. Server-side that means:
-//   - a QUERY preflight must be answered with QUERY in Access-Control-Allow-Methods, and
-//   - an actual QUERY request must be handled as a simple/non-preflight response
-//     (Allow-Origin set, no Allow-Methods) — i.e. QUERY is gated by preflight, not
-//     treated as server-side safelisted.
-func Test_CORS_Query_RequiresPreflight(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New()) // default config: QUERY is in AllowMethods
-	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-	handler := app.Handler()
-
-	t.Run("QUERY preflight is answered with QUERY allowed", func(t *testing.T) {
-		t.Parallel()
-		ctx := corsTestRequest(handler, fiber.MethodOptions, "http://example.com",
-			fiber.HeaderAccessControlRequestMethod, fiber.MethodQuery)
-
-		require.Equal(t, fiber.StatusNoContent, ctx.Response.StatusCode(), "preflight should return 204")
-		require.Equal(t, "*", corsTestAllowOrigin(ctx))
-		require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), fiber.MethodQuery,
-			"preflight must advertise QUERY so the user agent allows the request")
-	})
-
-	t.Run("actual QUERY request is a simple response, not safelisted", func(t *testing.T) {
-		t.Parallel()
-		ctx := corsTestRequest(handler, fiber.MethodQuery, "http://example.com")
-
-		require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
-		require.Equal(t, "*", corsTestAllowOrigin(ctx))
-		require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)),
-			"actual (non-preflight) QUERY must not carry Access-Control-Allow-Methods")
-	})
 }
 
 // corsBenchHandler returns the handler of an app that answers 200 behind the middleware, configured for
@@ -801,7 +782,7 @@ func Test_CORS_Security_CredentialsWithSubdomainWildcard(t *testing.T) {
 			ctx := corsTestPreflight(handler, tc.origin)
 
 			gotOrigin := corsTestAllowOrigin(ctx)
-			gotCred := string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials))
+			gotCred := corsTestHeader(ctx, fiber.HeaderAccessControlAllowCredentials)
 			require.Equal(t, tc.expectOrigin, gotOrigin)
 			require.Equal(t, tc.expectCredHdr, gotCred)
 			require.NotEqual(t, "*", gotOrigin, "credentialed responses must never use the wildcard")
@@ -880,8 +861,8 @@ func Test_CORS_PreflightWithoutHeaderNormalizing(t *testing.T) {
 
 	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
 	require.Equal(t, "http://example.com", corsTestAllowOrigin(fctx))
-	require.Contains(t, string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), fiber.MethodPut)
-	require.Equal(t, "X-Custom", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
+	require.Contains(t, corsTestHeader(fctx, fiber.HeaderAccessControlAllowMethods), fiber.MethodPut)
+	require.Equal(t, "X-Custom", corsTestHeader(fctx, fiber.HeaderAccessControlAllowHeaders))
 }
 
 func Test_CORS_PreflightSplitRequestHeaders(t *testing.T) {
@@ -902,7 +883,7 @@ func Test_CORS_PreflightSplitRequestHeaders(t *testing.T) {
 	fctx := corsTestRaw(t, app, raw)
 
 	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
-	require.Equal(t, "X-One, X-Two", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
+	require.Equal(t, "X-One, X-Two", corsTestHeader(fctx, fiber.HeaderAccessControlAllowHeaders))
 }
 
 // Test_CORS_ConfiguredEmptyAllowHeaders pins the difference between an
@@ -921,7 +902,7 @@ func Test_CORS_ConfiguredEmptyAllowHeaders(t *testing.T) {
 		ctx := corsTestRequest(app.Handler(), fiber.MethodOptions, "http://localhost",
 			fiber.HeaderAccessControlRequestMethod, fiber.MethodGet,
 			fiber.HeaderAccessControlRequestHeaders, "X-Requested-Header")
-		return string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders))
+		return corsTestHeader(ctx, fiber.HeaderAccessControlAllowHeaders)
 	}
 
 	t.Run("unconfigured echoes the request", func(t *testing.T) {

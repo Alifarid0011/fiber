@@ -114,25 +114,66 @@ func loggerTestLog(t *testing.T, cfg *Config) string {
 	return buf.String()
 }
 
+// loggerTestLocals returns a handler that stores v under "demo" in the request locals, unless v is nil.
+func loggerTestLocals(v any) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		if v != nil {
+			c.Locals("demo", v)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	}
+}
+
+// loggerTestStream answers with a chunked event stream of ten messages.
+func loggerTestStream(c fiber.Ctx) error {
+	c.Set("Connection", "keep-alive")
+	c.Set("Transfer-Encoding", "chunked")
+	c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
+		var i int
+		for {
+			i++
+			msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
+			fmt.Fprintf(w, "data: Message: %s\n\n", msg)
+			err := w.Flush()
+			if err != nil {
+				break
+			}
+			if i == 10 {
+				break
+			}
+		}
+	})
+	return nil
+}
+
 // Test_Logger_Output pins the exact line the logger writes for one request,
-// one scenario per row. A row without a handler registers no route, so its
-// request is a 404.
+// one scenario per row. The handler answers every method and path; a row
+// without one registers no route, so its request is a 404.
 func Test_Logger_Output(t *testing.T) {
 	t.Parallel()
 	const customTag = "it is a custom tag"
+	bytesCfg := Config{Format: "${bytesReceived} ${bytesSent} ${status}"}
+	localsCfg := Config{Format: "${locals:demo}"}
 	templateErr := errors.New("template failure")
 	colors := fiber.DefaultColors
 	hello := func(c fiber.Ctx) error { return c.SendString("Hello fiber!") }
 	testHeader := apptest.WithHeader("test", "Hello fiber!")
+	content := func(c fiber.Ctx) error {
+		c.Response().Header.SetContentLength(5)
+		return c.SendString("hello")
+	}
+	postBody := httptest.NewRequest(fiber.MethodPost, "/", bytes.NewReader([]byte("Hello")))
+	postBody.Header.Set(fiber.HeaderContentType, fiber.MIMEOctetStream)
 
 	for _, tc := range []struct {
 		handler fiber.Handler
+		req     *http.Request // overrides target and opts
 		name    string
 		target  string // defaults to "/"
 		want    string
 		opts    []apptest.Option
 		cfg     Config
-		status  int
+		status  int // defaults to 200
 	}{
 		{
 			name:    "error tag",
@@ -191,37 +232,51 @@ func Test_Logger_Output(t *testing.T) {
 			status: fiber.StatusNotFound,
 			want:   fmt.Sprintf("0.0.0.0%s404%s%sGET%s/%sNot Found%s\n", colors.Yellow, colors.Reset, colors.Cyan, colors.Reset, colors.Red, colors.Reset),
 		},
+		{
+			name:    "resBody tag, GET",
+			cfg:     Config{Format: "${resBody}"},
+			handler: func(c fiber.Ctx) error { return c.SendString("Sample response body") },
+			want:    "Sample response body",
+		},
+		{
+			name:    "resBody tag, POST",
+			cfg:     Config{Format: "${resBody}"},
+			handler: func(c fiber.Ctx) error { return c.Send([]byte("Post in test")) },
+			req:     apptest.Req(fiber.MethodPost, "/test"),
+			want:    "Post in test",
+		},
+		{name: "bytes tags, request body", cfg: bytesCfg, handler: content, req: postBody, want: "5 5 200"},
+		{name: "bytes tags, no content length", cfg: bytesCfg, handler: hello, want: "-2 0 200"},
+		{name: "bytes tags, content length", cfg: bytesCfg, handler: content, target: "/content", want: "-2 5 200"},
+		// -2 means identity, -1 means chunked
+		{name: "bytes tags, stream", cfg: bytesCfg, handler: loggerTestStream, want: "-2 -1 200"},
+		{name: "locals tag", cfg: localsCfg, handler: loggerTestLocals("johndoe"), want: "johndoe"},
+		{name: "locals tag, int", cfg: localsCfg, handler: loggerTestLocals(55), want: "55"},
+		{name: "locals tag, unset", cfg: localsCfg, handler: loggerTestLocals(nil)},
+		// Each arm of the type switch behind ${locals:}. The []byte arm has its own scrubbing call, so a []byte local
+		// carrying CR/LF must be scrubbed like the string one, or a handler stashing raw request bytes in Locals would
+		// reopen the injection the scrubbing closes.
+		{name: "locals tag, bytes", cfg: localsCfg, handler: loggerTestLocals([]byte("a\r\nb")), want: "a  b"},
+		{name: "locals tag, string", cfg: localsCfg, handler: loggerTestLocals("a\r\nb"), want: "a  b"},
+		{
+			name: "locals tag, other type", cfg: localsCfg, want: "{a  b}",
+			handler: loggerTestLocals(struct{ V string }{"a\r\nb"}),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app, buf := loggerTestApp(t, &tc.cfg)
 			if tc.handler != nil {
-				app.Get("/", tc.handler)
+				app.All("/*", tc.handler)
 			}
 
-			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, cmp.Or(tc.target, "/"), tc.opts...), tc.status)
+			req := tc.req
+			if req == nil {
+				req = apptest.Req(fiber.MethodGet, cmp.Or(tc.target, "/"), tc.opts...)
+			}
+			apptest.Expect(t, app, req, cmp.Or(tc.status, fiber.StatusOK))
 			require.Equal(t, tc.want, buf.String())
 		})
-	}
-}
-
-func Test_Logger_locals(t *testing.T) {
-	t.Parallel()
-	app, buf := loggerTestApp(t, &Config{Format: "${locals:demo}"})
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Locals("demo", "johndoe")
-		return c.SendStatus(fiber.StatusOK)
-	})
-	app.Get("/int", func(c fiber.Ctx) error {
-		c.Locals("demo", 55)
-		return c.SendStatus(fiber.StatusOK)
-	})
-	app.Get("/empty", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-
-	for _, tc := range []struct{ path, want string }{{"/", "johndoe"}, {"/int", "55"}, {"/empty", ""}} {
-		buf.Reset()
-		apptest.Expect(t, app, tc.path, fiber.StatusOK)
-		require.Equal(t, tc.want, buf.String(), tc.path)
 	}
 }
 
@@ -662,57 +717,6 @@ func Test_Logger_WithLatency(t *testing.T) {
 	}
 }
 
-func Test_Response_Body(t *testing.T) {
-	t.Parallel()
-	app, buf := loggerTestApp(t, &Config{Format: "${resBody}"})
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Sample response body") })
-	app.Post("/test", func(c fiber.Ctx) error { return c.Send([]byte("Post in test")) })
-
-	apptest.Do(t, app, "/")
-	require.Equal(t, "Sample response body", buf.String())
-
-	buf.Reset()
-	apptest.Do(t, app, apptest.Req(fiber.MethodPost, "/test"))
-	require.Equal(t, "Post in test", buf.String())
-}
-
-func Test_Request_Body(t *testing.T) {
-	t.Parallel()
-	app, buf := loggerTestApp(t, &Config{Format: "${bytesReceived} ${bytesSent} ${status}"})
-
-	app.Post("/", func(c fiber.Ctx) error {
-		c.Response().Header.SetContentLength(5)
-		return c.SendString("World")
-	})
-
-	// Create a POST request with a body
-	body := []byte("Hello")
-	req := httptest.NewRequest(fiber.MethodPost, "/", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/octet-stream")
-
-	apptest.Do(t, app, req)
-	require.Equal(t, "5 5 200", buf.String())
-}
-
-func Test_Logger_AppendUint(t *testing.T) {
-	t.Parallel()
-	app, buf := loggerTestApp(t, &Config{Format: "${bytesReceived} ${bytesSent} ${status}"})
-
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("hello") })
-
-	app.Get("/content", func(c fiber.Ctx) error {
-		c.Response().Header.SetContentLength(5)
-		return c.SendString("hello")
-	})
-
-	apptest.Expect(t, app, "/", fiber.StatusOK)
-	require.Equal(t, "-2 0 200", buf.String())
-
-	buf.Reset()
-	apptest.Expect(t, app, "/content", fiber.StatusOK)
-	require.Equal(t, "-2 5 200", buf.String())
-}
-
 func Test_Logger_Data_Race(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -877,37 +881,6 @@ func Test_Logger_DataLegacyTemplateChains(t *testing.T) {
 	require.Equal(t, "GET /", buf.String())
 }
 
-func Test_Logger_ByteSent_Streaming(t *testing.T) {
-	t.Parallel()
-	app, buf := loggerTestApp(t, &Config{Format: "${bytesReceived} ${bytesSent} ${status}"})
-
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Set("Connection", "keep-alive")
-		c.Set("Transfer-Encoding", "chunked")
-		c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
-			var i int
-			for {
-				i++
-				msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
-				fmt.Fprintf(w, "data: Message: %s\n\n", msg)
-				err := w.Flush()
-				if err != nil {
-					break
-				}
-				if i == 10 {
-					break
-				}
-			}
-		})
-		return nil
-	})
-
-	apptest.Expect(t, app, "/", fiber.StatusOK)
-
-	// -2 means identity, -1 means chunked, 200 status
-	require.Equal(t, "-2 -1 200", buf.String())
-}
-
 // runLoggerBenchmarks runs one sub-benchmark per logger setup: it builds the app of the setup and hands it
 // to run with the path to request. Every logger writes to io.Discard unless its row names a Stream.
 func runLoggerBenchmarks(b *testing.B, run func(b *testing.B, app *fiber.App, path string)) {
@@ -963,26 +936,7 @@ func runLoggerBenchmarks(b *testing.B, run func(b *testing.B, app *fiber.App, pa
 			},
 			handler: hello,
 		},
-		{name: "Streaming", cfg: &Config{Format: "${bytesReceived} ${bytesSent} ${status}"}, handler: func(c fiber.Ctx) error {
-			c.Set("Connection", "keep-alive")
-			c.Set("Transfer-Encoding", "chunked")
-			c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
-				var i int
-				for {
-					i++
-					msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
-					fmt.Fprintf(w, "data: Message: %s\n\n", msg)
-					err := w.Flush()
-					if err != nil {
-						break
-					}
-					if i == 10 {
-						break
-					}
-				}
-			})
-			return nil
-		}},
+		{name: "Streaming", cfg: &Config{Format: "${bytesReceived} ${bytesSent} ${status}"}, handler: loggerTestStream},
 		{name: "WithBody", cfg: &Config{Format: "${resBody}"}, handler: func(c fiber.Ctx) error { return c.SendString("Sample response body") }},
 	} {
 		b.Run(bc.name, func(b *testing.B) {
@@ -1239,40 +1193,6 @@ func Test_writeColoredInt_PropagatesWriteErrors(t *testing.T) {
 			note: "a status past the column width is written whole, with no padding",
 		},
 	})
-}
-
-// Test_Logger_SanitizesLocalsByType covers each arm of ${locals:}'s type
-// switch. The []byte arm has its own scrubbing call, so a []byte local carrying
-// CR/LF must be scrubbed just like the string one — otherwise a handler
-// stashing raw request bytes in Locals would reopen the injection this scrubs.
-func Test_Logger_SanitizesLocalsByType(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		value    any
-		name     string
-		expected string
-	}{
-		{name: "bytes", value: []byte("a\r\nb"), expected: "a  b"},
-		{name: "string", value: "a\r\nb", expected: "a  b"},
-		{name: "nil", value: nil, expected: ""},
-		{name: "other", value: struct{ V string }{"a\r\nb"}, expected: "{a  b}"},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			app, buf := loggerTestApp(t, &Config{Format: "${locals:demo}"})
-			app.Get("/", func(c fiber.Ctx) error {
-				if tc.value != nil {
-					c.Locals("demo", tc.value)
-				}
-				return c.SendStatus(fiber.StatusOK)
-			})
-
-			apptest.Expect(t, app, "/", fiber.StatusOK)
-			require.Equal(t, tc.expected, buf.String())
-		})
-	}
 }
 
 // Test_Logger_SanitizesControlBytes ensures user-controlled values cannot
