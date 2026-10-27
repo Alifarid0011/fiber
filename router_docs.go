@@ -38,7 +38,7 @@ func (*App) cloneRouteDocInto(dst, route *Route) {
 	dst.ParameterModels = slices.Clone(route.ParameterModels)
 	dst.Responses = cloneRouteResponses(route.Responses)
 	dst.Tags = append([]string(nil), route.Tags...)
-	dst.Security = cloneRouteSecurity(route.Security)
+	dst.Security = deepcopy.Security(route.Security)
 	dst.ExternalDocs = copyAnyMap(route.ExternalDocs)
 	dst.OperationExtensions = copyAnyMap(route.OperationExtensions)
 }
@@ -81,10 +81,8 @@ func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {
 	}
 	clone.Schema = copySchema(body.Schema)
 	clone.SchemaRef = body.SchemaRef
-	if len(body.Examples) > 0 {
-		clone.Examples = copyAnyMap(body.Examples)
-	}
-	clone.Example = copyAnyValue(body.Example)
+	clone.Examples = copyAnyMap(body.Examples)
+	clone.Example = deepcopy.Value(body.Example)
 	if len(body.MediaTypes) > 0 {
 		clone.MediaTypes = append([]string(nil), body.MediaTypes...)
 	}
@@ -101,7 +99,7 @@ func cloneRouteMediaTypeMap(content map[string]RouteMediaType) map[string]RouteM
 		cloned[mediaType] = RouteMediaType{
 			Schema:    copySchema(mt.Schema),
 			SchemaRef: mt.SchemaRef,
-			Example:   copyAnyValue(mt.Example),
+			Example:   deepcopy.Value(mt.Example),
 			Examples:  copyAnyMap(mt.Examples),
 			Encoding:  copyAnyMap(mt.Encoding),
 		}
@@ -115,26 +113,20 @@ func cloneRouteParameters(params []RouteParameter) []RouteParameter {
 	}
 	cloned := make([]RouteParameter, len(params))
 	for i := range params {
-		p := &params[i]
-		cloned[i] = RouteParameter{
-			Name:            p.Name,
-			In:              p.In,
-			Required:        p.Required,
-			Description:     p.Description,
-			Deprecated:      p.Deprecated,
-			Style:           p.Style,
-			AllowEmptyValue: p.AllowEmptyValue,
-			AllowReserved:   p.AllowReserved,
-			Schema:          copySchema(p.Schema),
-			SchemaRef:       p.SchemaRef,
-			Examples:        copyAnyMap(p.Examples),
-			Example:         copyAnyValue(p.Example),
-			Content:         cloneRouteMediaTypeMap(p.Content),
-		}
-		if p.Explode != nil {
-			explode := *p.Explode
-			cloned[i].Explode = &explode
-		}
+		cloned[i] = cloneRouteParameter(&params[i])
+	}
+	return cloned
+}
+
+func cloneRouteParameter(p *RouteParameter) RouteParameter {
+	cloned := *p
+	cloned.Schema = copySchema(p.Schema)
+	cloned.Examples = copyAnyMap(p.Examples)
+	cloned.Example = deepcopy.Value(p.Example)
+	cloned.Content = cloneRouteMediaTypeMap(p.Content)
+	if p.Explode != nil {
+		explode := *p.Explode
+		cloned.Explode = &explode
 	}
 	return cloned
 }
@@ -144,21 +136,24 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 		return nil
 	}
 	cloned := make(map[string]RouteResponse, len(responses))
-	for code, resp := range responses {
-		copyResp := RouteResponse{
-			Description: resp.Description,
-			Schema:      copySchema(resp.Schema),
-			SchemaRef:   resp.SchemaRef,
-			Examples:    copyAnyMap(resp.Examples),
-			Example:     copyAnyValue(resp.Example),
-			Headers:     copyAnyMap(resp.Headers),
-			Links:       copyAnyMap(resp.Links),
-			Content:     cloneRouteMediaTypeMap(resp.Content),
-		}
-		if len(resp.MediaTypes) > 0 {
-			copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
-		}
-		cloned[code] = copyResp
+	for code := range responses {
+		resp := responses[code]
+		cloned[code] = cloneRouteResponse(&resp)
+	}
+	return cloned
+}
+
+func cloneRouteResponse(resp *RouteResponse) RouteResponse {
+	cloned := *resp
+	cloned.Schema = copySchema(resp.Schema)
+	cloned.Examples = copyAnyMap(resp.Examples)
+	cloned.Example = deepcopy.Value(resp.Example)
+	cloned.Headers = copyAnyMap(resp.Headers)
+	cloned.Links = copyAnyMap(resp.Links)
+	cloned.Content = cloneRouteMediaTypeMap(resp.Content)
+	cloned.MediaTypes = nil
+	if len(resp.MediaTypes) > 0 {
+		cloned.MediaTypes = append([]string(nil), resp.MediaTypes...)
 	}
 	return cloned
 }
@@ -168,10 +163,4 @@ func copyAnyMap(src map[string]any) map[string]any {
 		return nil
 	}
 	return deepcopy.Map(src)
-}
-
-func copyAnyValue(src any) any { return deepcopy.Value(src) }
-
-func cloneRouteSecurity(requirements []map[string][]string) []map[string][]string {
-	return deepcopy.Security(requirements)
 }

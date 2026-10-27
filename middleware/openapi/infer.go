@@ -186,7 +186,7 @@ func isAcronym(word string) bool {
 		return false
 	}
 	for i := range len(word) {
-		if !isUpper(word[i]) && (word[i] < '0' || word[i] > '9') {
+		if !isUpper(word[i]) && !isASCIIDigit(word[i]) {
 			return false
 		}
 	}

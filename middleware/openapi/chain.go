@@ -62,6 +62,19 @@ var fiberRoot = sync.OnceValue(func() string {
 	return file[:max(strings.LastIndexByte(file, '/'), 0)]
 })
 
+// fiberMiddlewarePrefixes holds the source path prefix of each fiberMiddlewareDirs entry.
+var fiberMiddlewarePrefixes = sync.OnceValue(func() []string {
+	root := fiberRoot()
+	if root == "" {
+		return nil
+	}
+	prefixes := make([]string, len(fiberMiddlewareDirs))
+	for i := range fiberMiddlewareDirs {
+		prefixes[i] = root + "/middleware/" + fiberMiddlewareDirs[i].dir + "/"
+	}
+	return prefixes
+})
+
 type middlewareKind uint8
 
 type middlewareSet uint16
@@ -74,11 +87,9 @@ func (s *middlewareSet) add(kind middlewareKind) { *s |= 1 << kind }
 func middlewareInFile(file string) middlewareSet {
 	var set middlewareSet
 	file = filepath.ToSlash(file)
-	if root := fiberRoot(); root != "" {
-		for i := range fiberMiddlewareDirs {
-			if strings.HasPrefix(file, root+"/middleware/"+fiberMiddlewareDirs[i].dir+"/") {
-				set.add(fiberMiddlewareDirs[i].kind)
-			}
+	for i, prefix := range fiberMiddlewarePrefixes() {
+		if strings.HasPrefix(file, prefix) {
+			set.add(fiberMiddlewareDirs[i].kind)
 		}
 	}
 	for i := range contribMiddleware {
@@ -155,7 +166,8 @@ func paramSegmentCovers(prefixSegment, routeSegment string) bool {
 	if routeSegment == "" {
 		return false
 	}
-	if kind, _ := classifySegment(routeSegment); kind == segmentOptional || kind == segmentGreedy {
+	kind, _ := classifySegment(routeSegment)
+	if kind == segmentOptional || kind == segmentGreedy {
 		return false
 	}
 	constraint := func(segment string) string {
@@ -168,7 +180,6 @@ func paramSegmentCovers(prefixSegment, routeSegment string) bool {
 	if want == "" {
 		return true
 	}
-	kind, _ := classifySegment(routeSegment)
 	if kind == segmentParam {
 		return constraint(routeSegment) == want
 	}

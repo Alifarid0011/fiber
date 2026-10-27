@@ -140,8 +140,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	}
 
 	return func(route *Route) {
-		paramCopy := param
-		paramCopy.Schema = copySchema(param.Schema)
+		paramCopy := cloneRouteParameter(&param)
 		if injectType {
 			schema, ok := paramCopy.Schema.(map[string]any)
 			if paramCopy.Schema == nil {
@@ -153,13 +152,6 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 				}
 				paramCopy.Schema = schema
 			}
-		}
-		paramCopy.Example = copyAnyValue(param.Example)
-		paramCopy.Examples = copyAnyMap(param.Examples)
-		paramCopy.Content = cloneRouteMediaTypeMap(param.Content)
-		if param.Explode != nil {
-			explode := *param.Explode
-			paramCopy.Explode = &explode
 		}
 		route.Parameters = append(route.Parameters, paramCopy)
 	}
@@ -221,11 +213,7 @@ func docAddResponse(status int, description string, schema any, schemaRef string
 		if route.Responses == nil {
 			route.Responses = make(map[string]RouteResponse)
 		}
-		copyResp := resp
-		copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
-		copyResp.Schema = copySchema(resp.Schema)
-		copyResp.Example = copyAnyValue(resp.Example)
-		copyResp.Examples = copyAnyMap(resp.Examples)
+		copyResp := cloneRouteResponse(&resp)
 		if existing, ok := route.Responses[key]; ok {
 			copyResp.Headers = existing.Headers
 			copyResp.Links = existing.Links
@@ -292,7 +280,7 @@ func docSetSecurity(requirements ...map[string][]string) func(route *Route) {
 			route.Security = []map[string][]string{}
 			return
 		}
-		route.Security = cloneRouteSecurity(requirements)
+		route.Security = deepcopy.Security(requirements)
 	}
 }
 
@@ -340,7 +328,7 @@ func docOperationExtension(fields map[string]any) func(route *Route) {
 			route.OperationExtensions = make(map[string]any, len(fields))
 		}
 		for key, value := range fields {
-			route.OperationExtensions[key] = copyAnyValue(value)
+			route.OperationExtensions[key] = deepcopy.Value(value)
 		}
 	}
 }

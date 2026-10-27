@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/deepcopy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -916,12 +917,12 @@ func Test_CopyAnyValue_NamedMapCycle(t *testing.T) {
 	type metadata map[string]any
 	cyclic := metadata{}
 	cyclic["self"] = cyclic
-	require.NotPanics(t, func() { _ = copyAnyValue(cyclic) })
+	require.NotPanics(t, func() { _ = deepcopy.Value(cyclic) })
 
 	type list []any
 	cyclicList := list{nil}
 	cyclicList[0] = cyclicList
-	require.NotPanics(t, func() { _ = copyAnyValue(cyclicList) })
+	require.NotPanics(t, func() { _ = deepcopy.Value(cyclicList) })
 }
 
 func findRoute(t *testing.T, app *App, method, path string) Route {

@@ -21,10 +21,7 @@ func (d dialect) since(release int) bool { return d.minor >= release }
 
 // newDialect reads a version already validated; an unsupported one ranks as 3.0.
 func newDialect(version string) dialect {
-	minor, ok := parseVersion(version)
-	if !ok {
-		minor = 0
-	}
+	minor, _ := parseVersion(version)
 	return dialect{minor: minor}
 }
 

@@ -79,11 +79,14 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 		gets  []*Route
 		named *Route
 	)
-	app.applyToRegIDLocked(regID, func(route *Route) {
+	setName := func(route *Route) {
 		route.Name = name
 		if route.group != nil {
-			route.Name = route.group.name + route.Name
+			route.Name = route.group.name + name
 		}
+	}
+	app.applyToRegIDLocked(regID, func(route *Route) {
+		setName(route)
 		if route.Method == MethodGet && !route.use {
 			gets = append(gets, route)
 		}
@@ -96,10 +99,7 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 				if route.mount || !route.use || route.Path != named.Path || route == named {
 					continue
 				}
-				route.Name = name
-				if route.group != nil {
-					route.Name = route.group.name + route.Name
-				}
+				setName(route)
 			}
 		}
 	}
@@ -181,10 +181,6 @@ func (app *App) GetRoute(name string) (found Route) { //nolint:nonamedreturns //
 	if snapshot == nil {
 		return found
 	}
-	found = *snapshot
-	found.group = nil
-	if snapshot.isDocumented() {
-		app.cloneRouteDocInto(&found, snapshot)
-	}
+	app.copyRouteInto(&found, snapshot)
 	return found
 }

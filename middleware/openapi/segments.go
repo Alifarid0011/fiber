@@ -15,6 +15,9 @@ const (
 )
 
 func routeTokens(seg string) string {
+	if !strings.ContainsAny(seg, "\\<") {
+		return seg
+	}
 	var b strings.Builder
 	for i := 0; i < len(seg); i++ {
 		switch ch := seg[i]; ch {

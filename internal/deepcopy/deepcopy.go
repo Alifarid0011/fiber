@@ -68,7 +68,7 @@ func (c *copier) enter(v, copied reflect.Value) {
 	if c.memo != nil {
 		c.memo[key] = copied
 	} else if c.nodes > memoAfter {
-		// is still found.
+		// The copies still under way go in too, so a cycle back to an ancestor is still found.
 		c.memo = make(map[visit]reflect.Value, len(c.path))
 		for _, f := range c.path {
 			c.memo[f.key] = f.copied
@@ -190,7 +190,7 @@ func (c *copier) copyValue(v reflect.Value, depth int) reflect.Value {
 		out := reflect.New(v.Type()).Elem()
 		out.Set(v)
 		for i := range v.NumField() {
-			if v.Type().Field(i).IsExported() {
+			if out.Field(i).CanSet() {
 				out.Field(i).Set(c.copyValue(v.Field(i), depth+1))
 			}
 		}

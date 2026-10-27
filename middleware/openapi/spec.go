@@ -181,13 +181,13 @@ func generateOperationID(method, path string) string {
 	for i := 0; i < len(path); i++ {
 		c := path[i]
 		switch {
-		case c >= 'a' && c <= 'z':
+		case isLower(c):
 			if capNext {
 				c -= 'a' - 'A'
 				capNext = false
 			}
 			_ = b.WriteByte(c) //nolint:errcheck // strings.Builder.WriteByte never returns an error
-		case (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'):
+		case isUpper(c) || isASCIIDigit(c):
 			capNext = false
 			_ = b.WriteByte(c) //nolint:errcheck // strings.Builder.WriteByte never returns an error
 		default:
