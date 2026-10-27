@@ -215,58 +215,65 @@ func Test_Compress_RespectsBodyLimitOnCompressedRequestBody(t *testing.T) {
 	require.Equal(t, fasthttp.ErrBodyTooLarge.Error(), apptest.Body(t, resp))
 }
 
-func Test_Compress_Skip_When_Content_Encoding_Set(t *testing.T) {
+// Test_Compress_ETag covers what happens to the ETag a handler set: a strong
+// one is recalculated for the compressed body, a weak one and a strong one on a
+// response that was not compressed stay as they are.
+func Test_Compress_ETag(t *testing.T) {
 	t.Parallel()
-	app := compressTestApp(func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderContentEncoding, "gzip")
-		c.Set(fiber.HeaderETag, "\"abc\"")
-		return c.SendString("hello")
-	})
-
-	resp := compressTestGet(t, app, "gzip")
-	require.Equal(t, "hello", apptest.Body(t, resp))
-	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
-	require.Equal(t, "\"abc\"", resp.Header.Get(fiber.HeaderETag))
-	require.Equal(t, "Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
-}
-
-func Test_Compress_Strong_ETag_Recalculated(t *testing.T) {
-	t.Parallel()
-	app := compressTestApp(func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderETag, "\"abc\"")
-		return compressTestSendReadme(c)
-	})
-
-	resp := compressTestGet(t, app, "gzip")
-	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
-	body := apptest.BodyBytes(t, resp)
-	expected := string(etag.Generate(body))
-	require.Equal(t, expected, resp.Header.Get(fiber.HeaderETag))
-}
-
-func Test_Compress_Weak_ETag_Unchanged(t *testing.T) {
-	t.Parallel()
-	app := compressTestApp(func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderETag, "W/\"abc\"")
-		return compressTestSendReadme(c)
-	})
-
-	resp := compressTestGet(t, app, "gzip")
-	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
-	require.Equal(t, "W/\"abc\"", resp.Header.Get(fiber.HeaderETag))
-}
-
-func Test_Compress_Strong_ETag_Unchanged_When_Not_Compressed(t *testing.T) {
-	t.Parallel()
-	app := compressTestApp(func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderETag, "\"abc\"")
-		return c.SendString("tiny")
-	})
-
-	resp := compressTestGet(t, app, "gzip")
-	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
-	require.Equal(t, "\"abc\"", resp.Header.Get(fiber.HeaderETag))
-	require.Equal(t, "Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
+	for _, tc := range []struct {
+		handler      fiber.Handler
+		name         string
+		wantEncoding string
+		wantETag     string // "" for the ETag generated from the compressed body
+		wantBody     string // "" for a body that is not compared
+	}{
+		{
+			name: "strong ETag is recalculated", wantEncoding: "gzip",
+			handler: func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderETag, "\"abc\"")
+				return compressTestSendReadme(c)
+			},
+		},
+		{
+			name: "weak ETag is unchanged", wantEncoding: "gzip", wantETag: "W/\"abc\"",
+			handler: func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderETag, "W/\"abc\"")
+				return compressTestSendReadme(c)
+			},
+		},
+		{
+			name: "strong ETag is unchanged when not compressed", wantETag: "\"abc\"",
+			handler: func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderETag, "\"abc\"")
+				return c.SendString("tiny")
+			},
+		},
+		{
+			name: "Content-Encoding set by the handler skips the middleware", wantEncoding: "gzip", wantETag: "\"abc\"",
+			wantBody: "hello",
+			handler: func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderContentEncoding, "gzip")
+				c.Set(fiber.HeaderETag, "\"abc\"")
+				return c.SendString("hello")
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp := compressTestGet(t, compressTestApp(tc.handler), "gzip")
+			body := apptest.BodyBytes(t, resp)
+			require.Equal(t, tc.wantEncoding, resp.Header.Get(fiber.HeaderContentEncoding))
+			require.Equal(t, "Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
+			if tc.wantBody != "" {
+				require.Equal(t, tc.wantBody, string(body))
+			}
+			wantETag := tc.wantETag
+			if wantETag == "" {
+				wantETag = string(etag.Generate(body))
+			}
+			require.Equal(t, wantETag, resp.Header.Get(fiber.HeaderETag))
+		})
+	}
 }
 
 func Test_Compress_Skip_Head(t *testing.T) {

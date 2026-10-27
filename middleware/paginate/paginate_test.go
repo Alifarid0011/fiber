@@ -257,16 +257,18 @@ func Test_SetNextCursorSetsFields(t *testing.T) {
 func paginateTestApp(cfg ...Config) *fiber.App {
 	app := fiber.New()
 	app.Use(New(cfg...))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := FromContext(c)
-		if !ok {
-			return fiber.ErrBadRequest
-		}
-		return c.JSON(pageInfo)
-	})
-
+	app.Get("/", pageInfoHandler)
 	return app
+}
+
+// pageInfoHandler answers with the PageInfo on the request context as JSON, or
+// with 400 when there is none.
+func pageInfoHandler(c fiber.Ctx) error {
+	pageInfo, ok := FromContext(c)
+	if !ok {
+		return fiber.ErrBadRequest
+	}
+	return c.JSON(pageInfo)
 }
 
 // paginateResponse is what Test_PaginateWithQueries' handler derives from the
@@ -422,13 +424,7 @@ func Test_PaginateBadRequest(t *testing.T) {
 	t.Parallel()
 	notJSON := base64.RawURLEncoding.EncodeToString([]byte("not-json"))
 	withoutNew := fiber.New()
-	withoutNew.Get("/", func(c fiber.Ctx) error {
-		_, ok := FromContext(c)
-		if !ok {
-			return fiber.ErrBadRequest
-		}
-		return c.JSON(nil)
-	})
+	withoutNew.Get("/", pageInfoHandler)
 
 	for _, tc := range []struct {
 		app    *fiber.App

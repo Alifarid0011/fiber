@@ -181,10 +181,7 @@ var bearerCorrectKey = apptest.WithHeader(fiber.HeaderAuthorization, "Bearer "+C
 
 func TestMultipleKeyLookup(t *testing.T) {
 	t.Parallel()
-	const (
-		desc    = "auth with correct key"
-		success = "Success!"
-	)
+	const success = "Success!"
 
 	app := fiber.New()
 	app.Use(New(Config{
@@ -203,21 +200,9 @@ func TestMultipleKeyLookup(t *testing.T) {
 	}))
 	app.Get("/foo", func(c fiber.Ctx) error { return c.SendString(success) })
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", http.NoBody)
-	require.NoError(t, err)
-	q := req.URL.Query()
-	q.Add("key", CorrectKey)
-	req.URL.RawQuery = q.Encode()
-
-	res := apptest.Do(t, app, req, testConfig)
-	require.Equal(t, 200, res.StatusCode, desc)
-	require.Equal(t, success, apptest.Body(t, res), desc)
-
+	apptest.ExpectBody(t, app, "/foo?key="+url.QueryEscape(CorrectKey), fiber.StatusOK, success)
 	// A second request without the key is refused.
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", http.NoBody)
-	require.NoError(t, err)
-	res = apptest.Do(t, app, req, testConfig)
-	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), apptest.Body(t, res))
+	apptest.ExpectBody(t, app, "/foo", fiber.StatusUnauthorized, ErrMissingOrMalformedAPIKey.Error())
 }
 
 func Test_MultipleKeyAuth(t *testing.T) {
@@ -262,15 +247,15 @@ func Test_MultipleKeyAuth(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, test.route, http.NoBody)
-		require.NoError(t, err)
-		if test.APIKey != "" {
-			req.Header.Set("Authorization", "Bearer "+test.APIKey)
-		}
-
-		res := apptest.Do(t, app, req, testConfig)
-		require.Equal(t, test.expectedCode, res.StatusCode, test.description)
-		require.Equal(t, test.expectedBody, apptest.Body(t, res), test.description)
+		t.Run(test.description, func(t *testing.T) {
+			t.Parallel()
+			authorization := ""
+			if test.APIKey != "" {
+				authorization = "Bearer " + test.APIKey
+			}
+			req := apptest.Req(fiber.MethodGet, test.route, withOptionalAuthorization(authorization))
+			apptest.ExpectBody(t, app, req, test.expectedCode, test.expectedBody)
+		})
 	}
 }
 
@@ -387,38 +372,17 @@ func Test_TokenFromContext_Types(t *testing.T) {
 	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, "Basic "+CorrectKey)), fiber.StatusOK)
 }
 
-func Test_AuthScheme(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name          string
-		scheme        string
-		authorization string
-		body          string
-		status        int
-	}{
-		{name: "Token scheme with the key", scheme: "Token", authorization: "Token " + CorrectKey, status: http.StatusOK, body: "API key is valid"},
-		{name: "Basic scheme without a key", scheme: "Basic", status: http.StatusUnauthorized, body: ErrMissingOrMalformedAPIKey.Error()},
-		{name: "Basic scheme with the key", scheme: "Basic", authorization: "Basic " + CorrectKey, status: http.StatusOK, body: "API key is valid"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			app := fiber.New()
-			app.Use(New(Config{Extractor: extractors.FromAuthHeader(tc.scheme), Validator: validateCorrectKey}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("API key is valid") })
-
-			req := apptest.Req(fiber.MethodGet, "/")
-			if tc.authorization != "" {
-				req.Header.Add(fiber.HeaderAuthorization, tc.authorization)
-			}
-			apptest.ExpectBody(t, app, req, tc.status, tc.body)
-		})
+// withOptionalAuthorization sets the Authorization header, or leaves the request without one when it is empty.
+func withOptionalAuthorization(authorization string) apptest.Option {
+	return func(req *http.Request) {
+		if authorization != "" {
+			req.Header.Set(fiber.HeaderAuthorization, authorization)
+		}
 	}
 }
 
 // Test_HeaderScheme covers how the Authorization header is split into a scheme
-// and the key, with the default Bearer extractor.
+// and the key, with the default Bearer extractor unless a row names another.
 func Test_HeaderScheme(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -427,8 +391,12 @@ func Test_HeaderScheme(t *testing.T) {
 		authorization string
 		body          string
 		challenge     string
+		extractor     extractors.Extractor
 		status        int
 	}{
+		{name: "Token scheme with the key", extractor: extractors.FromAuthHeader("Token"), validator: validateCorrectKey, authorization: "Token " + CorrectKey, status: http.StatusOK, body: "OK"},
+		{name: "Basic scheme without a key", extractor: extractors.FromAuthHeader("Basic"), validator: validateCorrectKey, status: http.StatusUnauthorized, body: ErrMissingOrMalformedAPIKey.Error()},
+		{name: "Basic scheme with the key", extractor: extractors.FromAuthHeader("Basic"), validator: validateCorrectKey, authorization: "Basic " + CorrectKey, status: http.StatusOK, body: "OK"},
 		{name: "scheme is case insensitive", validator: validateCorrectKey, authorization: "bearer " + CorrectKey, status: http.StatusOK, body: "OK"},
 		{name: "multiple spaces", validator: validateCorrectKey, authorization: "Bearer    " + CorrectKey, status: http.StatusUnauthorized, body: ErrMissingOrMalformedAPIKey.Error()},
 		{name: "missing space", validator: rejectAllKeys, authorization: "Bearer" + CorrectKey, status: http.StatusUnauthorized, body: ErrMissingOrMalformedAPIKey.Error()},
@@ -451,10 +419,10 @@ func Test_HeaderScheme(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
-			app.Use(New(Config{Validator: tc.validator}))
+			app.Use(New(Config{Extractor: tc.extractor, Validator: tc.validator}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
-			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, tc.authorization))
+			req := apptest.Req(fiber.MethodGet, "/", withOptionalAuthorization(tc.authorization))
 			resp := apptest.ExpectBody(t, app, req, tc.status, tc.body)
 			if tc.challenge != "" {
 				require.Equal(t, tc.challenge, resp.Header.Get(fiber.HeaderWWWAuthenticate))
@@ -595,11 +563,7 @@ func Test_Challenge(t *testing.T) {
 			app.Use(New(tc.config))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
-			req := apptest.Req(fiber.MethodGet, "/")
-			if tc.authorization != "" {
-				req.Header.Add(fiber.HeaderAuthorization, tc.authorization)
-			}
-			resp := apptest.Expect(t, app, req, tc.status)
+			resp := apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withOptionalAuthorization(tc.authorization)), tc.status)
 			require.Equal(t, tc.www, resp.Header.Get(fiber.HeaderWWWAuthenticate), fiber.HeaderWWWAuthenticate)
 			require.Equal(t, tc.proxy, resp.Header.Get(fiber.HeaderProxyAuthenticate), fiber.HeaderProxyAuthenticate)
 		})

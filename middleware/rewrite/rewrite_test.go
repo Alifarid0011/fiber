@@ -190,15 +190,6 @@ func rewritten(t *testing.T, cfg Config, path string) string {
 	return apptest.Body(t, apptest.Do(t, app, path))
 }
 
-func Test_Rewrite_RuleListOrderWins(t *testing.T) {
-	t.Parallel()
-	narrowFirst := Config{RuleList: []Rule{{From: "/p/a*", To: "/narrow/$1"}, {From: "/p/*", To: "/broad/$1"}}}
-	broadFirst := Config{RuleList: []Rule{{From: "/p/*", To: "/broad/$1"}, {From: "/p/a*", To: "/narrow/$1"}}}
-
-	require.Equal(t, "/narrow/bc", rewritten(t, narrowFirst, "/p/abc"))
-	require.Equal(t, "/broad/abc", rewritten(t, broadFirst, "/p/abc"))
-}
-
 func Test_Rewrite_DeprecatedRulesOrderIsStable(t *testing.T) {
 	t.Parallel()
 	// A map has no order, so this pins that the ranking decides the winner
@@ -209,47 +200,54 @@ func Test_Rewrite_DeprecatedRulesOrderIsStable(t *testing.T) {
 	}
 }
 
-func Test_Rewrite_PatternIsPathTextNotRegexp(t *testing.T) {
+// Test_Rewrite_RewrittenPath runs one request through a config and checks the path the handler behind
+// the rewrite saw: the order the rules are tried in, and that a rule's From is path text and not a regexp.
+func Test_Rewrite_RewrittenPath(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name string
-		from string
-		path string
-		want string
-	}{
-		{name: "dot is a dot", from: "/preis-1.000-euro", path: "/preis-1X000-euro", want: "/preis-1X000-euro"},
-		{name: "dot matches itself", from: "/preis-1.000-euro", path: "/preis-1.000-euro", want: "/hit"},
-		{name: "parentheses are text", from: "/files(old)", path: "/filesold", want: "/filesold"},
-		{name: "parentheses match themselves", from: "/files(old)", path: "/files(old)", want: "/hit"},
-		{name: "plus is text", from: "/a+", path: "/aaa", want: "/aaa"},
-		{name: "plus matches itself", from: "/a+", path: "/a+", want: "/hit"},
-		{name: "brackets are text", from: "/v[1]", path: "/v1", want: "/v1"},
-		{name: "brackets match themselves", from: "/v[1]", path: "/v[1]", want: "/hit"},
-		// A rule spelling "?" can never fire: the byte starts the query, so no
-		// path carries it. Quoted it is inert, whereas as a regexp it made the
-		// preceding byte optional and fired on a path the author never wrote.
-		{name: "question mark no longer eats a shorter path", from: "/faq?", path: "/fa", want: "/fa"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			cfg := Config{RuleList: []Rule{{From: tc.from, To: "/hit"}}}
-			require.Equal(t, tc.want, rewritten(t, cfg, tc.path))
-		})
-	}
-}
-
-func Test_Rewrite_AlternationNoLongerEscapesTheAnchors(t *testing.T) {
-	t.Parallel()
+	// hit rewrites from to "/hit".
+	hit := func(from string) Config { return Config{RuleList: []Rule{{From: from, To: "/hit"}}} }
+	narrowFirst := Config{RuleList: []Rule{{From: "/p/a*", To: "/narrow/$1"}, {From: "/p/*", To: "/broad/$1"}}}
+	broadFirst := Config{RuleList: []Rule{{From: "/p/*", To: "/broad/$1"}, {From: "/p/a*", To: "/narrow/$1"}}}
 	// Read as a regexp, "^/a|/b$" is "(^/a)|(/b$)", so the anchors bound one
 	// branch each and the rule fired on any path starting "/a" or ending "/b"
 	// (issue #4476). Quoted, "|" is path text and the rule claims no path a
 	// client can send, since the byte arrives percent-encoded.
-	cfg := Config{RuleList: []Rule{{From: "/a|/b", To: "/hit"}}}
+	alternation := hit("/a|/b")
+	// Both entry points share compilePattern, so a future split cannot quietly
+	// leave the map path compiling its keys as regular expressions.
+	deprecatedRules := Config{Rules: map[string]string{"/preis-1.000-euro": "/hit"}}
 
-	for _, path := range []string{"/a", "/b", "/xx/b", "/a/yy"} {
-		require.Equal(t, path, rewritten(t, cfg, path))
+	for _, tc := range []struct {
+		name string
+		path string
+		want string
+		cfg  Config
+	}{
+		{name: "the first rule of the list wins, narrow first", cfg: narrowFirst, path: "/p/abc", want: "/narrow/bc"},
+		{name: "the first rule of the list wins, broad first", cfg: broadFirst, path: "/p/abc", want: "/broad/abc"},
+		{name: "dot is a dot", cfg: hit("/preis-1.000-euro"), path: "/preis-1X000-euro", want: "/preis-1X000-euro"},
+		{name: "dot matches itself", cfg: hit("/preis-1.000-euro"), path: "/preis-1.000-euro", want: "/hit"},
+		{name: "parentheses are text", cfg: hit("/files(old)"), path: "/filesold", want: "/filesold"},
+		{name: "parentheses match themselves", cfg: hit("/files(old)"), path: "/files(old)", want: "/hit"},
+		{name: "plus is text", cfg: hit("/a+"), path: "/aaa", want: "/aaa"},
+		{name: "plus matches itself", cfg: hit("/a+"), path: "/a+", want: "/hit"},
+		{name: "brackets are text", cfg: hit("/v[1]"), path: "/v1", want: "/v1"},
+		{name: "brackets match themselves", cfg: hit("/v[1]"), path: "/v[1]", want: "/hit"},
+		// A rule spelling "?" can never fire: the byte starts the query, so no
+		// path carries it. Quoted it is inert, whereas as a regexp it made the
+		// preceding byte optional and fired on a path the author never wrote.
+		{name: "question mark no longer eats a shorter path", cfg: hit("/faq?"), path: "/fa", want: "/fa"},
+		{name: "alternation does not escape the anchors, /a", cfg: alternation, path: "/a", want: "/a"},
+		{name: "alternation does not escape the anchors, /b", cfg: alternation, path: "/b", want: "/b"},
+		{name: "alternation does not escape the anchors, /xx/b", cfg: alternation, path: "/xx/b", want: "/xx/b"},
+		{name: "alternation does not escape the anchors, /a/yy", cfg: alternation, path: "/a/yy", want: "/a/yy"},
+		{name: "deprecated rules are quoted too, dot is a dot", cfg: deprecatedRules, path: "/preis-1X000-euro", want: "/preis-1X000-euro"},
+		{name: "deprecated rules are quoted too, dot matches itself", cfg: deprecatedRules, path: "/preis-1.000-euro", want: "/hit"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, rewritten(t, tc.cfg, tc.path))
+		})
 	}
 }
 
@@ -285,16 +283,6 @@ func Test_Rewrite_DeprecatedRulesRanking(t *testing.T) {
 			require.Equal(t, tc.want, strings.Join(got, " "))
 		})
 	}
-}
-
-func Test_Rewrite_DeprecatedRulesAreQuotedToo(t *testing.T) {
-	t.Parallel()
-	// Both entry points share compilePattern, so a future split cannot quietly
-	// leave the map path compiling its keys as regular expressions.
-	cfg := Config{Rules: map[string]string{"/preis-1.000-euro": "/hit"}}
-
-	require.Equal(t, "/preis-1X000-euro", rewritten(t, cfg, "/preis-1X000-euro"))
-	require.Equal(t, "/hit", rewritten(t, cfg, "/preis-1.000-euro"))
 }
 
 // Test_Rewrite_TwoDigitCaptures pins that "$10" names the tenth capture rather than "$1" followed by "0".

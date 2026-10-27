@@ -145,14 +145,6 @@ func Test_SSE_EventDoesNotWritePartialFrameWhenDataMarshalFails(t *testing.T) {
 	require.Empty(t, buf.String())
 }
 
-func Test_SSE_EventReturnsWriterError(t *testing.T) {
-	t.Parallel()
-	writeErr := errors.New("write failed")
-	w := bufio.NewWriterSize(errWriter{err: writeErr}, 1)
-
-	require.ErrorIs(t, writeEvent(w, Event{Data: "hello"}), writeErr)
-}
-
 func Test_SSE_CommentSanitizesLines(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
@@ -164,12 +156,22 @@ func Test_SSE_CommentSanitizesLines(t *testing.T) {
 	require.Equal(t, ": first\n: second\n\n", buf.String())
 }
 
-func Test_SSE_CommentReturnsWriterError(t *testing.T) {
+// Test_SSE_FrameWritersReturnWriterError covers the frame writers on a writer that fails.
+func Test_SSE_FrameWritersReturnWriterError(t *testing.T) {
 	t.Parallel()
-	writeErr := errors.New("write failed")
-	w := bufio.NewWriterSize(errWriter{err: writeErr}, 1)
-
-	require.ErrorIs(t, writeComment(w, ""), writeErr)
+	for _, tc := range []struct {
+		write func(*bufio.Writer) error
+		name  string
+	}{
+		{name: "event", write: func(w *bufio.Writer) error { return writeEvent(w, Event{Data: "hello"}) }},
+		{name: "comment", write: func(w *bufio.Writer) error { return writeComment(w, "") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			writeErr := errors.New("write failed")
+			require.ErrorIs(t, tc.write(bufio.NewWriterSize(errWriter{err: writeErr}, 1)), writeErr)
+		})
+	}
 }
 
 func Test_SSE_NewWritesHeadersAndEvents(t *testing.T) {
@@ -231,15 +233,6 @@ func Test_SSE_StreamComment(t *testing.T) {
 	require.Equal(t, ": hello\n\n", buf.String())
 }
 
-func Test_SSE_StreamCommentReturnsWriterError(t *testing.T) {
-	t.Parallel()
-	writeErr := errors.New("write failed")
-	stream := newStream(context.Background(), bufio.NewWriterSize(errWriter{err: writeErr}, 1), "")
-
-	require.ErrorIs(t, stream.Comment("hello"), writeErr)
-	require.ErrorIs(t, stream.Err(), writeErr)
-}
-
 func Test_SSE_StreamRetryIgnoresNonPositiveDuration(t *testing.T) {
 	t.Parallel()
 	stream, buf := sseTestStream(t)
@@ -249,13 +242,24 @@ func Test_SSE_StreamRetryIgnoresNonPositiveDuration(t *testing.T) {
 	require.Empty(t, buf.String())
 }
 
-func Test_SSE_StreamRetryReturnsWriterError(t *testing.T) {
+func Test_SSE_StreamReturnsWriterError(t *testing.T) {
 	t.Parallel()
-	writeErr := errors.New("write failed")
-	stream := newStream(context.Background(), bufio.NewWriterSize(errWriter{err: writeErr}, 1), "")
+	for _, tc := range []struct {
+		write func(*Stream) error
+		name  string
+	}{
+		{name: "comment", write: func(s *Stream) error { return s.Comment("hello") }},
+		{name: "retry", write: func(s *Stream) error { return s.Retry(time.Second) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			writeErr := errors.New("write failed")
+			stream := newStream(context.Background(), bufio.NewWriterSize(errWriter{err: writeErr}, 1), "")
 
-	require.ErrorIs(t, stream.Retry(time.Second), writeErr)
-	require.ErrorIs(t, stream.Err(), writeErr)
+			require.ErrorIs(t, tc.write(stream), writeErr)
+			require.ErrorIs(t, stream.Err(), writeErr)
+		})
+	}
 }
 
 func Test_SSE_StreamConcurrentWrites(t *testing.T) {

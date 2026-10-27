@@ -210,22 +210,9 @@ func Benchmark_HealthCheck_Parallel(b *testing.B) {
 	})
 }
 
-func Test_HealthCheck_Text_Format(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Get(LivenessEndpoint, New()) // the default format is text
-	app.Get(ReadinessEndpoint, New(Config{ResponseFormat: FormatText, Probe: failing}))
-
-	resp := apptest.ExpectBody(t, app, LivenessEndpoint, fiber.StatusOK, "OK")
-	require.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
-
-	resp = apptest.ExpectBody(t, app, ReadinessEndpoint, fiber.StatusServiceUnavailable, "Service Unavailable")
-	require.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
-}
-
-// Test_HealthCheck_Structured_Formats checks the JSON, XML, MsgPack and CBOR
+// Test_HealthCheck_Formats checks the text, JSON, XML, MsgPack and CBOR
 // responses of a passing and of a failing probe.
-func Test_HealthCheck_Structured_Formats(t *testing.T) {
+func Test_HealthCheck_Formats(t *testing.T) {
 	t.Parallel()
 	// decoded checks a body that unmarshal decodes to exactly one "status" field.
 	decoded := func(unmarshal func([]byte, any) error) func(*testing.T, []byte, string) {
@@ -247,7 +234,15 @@ func Test_HealthCheck_Structured_Formats(t *testing.T) {
 		name        string
 		contentType string
 		format      ResponseFormat
+		bare        bool // register the passing probe with New(), whose format is text
 	}{
+		{
+			name: "Text", format: FormatText, contentType: "text/plain; charset=utf-8", bare: true,
+			check: func(t *testing.T, body []byte, status string) {
+				t.Helper()
+				require.Equal(t, status, string(body))
+			},
+		},
 		{
 			name: "JSON", format: FormatJSON, contentType: "application/json; charset=utf-8",
 			check: func(t *testing.T, body []byte, status string) {
@@ -275,7 +270,11 @@ func Test_HealthCheck_Structured_Formats(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New(tc.app)
-			app.Get(LivenessEndpoint, New(Config{ResponseFormat: tc.format}))
+			if tc.bare {
+				app.Get(LivenessEndpoint, New())
+			} else {
+				app.Get(LivenessEndpoint, New(Config{ResponseFormat: tc.format}))
+			}
 			app.Get(ReadinessEndpoint, New(Config{ResponseFormat: tc.format, Probe: failing}))
 
 			resp := apptest.Expect(t, app, LivenessEndpoint, fiber.StatusOK)

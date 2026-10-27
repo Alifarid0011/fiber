@@ -100,9 +100,7 @@ func Test_BasicAuthLoggerTagWritesUsername(t *testing.T) {
 	app.Use(logger.New(logger.Config{Format: "${username}", Stream: &buf}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.SetBasicAuth("john", "doe")
-	apptest.Expect(t, app, req, fiber.StatusOK)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:doe")), fiber.StatusOK)
 	require.Equal(t, "john", buf.String())
 }
 
@@ -118,9 +116,7 @@ func Test_BasicAuthLogContextTagWritesUsername(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.SetBasicAuth("john", "doe")
-	apptest.Expect(t, app, req, fiber.StatusOK)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:doe")), fiber.StatusOK)
 	require.Contains(t, buf.String(), "[Info] username=john start")
 }
 
@@ -468,10 +464,7 @@ func Test_BasicAuth_InvalidHeaderBytes(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			fctx := &fasthttp.RequestCtx{}
-			fctx.Request.SetRequestURI("/")
-			fctx.Request.Header.SetMethod(fiber.MethodGet)
-			fctx.Request.Header.SetBytesKV([]byte(fiber.HeaderAuthorization), []byte(tc.header))
+			fctx := newAuthorizedRequestCtx(tc.header)
 			handler(fctx)
 			require.Equal(t, fiber.StatusBadRequest, fctx.Response.StatusCode())
 		})
@@ -529,13 +522,18 @@ func Test_BasicAuth_Options(t *testing.T) {
 	}
 }
 
-func Benchmark_Middleware_BasicAuth(b *testing.B) {
-	h := teapotApp(&Config{Users: map[string]string{"john": sha256Hash("doe")}}).Handler()
-
+// newAuthorizedRequestCtx returns a GET / request context carrying the given Authorization header.
+func newAuthorizedRequestCtx(authorization string) *fasthttp.RequestCtx {
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
-	fctx.Request.Header.Set(fiber.HeaderAuthorization, "basic am9objpkb2U=") // john:doe
+	fctx.Request.Header.Set(fiber.HeaderAuthorization, authorization)
+	return fctx
+}
+
+func Benchmark_Middleware_BasicAuth(b *testing.B) {
+	h := teapotApp(&Config{Users: map[string]string{"john": sha256Hash("doe")}}).Handler()
+	fctx := newAuthorizedRequestCtx("basic am9objpkb2U=") // john:doe
 
 	b.ReportAllocs()
 
@@ -548,11 +546,7 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 
 func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
 	h := teapotApp(&Config{Users: map[string]string{"john": sha256Hash("doe")}}).Handler()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(fiber.MethodGet)
-	fctx.Request.SetRequestURI("/")
-	fctx.Request.Header.Set(fiber.HeaderAuthorization, "Basic am9objpkb2U=") // john:doe
+	fctx := newAuthorizedRequestCtx("Basic am9objpkb2U=") // john:doe
 
 	b.ReportAllocs()
 
@@ -561,37 +555,6 @@ func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-}
-
-func Test_parseHashedPassword(t *testing.T) {
-	t.Parallel()
-	pass := "secret"
-	sha := sha256.Sum256([]byte(pass))
-	b64 := base64.StdEncoding.EncodeToString(sha[:])
-	hexDigest := hex.EncodeToString(sha[:])
-	bcryptHash, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.MinCost)
-	require.NoError(t, err)
-
-	cases := []struct {
-		name   string
-		hashed string
-	}{
-		{"bcrypt", string(bcryptHash)},
-		{"sha512", sha512Hash(pass)},
-		{"sha256", sha256Hash(pass)},
-		{"sha256-hex", hexDigest},
-		{"sha256-b64", b64},
-	}
-
-	for _, tt := range cases {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			verify, err := parseHashedPassword(tt.hashed)
-			require.NoError(t, err)
-			require.True(t, verify(pass))
-			require.False(t, verify("wrong"))
-		})
-	}
 }
 
 func Test_buildVerifiers(t *testing.T) {
@@ -676,10 +639,12 @@ func Test_buildVerifiers_SameCostAcrossTiers(t *testing.T) {
 	}
 }
 
+// Test_BasicAuth_HashVariants runs every supported password hash format through
+// parseHashedPassword and through a full request.
 func Test_BasicAuth_HashVariants(t *testing.T) {
 	t.Parallel()
-	pass := "doe"
-	wrong := "wrong"
+	const pass = "doe"
+	sha := sha256Sum(pass)
 	bcryptHash, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.MinCost)
 	require.NoError(t, err)
 	cases := []struct {
@@ -689,15 +654,26 @@ func Test_BasicAuth_HashVariants(t *testing.T) {
 		{"bcrypt", string(bcryptHash)},
 		{"sha512", sha512Hash(pass)},
 		{"sha256", sha256Hash(pass)},
-		{"sha256-hex", func() string { h := sha256.Sum256([]byte(pass)); return hex.EncodeToString(h[:]) }()},
+		{"sha256-hex", hex.EncodeToString(sha)},
+		{"sha256-b64", base64.StdEncoding.EncodeToString(sha)},
 	}
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			app := teapotApp(&Config{Users: map[string]string{"john": tt.hashed}})
-			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:"+pass)), fiber.StatusTeapot)
-			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:"+wrong)), fiber.StatusUnauthorized)
+			t.Run("parseHashedPassword", func(t *testing.T) {
+				t.Parallel()
+				verify, err := parseHashedPassword(tt.hashed)
+				require.NoError(t, err)
+				require.True(t, verify(pass))
+				require.False(t, verify("wrong"))
+			})
+			t.Run("request", func(t *testing.T) {
+				t.Parallel()
+				app := teapotApp(&Config{Users: map[string]string{"john": tt.hashed}})
+				apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:"+pass)), fiber.StatusTeapot)
+				apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withBasicCredentials("john:wrong")), fiber.StatusUnauthorized)
+			})
 		})
 	}
 }

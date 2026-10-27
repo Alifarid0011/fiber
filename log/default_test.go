@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"runtime"
@@ -435,34 +434,38 @@ func Benchmark_LogfKeyAndValues_Parallel(b *testing.B) {
 	}
 }
 
-func Test_DefaultLogger_FatalExitsAboveLevel(t *testing.T) {
+func Test_DefaultLogger_FatalExits(t *testing.T) {
 	t.Parallel()
-	var exited []int
-	exit := func(code int) { exited = append(exited, code) }
-	logger := &defaultLogger{stdlog: log.New(io.Discard, "", 0), exit: exit, level: LevelPanic, depth: 4}
+	for _, tc := range []struct {
+		name       string
+		level      Level
+		wantOutput bool
+	}{
+		{name: "exits above the level", level: LevelPanic},
+		{name: "exits after the write", level: LevelTrace, wantOutput: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var exited []int
+			var buf bytes.Buffer
+			exit := func(code int) { exited = append(exited, code) }
+			logger := &defaultLogger{stdlog: log.New(&buf, "", 0), exit: exit, level: tc.level, depth: 4}
 
-	logger.Fatal("fatal")
-	logger.Fatalf("fatal %d", 1)
-	logger.Fatalw("fatal", "k", "v")
-	require.Equal(t, []int{1, 1, 1}, exited)
+			logger.Fatal("fatal")
+			logger.Fatalf("fatal %d", 1)
+			logger.Fatalw("fatal", "k", "v")
+			require.Equal(t, []int{1, 1, 1}, exited)
+			if tc.wantOutput {
+				require.Contains(t, buf.String(), "[Fatal] fatal")
+			} else {
+				require.Empty(t, buf.String())
+			}
 
-	// A derived logger keeps the hook, or it would exit the test process.
-	derived, ok := logger.WithContext(t.Context()).(*defaultLogger)
-	require.True(t, ok)
-	derived.Fatal("fatal")
-	require.Equal(t, []int{1, 1, 1, 1}, exited)
-}
-
-func Test_DefaultLogger_FatalExitsAfterWrite(t *testing.T) {
-	t.Parallel()
-	var exited []int
-	var buf bytes.Buffer
-	exit := func(code int) { exited = append(exited, code) }
-	logger := &defaultLogger{stdlog: log.New(&buf, "", 0), exit: exit, level: LevelTrace, depth: 4}
-
-	logger.Fatal("fatal")
-	logger.Fatalf("fatal %d", 1)
-	logger.Fatalw("fatal", "k", "v")
-	require.Equal(t, []int{1, 1, 1}, exited)
-	require.Contains(t, buf.String(), "[Fatal] fatal")
+			// A derived logger keeps the hook, or it would exit the test process.
+			derived, ok := logger.WithContext(t.Context()).(*defaultLogger)
+			require.True(t, ok)
+			derived.Fatal("fatal")
+			require.Equal(t, []int{1, 1, 1, 1}, exited)
+		})
+	}
 }

@@ -12,9 +12,23 @@ import (
 
 func Test_ConfigDefault(t *testing.T) {
 	t.Parallel()
-	cfg := configDefault(Config{AllowedHosts: []string{"example.com"}})
-	require.NotNil(t, cfg.ErrorHandler)
-	require.Equal(t, []string{"example.com"}, cfg.AllowedHosts)
+	t.Run("allowed hosts", func(t *testing.T) {
+		t.Parallel()
+		cfg := configDefault(Config{AllowedHosts: []string{"example.com"}})
+		require.NotNil(t, cfg.ErrorHandler)
+		require.Equal(t, []string{"example.com"}, cfg.AllowedHosts)
+	})
+	t.Run("allowed hosts func only", func(t *testing.T) {
+		t.Parallel()
+		cfg := configDefault(Config{AllowedHostsFunc: func(host string) bool { return host == "example.com" }})
+		require.NotNil(t, cfg.AllowedHostsFunc)
+	})
+	t.Run("custom error handler", func(t *testing.T) {
+		t.Parallel()
+		custom := func(c fiber.Ctx, _ error) error { return c.Status(fiber.StatusTeapot).SendString("nope") }
+		cfg := configDefault(Config{AllowedHosts: []string{"example.com"}, ErrorHandler: custom})
+		require.NotNil(t, cfg.ErrorHandler)
+	})
 }
 
 // Test_ConfigPanics covers the configurations that must be rejected at startup.
@@ -37,20 +51,6 @@ func Test_ConfigPanics(t *testing.T) {
 			require.Panics(t, tc.fn)
 		})
 	}
-}
-
-func Test_ConfigAllowedHostsFuncOnly(t *testing.T) {
-	t.Parallel()
-	cfg := configDefault(Config{AllowedHostsFunc: func(host string) bool { return host == "example.com" }})
-	require.NotNil(t, cfg.AllowedHostsFunc)
-}
-
-func Test_ConfigCustomErrorHandler(t *testing.T) {
-	t.Parallel()
-	custom := func(c fiber.Ctx, _ error) error { return c.Status(fiber.StatusTeapot).SendString("nope") }
-
-	cfg := configDefault(Config{AllowedHosts: []string{"example.com"}, ErrorHandler: custom})
-	require.NotNil(t, cfg.ErrorHandler)
 }
 
 func Test_NormalizeHost(t *testing.T) {
