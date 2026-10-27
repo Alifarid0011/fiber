@@ -110,19 +110,13 @@ func Test_SSE_EventRejectsFieldInjection(t *testing.T) {
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
 
-	require.ErrorIs(t, writeEvent(w, Event{
-		ID:   "42\nretry: 1",
-		Data: "ignored",
-	}), errInvalidField)
+	require.ErrorIs(t, writeEvent(w, Event{ID: "42\nretry: 1", Data: "ignored"}), errInvalidField)
 }
 
 func Test_SSE_EventJSONEncodesData(t *testing.T) {
 	t.Parallel()
 
-	frame := sseTestFrame(t, Event{
-		Name: "message",
-		Data: map[string]string{"hello": "world"},
-	})
+	frame := sseTestFrame(t, Event{Name: "message", Data: map[string]string{"hello": "world"}})
 
 	require.JSONEq(t, `{"hello":"world"}`, stringsTrimData(frame))
 }
@@ -149,11 +143,7 @@ func Test_SSE_EventDoesNotWritePartialFrameWhenDataMarshalFails(t *testing.T) {
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
 
-	require.Error(t, writeEvent(w, Event{
-		ID:   "42",
-		Name: "broken",
-		Data: func() {},
-	}))
+	require.Error(t, writeEvent(w, Event{ID: "42", Name: "broken", Data: func() {}}))
 	require.NoError(t, w.Flush())
 
 	require.Empty(t, buf.String())
@@ -393,10 +383,7 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 		OnClose: func(_ fiber.Ctx, err error) { onCloseDone <- err },
 	}))
 
-	resp := apptest.Do(t, app, "/events", fiber.TestConfig{
-		FailOnTimeout: false,
-		Timeout:       testTimeout,
-	})
+	resp := apptest.Do(t, app, "/events", fiber.TestConfig{FailOnTimeout: false, Timeout: testTimeout})
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)

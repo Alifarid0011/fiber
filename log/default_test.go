@@ -18,10 +18,7 @@ import (
 const work = "work"
 
 func initDefaultLogger() {
-	logger = &defaultLogger{
-		stdlog: log.New(os.Stderr, "", 0),
-		depth:  4,
-	}
+	logger = &defaultLogger{stdlog: log.New(os.Stderr, "", 0), depth: 4}
 	MustSetContextTemplate(ContextConfig{})
 }
 
@@ -68,10 +65,7 @@ func Test_WithContextCaller(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Cleanup(initDefaultLogger)
 
-			logger = &defaultLogger{
-				stdlog: log.New(os.Stderr, "", log.Lshortfile),
-				depth:  4,
-			}
+			logger = &defaultLogger{stdlog: log.New(os.Stderr, "", log.Lshortfile), depth: 4}
 
 			var w byteSliceWriter
 			SetOutput(&w)
@@ -339,11 +333,7 @@ func Test_LogfKeyAndValues(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			l := &defaultLogger{
-				stdlog: log.New(&buf, "", 0),
-				level:  tt.level,
-				depth:  4,
-			}
+			l := &defaultLogger{stdlog: log.New(&buf, "", 0), level: tt.level, depth: 4}
 			l.privateLogw(tt.level, tt.format, tt.keysAndValues)
 			require.Equal(t, tt.wantOutput, buf.String())
 		})
@@ -386,10 +376,7 @@ func Test_SetLevel(t *testing.T) {
 
 func Test_Logger(t *testing.T) {
 	underlyingLogger := log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
-	setLogger := &defaultLogger{
-		stdlog: underlyingLogger,
-		depth:  4,
-	}
+	setLogger := &defaultLogger{stdlog: underlyingLogger, depth: 4}
 
 	require.Equal(t, underlyingLogger, setLogger.Logger())
 
@@ -469,11 +456,7 @@ func Test_DefaultLoggerNonStringKeys(t *testing.T) {
 			t.Parallel()
 
 			var buf bytes.Buffer
-			l := &defaultLogger{
-				stdlog: log.New(&buf, "", 0),
-				level:  LevelTrace,
-				depth:  4,
-			}
+			l := &defaultLogger{stdlog: log.New(&buf, "", 0), level: LevelTrace, depth: 4}
 
 			require.NotPanics(t, func() { tt.log(l) })
 
@@ -524,11 +507,7 @@ func Benchmark_LogfKeyAndValues(b *testing.B) {
 	for _, tt := range tests {
 		b.Run(tt.name, func(bb *testing.B) {
 			var buf bytes.Buffer
-			l := &defaultLogger{
-				stdlog: log.New(&buf, "", 0),
-				level:  tt.level,
-				depth:  4,
-			}
+			l := &defaultLogger{stdlog: log.New(&buf, "", 0), level: tt.level, depth: 4}
 
 			bb.ReportAllocs()
 
@@ -584,11 +563,7 @@ func Benchmark_LogfKeyAndValues_Parallel(b *testing.B) {
 			bb.ResetTimer()
 			bb.RunParallel(func(pb *testing.PB) {
 				var buf bytes.Buffer
-				l := &defaultLogger{
-					stdlog: log.New(&buf, "", 0),
-					level:  tt.level,
-					depth:  4,
-				}
+				l := &defaultLogger{stdlog: log.New(&buf, "", 0), level: tt.level, depth: 4}
 				for pb.Next() {
 					l.privateLogw(tt.level, tt.format, tt.keysAndValues)
 				}

@@ -61,9 +61,7 @@ func Test_Expvar_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Use(New(Config{Next: func(_ fiber.Ctx) bool { return true }}))
 
 	apptest.Expect(t, app, "/debug/vars", 404)
 }

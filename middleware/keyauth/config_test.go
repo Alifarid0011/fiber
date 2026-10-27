@@ -32,9 +32,7 @@ func Test_KeyAuth_ConfigDefault_PanicWithoutValidator(t *testing.T) {
 func Test_KeyAuth_ConfigDefault_WithValidator(t *testing.T) {
 	t.Parallel()
 	validator := func(fiber.Ctx, string) (bool, error) { return true, nil }
-	cfg := configDefault(Config{
-		Validator: validator,
-	})
+	cfg := configDefault(Config{Validator: validator})
 
 	require.NotNil(t, cfg.Validator)
 	assert.Equal(t, ConfigDefault.Realm, cfg.Realm)

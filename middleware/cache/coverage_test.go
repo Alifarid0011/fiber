@@ -78,10 +78,7 @@ func cacheTestCBytesField(field string, size int) []byte {
 
 func populatedItem() item {
 	return item{
-		headers: []cachedHeader{
-			{key: []byte("X-A"), value: []byte("1")},
-			{key: []byte("X-B"), value: []byte("two")},
-		},
+		headers:         []cachedHeader{{key: []byte("X-A"), value: []byte("1")}, {key: []byte("X-B"), value: []byte("two")}},
 		body:            []byte("response body"),
 		ctype:           []byte("text/plain"),
 		cencoding:       []byte("gzip"),

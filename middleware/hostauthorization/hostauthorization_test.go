@@ -15,9 +15,7 @@ import (
 func Test_ConfigDefault(t *testing.T) {
 	t.Parallel()
 
-	cfg := configDefault(Config{
-		AllowedHosts: []string{"example.com"},
-	})
+	cfg := configDefault(Config{AllowedHosts: []string{"example.com"}})
 	require.NotNil(t, cfg.ErrorHandler)
 	require.Equal(t, []string{"example.com"}, cfg.AllowedHosts)
 }
@@ -51,9 +49,7 @@ func Test_ConfigPanics(t *testing.T) {
 func Test_ConfigAllowedHostsFuncOnly(t *testing.T) {
 	t.Parallel()
 
-	cfg := configDefault(Config{
-		AllowedHostsFunc: func(host string) bool { return host == "example.com" },
-	})
+	cfg := configDefault(Config{AllowedHostsFunc: func(host string) bool { return host == "example.com" }})
 	require.NotNil(t, cfg.AllowedHostsFunc)
 }
 
@@ -62,10 +58,7 @@ func Test_ConfigCustomErrorHandler(t *testing.T) {
 
 	custom := func(c fiber.Ctx, _ error) error { return c.Status(fiber.StatusTeapot).SendString("nope") }
 
-	cfg := configDefault(Config{
-		AllowedHosts: []string{"example.com"},
-		ErrorHandler: custom,
-	})
+	cfg := configDefault(Config{AllowedHosts: []string{"example.com"}, ErrorHandler: custom})
 	require.NotNil(t, cfg.ErrorHandler)
 }
 
@@ -394,10 +387,8 @@ func Test_HostAuthorization_XForwardedHost(t *testing.T) {
 			if tc.trustProxy {
 				// app.Test() uses remote address 0.0.0.0; trust that proxy IP.
 				appCfg = fiber.Config{
-					TrustProxy: true,
-					TrustProxyConfig: fiber.TrustProxyConfig{
-						Proxies: []string{"0.0.0.0"},
-					},
+					TrustProxy:       true,
+					TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
 				}
 			}
 
@@ -455,11 +446,7 @@ func Benchmark_matchHost_WildcardMatch(b *testing.B) {
 }
 
 func Benchmark_matchHost_Mixed(b *testing.B) {
-	parsed := parseAllowedHosts([]string{
-		"example.com",
-		"*.myapp.com",
-		"127.0.0.1",
-	})
+	parsed := parseAllowedHosts([]string{"example.com", "*.myapp.com", "127.0.0.1"})
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -486,9 +473,7 @@ func Benchmark_matchHost_ManyWildcards(b *testing.B) {
 
 func Benchmark_HostAuthorization_ExactMatch(b *testing.B) {
 	app := fiber.New()
-	app.Use(New(Config{
-		AllowedHosts: []string{"example.com"},
-	}))
+	app.Use(New(Config{AllowedHosts: []string{"example.com"}}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
@@ -507,13 +492,7 @@ func Benchmark_HostAuthorization_ExactMatch(b *testing.B) {
 
 func Benchmark_HostAuthorization_Mixed(b *testing.B) {
 	app := fiber.New()
-	app.Use(New(Config{
-		AllowedHosts: []string{
-			"example.com",
-			"*.myapp.com",
-			"127.0.0.1",
-		},
-	}))
+	app.Use(New(Config{AllowedHosts: []string{"example.com", "*.myapp.com", "127.0.0.1"}}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)

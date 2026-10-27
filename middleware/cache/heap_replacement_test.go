@@ -72,12 +72,7 @@ func cacheTestCStartReloads(t *testing.T, storage fiber.Storage, varyOn string) 
 	releaseSecond := make(chan struct{})
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: time.Hour,
-		MaxBytes:   1000,
-		Storage:    storage,
-		accounting: probe.record,
-	}))
+	app.Use(New(Config{Expiration: time.Hour, MaxBytes: 1000, Storage: storage, accounting: probe.record}))
 	app.Get("/entry", func(c fiber.Ctx) error {
 		switch calls.Add(1) {
 		case 2:

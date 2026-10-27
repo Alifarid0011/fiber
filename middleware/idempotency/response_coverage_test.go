@@ -33,10 +33,7 @@ func (w *errBudgetWriter) Write(p []byte) (int, error) {
 
 func populatedResponse() response {
 	return response{
-		Headers: map[string][]string{
-			"Content-Type": {"application/json"},
-			"X-Multi":      {"a", "b", "c"},
-		},
+		Headers:    map[string][]string{"Content-Type": {"application/json"}, "X-Multi": {"a", "b", "c"}},
 		Body:       []byte("hello world"),
 		StatusCode: 200,
 	}
@@ -54,10 +51,7 @@ func Test_response_MarshalUnmarshal_Populated(t *testing.T) {
 
 	// Unmarshal into a value that already has a populated Headers map and Body
 	// to exercise the clear()/capacity-reuse branches.
-	out := response{
-		Headers: map[string][]string{"stale": {"value"}},
-		Body:    make([]byte, 0, 64),
-	}
+	out := response{Headers: map[string][]string{"stale": {"value"}}, Body: make([]byte, 0, 64)}
 	left, err := out.UnmarshalMsg(bts)
 	require.NoError(t, err)
 	require.Empty(t, left)

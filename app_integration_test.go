@@ -77,9 +77,7 @@ func performOversizedRequest(t *testing.T, app *fiber.App, configure func(req *f
 		configure(req)
 	}
 
-	client := fasthttp.Client{
-		Dial: func(string) (net.Conn, error) { return ln.Dial() },
-	}
+	client := fasthttp.Client{Dial: func(string) (net.Conn, error) { return ln.Dial() }}
 
 	require.NoError(t, client.Do(req, resp))
 
@@ -230,9 +228,7 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 			setup: func(app *fiber.App) {
 				app.Use(cors.New(cors.Config{AllowOrigins: []string{corsHelmetRequestID}}))
 				app.Use(helmet.New())
-				app.Use(requestid.New(requestid.Config{
-					Generator: func() string { return generatedRequestID },
-				}))
+				app.Use(requestid.New(requestid.Config{Generator: func() string { return generatedRequestID }}))
 			},
 			configureRequest: func(req *fasthttp.Request) { req.Header.Set(fiber.HeaderOrigin, corsHelmetRequestID) },
 			assertions: func(t *testing.T, resp *fasthttp.Response) {
@@ -274,10 +270,7 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 		{
 			name: "cors+session",
 			setup: func(app *fiber.App) {
-				app.Use(cors.New(cors.Config{
-					AllowOrigins:     []string{corsSessionOrigin},
-					AllowCredentials: true,
-				}))
+				app.Use(cors.New(cors.Config{AllowOrigins: []string{corsSessionOrigin}, AllowCredentials: true}))
 				app.Use(session.New())
 				app.Use(func(c fiber.Ctx) error {
 					if sm := session.FromContext(c); sm != nil {
@@ -334,10 +327,7 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 		{
 			name: "cors+csrf",
 			setup: func(app *fiber.App) {
-				app.Use(cors.New(cors.Config{
-					AllowOrigins:     []string{corsCSRForigin},
-					AllowCredentials: true,
-				}))
+				app.Use(cors.New(cors.Config{AllowOrigins: []string{corsCSRForigin}, AllowCredentials: true}))
 				app.Use(csrf.New(csrf.Config{
 					CookieName:   csrfCookieName,
 					KeyGenerator: func() string { return csrfTokenValue },
@@ -555,10 +545,7 @@ func Test_Integration_App_ServerErrorHandler_CustomMultipartBodyLimit(t *testing
 			if errors.As(err, &fiberErr) && fiberErr != nil {
 				code = fiberErr.Code
 			}
-			return c.Status(code).JSON(fiber.Map{
-				"code":    code,
-				"message": err.Error(),
-			})
+			return c.Status(code).JSON(fiber.Map{"code": code, "message": err.Error()})
 		},
 	})
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
@@ -684,10 +671,7 @@ func Test_Integration_Domain_WithCORS(t *testing.T) {
 	const apiOrigin = "https://api.example.com"
 
 	app := fiber.New()
-	app.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{apiOrigin},
-		AllowCredentials: true,
-	}))
+	app.Use(cors.New(cors.Config{AllowOrigins: []string{apiOrigin}, AllowCredentials: true}))
 
 	app.Domain("api.example.com").Get("/data", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"source": "api"}) })
 
@@ -705,9 +689,7 @@ func Test_Integration_Domain_WithGroup(t *testing.T) {
 
 	// Domain with group
 	apiDomain := app.Domain("api.example.com")
-	apiDomain.Use(requestid.New(requestid.Config{
-		Generator: func() string { return "domain-request-id" },
-	}))
+	apiDomain.Use(requestid.New(requestid.Config{Generator: func() string { return "domain-request-id" }}))
 
 	v1 := apiDomain.Group("/v1")
 	v1.Get("/posts", func(c fiber.Ctx) error { return c.SendString("v1 posts") })
@@ -761,11 +743,7 @@ func Test_Integration_Domain_WithParams(t *testing.T) {
 	// Domain with parameters
 	app.Domain(":tenant.app.example.com").Get("/dashboard", func(c fiber.Ctx) error {
 		tenant := fiber.DomainParam(c, "tenant")
-		return c.JSON(fiber.Map{
-			"tenant":    tenant,
-			"page":      "dashboard",
-			"requestID": c.Get("X-Request-ID"),
-		})
+		return c.JSON(fiber.Map{"tenant": tenant, "page": "dashboard", "requestID": c.Get("X-Request-ID")})
 	})
 
 	resp := apptest.Expect(t, app, apptest.Req(http.MethodGet, "/dashboard", apptest.WithHost("acme.app.example.com")), fiber.StatusOK)
@@ -896,10 +874,7 @@ func Test_Integration_Domain_WithCSRF(t *testing.T) {
 	const csrfCookie = "domain-csrf"
 
 	app := fiber.New()
-	app.Use(csrf.New(csrf.Config{
-		CookieName:   csrfCookie,
-		KeyGenerator: func() string { return "test-csrf-token" },
-	}))
+	app.Use(csrf.New(csrf.Config{CookieName: csrfCookie, KeyGenerator: func() string { return "test-csrf-token" }}))
 
 	app.Domain("api.example.com").Get("/form", func(c fiber.Ctx) error { return c.SendString("form page") })
 
@@ -915,12 +890,7 @@ func Test_Integration_Domain_CaseInsensitiveMatching(t *testing.T) {
 	app.Domain("API.Example.COM").Get("/", func(c fiber.Ctx) error { return c.SendString("matched") })
 
 	// Test various case combinations
-	hosts := []string{
-		"api.example.com",
-		"API.EXAMPLE.COM",
-		"Api.Example.Com",
-		"aPi.eXaMpLe.CoM",
-	}
+	hosts := []string{"api.example.com", "API.EXAMPLE.COM", "Api.Example.Com", "aPi.eXaMpLe.CoM"}
 
 	for _, host := range hosts {
 		t.Run(host, func(t *testing.T) {

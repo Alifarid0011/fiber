@@ -74,9 +74,7 @@ func Test_Recover(t *testing.T) {
 func Test_Recover_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Use(New(Config{Next: func(_ fiber.Ctx) bool { return true }}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
@@ -84,9 +82,7 @@ func Test_Recover_Next(t *testing.T) {
 func Test_Recover_EnableStackTrace(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		EnableStackTrace: true,
-	}))
+	app.Use(New(Config{EnableStackTrace: true}))
 
 	app.Get("/panic", func(_ fiber.Ctx) error { panic("Hi, I'm an error!") })
 

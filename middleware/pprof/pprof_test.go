@@ -9,10 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var testConfig = fiber.TestConfig{
-	Timeout:       5 * time.Second,
-	FailOnTimeout: true,
-}
+var testConfig = fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true}
 
 // pprofTestMount is where the middleware is mounted: at its default location,
 // or under a Prefix.
@@ -21,10 +18,7 @@ type pprofTestMount struct {
 	prefix string
 }
 
-var pprofTestMounts = []pprofTestMount{
-	{name: "default"},
-	{name: "with prefix", prefix: "/federated-fiber"},
-}
+var pprofTestMounts = []pprofTestMount{{name: "default"}, {name: "with prefix", prefix: "/federated-fiber"}}
 
 // app returns an app running the middleware at m, configured by cfg, with a
 // route "/" that answers "escaped": what a request the middleware passes on is
@@ -125,9 +119,7 @@ func Test_Pprof_Next(t *testing.T) {
 		t.Run(m.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := m.app(Config{
-				Next: func(_ fiber.Ctx) bool { return true },
-			})
+			app := m.app(Config{Next: func(_ fiber.Ctx) bool { return true }})
 
 			apptest.Expect(t, app, m.prefix+"/debug/pprof/", 404)
 		})

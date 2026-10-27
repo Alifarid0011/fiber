@@ -139,9 +139,7 @@ func Test_isValidRequestID_WordBoundaries(t *testing.T) {
 func Test_RequestID_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Use(New(Config{Next: func(_ fiber.Ctx) bool { return true }}))
 
 	resp := apptest.Do(t, app, "/")
 	require.Empty(t, resp.Header.Get(fiber.HeaderXRequestID))
@@ -153,9 +151,7 @@ func Test_RequestID_FromContext(t *testing.T) {
 	reqID := "ThisIsARequestId"
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Generator: func() string { return reqID },
-	}))
+	app.Use(New(Config{Generator: func() string { return reqID }}))
 
 	var ctxVal string
 
@@ -173,13 +169,8 @@ func Test_RequestID_LoggerMiddlewareTag(t *testing.T) {
 
 	var buf bytes.Buffer
 	app := fiber.New()
-	app.Use(New(Config{
-		Generator: func() string { return "req-42" },
-	}))
-	app.Use(logger.New(logger.Config{
-		Format: "${requestid} ${request-id}",
-		Stream: &buf,
-	}))
+	app.Use(New(Config{Generator: func() string { return "req-42" }}))
+	app.Use(logger.New(logger.Config{Format: "${requestid} ${request-id}", Stream: &buf}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	apptest.Expect(t, app, "/", fiber.StatusOK)
@@ -192,9 +183,7 @@ func Test_RequestID_LogWithContextFormat(t *testing.T) {
 	buf := loggertest.CaptureContextLog(t, fiberlog.RequestIDFormat)
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Generator: func() string { return "req-42" },
-	}))
+	app.Use(New(Config{Generator: func() string { return "req-42" }}))
 	app.Get("/", func(c fiber.Ctx) error {
 		fiberlog.WithContext(c).Info("start")
 		return c.SendStatus(fiber.StatusOK)
@@ -225,9 +214,7 @@ func Test_RequestID_FromContext_Types(t *testing.T) {
 	reqID := "request-id-123"
 
 	app := fiber.New(fiber.Config{PassLocalsToContext: true})
-	app.Use(New(Config{
-		Generator: func() string { return reqID },
-	}))
+	app.Use(New(Config{Generator: func() string { return reqID }}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		require.Equal(t, reqID, FromContext(c))

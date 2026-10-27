@@ -10,9 +10,7 @@ import (
 func Benchmark_RespHeaderBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &RespHeaderBinding{
-		EnableSplitting: true,
-	}
+	binder := &RespHeaderBinding{EnableSplitting: true}
 
 	type User struct {
 		Name  string   `respHeader:"name"`

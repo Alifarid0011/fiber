@@ -25,10 +25,7 @@ func startTestServer(tb testing.TB, beforeStarting func(app *fiber.App)) *testSe
 	tb.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
-	app := fiber.New(fiber.Config{
-		CBOREncoder: cbor.Marshal,
-		CBORDecoder: cbor.Unmarshal,
-	})
+	app := fiber.New(fiber.Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal})
 
 	if beforeStarting != nil {
 		beforeStarting(app)
@@ -42,12 +39,7 @@ func startTestServer(tb testing.TB, beforeStarting func(app *fiber.App)) *testSe
 		close(ch)
 	}()
 
-	return &testServer{
-		app: app,
-		ch:  ch,
-		ln:  ln,
-		tb:  tb,
-	}
+	return &testServer{app: app, ch: ch, ln: ln, tb: tb}
 }
 
 func (ts *testServer) stop() {

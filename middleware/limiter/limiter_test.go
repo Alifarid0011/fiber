@@ -85,10 +85,7 @@ func (e *typedNilLimiterError) Error() string {
 }
 
 func newFakeLimiterStorage() *fakeLimiterStorage {
-	return &fakeLimiterStorage{
-		data: make(map[string][]byte),
-		errs: make(map[string]error),
-	}
+	return &fakeLimiterStorage{data: make(map[string][]byte), errs: make(map[string]error)}
 }
 
 // countingFailStorage fails set operations, and optionally get operations,
@@ -170,10 +167,7 @@ func newContextRecorderLimiterStorage() *contextRecorderLimiterStorage {
 }
 
 func contextRecordFrom(ctx context.Context, key string) contextRecord {
-	record := contextRecord{
-		key:      key,
-		canceled: errors.Is(ctx.Err(), context.Canceled),
-	}
+	record := contextRecord{key: key, canceled: errors.Is(ctx.Err(), context.Canceled)}
 	if value, ok := ctx.Value(markerKey).(string); ok {
 		record.value = value
 	}
@@ -907,11 +901,7 @@ func Test_Limiter_Concurrency(t *testing.T) {
 			t.Parallel()
 
 			app := fiber.New()
-			app.Use(New(Config{
-				Max:        50,
-				Expiration: 2 * time.Second,
-				Storage:    tc.storage(),
-			}))
+			app.Use(New(Config{Max: 50, Expiration: 2 * time.Second, Storage: tc.storage()}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
 
 			requireBurstLimited(t, app, 50)
@@ -984,11 +974,7 @@ func Test_Limiter_Sliding_Window_RecalculatesAfterHandlerDelay(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Max:               2,
-		Expiration:        time.Second,
-		LimiterMiddleware: SlidingWindow{},
-	}))
+	app.Use(New(Config{Max: 2, Expiration: time.Second, LimiterMiddleware: SlidingWindow{}}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		time.Sleep(600 * time.Millisecond)
@@ -1114,11 +1100,7 @@ func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t 
 func Benchmark_Limiter_Custom_Store(b *testing.B) {
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Max:        100,
-		Expiration: 60 * time.Second,
-		Storage:    memory.New(),
-	}))
+	app.Use(New(Config{Max: 100, Expiration: 60 * time.Second, Storage: memory.New()}))
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
@@ -1868,9 +1850,7 @@ func Test_Limiter_StorageRoundTrips(t *testing.T) {
 func Test_Limiter_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Use(New(Config{Next: func(_ fiber.Ctx) bool { return true }}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
@@ -1879,10 +1859,7 @@ func Test_Limiter_Headers(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Max:        50,
-		Expiration: 2 * time.Second,
-	}))
+	app.Use(New(Config{Max: 50, Expiration: 2 * time.Second}))
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
 
@@ -1905,11 +1882,7 @@ func Test_Limiter_Disable_Headers(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Max:            1,
-		Expiration:     2 * time.Second,
-		DisableHeaders: true,
-	}))
+	app.Use(New(Config{Max: 1, Expiration: 2 * time.Second, DisableHeaders: true}))
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
 
@@ -1943,10 +1916,7 @@ func Test_Limiter_Disable_Headers(t *testing.T) {
 func Benchmark_Limiter(b *testing.B) {
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Max:        100,
-		Expiration: 60 * time.Second,
-	}))
+	app.Use(New(Config{Max: 100, Expiration: 60 * time.Second}))
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 

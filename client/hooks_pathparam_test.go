@@ -474,9 +474,7 @@ func Test_PathParam_RoundTrip(t *testing.T) {
 		t.Run(val, func(t *testing.T) {
 			t.Parallel()
 
-			resp, err := AcquireRequest().
-				SetClient(client).
-				SetPathParam("id", val).
+			resp, err := AcquireRequest().SetClient(client).SetPathParam("id", val).
 				Get("http://example.com/api/:id/end")
 			require.NoError(t, err)
 			defer resp.Close()
@@ -499,9 +497,7 @@ func Test_PathParam_Traversal_NeverDials(t *testing.T) {
 		return nil, errors.New("dial must not happen")
 	})
 
-	_, err := AcquireRequest().
-		SetClient(client).
-		SetPathParam("id", "../../admin").
+	_, err := AcquireRequest().SetClient(client).SetPathParam("id", "../../admin").
 		Get("http://example.com/api/v1/:id/end")
 	require.ErrorIs(t, err, ErrPathParamInPath)
 	require.False(t, dialed.Load(), "the request was sent")
@@ -932,10 +928,7 @@ func FuzzPathParamTargetAsWritten(f *testing.F) {
 func checkPathParamTarget(t *testing.T, client *Client, val string) {
 	t.Helper()
 
-	req := AcquireRequest().
-		SetClient(client).
-		SetURL("http://example.com/api/v1/:id/end").
-		SetPathParam("id", val)
+	req := AcquireRequest().SetClient(client).SetURL("http://example.com/api/v1/:id/end").SetPathParam("id", val)
 	defer ReleaseRequest(req)
 
 	if err := parserRequestURL(client, req); err != nil {
@@ -968,10 +961,7 @@ func FuzzPathParamHost(f *testing.F) {
 		t.Parallel()
 
 		client := New()
-		req := AcquireRequest().
-			SetClient(client).
-			SetURL("http://:tenant.example.com/api").
-			SetPathParam("tenant", val)
+		req := AcquireRequest().SetClient(client).SetURL("http://:tenant.example.com/api").SetPathParam("tenant", val)
 		defer ReleaseRequest(req)
 
 		if err := parserRequestURL(client, req); err != nil {

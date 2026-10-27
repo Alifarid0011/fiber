@@ -124,10 +124,7 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 				req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 
 				if tc.timeout > 0 {
-					_, err := app.Test(req, TestConfig{
-						Timeout:       tc.timeout,
-						FailOnTimeout: true,
-					})
+					_, err := app.Test(req, TestConfig{Timeout: tc.timeout, FailOnTimeout: true})
 					require.Error(t, err)
 					require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 				} else if resp, err := app.Test(req); err != nil {
@@ -143,8 +140,7 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 			// Check final goroutine count
 			finalGoroutines := runtime.NumGoroutine()
 			leakedGoroutines := max(finalGoroutines-initialGoroutines, 0)
-			t.Logf("[%s] Final goroutines: %d (leaked: %d)",
-				tc.name, finalGoroutines, leakedGoroutines)
+			t.Logf("[%s] Final goroutines: %d (leaked: %d)", tc.name, finalGoroutines, leakedGoroutines)
 
 			if tc.expectLeak {
 				// We allow up to 3x the request count to account for noise; zero is tolerated.
@@ -315,9 +311,7 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 
 func Test_App_Errors(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
-		BodyLimit: 4,
-	})
+	app := New(Config{BodyLimit: 4})
 
 	app.Get("/", func(_ Ctx) error { return errors.New("hi, i'm an error") })
 
@@ -765,9 +759,7 @@ func Test_App_Add_Method_Test(t *testing.T) {
 	t.Parallel()
 
 	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
-	app := New(Config{
-		RequestMethods: methods,
-	})
+	app := New(Config{RequestMethods: methods})
 
 	app.Add([]string{"JOHN"}, "/john", testEmptyHandler)
 
@@ -785,9 +777,7 @@ func Test_App_All_Method_Test(t *testing.T) {
 	t.Parallel()
 
 	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
-	app := New(Config{
-		RequestMethods: methods,
-	})
+	app := New(Config{RequestMethods: methods})
 
 	// Add a new method with All
 	app.All("/doe", testEmptyHandler)
@@ -800,9 +790,7 @@ func Test_App_All_Method_Test(t *testing.T) {
 
 func Test_App_GETOnly(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
-		GETOnly: true,
-	})
+	app := New(Config{GETOnly: true})
 
 	app.Post("/", func(c Ctx) error { return c.SendString("Hello 👋!") })
 
@@ -811,9 +799,7 @@ func Test_App_GETOnly(t *testing.T) {
 
 func Test_App_GETOnly_Middleware_Status(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
-		GETOnly: true,
-	})
+	app := New(Config{GETOnly: true})
 
 	observed := make(chan int, 1)
 	app.Use(func(c Ctx) error {
@@ -1073,17 +1059,13 @@ func Test_App_New(t *testing.T) {
 	app := New()
 	app.Get("/", testEmptyHandler)
 
-	appConfig := New(Config{
-		Immutable: true,
-	})
+	appConfig := New(Config{Immutable: true})
 	appConfig.Get("/", testEmptyHandler)
 }
 
 func Test_App_Config(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
-		StrictRouting: true,
-	})
+	app := New(Config{StrictRouting: true})
 	require.True(t, app.Config().StrictRouting)
 }
 
@@ -1640,11 +1622,7 @@ func Test_App_RouteChain(t *testing.T) {
 
 	app := New()
 
-	register := app.RouteChain("/test").
-		Get(dummyHandler).
-		Head(dummyHandler).
-		Post(dummyHandler).
-		Put(dummyHandler).
+	register := app.RouteChain("/test").Get(dummyHandler).Head(dummyHandler).Post(dummyHandler).Put(dummyHandler).
 		Delete(dummyHandler).
 		Connect(dummyHandler).
 		Options(dummyHandler).
@@ -1797,12 +1775,7 @@ func Test_NewErrorf_Format(t *testing.T) {
 		in   args
 		code int
 	}{
-		{
-			name: "no-args → default text",
-			code: StatusNotFound,
-			in:   nil,
-			want: utils.StatusMessage(StatusNotFound),
-		},
+		{name: "no-args → default text", code: StatusNotFound, in: nil, want: utils.StatusMessage(StatusNotFound)},
 		{
 			name: "single-string arg overrides",
 			code: StatusBadRequest,
@@ -1815,18 +1788,8 @@ func Test_NewErrorf_Format(t *testing.T) {
 			in:   args{errors.New("db down")},
 			want: "db down",
 		},
-		{
-			name: "single nil interface",
-			code: StatusInternalServerError,
-			in:   args{any(nil)},
-			want: "<nil>",
-		},
-		{
-			name: "format string + args",
-			code: StatusBadRequest,
-			in:   args{"invalid id %d", 10},
-			want: "invalid id 10",
-		},
+		{name: "single nil interface", code: StatusInternalServerError, in: args{any(nil)}, want: "<nil>"},
+		{name: "format string + args", code: StatusBadRequest, in: args{"invalid id %d", 10}, want: "invalid id 10"},
 		{
 			name: "format string + excess args",
 			code: StatusBadRequest,
@@ -1863,9 +1826,7 @@ func Test_Test_Timeout(t *testing.T) {
 
 	app.Get("/", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{
-		Timeout: 0,
-	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{Timeout: 0})
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -2622,12 +2583,7 @@ func Test_App_RefusedRequest(t *testing.T) {
 			raw:    "HEAD /read-timeout HTTP/1.1\r\n",
 			want:   "408 Request Timeout",
 		},
-		{
-			name:  "bad request",
-			route: "/bad-request",
-			raw:   "BadRequest\r\n",
-			want:  "400 Bad Request",
-		},
+		{name: "bad request", route: "/bad-request", raw: "BadRequest\r\n", want: "400 Bad Request"},
 	}
 
 	for _, tc := range tests {
@@ -2672,9 +2628,7 @@ func Test_App_RefusedRequest(t *testing.T) {
 
 func Test_App_SmallReadBuffer(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
-		ReadBufferSize: 1,
-	})
+	app := New(Config{ReadBufferSize: 1})
 
 	app.Get("/small-read-buffer", func(c Ctx) error { return c.SendString("I should not be sent") })
 
@@ -2795,9 +2749,7 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 		})
 
 		req := httptest.NewRequest(MethodGet, "/", http.NoBody)
-		_, err = app.Test(req, TestConfig{
-			Timeout: 0,
-		})
+		_, err = app.Test(req, TestConfig{Timeout: 0})
 	}()
 
 	tk := time.NewTimer(5 * time.Second)
@@ -2843,10 +2795,7 @@ func Test_App_Test_timeout_empty_response(t *testing.T) {
 
 	// When FailOnTimeout is false, the test should return whatever response is available
 	// at timeout without failing
-	resp := apptest.Do(t, app, "/", TestConfig{
-		Timeout:       10 * time.Millisecond,
-		FailOnTimeout: false,
-	})
+	resp := apptest.Do(t, app, "/", TestConfig{Timeout: 10 * time.Millisecond, FailOnTimeout: false})
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
@@ -2984,9 +2933,7 @@ func Test_App_Test_CloseFail(t *testing.T) {
 func Test_App_SetTLSHandler(t *testing.T) {
 	t.Parallel()
 	tlsHandler := &TLSHandler{}
-	_, err := tlsHandler.GetClientInfo(&tls.ClientHelloInfo{
-		ServerName: "example.golang",
-	})
+	_, err := tlsHandler.GetClientInfo(&tls.ClientHelloInfo{ServerName: "example.golang"})
 	require.NoError(t, err)
 
 	app := New()
@@ -3000,9 +2947,7 @@ func Test_App_SetTLSHandler(t *testing.T) {
 func Test_App_AddCustomRequestMethod(t *testing.T) {
 	t.Parallel()
 	methods := append(DefaultMethods, "TEST") //nolint:gocritic // We want a new slice here
-	app := New(Config{
-		RequestMethods: methods,
-	})
+	app := New(Config{RequestMethods: methods})
 	appMethods := app.config.RequestMethods
 
 	// method name is always uppercase - https://datatracker.ietf.org/doc/html/rfc7231#section-4.1
@@ -3354,19 +3299,14 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutFalse(t *testing.T) {
 		// Add a small delay to ensure timeout is triggered
 		time.Sleep(10 * time.Millisecond)
 		groupID := "g.test123"
-		return c.JSON(groupIDResponse{
-			GroupID: groupID,
-		})
+		return c.JSON(groupIDResponse{GroupID: groupID})
 	})
 
 	req := httptest.NewRequest(MethodPost, "/admin/api/groups", http.NoBody)
 
 	// Using 5 microseconds which is too short for the handler to complete
 	// But with FailOnTimeout: false, it should return whatever is available without error
-	resp, err := app.Test(req, TestConfig{
-		Timeout:       5 * time.Microsecond,
-		FailOnTimeout: false,
-	})
+	resp, err := app.Test(req, TestConfig{Timeout: 5 * time.Microsecond, FailOnTimeout: false})
 
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
@@ -3388,18 +3328,13 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
 	app.Post("/admin/api/groups", func(c Ctx) error {
 		time.Sleep(100 * time.Millisecond)
 		groupID := "g.test123"
-		return c.JSON(groupIDResponse{
-			GroupID: groupID,
-		})
+		return c.JSON(groupIDResponse{GroupID: groupID})
 	})
 
 	req := httptest.NewRequest(MethodPost, "/admin/api/groups", http.NoBody)
 
 	// With FailOnTimeout: true (default), it should fail fast with timeout error
-	_, err := app.Test(req, TestConfig{
-		Timeout:       10 * time.Millisecond,
-		FailOnTimeout: true,
-	})
+	_, err := app.Test(req, TestConfig{Timeout: 10 * time.Millisecond, FailOnTimeout: true})
 
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 }

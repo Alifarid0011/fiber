@@ -83,51 +83,15 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{
-			err:      nil,
-			input:    "foo[bar]",
-			expected: "foo.bar",
-		},
-		{
-			err:      nil,
-			input:    "foo[bar][baz]",
-			expected: "foo.bar.baz",
-		},
-		{
-			err:      ErrUnmatchedBrackets,
-			input:    "foo[bar",
-			expected: "",
-		},
-		{
-			err:      ErrUnmatchedBrackets,
-			input:    "foo[bar][baz",
-			expected: "",
-		},
-		{
-			err:      ErrUnmatchedBrackets,
-			input:    "foo]bar[",
-			expected: "",
-		},
-		{
-			err:      nil,
-			input:    "foo[bar[baz]]",
-			expected: "foo.bar.baz",
-		},
-		{
-			err:      nil,
-			input:    "",
-			expected: "",
-		},
-		{
-			err:      nil,
-			input:    "[]",
-			expected: "",
-		},
-		{
-			err:      nil,
-			input:    "foo[]",
-			expected: "foo",
-		},
+		{err: nil, input: "foo[bar]", expected: "foo.bar"},
+		{err: nil, input: "foo[bar][baz]", expected: "foo.bar.baz"},
+		{err: ErrUnmatchedBrackets, input: "foo[bar", expected: ""},
+		{err: ErrUnmatchedBrackets, input: "foo[bar][baz", expected: ""},
+		{err: ErrUnmatchedBrackets, input: "foo]bar[", expected: ""},
+		{err: nil, input: "foo[bar[baz]]", expected: "foo.bar.baz"},
+		{err: nil, input: "", expected: ""},
+		{err: nil, input: "[]", expected: ""},
+		{err: nil, input: "foo[]", expected: "foo"},
 	}
 
 	for _, tt := range tests {
@@ -148,11 +112,7 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 func Test_parseToMap(t *testing.T) {
 	t.Parallel()
 
-	inputMap := map[string][]string{
-		"key1": {"value1", "value2"},
-		"key2": {"value3"},
-		"key3": {"value4"},
-	}
+	inputMap := map[string][]string{"key1": {"value1", "value2"}, "key2": {"value3"}, "key3": {"value4"}}
 
 	// Test map[string]string
 	m := make(map[string]string)
@@ -201,23 +161,11 @@ func Test_FilterFlags(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{
-			input:    "text/javascript; charset=utf-8",
-			expected: "text/javascript",
-		},
-		{
-			input:    "text/javascript",
-			expected: "text/javascript",
-		},
+		{input: "text/javascript; charset=utf-8", expected: "text/javascript"},
+		{input: "text/javascript", expected: "text/javascript"},
 
-		{
-			input:    "text/javascript; charset=utf-8; foo=bar",
-			expected: "text/javascript",
-		},
-		{
-			input:    "text/javascript charset=utf-8",
-			expected: "text/javascript",
-		},
+		{input: "text/javascript; charset=utf-8; foo=bar", expected: "text/javascript"},
+		{input: "text/javascript charset=utf-8", expected: "text/javascript"},
 	}
 
 	for _, tt := range tests {
@@ -318,10 +266,7 @@ func Test_parseToStruct_MismatchedData(t *testing.T) {
 		Age  int    `query:"age"`
 	}
 
-	data := map[string][]string{
-		"name": {"John"},
-		"age":  {"invalidAge"},
-	}
+	data := map[string][]string{"name": {"John"}, "age": {"invalidAge"}}
 
 	err := parseToStruct("query", &User{}, data)
 	require.Error(t, err)
@@ -339,11 +284,8 @@ func Test_decoderBuilder(t *testing.T) {
 		return reflect.ValueOf(customInt(i))
 	}
 	parserConfig := ParserConfig{
-		SetAliasTag: "custom",
-		ParserType: []ParserType{{
-			CustomType: customInt(0),
-			Converter:  conv,
-		}},
+		SetAliasTag:       "custom",
+		ParserType:        []ParserType{{CustomType: customInt(0), Converter: conv}},
 		IgnoreUnknownKeys: false,
 		ZeroEmpty:         false,
 	}
@@ -360,10 +302,7 @@ func Test_decoderBuilder(t *testing.T) {
 
 func Test_parseToMap_Extended(t *testing.T) {
 	t.Parallel()
-	data := map[string][]string{
-		"empty": {},
-		"key1":  {"value1"},
-	}
+	data := map[string][]string{"empty": {}, "key1": {"value1"}}
 
 	m := make(map[string]string)
 	err := parseToMap(reflect.ValueOf(m), data)
@@ -395,23 +334,15 @@ func TestSetParserDecoderConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
 	t.Cleanup(func() {
-		SetParserDecoder(ParserConfig{
-			IgnoreUnknownKeys: true,
-			ZeroEmpty:         true,
-		})
+		SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
 	})
 
 	type queryUser struct {
 		Name string `query:"name"`
 	}
 
-	data := map[string][]string{
-		"name": {"fiber"},
-	}
-	parserConfig := ParserConfig{
-		IgnoreUnknownKeys: true,
-		ZeroEmpty:         true,
-	}
+	data := map[string][]string{"name": {"fiber"}}
+	parserConfig := ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true}
 
 	start := make(chan struct{})
 	const workers = 25
@@ -793,8 +724,7 @@ func Test_StructKeyKind_NestedPaths(t *testing.T) {
 
 	var out walkTarget
 	for _, tc := range tests {
-		require.Equal(t, tc.want, equalFieldType(&out, tc.kind, tc.key, "query"),
-			"key=%q kind=%s", tc.key, tc.kind)
+		require.Equal(t, tc.want, equalFieldType(&out, tc.kind, tc.key, "query"), "key=%q kind=%s", tc.key, tc.kind)
 	}
 }
 

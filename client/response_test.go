@@ -37,9 +37,7 @@ func clientTestBResponse(t *testing.T) *Response {
 func clientTestBGet(t *testing.T, routes func(app *fiber.App), url string) *Response {
 	t.Helper()
 
-	resp, err := AcquireRequest().
-		SetClient(clientTestAClient(t, routes)).
-		Get(url)
+	resp, err := AcquireRequest().SetClient(clientTestAClient(t, routes)).Get(url)
 	require.NoError(t, err)
 	t.Cleanup(resp.Close)
 
@@ -142,9 +140,7 @@ func Test_Response_Protocol(t *testing.T) {
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Scheme()) })
 
 		go func() {
-			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
-				DisableStartupMessage: true,
-			}))
+			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 		}()
 
 		client := New()
@@ -247,9 +243,7 @@ func Benchmark_Headers(b *testing.B) {
 
 	client := New().SetDial(server.dial())
 
-	resp, err := AcquireRequest().
-		SetClient(client).
-		Get("http://example.com")
+	resp, err := AcquireRequest().SetClient(client).Get("http://example.com")
 	require.NoError(b, err)
 
 	b.Cleanup(func() {
@@ -272,10 +266,7 @@ func Test_Response_Cookie(t *testing.T) {
 
 	resp := clientTestBGet(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
-			c.Cookie(&fiber.Cookie{
-				Name:  "foo",
-				Value: "bar",
-			})
+			c.Cookie(&fiber.Cookie{Name: "foo", Value: "bar"})
 			return c.SendString("helo world")
 		})
 	}, "http://example.com")
@@ -299,10 +290,7 @@ func Test_Response_Body(t *testing.T) {
 				Age  int    `cbor:"age"`
 			}
 
-			return c.CBOR(cborData{
-				Name: "foo",
-				Age:  12,
-			})
+			return c.CBOR(cborData{Name: "foo", Age: 12})
 		})
 	}
 
@@ -358,10 +346,7 @@ func Test_Response_Body(t *testing.T) {
 			Age  int    `cbor:"age"`
 		}
 
-		data := cborData{
-			Name: "foo",
-			Age:  12,
-		}
+		data := cborData{Name: "foo", Age: 12}
 
 		resp := clientTestBGet(t, routes, "http://example.com/cbor")
 

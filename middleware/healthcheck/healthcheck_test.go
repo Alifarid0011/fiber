@@ -63,9 +63,7 @@ func Test_HealthCheck_Custom(t *testing.T) {
 
 	app := fiber.New()
 	c1 := make(chan struct{}, 1)
-	app.Get("/live", New(Config{
-		Probe: func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Get("/live", New(Config{Probe: func(_ fiber.Ctx) bool { return true }}))
 	app.Get("/ready", New(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			select {
@@ -76,9 +74,7 @@ func Test_HealthCheck_Custom(t *testing.T) {
 			}
 		},
 	}))
-	app.Get(StartupEndpoint, New(Config{
-		Probe: func(_ fiber.Ctx) bool { return false },
-	}))
+	app.Get(StartupEndpoint, New(Config{Probe: func(_ fiber.Ctx) bool { return false }}))
 
 	// Setup custom liveness and readiness probes to simulate application health status
 	// Live should return 200 with GET request
@@ -105,9 +101,7 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 	app := fiber.New()
 
 	c1 := make(chan struct{}, 1)
-	app.Get("/probe/live", New(Config{
-		Probe: func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Get("/probe/live", New(Config{Probe: func(_ fiber.Ctx) bool { return true }}))
 	app.Get("/probe/ready", New(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			select {
@@ -144,9 +138,7 @@ func Test_HealthCheck_Head(t *testing.T) {
 
 	app := fiber.New()
 	app.Get(LivenessEndpoint, New())
-	app.Get(ReadinessEndpoint, New(Config{
-		Probe: func(_ fiber.Ctx) bool { return false },
-	}))
+	app.Get(ReadinessEndpoint, New(Config{Probe: func(_ fiber.Ctx) bool { return false }}))
 	app.All("/healthz", New())
 
 	// HEAD must mirror the GET status (RFC 9110 9.3.2) with an empty body
@@ -184,9 +176,7 @@ func Test_HealthCheck_Next(t *testing.T) {
 
 	app := fiber.New()
 
-	checker := New(Config{
-		Next: func(_ fiber.Ctx) bool { return true },
-	})
+	checker := New(Config{Next: func(_ fiber.Ctx) bool { return true }})
 
 	app.Get(LivenessEndpoint, checker)
 	app.Get(ReadinessEndpoint, checker)

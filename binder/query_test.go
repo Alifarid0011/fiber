@@ -10,9 +10,7 @@ import (
 func Benchmark_QueryBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &QueryBinding{
-		EnableSplitting: true,
-	}
+	binder := &QueryBinding{EnableSplitting: true}
 
 	type User struct {
 		Name  string   `query:"name"`
@@ -43,9 +41,7 @@ func Benchmark_QueryBinder_Bind(b *testing.B) {
 func Test_QueryBinder_Bind_PointerSlices(t *testing.T) {
 	t.Parallel()
 
-	binder := &QueryBinding{
-		EnableSplitting: true,
-	}
+	binder := &QueryBinding{EnableSplitting: true}
 
 	type Preferences struct {
 		Tags *[]string `query:"tags"`
@@ -74,9 +70,7 @@ func Test_QueryBinder_Bind_PointerSlices(t *testing.T) {
 func Test_QueryBinder_Bind_Splitting_ScalarNotSplit(t *testing.T) {
 	t.Parallel()
 
-	b := &QueryBinding{
-		EnableSplitting: true,
-	}
+	b := &QueryBinding{EnableSplitting: true}
 
 	type Filter struct {
 		IDs []int `query:"ids"`
@@ -97,9 +91,7 @@ func Test_QueryBinder_Bind_Splitting_ScalarNotSplit(t *testing.T) {
 func Test_QueryBinder_Bind_Splitting_EmbeddedStruct(t *testing.T) {
 	t.Parallel()
 
-	b := &QueryBinding{
-		EnableSplitting: true,
-	}
+	b := &QueryBinding{EnableSplitting: true}
 
 	type Embedded struct {
 		Title string   `query:"title"`
@@ -165,9 +157,7 @@ func Test_QueryBinder_Bind_Splitting_NestedDepth(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			b := &QueryBinding{
-				EnableSplitting: true,
-			}
+			b := &QueryBinding{EnableSplitting: true}
 
 			req := newQueryRequest(t, tc.query)
 
@@ -181,9 +171,7 @@ func Test_QueryBinder_Bind_Splitting_NestedDepth(t *testing.T) {
 func Test_QueryBinder_Bind_Splitting_EmptyAliasWithOptions(t *testing.T) {
 	t.Parallel()
 
-	b := &QueryBinding{
-		EnableSplitting: true,
-	}
+	b := &QueryBinding{EnableSplitting: true}
 
 	type Filter struct {
 		Tags []string `query:",default:x|y"`
@@ -223,9 +211,7 @@ func Test_QueryBinder_Bind_Splitting_NilSliceMap(t *testing.T) {
 func Test_QueryBinder_Bind_Splitting_InvalidDestination(t *testing.T) {
 	t.Parallel()
 
-	b := &QueryBinding{
-		EnableSplitting: true,
-	}
+	b := &QueryBinding{EnableSplitting: true}
 
 	type User struct {
 		Names []string `query:"names"`

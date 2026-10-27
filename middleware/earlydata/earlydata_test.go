@@ -68,11 +68,7 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 		return c.Next()
 	})
 
-	app.Add([]string{
-		fiber.MethodGet,
-		fiber.MethodPost,
-		fiber.MethodQuery,
-	}, "/", func(c fiber.Ctx) error {
+	app.Add([]string{fiber.MethodGet, fiber.MethodPost, fiber.MethodQuery}, "/", func(c fiber.Ctx) error {
 		valid, ok := c.Locals(localsKeyTestValid).(bool)
 		if !ok {
 			panic(errors.New("failed to type-assert to bool"))
@@ -167,9 +163,7 @@ func Test_EarlyDataNext(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Next: func(fiber.Ctx) bool { return true },
-	}))
+	app.Use(New(Config{Next: func(fiber.Ctx) bool { return true }}))
 
 	called := false
 	app.Get("/", func(c fiber.Ctx) error {
@@ -202,10 +196,7 @@ func Test_configDefault_WithConfig(t *testing.T) {
 	t.Parallel()
 	expectedErr := errors.New("boom")
 	called := false
-	custom := Config{
-		Next:  func(_ fiber.Ctx) bool { called = true; return false },
-		Error: expectedErr,
-	}
+	custom := Config{Next: func(_ fiber.Ctx) bool { called = true; return false }, Error: expectedErr}
 
 	cfg := configDefault(custom)
 

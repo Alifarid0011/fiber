@@ -350,11 +350,7 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 		accept      string
 		offers      []string
 	}{
-		{
-			description: "simple",
-			accept:      "application/json",
-			offers:      []string{"application/json"},
-		},
+		{description: "simple", accept: "application/json", offers: []string{"application/json"}},
 		{
 			description: "6 offers",
 			accept:      "text/plain",
@@ -392,26 +388,14 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 				"text/plain; format=flowed",
 			},
 		},
-		{
-			description: "mime extension",
-			accept:      "utf-8, iso-8859-1;q=0.5",
-			offers:      []string{"utf-8"},
-		},
-		{
-			description: "mime extension",
-			accept:      "utf-8, iso-8859-1;q=0.5",
-			offers:      []string{"iso-8859-1"},
-		},
+		{description: "mime extension", accept: "utf-8, iso-8859-1;q=0.5", offers: []string{"utf-8"}},
+		{description: "mime extension", accept: "utf-8, iso-8859-1;q=0.5", offers: []string{"iso-8859-1"}},
 		{
 			description: "mime extension",
 			accept:      "utf-8, iso-8859-1;q=0.5",
 			offers:      []string{"iso-8859-1", "utf-8"},
 		},
-		{
-			description: "mime extension",
-			accept:      "gzip, deflate",
-			offers:      []string{"deflate"},
-		},
+		{description: "mime extension", accept: "gzip, deflate", offers: []string{"deflate"}},
 		{
 			description: "web browser",
 			accept:      "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -453,10 +437,7 @@ func Test_Utils_ParamsMatch(t *testing.T) {
 func Benchmark_Utils_ParamsMatch(b *testing.B) {
 	var match bool
 
-	specParams := headerParams{
-		"appLe": []byte("orange"),
-		"param": []byte("foo"),
-	}
+	specParams := headerParams{"appLe": []byte("orange"), "param": []byte("foo")}
 	b.ReportAllocs()
 	for b.Loop() {
 		match = paramsMatch(specParams, `;param=foo; apple=orange`)
@@ -946,62 +927,20 @@ func testGenericParseError[V GenericType](t *testing.T) {
 func Benchmark_GenericParseTypeInts(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	ints := []testGenericParseTypeIntCase{
-		{
-			value: 0,
-			bits:  8,
-		},
-		{
-			value: 1,
-			bits:  8,
-		},
-		{
-			value: 2,
-			bits:  8,
-		},
-		{
-			value: 3,
-			bits:  8,
-		},
-		{
-			value: 4,
-			bits:  8,
-		},
-		{
-			value: -1,
-			bits:  8,
-		},
-		{
-			value: math.MaxInt8,
-			bits:  8,
-		},
-		{
-			value: math.MinInt8,
-			bits:  8,
-		},
-		{
-			value: math.MaxInt16,
-			bits:  16,
-		},
-		{
-			value: math.MinInt16,
-			bits:  16,
-		},
-		{
-			value: math.MaxInt32,
-			bits:  32,
-		},
-		{
-			value: math.MinInt32,
-			bits:  32,
-		},
-		{
-			value: math.MaxInt64,
-			bits:  64,
-		},
-		{
-			value: math.MinInt64,
-			bits:  64,
-		},
+		{value: 0, bits: 8},
+		{value: 1, bits: 8},
+		{value: 2, bits: 8},
+		{value: 3, bits: 8},
+		{value: 4, bits: 8},
+		{value: -1, bits: 8},
+		{value: math.MaxInt8, bits: 8},
+		{value: math.MinInt8, bits: 8},
+		{value: math.MaxInt16, bits: 16},
+		{value: math.MinInt16, bits: 16},
+		{value: math.MaxInt32, bits: 32},
+		{value: math.MinInt32, bits: 32},
+		{value: math.MaxInt64, bits: 64},
+		{value: math.MinInt64, bits: 64},
 	}
 	for _, test := range ints {
 		benchGenericParseTypeInt[int8](b, "bench_genericParseTypeInt8s", test)
@@ -1039,46 +978,16 @@ func Benchmark_GenericParseTypeUints(b *testing.B) {
 		value uint64
 		bits  int
 	}{
-		{
-			value: 0,
-			bits:  8,
-		},
-		{
-			value: 1,
-			bits:  8,
-		},
-		{
-			value: 2,
-			bits:  8,
-		},
-		{
-			value: 3,
-			bits:  8,
-		},
-		{
-			value: 4,
-			bits:  8,
-		},
-		{
-			value: math.MaxUint8,
-			bits:  8,
-		},
-		{
-			value: math.MaxUint16,
-			bits:  16,
-		},
-		{
-			value: math.MaxUint16,
-			bits:  16,
-		},
-		{
-			value: math.MaxUint32,
-			bits:  32,
-		},
-		{
-			value: math.MaxUint64,
-			bits:  64,
-		},
+		{value: 0, bits: 8},
+		{value: 1, bits: 8},
+		{value: 2, bits: 8},
+		{value: 3, bits: 8},
+		{value: 4, bits: 8},
+		{value: math.MaxUint8, bits: 8},
+		{value: math.MaxUint16, bits: 16},
+		{value: math.MaxUint16, bits: 16},
+		{value: math.MaxUint32, bits: 32},
+		{value: math.MaxUint64, bits: 64},
 	}
 
 	for _, test := range uints {
@@ -1117,22 +1026,10 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 		str   string
 		value float64
 	}{
-		{
-			value: 3.1415,
-			str:   "3.1415",
-		},
-		{
-			value: 1.234,
-			str:   "1.234",
-		},
-		{
-			value: 2,
-			str:   "2",
-		},
-		{
-			value: 3,
-			str:   "3",
-		},
+		{value: 3.1415, str: "3.1415"},
+		{value: 1.234, str: "1.234"},
+		{value: 2, str: "2"},
+		{value: 3, str: "3"},
 	}
 
 	for _, test := range floats {
@@ -1175,23 +1072,10 @@ func Benchmark_GenericParseTypeBytes(b *testing.B) {
 		err   error
 		value []byte
 	}{
-		{
-			value: []byte("alex"),
-			str:   "alex",
-		},
-		{
-			value: []byte("32.23"),
-			str:   "32.23",
-		},
-		{
-			value: []byte("john"),
-			str:   "john",
-		},
-		{
-			value: []byte(nil),
-			str:   "",
-			err:   errParsedEmptyBytes,
-		},
+		{value: []byte("alex"), str: "alex"},
+		{value: []byte("32.23"), str: "32.23"},
+		{value: []byte("john"), str: "john"},
+		{value: []byte(nil), str: "", err: errParsedEmptyBytes},
 	}
 
 	for _, test := range cases {
@@ -1242,22 +1126,10 @@ func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 		str   string
 		value bool
 	}{
-		{
-			str:   "True",
-			value: true,
-		},
-		{
-			str:   "False",
-			value: false,
-		},
-		{
-			str:   "true",
-			value: true,
-		},
-		{
-			str:   "false",
-			value: false,
-		},
+		{str: "True", value: true},
+		{str: "False", value: false},
+		{str: "true", value: true},
+		{str: "false", value: false},
 	}
 
 	for _, test := range bools {

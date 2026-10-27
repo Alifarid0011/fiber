@@ -17,10 +17,7 @@ func Test_CaptureTokens(t *testing.T) {
 		target  string
 		want    string
 	}{
-		{
-			name: "no capture groups", pattern: `^/old$`, input: "/old",
-			target: "/new/$1", want: "/new/$1",
-		},
+		{name: "no capture groups", pattern: `^/old$`, input: "/old", target: "/new/$1", want: "/new/$1"},
 		{
 			name: "reordered and repeated captures", pattern: `^/users/(.*)/orders/(.*)$`, input: "/users/7/orders/9",
 			target: "/$2/$1/$2", want: "/9/7/9",
@@ -29,10 +26,7 @@ func Test_CaptureTokens(t *testing.T) {
 			name: "two digit captures", pattern: `^/(a)/(b)/(c)/(d)/(e)/(f)/(g)/(h)/(i)/(j)/(k)$`, input: "/a/b/c/d/e/f/g/h/i/j/k",
 			target: "/$11/$10/$1", want: "/k/j/a",
 		},
-		{
-			name: "empty capture", pattern: `^/old/(.*)$`, input: "/old/",
-			target: "/new/$1", want: "/new/",
-		},
+		{name: "empty capture", pattern: `^/old/(.*)$`, input: "/old/", target: "/new/$1", want: "/new/"},
 		{
 			name: "unmatched optional capture", pattern: `^/old(?:/(.*))?$`, input: "/old",
 			target: "/new/$1", want: "/new/",

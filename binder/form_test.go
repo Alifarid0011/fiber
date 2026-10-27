@@ -29,11 +29,7 @@ func Test_FormBinder_Bind_MixedCaseContentType(t *testing.T) {
 		contentType string
 		body        string
 	}{
-		{
-			name:        "urlencoded",
-			contentType: "Application/X-WWW-Form-Urlencoded",
-			body:        "name=john",
-		},
+		{name: "urlencoded", contentType: "Application/X-WWW-Form-Urlencoded", body: "name=john"},
 		{
 			// The boundary parameter *name* is folded, its value is not.
 			name:        "multipart",
@@ -128,9 +124,7 @@ func Test_AcquireBindData_ReservesPairs(t *testing.T) {
 func Benchmark_FormBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &FormBinding{
-		EnableSplitting: true,
-	}
+	binder := &FormBinding{EnableSplitting: true}
 
 	type User struct {
 		Name  string   `form:"name"`
@@ -157,9 +151,7 @@ func Benchmark_FormBinder_Bind(b *testing.B) {
 func Test_FormBinder_BindMultipart(t *testing.T) {
 	t.Parallel()
 
-	b := &FormBinding{
-		EnableSplitting: true,
-	}
+	b := &FormBinding{EnableSplitting: true}
 	require.Equal(t, "form", b.Name())
 
 	type Post struct {
@@ -229,9 +221,7 @@ func requireFile(t *testing.T, fh *multipart.FileHeader, filename, content strin
 func Test_FormBinder_BindMultipart_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
 
-	b := &FormBinding{
-		MaxBodySize: 64,
-	}
+	b := &FormBinding{MaxBodySize: 64}
 
 	type User struct {
 		Name string `form:"name"`
@@ -335,9 +325,7 @@ func Test_FormBinder_BindMultipart_MapsClearedBetweenRequests(t *testing.T) {
 func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &FormBinding{
-		EnableSplitting: true,
-	}
+	binder := &FormBinding{EnableSplitting: true}
 
 	type User struct {
 		Name  string   `form:"name"`

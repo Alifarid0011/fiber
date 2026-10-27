@@ -394,9 +394,7 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 		rootMiscBSendOnNewConn(t, ln, "GET / HTTP/1.1\r\nHost: example.com\r\n")
 	}
 
-	client := fasthttp.HostClient{
-		Dial: func(_ string) (net.Conn, error) { return ln.Dial() },
-	}
+	client := fasthttp.HostClient{Dial: func(_ string) (net.Conn, error) { return ln.Dial() }}
 
 	type testCase struct {
 		expectedErr        error
@@ -633,10 +631,7 @@ func Test_Listen_TLSConfig(t *testing.T) {
 
 	run("TLSConfig with certificates", ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		},
+		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
 	})
 
 	run("TLSConfig with GetCertificate", ListenConfig{
@@ -649,16 +644,11 @@ func Test_Listen_TLSConfig(t *testing.T) {
 
 	run("TLSConfig ignores other TLS fields", ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		},
-		CertFile:       "./.github/testdata/does-not-exist.pem",
-		CertKeyFile:    "./.github/testdata/does-not-exist.key",
-		CertClientFile: "./.github/testdata/does-not-exist-ca.pem",
-		AutoCertManager: &autocert.Manager{
-			Prompt: autocert.AcceptTOS,
-		},
+		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
+		CertFile:              "./.github/testdata/does-not-exist.pem",
+		CertKeyFile:           "./.github/testdata/does-not-exist.key",
+		CertClientFile:        "./.github/testdata/does-not-exist-ca.pem",
+		AutoCertManager:       &autocert.Manager{Prompt: autocert.AcceptTOS},
 	})
 }
 
@@ -689,11 +679,8 @@ func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		},
-		TLSConfigFunc: func(_ *tls.Config) { calledTLSConfigFunc = true },
+		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
+		TLSConfigFunc:         func(_ *tls.Config) { calledTLSConfigFunc = true },
 	}))
 
 	require.False(t, calledTLSConfigFunc)
@@ -713,10 +700,7 @@ func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		},
+		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
 		// Superseded by TLSConfig. CertClientFile is the one that matters: a
 		// listener that silently drops it serves every client without asking
 		// for a certificate, which reads as working mTLS until someone checks.
@@ -749,10 +733,7 @@ func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		},
+		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
 	}))
 
 	require.NotContains(t, buf.String(), "supersedes")
@@ -836,10 +817,8 @@ func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 			}()
 
 			err := app.Listen(":0", ListenConfig{
-				CertClientFile: tc.clientCAPath,
-				AutoCertManager: &autocert.Manager{
-					Prompt: autocert.AcceptTOS,
-				},
+				CertClientFile:  tc.clientCAPath,
+				AutoCertManager: &autocert.Manager{Prompt: autocert.AcceptTOS},
 			})
 			require.Error(t, err)
 			require.ErrorContains(t, err, tc.expectedErrMsg)
@@ -1033,9 +1012,7 @@ func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 }
 
 func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
-	cfg := ListenConfig{
-		EnablePrefork: true,
-	}
+	cfg := ListenConfig{EnablePrefork: true}
 
 	port := rootMiscBFreePort(t)
 
@@ -1079,9 +1056,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := ListenConfig{
-				EnablePrefork: true,
-			}
+			cfg := ListenConfig{EnablePrefork: true}
 
 			app := New(Config{AppName: tc.appName})
 			port := rootMiscBFreePort(t)
@@ -1096,9 +1071,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 }
 
 func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustomEndpoint(t *testing.T) {
-	cfg := ListenConfig{
-		EnablePrefork: false,
-	}
+	cfg := ListenConfig{EnablePrefork: false}
 
 	appName := "Fiber Example Application"
 	app := New(Config{AppName: appName})
@@ -1272,10 +1245,7 @@ func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
 
 	secure, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
-	tlsLn := tls.NewListener(secure, &tls.Config{
-		MinVersion:   tls.VersionTLS12,
-		Certificates: []tls.Certificate{cert},
-	})
+	tlsLn := tls.NewListener(secure, &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}})
 	t.Cleanup(func() { _ = tlsLn.Close() }) //nolint:errcheck // closing a test listener
 
 	tests := []struct {
@@ -1285,12 +1255,7 @@ func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
 		name     string
 		cfg      ListenConfig
 	}{
-		{
-			name:     "nothing to report",
-			cfg:      ListenConfig{},
-			listener: plain,
-			absent:   []string{"ignored"},
-		},
+		{name: "nothing to report", cfg: ListenConfig{}, listener: plain, absent: []string{"ignored"}},
 		{
 			name:     "one field reads singular",
 			cfg:      ListenConfig{TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
@@ -1362,11 +1327,7 @@ func Test_WarnSupersededTLSFields_Branches(t *testing.T) {
 		absent   []string
 		cfg      ListenConfig
 	}{
-		{
-			name:   "nothing to report",
-			cfg:    ListenConfig{},
-			absent: []string{"supersedes"},
-		},
+		{name: "nothing to report", cfg: ListenConfig{}, absent: []string{"supersedes"}},
 		{
 			name:     "certificate files",
 			cfg:      ListenConfig{CertFile: "./.github/testdata/ssl.pem"},

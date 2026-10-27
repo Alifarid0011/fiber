@@ -28,16 +28,8 @@ func Test_Append(t *testing.T) {
 			headerValue:  "gzip , br",
 			expectedList: []string{"gzip", "br"},
 		},
-		{
-			description:  "comma with tabbed whitespace",
-			headerValue:  "gzip\t,br",
-			expectedList: []string{"gzip", "br"},
-		},
-		{
-			description:  "headerValue is empty",
-			headerValue:  "",
-			expectedList: nil,
-		},
+		{description: "comma with tabbed whitespace", headerValue: "gzip\t,br", expectedList: []string{"gzip", "br"}},
+		{description: "headerValue is empty", headerValue: "", expectedList: nil},
 		{
 			// RFC 9110 §5.6.1.2: empty list elements are parsed and ignored.
 			description:  "has a comma without element",
@@ -49,21 +41,9 @@ func Test_Append(t *testing.T) {
 			headerValue:  "  foo bar, hello  world",
 			expectedList: []string{"foo bar", "hello  world"},
 		},
-		{
-			description:  "single comma",
-			headerValue:  ",",
-			expectedList: []string{},
-		},
-		{
-			description:  "multiple comma",
-			headerValue:  ",,",
-			expectedList: []string{},
-		},
-		{
-			description:  "comma with space",
-			headerValue:  ",  ,",
-			expectedList: []string{},
-		},
+		{description: "single comma", headerValue: ",", expectedList: []string{}},
+		{description: "multiple comma", headerValue: ",,", expectedList: []string{}},
+		{description: "comma with space", headerValue: ",  ,", expectedList: []string{}},
 		{
 			description:  "empty element between values",
 			headerValue:  "gzip, , br",
@@ -294,15 +274,9 @@ func Test_AllQuoted(t *testing.T) {
 func Test_AllLines(t *testing.T) {
 	t.Parallel()
 	require.Nil(t, collect(AllLines(nil)))
-	require.Equal(t,
-		[]string{"gzip", "br", "zstd"},
-		collect(AllLines([][]byte{[]byte("gzip, br"), []byte(" zstd ")})),
-	)
+	require.Equal(t, []string{"gzip", "br", "zstd"}, collect(AllLines([][]byte{[]byte("gzip, br"), []byte(" zstd ")})))
 	// A header split across lines reads the same as one line (RFC 9110 5.3).
-	require.Equal(t,
-		collect(All("gzip,br")),
-		collect(AllLines([][]byte{[]byte("gzip"), []byte("br")})),
-	)
+	require.Equal(t, collect(All("gzip,br")), collect(AllLines([][]byte{[]byte("gzip"), []byte("br")})))
 }
 
 func Test_All_EarlyExit(t *testing.T) {

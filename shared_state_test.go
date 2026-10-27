@@ -434,10 +434,7 @@ func TestSharedState_SetGet_JSONDataKinds(t *testing.T) {
 	t.Run("map", func(t *testing.T) {
 		t.Parallel()
 
-		expected := map[string]any{
-			"name": "fiber",
-			"ok":   true,
-		}
+		expected := map[string]any{"name": "fiber", "ok": true}
 		require.NoError(t, app.SharedState().SetJSON("map", expected, time.Minute))
 
 		var out map[string]any

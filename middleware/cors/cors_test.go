@@ -70,11 +70,7 @@ func corsTestRaw(t *testing.T, app *fiber.App, raw string) *fasthttp.RequestCtx 
 func Test_CORS_WildcardHeaders(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		AllowMethods:  []string{"*"},
-		AllowHeaders:  []string{"*"},
-		ExposeHeaders: []string{"*"},
-	}))
+	app.Use(New(Config{AllowMethods: []string{"*"}, AllowHeaders: []string{"*"}, ExposeHeaders: []string{"*"}}))
 
 	// Test preflight request
 	ctx := corsTestPreflight(app.Handler(), "http://localhost")
@@ -159,11 +155,7 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 func Test_CORS_AllowOrigins_Vary(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(
-		Config{
-			AllowOrigins: []string{"http://localhost"},
-		},
-	))
+	app.Use(New(Config{AllowOrigins: []string{"http://localhost"}}))
 
 	h := app.Handler()
 
@@ -251,10 +243,7 @@ func Test_CORS_Wildcard_AllowCredentials_Panic(t *testing.T) {
 	t.Parallel()
 
 	require.Panics(t, func() {
-		fiber.New().Use(New(Config{
-			AllowOrigins:     []string{"*"},
-			AllowCredentials: true,
-		}))
+		fiber.New().Use(New(Config{AllowOrigins: []string{"*"}, AllowCredentials: true}))
 	}, "Expected a panic when AllowOrigins is '*' and AllowCredentials is true")
 }
 
@@ -265,10 +254,7 @@ func Test_CORS_Warn_AllowAllOrigins_WithFunc(t *testing.T) {
 	log.SetOutput(&buf)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 
-	fiber.New().Use(New(Config{
-		AllowOrigins:     []string{"*"},
-		AllowOriginsFunc: func(string) bool { return true },
-	}))
+	fiber.New().Use(New(Config{AllowOrigins: []string{"*"}, AllowOriginsFunc: func(string) bool { return true }}))
 
 	require.Contains(t, buf.String(), "AllowOriginsFunc' will not be used")
 }
@@ -293,10 +279,7 @@ func Test_CORS_Invalid_Origins_Panic(t *testing.T) {
 			t.Parallel()
 
 			require.Panics(t, func() {
-				fiber.New().Use(New(Config{
-					AllowOrigins:     []string{origin},
-					AllowCredentials: true,
-				}))
+				fiber.New().Use(New(Config{AllowOrigins: []string{origin}, AllowCredentials: true}))
 			}, "Expected a panic for invalid origin: %s", origin)
 		})
 	}
@@ -306,17 +289,11 @@ func Test_CORS_DisableValueRedaction(t *testing.T) {
 	t.Parallel()
 
 	require.PanicsWithValue(t, "[CORS] Invalid origin format in configuration: [redacted]", func() {
-		New(Config{
-			AllowOrigins:          []string{"http://"},
-			DisableValueRedaction: false,
-		})
+		New(Config{AllowOrigins: []string{"http://"}, DisableValueRedaction: false})
 	})
 
 	require.PanicsWithValue(t, "[CORS] Invalid origin format in configuration: http://", func() {
-		New(Config{
-			AllowOrigins:          []string{"http://"},
-			DisableValueRedaction: true,
-		})
+		New(Config{AllowOrigins: []string{"http://"}, DisableValueRedaction: true})
 	})
 }
 
@@ -325,9 +302,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 	// New fiber instance
 	app := fiber.New()
 	// OPTIONS (preflight) response headers when AllowOrigins is set to a subdomain
-	app.Use("/", New(Config{
-		AllowOrigins: []string{"  http://*.example.com  "},
-	}))
+	app.Use("/", New(Config{AllowOrigins: []string{"  http://*.example.com  "}}))
 
 	handler := app.Handler()
 
@@ -406,9 +381,7 @@ func Test_CORS_AllowOriginHeader_NoMatch(t *testing.T) {
 	t.Parallel()
 	// New fiber instance
 	app := fiber.New()
-	app.Use("/", New(Config{
-		AllowOrigins: []string{"http://example-1.com", "https://example-1.com"},
-	}))
+	app.Use("/", New(Config{AllowOrigins: []string{"http://example-1.com", "https://example-1.com"}}))
 
 	// Get handler pointer
 	handler := app.Handler()
@@ -434,9 +407,7 @@ func Test_CORS_AllowOriginHeader_NoMatch(t *testing.T) {
 func Test_CORS_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Use(New(Config{Next: func(_ fiber.Ctx) bool { return true }}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
@@ -613,9 +584,7 @@ func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
 			t.Parallel()
 
 			app := fiber.New()
-			app.Use("/", New(Config{
-				AllowOriginsFunc: func(string) bool { return true },
-			}))
+			app.Use("/", New(Config{AllowOriginsFunc: func(string) bool { return true }}))
 			app.All("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 			handler := app.Handler()
@@ -696,22 +665,16 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 		Config              Config
 	}{
 		{
-			Name: "AllowOriginsFuncDefined",
-			Config: Config{
-				AllowCredentials: true,
-				AllowOriginsFunc: func(_ string) bool { return true },
-			},
+			Name:          "AllowOriginsFuncDefined",
+			Config:        Config{AllowCredentials: true, AllowOriginsFunc: func(_ string) bool { return true }},
 			RequestOrigin: "http://aaa.com",
 			// The AllowOriginsFunc config was defined, should use the real origin of the function
 			ResponseOrigin:      "http://aaa.com",
 			ResponseCredentials: "true",
 		},
 		{
-			Name: "fiber-ghsa-fmg4-x8pw-hjhg-wildcard-credentials",
-			Config: Config{
-				AllowCredentials: true,
-				AllowOriginsFunc: func(_ string) bool { return true },
-			},
+			Name:           "fiber-ghsa-fmg4-x8pw-hjhg-wildcard-credentials",
+			Config:         Config{AllowCredentials: true, AllowOriginsFunc: func(_ string) bool { return true }},
 			RequestOrigin:  "*",
 			ResponseOrigin: "",
 			// Middleware will validate that wildcard won't set credentials to true and reject non-serialized origins
@@ -732,21 +695,15 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 			ResponseCredentials: "",
 		},
 		{
-			Name: "AllowOriginsDefined",
-			Config: Config{
-				AllowCredentials: true,
-				AllowOrigins:     []string{"http://aaa.com"},
-			},
+			Name:                "AllowOriginsDefined",
+			Config:              Config{AllowCredentials: true, AllowOrigins: []string{"http://aaa.com"}},
 			RequestOrigin:       "http://aaa.com",
 			ResponseOrigin:      "http://aaa.com",
 			ResponseCredentials: "true",
 		},
 		{
-			Name: "AllowOriginsDefined/UnallowedOrigin",
-			Config: Config{
-				AllowCredentials: true,
-				AllowOrigins:     []string{"http://aaa.com"},
-			},
+			Name:                "AllowOriginsDefined/UnallowedOrigin",
+			Config:              Config{AllowCredentials: true, AllowOrigins: []string{"http://aaa.com"}},
 			RequestOrigin:       "http://bbb.com",
 			ResponseOrigin:      "",
 			ResponseCredentials: "",
@@ -1353,10 +1310,7 @@ func Test_CORS_Security_CredentialsWithSubdomainWildcard(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		AllowCredentials: true,
-		AllowOrigins:     []string{"https://*.example.com"},
-	}))
+	app.Use(New(Config{AllowCredentials: true, AllowOrigins: []string{"https://*.example.com"}}))
 
 	handler := app.Handler()
 
@@ -1394,10 +1348,7 @@ func Test_CORS_Security_CredentialsSimpleRequest(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		AllowCredentials: true,
-		AllowOrigins:     []string{"https://trusted.example.com"},
-	}))
+	app.Use(New(Config{AllowCredentials: true, AllowOrigins: []string{"https://trusted.example.com"}}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	// Allowed origin is reflected with credentials on a simple GET.
@@ -1422,9 +1373,7 @@ func Test_CORS_Security_NoOriginReflectionForDisallowed(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		AllowOrigins: []string{"https://a.example.com", "https://b.example.com"},
-	}))
+	app.Use(New(Config{AllowOrigins: []string{"https://a.example.com", "https://b.example.com"}}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)

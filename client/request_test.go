@@ -76,10 +76,7 @@ func (e clientTestBMultiValue) run(t *testing.T) {
 		t.Parallel()
 
 		req := clientTestBRequest(t)
-		e.addMany(e.set(req, "foo", "bar"), map[string][]string{
-			"foo": {"fiber", "buaa"},
-			"bar": {"foo"},
-		})
+		e.addMany(e.set(req, "foo", "bar"), map[string][]string{"foo": {"fiber", "buaa"}, "bar": {"foo"}})
 
 		require.Equal(t, []string{"bar", "fiber", "buaa"}, e.get(req, "foo"))
 		require.Equal(t, []string{"foo"}, e.get(req, "bar"))
@@ -89,10 +86,7 @@ func (e clientTestBMultiValue) run(t *testing.T) {
 		t.Parallel()
 
 		req := clientTestBRequest(t)
-		e.setMany(e.set(req, "foo", "bar"), map[string]string{
-			"foo": "fiber",
-			"bar": "foo",
-		})
+		e.setMany(e.set(req, "foo", "bar"), map[string]string{"foo": "fiber", "bar": "foo"})
 
 		require.Equal(t, []string{"fiber"}, e.get(req, "foo"))
 		require.Equal(t, []string{"foo"}, e.get(req, "bar"))
@@ -144,10 +138,7 @@ func (e clientTestBMultiValue) runDel(t *testing.T) {
 		t.Parallel()
 
 		req := clientTestBRequest(t)
-		e.del(e.setMany(e.set(req, "foo", "bar"), map[string]string{
-			"foo": "fiber",
-			"bar": "foo",
-		}), "foo", "bar")
+		e.del(e.setMany(e.set(req, "foo", "bar"), map[string]string{"foo": "fiber", "bar": "foo"}), "foo", "bar")
 
 		require.Empty(t, e.get(req, "foo"))
 		require.Empty(t, e.get(req, "bar"))
@@ -175,10 +166,7 @@ func (e clientTestBMultiValue) runIter(t *testing.T, all func(r *Request) iter.S
 		t.Parallel()
 
 		req := clientTestBRequest(t)
-		e.addMany(req, map[string][]string{
-			"foo": {"bar", "fiber"},
-			"bar": {"foo"},
-		})
+		e.addMany(req, map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
 
 		got := maps.Collect(all(req))
 
@@ -225,16 +213,11 @@ func (e clientTestBSingleValue) run(t *testing.T) {
 	t.Run("set "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
 
-		req := e.setMany(clientTestBRequest(t), map[string]string{
-			"foo": "bar",
-			"bar": "foo",
-		})
+		req := e.setMany(clientTestBRequest(t), map[string]string{"foo": "bar", "bar": "foo"})
 		require.Equal(t, "bar", e.get(req, "foo"))
 		require.Equal(t, "foo", e.get(req, "bar"))
 
-		e.setMany(req, map[string]string{
-			"foo": "bar1",
-		})
+		e.setMany(req, map[string]string{"foo": "bar1"})
 		require.Equal(t, "bar1", e.get(req, "foo"))
 		require.Equal(t, "foo", e.get(req, "bar"))
 	})
@@ -242,10 +225,7 @@ func (e clientTestBSingleValue) run(t *testing.T) {
 	t.Run("set "+e.noun+"s with struct", func(t *testing.T) {
 		t.Parallel()
 
-		req := e.setStruct(clientTestBRequest(t), &args{
-			Int:    5,
-			String: "foo",
-		})
+		req := e.setStruct(clientTestBRequest(t), &args{Int: 5, String: "foo"})
 
 		require.Equal(t, "5", e.get(req, "int"))
 		require.Equal(t, "foo", e.get(req, "string"))
@@ -254,10 +234,7 @@ func (e clientTestBSingleValue) run(t *testing.T) {
 	t.Run("del "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
 
-		req := e.setMany(clientTestBRequest(t), map[string]string{
-			"foo": "bar",
-			"bar": "foo",
-		})
+		req := e.setMany(clientTestBRequest(t), map[string]string{"foo": "bar", "bar": "foo"})
 		require.Equal(t, "bar", e.get(req, "foo"))
 		require.Equal(t, "foo", e.get(req, "bar"))
 
@@ -386,10 +363,7 @@ func Test_Request_Headers(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest()
-	req.AddHeaders(map[string][]string{
-		"foo": {"bar", "fiber"},
-		"bar": {"foo"},
-	})
+	req.AddHeaders(map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
 
 	headers := make(map[string][]string)
 	for k, v := range req.Headers() {
@@ -404,10 +378,7 @@ func Test_Request_Headers(t *testing.T) {
 
 func Benchmark_Request_Headers(b *testing.B) {
 	req := AcquireRequest()
-	req.AddHeaders(map[string][]string{
-		"foo": {"bar", "fiber"},
-		"bar": {"foo"},
-	})
+	req.AddHeaders(map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
 
 	b.ReportAllocs()
 
@@ -502,10 +473,7 @@ func Test_Request_Params(t *testing.T) {
 
 func Benchmark_Request_Params(b *testing.B) {
 	req := AcquireRequest()
-	req.AddParams(map[string][]string{
-		"foo": {"bar", "fiber"},
-		"bar": {"foo"},
-	})
+	req.AddParams(map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
 
 	b.ReportAllocs()
 
@@ -527,10 +495,7 @@ func Test_Request_Cookies(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest()
-	req.SetCookies(map[string]string{
-		"foo": "bar",
-		"bar": "foo",
-	})
+	req.SetCookies(map[string]string{"foo": "bar", "bar": "foo"})
 
 	cookies := maps.Collect(req.Cookies())
 
@@ -550,10 +515,7 @@ func Test_Request_Cookies(t *testing.T) {
 
 func Benchmark_Request_Cookies(b *testing.B) {
 	req := AcquireRequest()
-	req.SetCookies(map[string]string{
-		"foo": "bar",
-		"bar": "foo",
-	})
+	req.SetCookies(map[string]string{"foo": "bar", "bar": "foo"})
 
 	b.ReportAllocs()
 
@@ -573,11 +535,7 @@ func Test_Request_PathParam(t *testing.T) {
 	t.Run("clear path params", func(t *testing.T) {
 		t.Parallel()
 
-		req := clientTestBRequest(t).
-			SetPathParams(map[string]string{
-				"foo": "bar",
-				"bar": "foo",
-			})
+		req := clientTestBRequest(t).SetPathParams(map[string]string{"foo": "bar", "bar": "foo"})
 		require.Equal(t, "bar", req.PathParam("foo"))
 		require.Equal(t, "foo", req.PathParam("bar"))
 
@@ -591,10 +549,7 @@ func Test_Request_PathParams(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest()
-	req.SetPathParams(map[string]string{
-		"foo": "bar",
-		"bar": "foo",
-	})
+	req.SetPathParams(map[string]string{"foo": "bar", "bar": "foo"})
 
 	pathParams := maps.Collect(req.PathParams())
 
@@ -614,10 +569,7 @@ func Test_Request_PathParams(t *testing.T) {
 
 func Benchmark_Request_PathParams(b *testing.B) {
 	req := AcquireRequest()
-	req.SetPathParams(map[string]string{
-		"foo": "bar",
-		"bar": "foo",
-	})
+	req.SetPathParams(map[string]string{"foo": "bar", "bar": "foo"})
 
 	b.ReportAllocs()
 
@@ -642,9 +594,7 @@ func Test_Request_File(t *testing.T) {
 
 	t.Run("add file", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireRequest().
-			AddFile("../.github/index.html").
-			AddFiles(AcquireFile(SetFileName("tmp.txt")))
+		req := AcquireRequest().AddFile("../.github/index.html").AddFiles(AcquireFile(SetFileName("tmp.txt")))
 
 		require.Equal(t, "../.github/index.html", req.File("index.html").path)
 		require.Equal(t, "../.github/index.html", req.FileByPath("../.github/index.html").path)
@@ -655,8 +605,7 @@ func Test_Request_File(t *testing.T) {
 
 	t.Run("add file by reader", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireRequest().
-			AddFileWithReader("tmp.txt", io.NopCloser(strings.NewReader("world")))
+		req := AcquireRequest().AddFileWithReader("tmp.txt", io.NopCloser(strings.NewReader("world")))
 
 		require.Equal(t, "tmp.txt", req.File("tmp.txt").name)
 
@@ -667,8 +616,7 @@ func Test_Request_File(t *testing.T) {
 
 	t.Run("add files", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireRequest().
-			AddFiles(AcquireFile(SetFileName("tmp.txt")), AcquireFile(SetFileName("foo.txt")))
+		req := AcquireRequest().AddFiles(AcquireFile(SetFileName("tmp.txt")), AcquireFile(SetFileName("foo.txt")))
 
 		require.Equal(t, "tmp.txt", req.File("tmp.txt").name)
 		require.Equal(t, "foo.txt", req.File("foo.txt").name)
@@ -719,8 +667,7 @@ func Test_Request_Timeout(t *testing.T) {
 func Test_Request_Invalid_URL(t *testing.T) {
 	t.Parallel()
 
-	resp, err := AcquireRequest().
-		Get("http://example.com\r\n\r\nGET /\r\n\r\n")
+	resp, err := AcquireRequest().Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
 	require.Equal(t, ErrURLFormat, err)
 	require.Equal(t, (*Response)(nil), resp)
@@ -729,8 +676,7 @@ func Test_Request_Invalid_URL(t *testing.T) {
 func Test_Request_Unsupported_Protocol(t *testing.T) {
 	t.Parallel()
 
-	resp, err := AcquireRequest().
-		Get("ftp://example.com")
+	resp, err := AcquireRequest().Get("ftp://example.com")
 	require.Equal(t, ErrURLFormat, err)
 	require.Equal(t, (*Response)(nil), resp)
 }
@@ -748,8 +694,7 @@ func Test_Request_Methods_With_Server(t *testing.T) {
 	hostname := func(c fiber.Ctx) error { return c.SendString(c.Hostname()) }
 	form := func(c fiber.Ctx) error { return c.SendString(c.FormValue("foo")) }
 	created := func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusCreated).
-			SendString(c.FormValue("foo"))
+		return c.Status(fiber.StatusCreated).SendString(c.FormValue("foo"))
 	}
 	echo := func(c fiber.Ctx) error { return c.Send(c.Body()) }
 	reply := func(status int, body string) fiber.Handler {
@@ -760,9 +705,7 @@ func Test_Request_Methods_With_Server(t *testing.T) {
 	withForm := func(r *Request) { r.SetFormData("foo", "bar") }
 	withRawBody := func(r *Request) { r.SetRawBody([]byte("query body")) }
 	send := func(r *Request, url string) (*Response, error) {
-		return r.SetURL(url).
-			SetMethod(fiber.MethodPost).
-			Send()
+		return r.SetURL(url).SetMethod(fiber.MethodPost).Send()
 	}
 
 	tests := []struct {
@@ -824,14 +767,8 @@ func Test_Request_Header_With_Server(t *testing.T) {
 	}
 
 	wrapAgent := func(r *Request) {
-		r.SetHeader("k1", "v1").
-			AddHeader("k1", "v11").
-			AddHeaders(map[string][]string{
-				"k1": {"v22", "v33"},
-			}).
-			SetHeaders(map[string]string{
-				"k2": "v2",
-			}).
+		r.SetHeader("k1", "v1").AddHeader("k1", "v11").AddHeaders(map[string][]string{"k1": {"v22", "v33"}}).
+			SetHeaders(map[string]string{"k2": "v2"}).
 			AddHeader("k2", "v22")
 	}
 
@@ -857,18 +794,11 @@ func Test_Request_UserAgent_With_Server(t *testing.T) {
 func Test_Request_Cookie_With_Server(t *testing.T) {
 	t.Parallel()
 	handler := func(c fiber.Ctx) error {
-		return c.SendString(
-			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"),
-		)
+		return c.SendString(c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
 	}
 
 	wrapAgent := func(req *Request) {
-		req.SetCookie("k1", "v1").
-			SetCookies(map[string]string{
-				"k2": "v2",
-				"k3": "v3",
-				"k4": "v4",
-			}).DelCookies("k4")
+		req.SetCookie("k1", "v1").SetCookies(map[string]string{"k2": "v2", "k3": "v3", "k4": "v4"}).DelCookies("k4")
 	}
 
 	testRequest(t, handler, wrapAgent, "v1v2v3")
@@ -888,10 +818,7 @@ func Test_Request_QueryString_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error { return c.Send(c.Request().URI().QueryString()) }
 
 	wrapAgent := func(req *Request) {
-		req.SetParam("foo", "bar").
-			SetParams(map[string]string{
-				"bar": "baz",
-			})
+		req.SetParam("foo", "bar").SetParams(map[string]string{"bar": "baz"})
 	}
 
 	testRequest(t, handler, wrapAgent, "foo=bar&bar=baz")
@@ -955,11 +882,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 				return c.Send([]byte("foo=" + c.FormValue("foo") + "&bar=" + c.FormValue("bar") + "&fiber=" + c.FormValue("fiber")))
 			},
 			func(agent *Request) {
-				agent.SetFormData("foo", "bar").
-					SetFormDataWithMap(map[string]string{
-						"bar":   "baz",
-						"fiber": "fast",
-					})
+				agent.SetFormData("foo", "bar").SetFormDataWithMap(map[string]string{"bar": "baz", "fiber": "fast"})
 			},
 			"foo=bar&bar=baz&fiber=fast")
 	})
@@ -979,10 +902,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 			})
 		})
 
-		req := AcquireRequest().
-			SetClient(client).
-			SetBoundary("myBoundary").
-			SetFormData("foo", "bar").
+		req := AcquireRequest().SetClient(client).SetBoundary("myBoundary").SetFormData("foo", "bar").
 			AddFiles(AcquireFile(
 				SetFileName("hello.txt"),
 				SetFileFieldName("foo"),
@@ -1032,8 +952,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		})
 
 		for range 5 {
-			req := AcquireRequest().
-				SetClient(client).
+			req := AcquireRequest().SetClient(client).
 				AddFiles(
 					AcquireFile(
 						SetFileFieldName("field1"),
@@ -1065,9 +984,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 			})
 		})
 
-		req := AcquireRequest().
-			SetClient(client).
-			SetFormData("foo", "bar").
+		req := AcquireRequest().SetClient(client).SetFormData("foo", "bar").
 			AddFiles(AcquireFile(
 				SetFileName("hello.txt"),
 				SetFileFieldName("foo"),
@@ -1098,10 +1015,7 @@ func Test_Request_AllFormData(t *testing.T) {
 
 func Benchmark_Request_AllFormData(b *testing.B) {
 	req := AcquireRequest()
-	req.AddFormDataWithMap(map[string][]string{
-		"foo": {"bar", "fiber"},
-		"bar": {"foo"},
-	})
+	req.AddFormDataWithMap(map[string][]string{"foo": {"bar", "fiber"}, "bar": {"foo"}})
 
 	b.ReportAllocs()
 
@@ -1133,8 +1047,7 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 	t.Run("form body with invalid boundary", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := AcquireRequest().
-			SetBoundary("*").
+		_, err := AcquireRequest().SetBoundary("*").
 			AddFileWithReader("t.txt", io.NopCloser(strings.NewReader("world"))).
 			Get("http://example.com")
 		require.Equal(t, "set boundary error: mime: invalid boundary character", err.Error())
@@ -1143,9 +1056,7 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 	t.Run("open non exist file", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := AcquireRequest().
-			AddFile("non-exist-file!").
-			Get("http://example.com")
+		_, err := AcquireRequest().AddFile("non-exist-file!").Get("http://example.com")
 		require.Contains(t, err.Error(), "open non-exist-file!")
 	})
 }
@@ -1160,10 +1071,7 @@ func Test_Request_Timeout_With_Server(t *testing.T) {
 		})
 	})
 
-	_, err := AcquireRequest().
-		SetClient(client).
-		SetTimeout(50 * time.Millisecond).
-		Get("http://example.com")
+	_, err := AcquireRequest().SetClient(client).SetTimeout(50 * time.Millisecond).Get("http://example.com")
 
 	require.Equal(t, ErrTimeoutOrCancel, err)
 }
@@ -1190,10 +1098,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
-		resp, err := AcquireRequest().
-			SetClient(client).
-			SetMaxRedirects(1).
-			Get("http://example.com?foo")
+		resp, err := AcquireRequest().SetClient(client).SetMaxRedirects(1).Get("http://example.com?foo")
 		body := resp.String()
 		code := resp.StatusCode()
 
@@ -1209,10 +1114,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
-		resp, err := AcquireRequest().
-			SetClient(client).
-			SetMaxRedirects(1).
-			Get("http://example.com")
+		resp, err := AcquireRequest().SetClient(client).SetMaxRedirects(1).Get("http://example.com")
 
 		require.Nil(t, resp)
 		require.ErrorIs(t, err, fasthttp.ErrTooManyRedirects)
@@ -1223,9 +1125,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
-		req := AcquireRequest().
-			SetClient(client).
-			SetMaxRedirects(3)
+		req := AcquireRequest().SetClient(client).SetMaxRedirects(3)
 
 		require.Equal(t, 3, req.MaxRedirects())
 	})
@@ -1247,10 +1147,7 @@ func Test_Request_Query_Redirect(t *testing.T) {
 
 	client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
-	resp, err := AcquireRequest().
-		SetClient(client).
-		SetMaxRedirects(1).
-		SetRawBody([]byte("query body")).
+	resp, err := AcquireRequest().SetClient(client).SetMaxRedirects(1).SetRawBody([]byte("query body")).
 		Query("http://example.com/start")
 
 	require.NoError(t, err)
@@ -1278,9 +1175,7 @@ func Test_SetValWithStruct(t *testing.T) {
 
 	t.Run("the struct should be applied", func(t *testing.T) {
 		t.Parallel()
-		p := &QueryParam{
-			Args: fasthttp.AcquireArgs(),
-		}
+		p := &QueryParam{Args: fasthttp.AcquireArgs()}
 
 		SetValWithStruct(p, "param", args{
 			unexport:  5,
@@ -1310,9 +1205,7 @@ func Test_SetValWithStruct(t *testing.T) {
 
 	t.Run("the pointer of a struct should be applied", func(t *testing.T) {
 		t.Parallel()
-		p := &QueryParam{
-			Args: fasthttp.AcquireArgs(),
-		}
+		p := &QueryParam{Args: fasthttp.AcquireArgs()}
 
 		SetValWithStruct(p, "param", &args{
 			TInt:      5,
@@ -1335,9 +1228,7 @@ func Test_SetValWithStruct(t *testing.T) {
 
 	t.Run("error type should ignore", func(t *testing.T) {
 		t.Parallel()
-		p := &QueryParam{
-			Args: fasthttp.AcquireArgs(),
-		}
+		p := &QueryParam{Args: fasthttp.AcquireArgs()}
 		SetValWithStruct(p, "param", 5)
 		require.Equal(t, 0, p.Len())
 	})
@@ -1358,9 +1249,7 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 	}
 
 	b.Run("the struct should be applied", func(b *testing.B) {
-		p := &QueryParam{
-			Args: fasthttp.AcquireArgs(),
-		}
+		p := &QueryParam{Args: fasthttp.AcquireArgs()}
 
 		b.ReportAllocs()
 
@@ -1432,9 +1321,7 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 	})
 
 	b.Run("the pointer of a struct should be applied", func(b *testing.B) {
-		p := &QueryParam{
-			Args: fasthttp.AcquireArgs(),
-		}
+		p := &QueryParam{Args: fasthttp.AcquireArgs()}
 
 		b.ReportAllocs()
 
@@ -1491,9 +1378,7 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 	})
 
 	b.Run("error type should ignore", func(b *testing.B) {
-		p := &QueryParam{
-			Args: fasthttp.AcquireArgs(),
-		}
+		p := &QueryParam{Args: fasthttp.AcquireArgs()}
 
 		b.ReportAllocs()
 

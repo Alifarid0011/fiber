@@ -70,10 +70,7 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 			cookieName: "csrf_",
 			extractor: extractors.Chain(
 				extractors.FromHeader("X-Csrf-Token"),
-				extractors.Chain(
-					extractors.FromHeader("X-Alt-Csrf-Token"),
-					extractors.FromCookie("csrf_"),
-				),
+				extractors.Chain(extractors.FromHeader("X-Alt-Csrf-Token"), extractors.FromCookie("csrf_")),
 			),
 			wantPanic: true,
 			message:   "Should panic when a nested chained extractor reads from same cookie",
@@ -298,38 +295,26 @@ func Test_isInsecureCookieExtractor(t *testing.T) {
 		expected   bool
 	}{
 		{
-			name: "SecureHeaderExtractor",
-			extractor: extractors.Extractor{
-				Source: extractors.SourceHeader,
-				Key:    "X-Csrf-Token",
-			},
+			name:       "SecureHeaderExtractor",
+			extractor:  extractors.Extractor{Source: extractors.SourceHeader, Key: "X-Csrf-Token"},
 			cookieName: "csrf_",
 			expected:   false,
 		},
 		{
-			name: "InsecureCookieExtractor",
-			extractor: extractors.Extractor{
-				Source: extractors.SourceCookie,
-				Key:    "csrf_",
-			},
+			name:       "InsecureCookieExtractor",
+			extractor:  extractors.Extractor{Source: extractors.SourceCookie, Key: "csrf_"},
 			cookieName: "csrf_",
 			expected:   true,
 		},
 		{
-			name: "CookieExtractorDifferentName",
-			extractor: extractors.Extractor{
-				Source: extractors.SourceCookie,
-				Key:    "different_cookie",
-			},
+			name:       "CookieExtractorDifferentName",
+			extractor:  extractors.Extractor{Source: extractors.SourceCookie, Key: "different_cookie"},
 			cookieName: "csrf_",
 			expected:   false,
 		},
 		{
-			name: "CustomExtractorSafeName",
-			extractor: extractors.Extractor{
-				Source: extractors.SourceCustom,
-				Key:    "safe_key",
-			},
+			name:       "CustomExtractorSafeName",
+			extractor:  extractors.Extractor{Source: extractors.SourceCustom, Key: "safe_key"},
 			cookieName: "csrf_",
 			expected:   false,
 		},

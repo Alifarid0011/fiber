@@ -197,9 +197,7 @@ func BenchmarkFollowRedirects_NoRedirect(b *testing.B) {
 	prev := WithSecurityPolicy(policy)
 	b.Cleanup(func() { WithSecurityPolicy(prev) })
 
-	cli := &fasthttp.Client{
-		Transport: noopRoundTripper{},
-	}
+	cli := &fasthttp.Client{Transport: noopRoundTripper{}}
 
 	initialURL, err := url.Parse("http://203.0.113.5:8080/api/v1/widgets")
 	if err != nil {

@@ -193,8 +193,7 @@ func Test_WriteSanitized(t *testing.T) {
 func Test_ScrubControls_NegativeIndex(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "a b", string(ScrubControls("a\nb", -1)),
-		"a negative index must be clamped to 0, not panic")
+	require.Equal(t, "a b", string(ScrubControls("a\nb", -1)), "a negative index must be clamped to 0, not panic")
 	require.Equal(t, "clean", string(ScrubControls("clean", IndexControlByte("clean"))),
 		"ScrubControls(s, IndexControlByte(s)) must be safe on clean input")
 }

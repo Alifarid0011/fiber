@@ -173,9 +173,7 @@ func Test_Session_Types(t *testing.T) {
 		Name string
 	}
 	store.RegisterType(User{})
-	vuser := User{
-		Name: "John",
-	}
+	vuser := User{Name: "John"}
 	// set value
 	sess.Set("vuser", vuser)
 	for _, v := range sessionTestBasicValues {
@@ -593,10 +591,7 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 
 		const absoluteTimeout = 2 * time.Second // extra headroom to avoid flakiness under -race
 		// session store
-		store := NewStore(Config{
-			IdleTimeout:     absoluteTimeout,
-			AbsoluteTimeout: absoluteTimeout,
-		})
+		store := NewStore(Config{IdleTimeout: absoluteTimeout, AbsoluteTimeout: absoluteTimeout})
 
 		// force change to IdleTimeout
 		store.IdleTimeout = 10 * time.Second
@@ -686,9 +681,7 @@ func Test_Session_Destroy(t *testing.T) {
 	t.Run("destroy from header", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := NewStore(Config{
-			Extractor: extractors.FromHeader("session_id"),
-		})
+		store := NewStore(Config{Extractor: extractors.FromHeader("session_id")})
 		// fiber instance
 		app := fiber.New()
 
@@ -743,11 +736,7 @@ func Test_Session_Cookie_SameSite(t *testing.T) {
 		initialSecure    bool
 		expectSecure     bool
 	}{
-		{
-			name:             "Lax should not force secure",
-			sameSite:         "Lax",
-			expectedSameSite: "SameSite=Lax",
-		},
+		{name: "Lax should not force secure", sameSite: "Lax", expectedSameSite: "SameSite=Lax"},
 		{
 			name:             "Lax with secure should stay secure",
 			sameSite:         "Lax",
@@ -791,30 +780,21 @@ func Test_Session_Cookie_SameSite(t *testing.T) {
 			sameSite:         "strict",
 			expectedSameSite: "SameSite=Strict",
 		},
-		{
-			name:     "Disabled should omit SameSite",
-			sameSite: fiber.CookieSameSiteDisabled,
-		},
+		{name: "Disabled should omit SameSite", sameSite: fiber.CookieSameSiteDisabled},
 		{
 			name:          "Case-insensitive disabled should preserve secure",
 			sameSite:      "DISABLED",
 			initialSecure: true,
 			expectSecure:  true,
 		},
-		{
-			name:             "Empty should default to Lax",
-			expectedSameSite: "SameSite=Lax",
-		},
+		{name: "Empty should default to Lax", expectedSameSite: "SameSite=Lax"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			// session store
-			store := NewStore(Config{
-				CookieSameSite: tc.sameSite,
-				CookieSecure:   tc.initialSecure,
-			})
+			store := NewStore(Config{CookieSameSite: tc.sameSite, CookieSecure: tc.initialSecure})
 
 			// get session
 			sess, ctx := sessionTestFresh(t, store)
@@ -941,10 +921,7 @@ func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
 
 	// newSessionStore keeps the storage TTL out of the way; only the absolute timeout expires the session.
 	newSessionStore := func() *Store {
-		store := NewStore(Config{
-			IdleTimeout:     absoluteTimeout,
-			AbsoluteTimeout: absoluteTimeout,
-		})
+		store := NewStore(Config{IdleTimeout: absoluteTimeout, AbsoluteTimeout: absoluteTimeout})
 		store.IdleTimeout = 10 * time.Second
 		return store
 	}
@@ -1048,9 +1025,7 @@ func Benchmark_Session(b *testing.B) {
 
 	b.Run("storage", func(b *testing.B) {
 		app := fiber.New()
-		store := NewStore(Config{
-			Storage: memory.New(),
-		})
+		store := NewStore(Config{Storage: memory.New()})
 		c := apptest.Ctx(b, app)
 		c.Request().Header.SetCookie("session_id", "12356789")
 
@@ -1072,10 +1047,7 @@ func Benchmark_Session(b *testing.B) {
 func Benchmark_Session_ChainExtractor(b *testing.B) {
 	app := fiber.New()
 	store := NewStore(Config{
-		Extractor: extractors.Chain(
-			extractors.FromHeader("X-Session"),
-			extractors.FromCookie("session_id"),
-		),
+		Extractor: extractors.Chain(extractors.FromHeader("X-Session"), extractors.FromCookie("session_id")),
 	})
 
 	fctx := &fasthttp.RequestCtx{}
@@ -1117,9 +1089,7 @@ func Benchmark_Session_Parallel(b *testing.B) {
 
 	b.Run("storage", func(b *testing.B) {
 		app := fiber.New()
-		store := NewStore(Config{
-			Storage: memory.New(),
-		})
+		store := NewStore(Config{Storage: memory.New()})
 		b.ReportAllocs()
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
@@ -1158,9 +1128,7 @@ func Benchmark_Session_Asserted(b *testing.B) {
 
 	b.Run("storage", func(b *testing.B) {
 		app := fiber.New()
-		store := NewStore(Config{
-			Storage: memory.New(),
-		})
+		store := NewStore(Config{Storage: memory.New()})
 		c := apptest.Ctx(b, app)
 		c.Request().Header.SetCookie("session_id", "12356789")
 
@@ -1198,9 +1166,7 @@ func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 
 	b.Run("storage", func(b *testing.B) {
 		app := fiber.New()
-		store := NewStore(Config{
-			Storage: memory.New(),
-		})
+		store := NewStore(Config{Storage: memory.New()})
 		b.ReportAllocs()
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
@@ -1413,9 +1379,7 @@ func Test_Session_CSRF_Scenario(t *testing.T) {
 
 	const idleTimeout = 2 * time.Second // Longer timeout to ensure session persists
 
-	store := NewStore(Config{
-		IdleTimeout: idleTimeout,
-	})
+	store := NewStore(Config{IdleTimeout: idleTimeout})
 	app := fiber.New()
 
 	// Simulate: First GET request creates session

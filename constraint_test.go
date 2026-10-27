@@ -102,12 +102,7 @@ func Test_ConstraintExecute(t *testing.T) {
 		valid   []string // parameters the constraint must accept
 		invalid []string // parameters the constraint must reject
 	}{
-		{
-			name:    "int",
-			handler: intConstraintType{},
-			valid:   []string{"42"},
-			invalid: []string{"abc"},
-		},
+		{name: "int", handler: intConstraintType{}, valid: []string{"42"}, invalid: []string{"abc"}},
 		{
 			name:    "bool",
 			handler: boolConstraintType{},

@@ -10,9 +10,7 @@ import (
 func Test_XMLBinding_Bind(t *testing.T) {
 	t.Parallel()
 
-	b := &XMLBinding{
-		XMLDecoder: xml.Unmarshal,
-	}
+	b := &XMLBinding{XMLDecoder: xml.Unmarshal}
 	require.Equal(t, "xml", b.Name())
 
 	type Posts struct {
@@ -58,9 +56,7 @@ func Test_XMLBinding_Bind(t *testing.T) {
 
 func Test_XMLBinding_Bind_error(t *testing.T) {
 	t.Parallel()
-	b := &XMLBinding{
-		XMLDecoder: xml.Unmarshal,
-	}
+	b := &XMLBinding{XMLDecoder: xml.Unmarshal}
 
 	type User struct {
 		Name string `xml:"name"`
@@ -82,9 +78,7 @@ func Test_XMLBinding_Bind_error(t *testing.T) {
 func Benchmark_XMLBinding_Bind(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &XMLBinding{
-		XMLDecoder: xml.Unmarshal,
-	}
+	binder := &XMLBinding{XMLDecoder: xml.Unmarshal}
 
 	type Posts struct {
 		XMLName xml.Name `xml:"post"`

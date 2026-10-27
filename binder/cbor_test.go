@@ -10,9 +10,7 @@ import (
 func Test_CBORBinder_Bind(t *testing.T) {
 	t.Parallel()
 
-	b := &CBORBinding{
-		CBORDecoder: cbor.Unmarshal,
-	}
+	b := &CBORBinding{CBORDecoder: cbor.Unmarshal}
 	require.Equal(t, "cbor", b.Name())
 
 	type Post struct {
@@ -28,17 +26,10 @@ func Test_CBORBinder_Bind(t *testing.T) {
 	var user User
 
 	wantedUser := User{
-		Name: "john",
-		Names: []string{
-			"john",
-			"doe",
-		},
-		Age: 42,
-		Posts: []Post{
-			{Title: "post1"},
-			{Title: "post2"},
-			{Title: "post3"},
-		},
+		Name:  "john",
+		Names: []string{"john", "doe"},
+		Age:   42,
+		Posts: []Post{{Title: "post1"}, {Title: "post2"}, {Title: "post3"}},
 	}
 
 	body, err := cbor.Marshal(wantedUser)
@@ -63,9 +54,7 @@ func Test_CBORBinder_Bind(t *testing.T) {
 func Benchmark_CBORBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &CBORBinding{
-		CBORDecoder: cbor.Unmarshal,
-	}
+	binder := &CBORBinding{CBORDecoder: cbor.Unmarshal}
 
 	type User struct {
 		Name string `cbor:"name"`
@@ -73,10 +62,7 @@ func Benchmark_CBORBinder_Bind(b *testing.B) {
 	}
 
 	var user User
-	wantedUser := User{
-		Name: "john",
-		Age:  42,
-	}
+	wantedUser := User{Name: "john", Age: 42}
 
 	body, err := cbor.Marshal(wantedUser)
 	require.NoError(b, err)

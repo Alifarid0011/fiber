@@ -766,9 +766,7 @@ func Test_LBClientTransport_StreamResponseBody(t *testing.T) {
 
 	t.Run("empty clients", func(t *testing.T) {
 		t.Parallel()
-		lbClient := &fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{},
-		}
+		lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{}}
 		transport := newLBClientTransport(lbClient)
 		require.False(t, transport.StreamResponseBody())
 	})
@@ -776,9 +774,7 @@ func Test_LBClientTransport_StreamResponseBody(t *testing.T) {
 	t.Run("single host client", func(t *testing.T) {
 		t.Parallel()
 		hostClient := &fasthttp.HostClient{Addr: "example.com:80"}
-		lbClient := &fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{hostClient},
-		}
+		lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hostClient}}
 		transport := newLBClientTransport(lbClient)
 
 		// Test default
@@ -799,9 +795,7 @@ func Test_LBClientTransport_StreamResponseBody(t *testing.T) {
 		t.Parallel()
 		hostClient1 := &fasthttp.HostClient{Addr: "example1.com:80"}
 		hostClient2 := &fasthttp.HostClient{Addr: "example2.com:80"}
-		lbClient := &fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{hostClient1, hostClient2},
-		}
+		lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hostClient1, hostClient2}}
 		transport := newLBClientTransport(lbClient)
 
 		// Enable streaming on all clients
@@ -825,20 +819,12 @@ func Test_httpClientTransport_Interface(t *testing.T) {
 		transport httpClientTransport
 		name      string
 	}{
-		{
-			name:      "standardClientTransport",
-			transport: newStandardClientTransport(&fasthttp.Client{}),
-		},
-		{
-			name:      "hostClientTransport",
-			transport: newHostClientTransport(&fasthttp.HostClient{}),
-		},
+		{name: "standardClientTransport", transport: newStandardClientTransport(&fasthttp.Client{})},
+		{name: "hostClientTransport", transport: newHostClientTransport(&fasthttp.HostClient{})},
 		{
 			name: "lbClientTransport",
 			transport: newLBClientTransport(&fasthttp.LBClient{
-				Clients: []fasthttp.BalancingClient{
-					&fasthttp.HostClient{Addr: "example.com:80"},
-				},
+				Clients: []fasthttp.BalancingClient{&fasthttp.HostClient{Addr: "example.com:80"}},
 			}),
 		},
 	}
@@ -1088,9 +1074,7 @@ func Test_Client_PathNormalizing_UnknownTransport(t *testing.T) {
 	require.True(t, c.DisablePathNormalizing())
 	require.False(t, c.writesPathAsBuilt())
 
-	req := AcquireRequest().
-		SetURL("http://example.com/api/:id").
-		SetPathParam("id", "x/../../admin").
+	req := AcquireRequest().SetURL("http://example.com/api/:id").SetPathParam("id", "x/../../admin").
 		SetDisablePathNormalizing(true)
 	t.Cleanup(func() { ReleaseRequest(req) })
 
@@ -1307,8 +1291,7 @@ func Test_Transport_DoRedirects_RefusesUnparsableInitialURI(t *testing.T) {
 			err := doRedirectsWithClient(req, resp, 3, stub)
 			if tc.wantErr {
 				require.ErrorIs(t, err, fasthttp.ErrorInvalidURI)
-				require.Equal(t, 0, stub.CallCount(),
-					"a malformed URI must be refused before anything is sent")
+				require.Equal(t, 0, stub.CallCount(), "a malformed URI must be refused before anything is sent")
 				return
 			}
 			require.NoError(t, err)

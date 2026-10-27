@@ -256,10 +256,7 @@ func Test_HTTPHandlerWithContext_local_context(t *testing.T) {
 		}
 	})))
 
-	resp := apptest.Do(t, app, "/", fiber.TestConfig{
-		Timeout:       200 * time.Millisecond,
-		FailOnTimeout: false,
-	})
+	resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 200 * time.Millisecond, FailOnTimeout: false})
 
 	defer resp.Body.Close() //nolint:errcheck // no need
 
@@ -287,24 +284,9 @@ func Test_HTTPMiddleware(t *testing.T) {
 		method     string
 		statusCode int
 	}{
-		{
-			name:       "Should return 200",
-			url:        "/",
-			method:     "POST",
-			statusCode: 200,
-		},
-		{
-			name:       "Should return 405",
-			url:        "/",
-			method:     "GET",
-			statusCode: 405,
-		},
-		{
-			name:       "Should return 400",
-			url:        "/unknown",
-			method:     "POST",
-			statusCode: 404,
-		},
+		{name: "Should return 200", url: "/", method: "POST", statusCode: 200},
+		{name: "Should return 405", url: "/", method: "GET", statusCode: 405},
+		{name: "Should return 400", url: "/unknown", method: "POST", statusCode: 404},
 	}
 
 	nethttpMW := func(next http.Handler) http.Handler {
@@ -552,9 +534,7 @@ func Test_FiberHandler_BodyLimit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{
-				BodyLimit: tt.bodyLimit,
-			})
+			app := fiber.New(fiber.Config{BodyLimit: tt.bodyLimit})
 
 			app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
@@ -587,10 +567,7 @@ func Test_FiberApp(t *testing.T) {
 func Test_FiberHandlerDefaultPort(t *testing.T) {
 	t.Parallel()
 
-	testFiberToHandlerFunc(t, fiberToHandlerFuncConfig{
-		requestRemoteAddr:  "1.2.3.4",
-		expectedRemoteAddr: "1.2.3.4:80",
-	})
+	testFiberToHandlerFunc(t, fiberToHandlerFuncConfig{requestRemoteAddr: "1.2.3.4", expectedRemoteAddr: "1.2.3.4:80"})
 }
 
 func Test_FiberAppDefaultPort(t *testing.T) {
@@ -1055,11 +1032,7 @@ func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	handlerFunc := FiberHandlerFunc(adaptorTestHelloWorldStream(500 * time.Millisecond))
 
 	// Start a mock HTTP server using the handlerFunc
-	server := &http.Server{
-		Handler:      handlerFunc,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-	}
+	server := &http.Server{Handler: handlerFunc, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second}
 	listener, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := fmt.Sprintf("http://%s", listener.Addr())
@@ -1069,9 +1042,7 @@ func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	}()
 	defer func() { require.NoError(t, server.Close()) }()
 
-	cc := &http.Client{
-		Timeout: 200 * time.Millisecond,
-	}
+	cc := &http.Client{Timeout: 200 * time.Millisecond}
 	resp, err := cc.Get(addr) //nolint:noctx // ctx is not needed
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -1103,34 +1074,13 @@ func Benchmark_FiberHandlerFunc(b *testing.B) {
 			name:        "No Content",
 			bodyContent: nil, // No body content case
 		},
-		{
-			name:        "100KB",
-			bodyContent: make([]byte, 100*1024),
-		},
-		{
-			name:        "500KB",
-			bodyContent: make([]byte, 500*1024),
-		},
-		{
-			name:        "1MB",
-			bodyContent: make([]byte, 1*1024*1024),
-		},
-		{
-			name:        "5MB",
-			bodyContent: make([]byte, 5*1024*1024),
-		},
-		{
-			name:        "10MB",
-			bodyContent: make([]byte, 10*1024*1024),
-		},
-		{
-			name:        "25MB",
-			bodyContent: make([]byte, 25*1024*1024),
-		},
-		{
-			name:        "50MB",
-			bodyContent: make([]byte, 50*1024*1024),
-		},
+		{name: "100KB", bodyContent: make([]byte, 100*1024)},
+		{name: "500KB", bodyContent: make([]byte, 500*1024)},
+		{name: "1MB", bodyContent: make([]byte, 1*1024*1024)},
+		{name: "5MB", bodyContent: make([]byte, 5*1024*1024)},
+		{name: "10MB", bodyContent: make([]byte, 10*1024*1024)},
+		{name: "25MB", bodyContent: make([]byte, 25*1024*1024)},
+		{name: "50MB", bodyContent: make([]byte, 50*1024*1024)},
 	}
 
 	fiberH := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }
@@ -1148,10 +1098,7 @@ func Benchmark_FiberHandlerFunc(b *testing.B) {
 				bodyBuffer = bytes.NewBuffer([]byte{}) // Empty buffer for no content
 			}
 
-			r := http.Request{
-				Method: http.MethodPost,
-				Body:   nil,
-			}
+			r := http.Request{Method: http.MethodPost, Body: nil}
 
 			// Replace the empty Body with our buffer
 			r.Body = io.NopCloser(bodyBuffer)
@@ -1175,34 +1122,13 @@ func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
 			name:        "No Content",
 			bodyContent: nil, // No body content case
 		},
-		{
-			name:        "100KB",
-			bodyContent: make([]byte, 100*1024),
-		},
-		{
-			name:        "500KB",
-			bodyContent: make([]byte, 500*1024),
-		},
-		{
-			name:        "1MB",
-			bodyContent: make([]byte, 1*1024*1024),
-		},
-		{
-			name:        "5MB",
-			bodyContent: make([]byte, 5*1024*1024),
-		},
-		{
-			name:        "10MB",
-			bodyContent: make([]byte, 10*1024*1024),
-		},
-		{
-			name:        "25MB",
-			bodyContent: make([]byte, 25*1024*1024),
-		},
-		{
-			name:        "50MB",
-			bodyContent: make([]byte, 50*1024*1024),
-		},
+		{name: "100KB", bodyContent: make([]byte, 100*1024)},
+		{name: "500KB", bodyContent: make([]byte, 500*1024)},
+		{name: "1MB", bodyContent: make([]byte, 1*1024*1024)},
+		{name: "5MB", bodyContent: make([]byte, 5*1024*1024)},
+		{name: "10MB", bodyContent: make([]byte, 10*1024*1024)},
+		{name: "25MB", bodyContent: make([]byte, 25*1024*1024)},
+		{name: "50MB", bodyContent: make([]byte, 50*1024*1024)},
 	}
 
 	fiberH := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }
@@ -1224,10 +1150,7 @@ func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
 
 			b.RunParallel(func(pb *testing.PB) {
 				w := httptest.NewRecorder()
-				r := http.Request{
-					Method: http.MethodPost,
-					Body:   nil,
-				}
+				r := http.Request{Method: http.MethodPost, Body: nil}
 
 				// Replace the empty Body with our buffer
 				r.Body = io.NopCloser(bodyBuffer)
@@ -1495,11 +1418,7 @@ func TestUnixSocketAdaptor(t *testing.T) {
 	}()
 
 	// start server with timeouts
-	srv := &http.Server{
-		Handler:      handler,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-	}
+	srv := &http.Server{Handler: handler, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second}
 	done := make(chan struct{})
 	go func() {
 		if serveErr := srv.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {

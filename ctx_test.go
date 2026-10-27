@@ -69,10 +69,7 @@ func (t testNetAddr) String() string {
 
 func Test_Ctx_Accepts(t *testing.T) {
 	t.Parallel()
-	c := apptest.Ctx(t, New(Config{
-		CBOREncoder: cbor.Marshal,
-		CBORDecoder: cbor.Unmarshal,
-	}))
+	c := apptest.Ctx(t, New(Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}))
 
 	c.Request().Header.Set(HeaderAccept, "text/html,application/xhtml+xml,application/xml;q=0.9")
 	require.Empty(t, c.Accepts(""))
@@ -381,18 +378,11 @@ func Test_Ctx_TypedParsingDefaults(t *testing.T) {
 }
 
 func Benchmark_Ctx_Accepts(b *testing.B) {
-	c := apptest.Ctx(b, New(Config{
-		CBOREncoder: cbor.Marshal,
-		CBORDecoder: cbor.Unmarshal,
-	}))
+	c := apptest.Ctx(b, New(Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}))
 
 	acceptHeader := "text/html,application/xhtml+xml,application/xml;q=0.9"
 	c.Request().Header.Set("Accept", acceptHeader)
-	acceptValues := [][]string{
-		{".xml"},
-		{"json", "xml"},
-		{"application/json", "application/xml"},
-	}
+	acceptValues := [][]string{{".xml"}, {"json", "xml"}, {"application/json", "application/xml"}}
 	expectedResults := []string{".xml", "xml", "application/xml"}
 
 	for i := range acceptValues {
@@ -429,19 +419,13 @@ type jsonEnvelope struct {
 }
 
 func (c *jsonEnvelopeCustomCtx) JSON(data any, ctype ...string) error {
-	return c.DefaultCtx.JSON(jsonEnvelope{
-		Code:    StatusOK,
-		Data:    data,
-		Message: "OK",
-	}, ctype...)
+	return c.DefaultCtx.JSON(jsonEnvelope{Code: StatusOK, Data: data, Message: "OK"}, ctype...)
 }
 
 // ctxTestACustomApp returns an app whose contexts are *customCtx.
 func ctxTestACustomApp(config ...Config) *App {
 	return NewWithCustomCtx(func(app *App) CustomCtx {
-		return &customCtx{
-			DefaultCtx: *NewDefaultCtx(app),
-		}
+		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
 	}, config...)
 }
 
@@ -466,9 +450,7 @@ func Test_App_AcquireDefaultCtx_CustomCtxFallback(t *testing.T) {
 
 	app := New()
 
-	ctx, ok := app.prepareDefaultCtx(&customCtx{
-		DefaultCtx: *NewDefaultCtx(app),
-	}, &fasthttp.RequestCtx{})
+	ctx, ok := app.prepareDefaultCtx(&customCtx{DefaultCtx: *NewDefaultCtx(app)}, &fasthttp.RequestCtx{})
 	require.False(t, ok)
 	require.Nil(t, ctx)
 }
@@ -477,9 +459,7 @@ func Test_App_SetHandlerCtxIfNeeded_CustomCtxFallback(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	ctx := &customCtx{
-		DefaultCtx: *NewDefaultCtx(app),
-	}
+	ctx := &customCtx{DefaultCtx: *NewDefaultCtx(app)}
 
 	app.setHandlerCtxIfNeeded(ctx)
 	require.Same(t, ctx, ctx.handlerCtx)
@@ -569,9 +549,7 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 
 	// Create app with custom request methods
 	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
-	app := ctxTestACustomApp(Config{
-		RequestMethods: methods,
-	})
+	app := ctxTestACustomApp(Config{RequestMethods: methods})
 
 	// Add route with custom method
 	app.Add([]string{"JOHN"}, "/doe", testEmptyHandler)
@@ -583,10 +561,7 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 
 func Test_Ctx_Accepts_EmptyAccept(t *testing.T) {
 	t.Parallel()
-	c := apptest.Ctx(t, New(Config{
-		CBOREncoder: cbor.Marshal,
-		CBORDecoder: cbor.Unmarshal,
-	}))
+	c := apptest.Ctx(t, New(Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}))
 
 	require.Equal(t, ".forwarded", c.Accepts(".forwarded"))
 }
@@ -1166,10 +1141,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 					}
 
 					// Check if body raw is the same as previous before decompression
-					require.Equal(
-						t, tCase.body, c.Request().Body(),
-						"Body raw must be the same as set before",
-					)
+					require.Equal(t, tCase.body, c.Request().Body(), "Body raw must be the same as set before")
 				})
 			}
 		})
@@ -1179,9 +1151,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 func Test_Ctx_Body_With_Compression_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
 
-	c := apptest.CtxAs[*DefaultCtx](t, New(Config{
-		BodyLimit: 8,
-	}))
+	c := apptest.CtxAs[*DefaultCtx](t, New(Config{BodyLimit: 8}))
 	c.Request().Header.Set(HeaderContentEncoding, StrGzip)
 
 	compressedBody := ctxTestACompress(t, StrGzip, []byte("payload-over-limit"))
@@ -1232,21 +1202,13 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 		contentEncoding string
 		expectedBody    []byte
 	}{
-		{
-			contentEncoding: "gzip",
-			compressWriter:  compressGzip,
-			expectedBody:    []byte(input),
-		},
+		{contentEncoding: "gzip", compressWriter: compressGzip, expectedBody: []byte(input)},
 		{
 			contentEncoding: "gzip,invalid",
 			compressWriter:  compressGzip,
 			expectedBody:    []byte(ErrUnsupportedMediaType.Error()),
 		},
-		{
-			contentEncoding: StrDeflate,
-			compressWriter:  compressDeflate,
-			expectedBody:    []byte(input),
-		},
+		{contentEncoding: StrDeflate, compressWriter: compressDeflate, expectedBody: []byte(input)},
 		{
 			contentEncoding: "gzip,deflate",
 			compressWriter: func(data []byte) ([]byte, error) {
@@ -1353,21 +1315,13 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 		contentEncoding string
 		expectedBody    []byte
 	}{
-		{
-			contentEncoding: "gzip",
-			compressWriter:  compressGzip,
-			expectedBody:    []byte(input),
-		},
+		{contentEncoding: "gzip", compressWriter: compressGzip, expectedBody: []byte(input)},
 		{
 			contentEncoding: "gzip,invalid",
 			compressWriter:  compressGzip,
 			expectedBody:    []byte(ErrUnsupportedMediaType.Error()),
 		},
-		{
-			contentEncoding: StrDeflate,
-			compressWriter:  compressDeflate,
-			expectedBody:    []byte(input),
-		},
+		{contentEncoding: StrDeflate, compressWriter: compressDeflate, expectedBody: []byte(input)},
 		{
 			contentEncoding: "gzip,deflate",
 			compressWriter: func(data []byte) ([]byte, error) {
@@ -1710,11 +1664,7 @@ func Test_Ctx_Cookie_SameSite_CaseInsensitive(t *testing.T) {
 			// Reset response
 			c.Response().Reset()
 
-			cookie := &Cookie{
-				Name:     "test",
-				Value:    "value",
-				SameSite: tc.input,
-			}
+			cookie := &Cookie{Name: "test", Value: "value", SameSite: tc.input}
 			c.Res().Cookie(cookie)
 
 			setCookieHeader := c.Res().Get(HeaderSetCookie)
@@ -1772,10 +1722,7 @@ func Benchmark_Ctx_Cookie(b *testing.B) {
 
 	b.ReportAllocs()
 	for b.Loop() {
-		c.Cookie(&Cookie{
-			Name:  "John",
-			Value: "Doe",
-		})
+		c.Cookie(&Cookie{Name: "John", Value: "Doe"})
 	}
 	require.Equal(b, "John=Doe; path=/; SameSite=Lax", app.toString(c.Response().Header.Peek("Set-Cookie")))
 }
@@ -1861,31 +1808,22 @@ func Test_Ctx_Format_NilHandler(t *testing.T) {
 		formats       []ResFmt
 	}{
 		{
-			name: "nil handler in first entry",
-			formats: []ResFmt{
-				{MediaType: "text/html", Handler: nil},
-				{MediaType: "application/json", Handler: ok},
-			},
+			name:          "nil handler in first entry",
+			formats:       []ResFmt{{MediaType: "text/html", Handler: nil}, {MediaType: "application/json", Handler: ok}},
 			wantMediaType: `media type "text/html"`,
 			wantIndex:     "index 0",
 		},
 		{
-			name:   "nil handler in matched media type",
-			accept: "application/json",
-			formats: []ResFmt{
-				{MediaType: "text/html", Handler: ok},
-				{MediaType: "application/json", Handler: nil},
-			},
+			name:          "nil handler in matched media type",
+			accept:        "application/json",
+			formats:       []ResFmt{{MediaType: "text/html", Handler: ok}, {MediaType: "application/json", Handler: nil}},
 			wantMediaType: `media type "application/json"`,
 			wantIndex:     "index 1",
 		},
 		{
-			name:   "nil default handler",
-			accept: "application/json",
-			formats: []ResFmt{
-				{MediaType: "text/html", Handler: ok},
-				{MediaType: "default", Handler: nil},
-			},
+			name:          "nil default handler",
+			accept:        "application/json",
+			formats:       []ResFmt{{MediaType: "text/html", Handler: ok}, {MediaType: "default", Handler: nil}},
 			wantMediaType: `media type "default"`,
 			wantIndex:     "index 1",
 		},
@@ -1998,10 +1936,7 @@ func Benchmark_Ctx_Format(b *testing.B) {
 
 	c.Request().Header.Set("Accept", "text/plain")
 	b.Run("text/plain", func(b *testing.B) {
-		offers := []ResFmt{
-			{MediaType: "application/xml", Handler: fail},
-			{MediaType: "text/plain", Handler: ok},
-		}
+		offers := []ResFmt{{MediaType: "application/xml", Handler: fail}, {MediaType: "text/plain", Handler: ok}}
 		for b.Loop() {
 			err = c.Format(offers...)
 		}
@@ -2055,11 +1990,7 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 		Recipients []string
 		Urgency    int `xml:"urgency,attr"`
 	}
-	message := Message{
-		Recipients: []string{"Alice", "Bob"},
-		Sender:     "Carol",
-		Urgency:    3,
-	}
+	message := Message{Recipients: []string{"Alice", "Bob"}, Sender: "Carol", Urgency: 3}
 	type broken string
 
 	tests := []struct {
@@ -2254,12 +2185,7 @@ func Benchmark_Ctx_AutoFormat_JSON(b *testing.B) {
 }
 
 func Benchmark_Ctx_AutoFormat_MsgPack(b *testing.B) {
-	c := apptest.Ctx(b, New(
-		Config{
-			MsgPackEncoder: msgpack.Marshal,
-			MsgPackDecoder: msgpack.Unmarshal,
-		},
-	))
+	c := apptest.Ctx(b, New(Config{MsgPackEncoder: msgpack.Marshal, MsgPackDecoder: msgpack.Unmarshal}))
 
 	c.Request().Header.Set("Accept", MIMEApplicationMsgPack)
 	b.ReportAllocs()
@@ -2348,9 +2274,7 @@ func Test_Ctx_FormValue(t *testing.T) {
 func Test_Ctx_FormFile_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
 
-	c := apptest.CtxAs[*DefaultCtx](t, New(Config{
-		BodyLimit: 64,
-	}))
+	c := apptest.CtxAs[*DefaultCtx](t, New(Config{BodyLimit: 64}))
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -2384,9 +2308,7 @@ func ctxTestASetMultipartField(t *testing.T, c Ctx, name, value string) {
 func Test_Ctx_FormValue_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
 
-	c := apptest.CtxAs[*DefaultCtx](t, New(Config{
-		BodyLimit: 64,
-	}))
+	c := apptest.CtxAs[*DefaultCtx](t, New(Config{BodyLimit: 64}))
 
 	ctxTestASetMultipartField(t, c, "name", strings.Repeat("a", 256))
 
@@ -2731,9 +2653,7 @@ func Benchmark_Ctx_Fresh_LastModified(b *testing.B) {
 func Test_Ctx_Binders(t *testing.T) {
 	t.Parallel()
 	// setup
-	app := New(Config{
-		EnableSplittingOnParsers: true,
-	})
+	app := New(Config{EnableSplittingOnParsers: true})
 
 	type TestEmbeddedStruct struct {
 		Names []string `query:"names"`
@@ -3019,34 +2939,11 @@ func Test_Ctx_Port_RemoteAddrVariants(t *testing.T) {
 		remote net.Addr
 		want   string
 	}{
-		{
-			name: "tcp",
-			remote: &net.TCPAddr{
-				IP:   net.IPv4(127, 0, 0, 1),
-				Port: 8080,
-			},
-			want: "8080",
-		},
-		{
-			name:   "unix",
-			remote: &net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"},
-			want:   "",
-		},
-		{
-			name:   "default-remote",
-			remote: nil,
-			want:   "0",
-		},
-		{
-			name:   "string-host-port",
-			remote: testNetAddr{network: "tcp", address: "192.0.2.1:443"},
-			want:   "443",
-		},
-		{
-			name:   "string-missing-port",
-			remote: testNetAddr{network: "tcp", address: "192.0.2.1"},
-			want:   "",
-		},
+		{name: "tcp", remote: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8080}, want: "8080"},
+		{name: "unix", remote: &net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"}, want: ""},
+		{name: "default-remote", remote: nil, want: "0"},
+		{name: "string-host-port", remote: testNetAddr{network: "tcp", address: "192.0.2.1:443"}, want: "443"},
+		{name: "string-missing-port", remote: testNetAddr{network: "tcp", address: "192.0.2.1"}, want: ""},
 		{
 			name:   "string-ipv6-port",
 			remote: testNetAddr{network: "tcp", address: "[2001:db8::1]:8443"},
@@ -3115,9 +3012,7 @@ func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 				EnableIPValidation: enableIPValidation,
 				ProxyHeader:        proxyHeaderName,
 				TrustProxy:         true,
-				TrustProxyConfig: TrustProxyConfig{
-					Proxies: []string{"0.0.0.0"},
-				},
+				TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
 			})
 
 			for _, tc := range tests {
@@ -3324,10 +3219,7 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 
 func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
-		ProxyHeader:        HeaderXForwardedFor,
-		EnableIPValidation: true,
-	})
+	app := New(Config{ProxyHeader: HeaderXForwardedFor, EnableIPValidation: true})
 	fastCtx := &fasthttp.RequestCtx{}
 	c := apptest.CtxFor(t, app, fastCtx)
 
@@ -3346,9 +3238,7 @@ func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines(t *testing.T) {
 		ProxyHeader:        HeaderXForwardedFor,
 		TrustProxy:         true,
 		EnableIPValidation: true,
-		TrustProxyConfig: TrustProxyConfig{
-			Proxies: []string{"127.0.0.1"},
-		},
+		TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"127.0.0.1"}},
 	})
 	fastCtx := &fasthttp.RequestCtx{}
 	fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
@@ -3370,9 +3260,7 @@ func Test_Ctx_IP_ProxyHeader_Wire(t *testing.T) {
 		ProxyHeader:        HeaderXForwardedFor,
 		TrustProxy:         true,
 		EnableIPValidation: true,
-		TrustProxyConfig: TrustProxyConfig{
-			Proxies: []string{"0.0.0.0"},
-		},
+		TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
 	})
 	app.Get("/", func(c Ctx) error { return c.SendString(c.IP() + "|" + strings.Join(c.IPs(), ",")) })
 
@@ -3397,12 +3285,7 @@ func Test_Ctx_IP_ProxyHeader_Wire(t *testing.T) {
 
 func Test_Ctx_IP_ProxyHeader_InvalidIPs(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
-		EnableIPValidation: true,
-		TrustProxyConfig: TrustProxyConfig{
-			Proxies: []string{"10.0.0.1"},
-		},
-	})
+	app := New(Config{EnableIPValidation: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"10.0.0.1"}}})
 	fastCtx := &fasthttp.RequestCtx{}
 	fastCtx.SetRemoteAddr(testNetAddr{network: "tcp", address: "invalid"})
 	c := apptest.CtxFor(t, app, fastCtx)
@@ -3414,11 +3297,7 @@ func Test_Ctx_IP_ProxyHeader_InvalidIPs(t *testing.T) {
 
 func Test_Ctx_IP_TrustedProxyIPv6Range(t *testing.T) {
 	t.Parallel()
-	c := apptest.Ctx(t, New(Config{
-		TrustProxyConfig: TrustProxyConfig{
-			Proxies: []string{"2001:db8::/32"},
-		},
-	}))
+	c := apptest.Ctx(t, New(Config{TrustProxyConfig: TrustProxyConfig{Proxies: []string{"2001:db8::/32"}}}))
 
 	require.True(t, c.isTrustedProxyIP("2001:db8::1"))
 	require.False(t, c.isTrustedProxyIP("2001:db9::1"))
@@ -3454,11 +3333,9 @@ func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, unixSocket bool) string {
 	t.Helper()
 
 	app := New(Config{
-		TrustProxy: true,
-		TrustProxyConfig: TrustProxyConfig{
-			UnixSocket: unixSocket,
-		},
-		ProxyHeader: HeaderXForwardedFor,
+		TrustProxy:       true,
+		TrustProxyConfig: TrustProxyConfig{UnixSocket: unixSocket},
+		ProxyHeader:      HeaderXForwardedFor,
 	})
 	app.Get("/ip", func(c Ctx) error { return c.SendString(fmt.Sprintf("%t|%s", c.IsProxyTrusted(), c.IP())) })
 
@@ -3629,11 +3506,9 @@ func Benchmark_Ctx_IPs_v6_With_IP_Validation(b *testing.B) {
 
 func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
 	app := New(Config{
-		ProxyHeader: HeaderXForwardedFor,
-		TrustProxy:  true,
-		TrustProxyConfig: TrustProxyConfig{
-			Loopback: true,
-		},
+		ProxyHeader:      HeaderXForwardedFor,
+		TrustProxy:       true,
+		TrustProxyConfig: TrustProxyConfig{Loopback: true},
 	})
 	fastCtx := &fasthttp.RequestCtx{}
 	fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")}))
@@ -3649,11 +3524,9 @@ func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
 
 func Benchmark_Ctx_IP_With_ProxyHeader_and_IP_Validation(b *testing.B) {
 	app := New(Config{
-		ProxyHeader: HeaderXForwardedFor,
-		TrustProxy:  true,
-		TrustProxyConfig: TrustProxyConfig{
-			Loopback: true,
-		},
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		TrustProxyConfig:   TrustProxyConfig{Loopback: true},
 		EnableIPValidation: true,
 	})
 	fastCtx := &fasthttp.RequestCtx{}
@@ -3684,9 +3557,7 @@ func Benchmark_Ctx_IP_With_ProxyHeader_Chain(b *testing.B) {
 		ProxyHeader:        HeaderXForwardedFor,
 		TrustProxy:         true,
 		EnableIPValidation: true,
-		TrustProxyConfig: TrustProxyConfig{
-			Proxies: []string{"10.0.0.1", "10.0.0.2"},
-		},
+		TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"10.0.0.1", "10.0.0.2"}},
 	})
 	fastCtx := &fasthttp.RequestCtx{}
 	fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("10.0.0.2")}))
@@ -4270,9 +4141,7 @@ func Test_Ctx_Method_Unregistered(t *testing.T) {
 // be unconditionally uppercased.
 func Test_Ctx_Method_CustomCaseSensitive(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
-		RequestMethods: append(append([]string{}, DefaultMethods...), "Purge"),
-	})
+	app := New(Config{RequestMethods: append(append([]string{}, DefaultMethods...), "Purge")})
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(MethodGet)
 	c := apptest.CtxFor(t, app, fctx)
@@ -4374,9 +4243,7 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 func Test_Ctx_MultipartForm_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
 
-	c := apptest.CtxAs[*DefaultCtx](t, New(Config{
-		BodyLimit: 64,
-	}))
+	c := apptest.CtxAs[*DefaultCtx](t, New(Config{BodyLimit: 64}))
 
 	multipartBody := &bytes.Buffer{}
 	writer := multipart.NewWriter(multipartBody)
@@ -4524,14 +4391,8 @@ func Test_Ctx_Params_Immutable(t *testing.T) {
 func Benchmark_Ctx_Params(b *testing.B) {
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
-	c.route = &Route{
-		Params: []string{
-			"param1", "param2", "param3", "param4",
-		},
-	}
-	c.values = [maxParams]string{
-		"john", "doe", "is", "awesome",
-	}
+	c.route = &Route{Params: []string{"param1", "param2", "param3", "param4"}}
+	c.values = [maxParams]string{"john", "doe", "is", "awesome"}
 	var res string
 	b.ReportAllocs()
 	for b.Loop() {
@@ -4652,10 +4513,7 @@ func Test_Ctx_Scheme(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := New(Config{
-				TrustProxy:       true,
-				TrustProxyConfig: TrustProxyConfig{Proxies: []string{tc.proxy}},
-			})
+			app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{tc.proxy}}})
 			newCtx := func(t *testing.T) Ctx {
 				t.Helper()
 				freq := &fasthttp.RequestCtx{}
@@ -4685,12 +4543,7 @@ func Test_Ctx_Scheme(t *testing.T) {
 func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{
-		TrustProxy: true,
-		TrustProxyConfig: TrustProxyConfig{
-			Proxies: []string{"0.0.0.0"},
-		},
-	})
+	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}})
 
 	freq := &fasthttp.RequestCtx{}
 	freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
@@ -5909,11 +5762,7 @@ func Test_Ctx_Secure(t *testing.T) {
 		name      string
 		expected  bool
 	}{
-		{
-			name:     "plain HTTP",
-			app:      New(),
-			expected: false,
-		},
+		{name: "plain HTTP", app: New(), expected: false},
 		{
 			name:      "direct TLS",
 			app:       New(),
@@ -5921,24 +5770,14 @@ func Test_Ctx_Secure(t *testing.T) {
 			expected:  true,
 		},
 		{
-			name: "trusted proxy HTTPS scheme",
-			app: New(Config{
-				TrustProxy: true,
-				TrustProxyConfig: TrustProxyConfig{
-					Proxies: []string{"0.0.0.0"},
-				},
-			}),
+			name:      "trusted proxy HTTPS scheme",
+			app:       New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}}),
 			configure: announcesHTTPS,
 			expected:  true,
 		},
 		{
-			name: "untrusted proxy HTTPS scheme",
-			app: New(Config{
-				TrustProxy: true,
-				TrustProxyConfig: TrustProxyConfig{
-					Proxies: []string{"1.1.1.1"},
-				},
-			}),
+			name:      "untrusted proxy HTTPS scheme",
+			app:       New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"1.1.1.1"}}}),
 			configure: announcesHTTPS,
 			expected:  false,
 		},
@@ -6007,24 +5846,9 @@ func Test_Ctx_Subdomains(t *testing.T) {
 			offset: []int{1},
 			want:   []string{"john", "doe", "google"},
 		},
-		{
-			name:   "negative offset returns empty",
-			host:   "john.doe.google.com",
-			offset: []int{-1},
-			want:   []string{},
-		},
-		{
-			name:   "offset equal len returns empty",
-			host:   "john.doe.com",
-			offset: []int{3},
-			want:   []string{},
-		},
-		{
-			name:   "offset equal len returns empty",
-			host:   "john.doe.com",
-			offset: []int{3},
-			want:   []string{},
-		},
+		{name: "negative offset returns empty", host: "john.doe.google.com", offset: []int{-1}, want: []string{}},
+		{name: "offset equal len returns empty", host: "john.doe.com", offset: []int{3}, want: []string{}},
+		{name: "offset equal len returns empty", host: "john.doe.com", offset: []int{3}, want: []string{}},
 		{
 			name:   "zero offset returns all labels with port present",
 			host:   "localhost:3000",
@@ -6067,18 +5891,8 @@ func Test_Ctx_Subdomains(t *testing.T) {
 			offset: []int{0},
 			want:   []string{"foo bar"},
 		},
-		{
-			name:   "IPv4 host returns empty",
-			host:   "192.168.0.1",
-			offset: nil,
-			want:   []string{},
-		},
-		{
-			name:   "IPv6 host returns empty",
-			host:   "[2001:db8::1]",
-			offset: nil,
-			want:   []string{},
-		},
+		{name: "IPv4 host returns empty", host: "192.168.0.1", offset: nil, want: []string{}},
+		{name: "IPv6 host returns empty", host: "[2001:db8::1]", offset: nil, want: []string{}},
 	}
 
 	for _, tc := range cases {
@@ -6170,16 +5984,8 @@ func Test_Ctx_Download_SanitizesFilenameControls(t *testing.T) {
 			filename: "down\r\nload\t\x00.txt",
 			expected: `attachment; filename="download.txt"`,
 		},
-		{
-			name:     "empty after sanitize",
-			filename: "\r\n\t\x00",
-			expected: `attachment; filename="download"`,
-		},
-		{
-			name:     "dot fallback",
-			filename: ".",
-			expected: `attachment; filename="download"`,
-		},
+		{name: "empty after sanitize", filename: "\r\n\t\x00", expected: `attachment; filename="download"`},
+		{name: "dot fallback", filename: ".", expected: `attachment; filename="download"`},
 	}
 
 	for _, tc := range testCases {
@@ -6320,9 +6126,7 @@ func Test_Static_Compress(t *testing.T) {
 
 	app := New()
 	app.Get("/file", func(c Ctx) error {
-		return c.SendFile("ctx.go", SendFile{
-			Compress: true,
-		})
+		return c.SendFile("ctx.go", SendFile{Compress: true})
 	})
 
 	// Note: deflate is not supported by fasthttp.FS
@@ -6333,10 +6137,7 @@ func Test_Static_Compress(t *testing.T) {
 
 			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
 			req.Header.Set("Accept-Encoding", algo)
-			resp := apptest.Do(t, app, req, TestConfig{
-				Timeout:       10 * time.Second,
-				FailOnTimeout: true,
-			})
+			resp := apptest.Do(t, app, req, TestConfig{Timeout: 10 * time.Second, FailOnTimeout: true})
 			require.Equal(t, 200, resp.StatusCode, "Status code")
 			require.NotEqual(t, "58726", resp.Header.Get(HeaderContentLength))
 		})
@@ -6355,9 +6156,7 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 		defer app.ReleaseCtx(c)
 		c.Request().Header.Add(HeaderAcceptEncoding, compression)
 
-		err := c.SendFile("./ctx.go", SendFile{
-			Compress: true,
-		})
+		err := c.SendFile("./ctx.go", SendFile{Compress: true})
 
 		return c.Response().Body(), err
 	}
@@ -6393,9 +6192,7 @@ func Test_Ctx_SendFile_EmbedFS(t *testing.T) {
 	expectFileContent := ctxTestBCtxGoSource(t)
 
 	app.Get("/test", func(c Ctx) error {
-		return c.SendFile("ctx.go", SendFile{
-			FS: embedFile,
-		})
+		return c.SendFile("ctx.go", SendFile{FS: embedFile})
 	})
 
 	resp := apptest.Expect(t, app, "/test", StatusOK)
@@ -6587,22 +6384,16 @@ func Test_Ctx_SendFile_Multiple(t *testing.T) {
 		case "2":
 			return c.SendFile("app.go")
 		case "3":
-			return c.SendFile("ctx.go", SendFile{
-				Download: true,
-			})
+			return c.SendFile("ctx.go", SendFile{Download: true})
 		case "4":
-			return c.SendFile("app_test.go", SendFile{
-				FS: os.DirFS("."),
-			})
+			return c.SendFile("app_test.go", SendFile{FS: os.DirFS(".")})
 		default:
 			return c.SendStatus(StatusNotFound)
 		}
 	})
 
 	app.Get("/test2", func(c Ctx) error {
-		return c.SendFile("ctx.go", SendFile{
-			Download: true,
-		})
+		return c.SendFile("ctx.go", SendFile{Download: true})
 	})
 
 	testCases := []struct {
@@ -6696,15 +6487,11 @@ func Test_SendFile_withRoutes(t *testing.T) {
 	app.Get("/file", func(c Ctx) error { return c.SendFile("ctx.go") })
 
 	app.Get("/file/download", func(c Ctx) error {
-		return c.SendFile("ctx.go", SendFile{
-			Download: true,
-		})
+		return c.SendFile("ctx.go", SendFile{Download: true})
 	})
 
 	app.Get("/file/fs", func(c Ctx) error {
-		return c.SendFile("ctx.go", SendFile{
-			FS: os.DirFS("."),
-		})
+		return c.SendFile("ctx.go", SendFile{FS: os.DirFS(".")})
 	})
 
 	apptest.Expect(t, app, "/file", StatusOK)
@@ -7034,10 +6821,7 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 		Name string
 		Age  uint8
 	}
-	data := SomeStruct{
-		Name: "Grame",
-		Age:  20,
-	}
+	data := SomeStruct{Name: "Grame", Age: 20}
 	var err error
 	b.ReportAllocs()
 	for b.Loop() {
@@ -7050,10 +6834,7 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 func Test_Ctx_MsgPack(t *testing.T) {
 	t.Parallel()
 
-	c := apptest.Ctx(t, New(Config{
-		MsgPackEncoder: msgpack.Marshal,
-		MsgPackDecoder: msgpack.Unmarshal,
-	}))
+	c := apptest.Ctx(t, New(Config{MsgPackEncoder: msgpack.Marshal, MsgPackDecoder: msgpack.Unmarshal}))
 
 	err := c.MsgPack(complex(1, 1))
 
@@ -7094,21 +6875,13 @@ func Test_Ctx_MsgPack(t *testing.T) {
 }
 
 func Benchmark_Ctx_MsgPack(b *testing.B) {
-	c := apptest.Ctx(b, New(
-		Config{
-			MsgPackEncoder: msgpack.Marshal,
-			MsgPackDecoder: msgpack.Unmarshal,
-		},
-	))
+	c := apptest.Ctx(b, New(Config{MsgPackEncoder: msgpack.Marshal, MsgPackDecoder: msgpack.Unmarshal}))
 
 	type SomeStruct struct {
 		Name string
 		Age  uint8
 	}
-	data := SomeStruct{
-		Name: "Grame",
-		Age:  20,
-	}
+	data := SomeStruct{Name: "Grame", Age: 20}
 	var err error
 	b.ReportAllocs()
 	for b.Loop() {
@@ -7120,10 +6893,7 @@ func Benchmark_Ctx_MsgPack(b *testing.B) {
 
 func Test_Ctx_CBOR(t *testing.T) {
 	t.Parallel()
-	c := apptest.Ctx(t, New(Config{
-		CBOREncoder: cbor.Marshal,
-		CBORDecoder: cbor.Unmarshal,
-	}))
+	c := apptest.Ctx(t, New(Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}))
 
 	require.Error(t, c.CBOR(complex(1, 1)))
 
@@ -7162,19 +6932,13 @@ func Test_Ctx_CBOR(t *testing.T) {
 }
 
 func Benchmark_Ctx_CBOR(b *testing.B) {
-	c := apptest.Ctx(b, New(Config{
-		CBOREncoder: cbor.Marshal,
-		CBORDecoder: cbor.Unmarshal,
-	}))
+	c := apptest.Ctx(b, New(Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}))
 
 	type SomeStruct struct {
 		Name string
 		Age  uint8
 	}
-	data := SomeStruct{
-		Name: "Grame",
-		Age:  20,
-	}
+	data := SomeStruct{Name: "Grame", Age: 20}
 	var err error
 	b.ReportAllocs()
 	for b.Loop() {
@@ -7190,10 +6954,7 @@ func Benchmark_Ctx_JSON_Ctype(b *testing.B) {
 		Name string
 		Age  uint8
 	}
-	data := SomeStruct{
-		Name: "Grame",
-		Age:  20,
-	}
+	data := SomeStruct{Name: "Grame", Age: 20}
 	var err error
 	b.ReportAllocs()
 	for b.Loop() {
@@ -7210,18 +6971,12 @@ func Test_Ctx_JSONP(t *testing.T) {
 
 	require.Error(t, c.JSONP(complex(1, 1)))
 
-	err := c.JSONP(Map{
-		"Name": "Grame",
-		"Age":  20,
-	})
+	err := c.JSONP(Map{"Name": "Grame", "Age": 20})
 	require.NoError(t, err)
 	require.Equal(t, `callback({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
 	require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
-	err = c.Res().JSONP(Map{
-		"Name": "Grame",
-		"Age":  20,
-	}, "john")
+	err = c.Res().JSONP(Map{"Name": "Grame", "Age": 20}, "john")
 	require.NoError(t, err)
 	require.Equal(t, `john({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
 	require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
@@ -7345,10 +7100,7 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 		Name string
 		Age  uint8
 	}
-	data := SomeStruct{
-		Name: "Grame",
-		Age:  20,
-	}
+	data := SomeStruct{Name: "Grame", Age: 20}
 	callback := "emit"
 	var err error
 	b.ReportAllocs()
@@ -7371,10 +7123,7 @@ func Test_Ctx_XML(t *testing.T) {
 		Ages    []int    `xml:"Ages"`
 	}
 
-	err := c.XML(xmlResult{
-		Names: []string{"Grame", "John"},
-		Ages:  []int{1, 12, 20},
-	})
+	err := c.XML(xmlResult{Names: []string{"Grame", "John"}, Ages: []int{1, 12, 20}})
 	require.NoError(t, err)
 	require.Equal(t, `<Users><Names>Grame</Names><Names>John</Names><Ages>1</Ages><Ages>12</Ages><Ages>20</Ages></Users>`, string(c.Response().Body()))
 	require.Equal(t, "application/xml; charset=utf-8", string(c.Response().Header.Peek("content-type")))
@@ -7454,10 +7203,7 @@ func Benchmark_Ctx_XML(b *testing.B) {
 		Name string `xml:"Name"`
 		Age  uint8  `xml:"Age"`
 	}
-	data := SomeStruct{
-		Name: "Grame",
-		Age:  20,
-	}
+	data := SomeStruct{Name: "Grame", Age: 20}
 	var err error
 	b.ReportAllocs()
 	for b.Loop() {
@@ -7475,10 +7221,7 @@ func Test_Ctx_Links(t *testing.T) {
 	c.Links()
 	require.Empty(t, string(c.Response().Header.Peek(HeaderLink)))
 
-	c.Links(
-		"http://api.example.com/users?page=2", "next",
-		"http://api.example.com/users?page=5", "last",
-	)
+	c.Links("http://api.example.com/users?page=2", "next", "http://api.example.com/users?page=5", "last")
 	require.Equal(t, `<http://api.example.com/users?page=2>; rel="next",<http://api.example.com/users?page=5>; rel="last"`, string(c.Response().Header.Peek(HeaderLink)))
 
 	// A rel value containing quotes/backslashes must be escaped so the
@@ -7497,10 +7240,7 @@ func Benchmark_Ctx_Links(b *testing.B) {
 
 	b.ReportAllocs()
 	for b.Loop() {
-		c.Links(
-			"http://api.example.com/users?page=2", "next",
-			"http://api.example.com/users?page=5", "last",
-		)
+		c.Links("http://api.example.com/users?page=2", "next", "http://api.example.com/users?page=5", "last")
 	}
 }
 
@@ -7540,9 +7280,7 @@ func Test_Ctx_Render(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
 
-	err := c.Render("./.github/testdata/index.tmpl", Map{
-		"Title": "Hello, World!",
-	})
+	err := c.Render("./.github/testdata/index.tmpl", Map{"Title": "Hello, World!"})
 	require.NoError(t, err)
 
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
@@ -7852,14 +7590,9 @@ func Benchmark_Ctx_RenderWithLocalsAndViewBind(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	require.NoError(b, err)
-	c := apptest.Ctx(b, New(Config{
-		PassLocalsToViews: true,
-		Views:             engine,
-	}))
+	c := apptest.Ctx(b, New(Config{PassLocalsToViews: true, Views: engine}))
 
-	err = c.ViewBind(Map{
-		"Title": "Hello, World!",
-	})
+	err = c.ViewBind(Map{"Title": "Hello, World!"})
 	require.NoError(b, err)
 	c.Locals("Summary", "Test")
 
@@ -7877,9 +7610,7 @@ func Benchmark_Ctx_RenderLocals(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	require.NoError(b, err)
-	app := New(Config{
-		PassLocalsToViews: true,
-	})
+	app := New(Config{PassLocalsToViews: true})
 	app.config.Views = engine
 	c := apptest.Ctx(b, app)
 
@@ -7903,9 +7634,7 @@ func Benchmark_Ctx_RenderViewBind(b *testing.B) {
 	app.config.Views = engine
 	c := apptest.Ctx(b, app)
 
-	err = c.ViewBind(Map{
-		"Title": "Hello, World!",
-	})
+	err = c.ViewBind(Map{"Title": "Hello, World!"})
 	require.NoError(b, err)
 
 	b.ReportAllocs()
@@ -8009,9 +7738,7 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 
 	b.ReportAllocs()
 	for b.Loop() {
-		err = c.Render("index.tmpl", Map{
-			"Title": "Hello, World!",
-		})
+		err = c.Render("index.tmpl", Map{"Title": "Hello, World!"})
 	}
 	require.NoError(b, err)
 	require.Equal(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
@@ -9399,11 +9126,7 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 			require.Empty(t, c.Params("nonexistent"))
 			require.Equal(t, []string{"name", "id"}, c.Route().Params)
 
-			return c.JSON(map[string]any{
-				"name": c.Params("name"),
-				"id":   c.Params("id"),
-				"all":  c.Route().Params,
-			})
+			return c.JSON(map[string]any{"name": c.Params("name"), "id": c.Params("id"), "all": c.Route().Params})
 		})
 
 		apptest.Expect(t, app, "/user/original/123", StatusOK)
@@ -9543,9 +9266,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 
 	// Scenario with trusted proxy check simple
 	b.Run("WithProxyCheckSimple", func(b *testing.B) {
-		c := apptest.Ctx(b, New(Config{
-			TrustProxy: true,
-		}))
+		c := apptest.Ctx(b, New(Config{TrustProxy: true}))
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
 		b.ReportAllocs()
@@ -9556,9 +9277,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 
 	// Scenario with trusted proxy check simple in parallel
 	b.Run("WithProxyCheckSimple_Parallel", func(b *testing.B) {
-		app := New(Config{
-			TrustProxy: true,
-		})
+		app := New(Config{TrustProxy: true})
 		b.ReportAllocs()
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
@@ -9575,10 +9294,8 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check
 	b.Run("WithProxyCheck", func(b *testing.B) {
 		c := apptest.Ctx(b, New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Proxies: []string{"0.0.0.0"},
-			},
+			TrustProxy:       true,
+			TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
 		}))
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -9590,12 +9307,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 
 	// Scenario with trusted proxy check in parallel
 	b.Run("WithProxyCheck_Parallel", func(b *testing.B) {
-		app := New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Proxies: []string{"0.0.0.0"},
-			},
-		})
+		app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}})
 		b.ReportAllocs()
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
@@ -9613,10 +9325,8 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// reaches the range check, exercising the guard that skips ip.String().
 	b.Run("WithProxyCheckCIDR", func(b *testing.B) {
 		c := apptest.Ctx(b, New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Proxies: []string{"0.0.0.0/8"},
-			},
+			TrustProxy:       true,
+			TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0/8"}},
 		}))
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -9628,12 +9338,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 
 	// Scenario with trusted proxy check allow private
 	b.Run("WithProxyCheckAllowPrivate", func(b *testing.B) {
-		c := apptest.Ctx(b, New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Private: true,
-			},
-		}))
+		c := apptest.Ctx(b, New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Private: true}}))
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
 		b.ReportAllocs()
@@ -9644,12 +9349,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 
 	// Scenario with trusted proxy check allow private in parallel
 	b.Run("WithProxyCheckAllowPrivate_Parallel", func(b *testing.B) {
-		app := New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Private: true,
-			},
-		})
+		app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Private: true}})
 		b.ReportAllocs()
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
@@ -9703,12 +9403,8 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check allow private, loopback, and link-local
 	b.Run("WithProxyCheckAllowAll", func(b *testing.B) {
 		c := apptest.Ctx(b, New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Private:   true,
-				Loopback:  true,
-				LinkLocal: true,
-			},
+			TrustProxy:       true,
+			TrustProxyConfig: TrustProxyConfig{Private: true, Loopback: true, LinkLocal: true},
 		}))
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -9721,12 +9417,8 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check allow private, loopback, and link-local in parallel
 	b.Run("WithProxyCheckAllowAll_Parallel", func(b *testing.B) {
 		app := New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Private:   true,
-				Loopback:  true,
-				LinkLocal: true,
-			},
+			TrustProxy:       true,
+			TrustProxyConfig: TrustProxyConfig{Private: true, Loopback: true, LinkLocal: true},
 		})
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -9807,10 +9499,8 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check with subnet
 	b.Run("WithProxyCheckSubnet", func(b *testing.B) {
 		c := apptest.Ctx(b, New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Proxies: []string{"0.0.0.0/8"},
-			},
+			TrustProxy:       true,
+			TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0/8"}},
 		}))
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -9822,12 +9512,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 
 	// Scenario with trusted proxy check with subnet in parallel
 	b.Run("WithProxyCheck_ParallelSubnet", func(b *testing.B) {
-		app := New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Proxies: []string{"0.0.0.0/8"},
-			},
-		})
+		app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0/8"}}})
 		b.ReportAllocs()
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
@@ -9844,10 +9529,8 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check with multiple subnet
 	b.Run("WithProxyCheckMultipleSubnet", func(b *testing.B) {
 		c := apptest.Ctx(b, New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Proxies: []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"},
-			},
+			TrustProxy:       true,
+			TrustProxyConfig: TrustProxyConfig{Proxies: []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"}},
 		}))
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -9860,10 +9543,8 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check with multiple subnet in parallel
 	b.Run("WithProxyCheck_ParallelMultipleSubnet", func(b *testing.B) {
 		app := New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Proxies: []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"},
-			},
+			TrustProxy:       true,
+			TrustProxyConfig: TrustProxyConfig{Proxies: []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"}},
 		})
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -10184,9 +9865,7 @@ func Test_Ctx_Format_CustomCtx(t *testing.T) {
 	t.Parallel()
 
 	app := NewWithCustomCtx(func(app *App) CustomCtx {
-		return &customCtx{
-			DefaultCtx: *NewDefaultCtx(app),
-		}
+		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
 	})
 	describe := func(c Ctx) error {
 		if _, ok := c.(*customCtx); ok {

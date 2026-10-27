@@ -93,9 +93,7 @@ func clientTestAStartTLSServer(t *testing.T, body string, tune ...func(server, c
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString(body) })
 
 	go func() {
-		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
+		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 	}()
 	time.Sleep(1 * time.Second)
 
@@ -119,9 +117,7 @@ func Test_New_With_Client(t *testing.T) {
 	t.Run("with valid client", func(t *testing.T) {
 		t.Parallel()
 
-		c := &fasthttp.Client{
-			MaxConnsPerHost: 5,
-		}
+		c := &fasthttp.Client{MaxConnsPerHost: 5}
 		client := NewWithClient(c)
 
 		require.NotNil(t, client)
@@ -161,11 +157,7 @@ func Test_New_With_LBClient(t *testing.T) {
 	t.Run("with valid lb client", func(t *testing.T) {
 		t.Parallel()
 
-		lb := &fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{
-				&fasthttp.HostClient{Addr: "example.com:80"},
-			},
-		}
+		lb := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{&fasthttp.HostClient{Addr: "example.com:80"}}}
 
 		client := NewWithLBClient(lb)
 
@@ -487,10 +479,7 @@ func (tr clientTestATransport) run(t *testing.T) {
 		t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
 
 		client := tr.newClient(addr, false)
-		client.SetRetryConfig(&RetryConfig{
-			InitialInterval: time.Millisecond,
-			MaxRetryCount:   2,
-		})
+		client.SetRetryConfig(&RetryConfig{InitialInterval: time.Millisecond, MaxRetryCount: 2})
 
 		var attempts atomic.Int32
 		client.SetDial(func(address string) (net.Conn, error) {
@@ -603,9 +592,7 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 		name: "lb",
 		newClient: func(addr string, isTLS bool) *Client {
 			return NewWithLBClient(&fasthttp.LBClient{
-				Clients: []fasthttp.BalancingClient{
-					&fasthttp.HostClient{Addr: addr, IsTLS: isTLS},
-				},
+				Clients: []fasthttp.BalancingClient{&fasthttp.HostClient{Addr: addr, IsTLS: isTLS}},
 			})
 		},
 		balancer: func(c *Client) fasthttp.BalancingClient { return c.LBClient().Clients[0] },
@@ -753,9 +740,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 
 	go start()
 
-	_, err := New().SetDial(dial).
-		R().
-		Get("http//example")
+	_, err := New().SetDial(dial).R().Get("http//example")
 
 	require.ErrorIs(t, err, ErrURLFormat)
 }
@@ -763,9 +748,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 func Test_Client_Unsupported_Protocol(t *testing.T) {
 	t.Parallel()
 
-	_, err := New().
-		R().
-		Get("ftp://example.com")
+	_, err := New().R().Get("ftp://example.com")
 
 	require.ErrorIs(t, err, ErrURLFormat)
 }
@@ -955,11 +938,7 @@ func Test_Client_UserAgent(t *testing.T) {
 		name string
 		want string
 	}{
-		{
-			name: "default",
-			want: defaultUserAgent,
-			send: func(url string) (*Response, error) { return Get(url) },
-		},
+		{name: "default", want: defaultUserAgent, send: func(url string) (*Response, error) { return Get(url) }},
 		{
 			name: "custom",
 			want: "ua",
@@ -1020,10 +999,7 @@ func (e clientTestAMultiValue) run(t *testing.T) {
 		t.Parallel()
 
 		client := New()
-		e.addMany(e.set(client, "foo", "bar"), map[string][]string{
-			"foo": {"fiber", "buaa"},
-			"bar": {"foo"},
-		})
+		e.addMany(e.set(client, "foo", "bar"), map[string][]string{"foo": {"fiber", "buaa"}, "bar": {"foo"}})
 
 		require.Equal(t, []string{"bar", "fiber", "buaa"}, e.get(client, "foo"))
 		require.Equal(t, []string{"foo"}, e.get(client, "bar"))
@@ -1033,10 +1009,7 @@ func (e clientTestAMultiValue) run(t *testing.T) {
 		t.Parallel()
 
 		client := New()
-		e.setMany(e.set(client, "foo", "bar"), map[string]string{
-			"foo": "fiber",
-			"bar": "foo",
-		})
+		e.setMany(e.set(client, "foo", "bar"), map[string]string{"foo": "fiber", "bar": "foo"})
 
 		require.Equal(t, []string{"fiber"}, e.get(client, "foo"))
 		require.Equal(t, []string{"foo"}, e.get(client, "bar"))
@@ -1089,14 +1062,8 @@ func Test_Client_Settings_With_Server(t *testing.T) {
 				return nil
 			},
 			setup: func(c *Client) {
-				c.SetHeader("k1", "v1").
-					AddHeader("k1", "v11").
-					AddHeaders(map[string][]string{
-						"k1": {"v22", "v33"},
-					}).
-					SetHeaders(map[string]string{
-						"k2": "v2",
-					}).
+				c.SetHeader("k1", "v1").AddHeader("k1", "v11").AddHeaders(map[string][]string{"k1": {"v22", "v33"}}).
+					SetHeaders(map[string]string{"k2": "v2"}).
 					AddHeader("k2", "v22")
 			},
 			want: "K1v1K1v11K1v22K1v33K2v2K2v22",
@@ -1104,17 +1071,11 @@ func Test_Client_Settings_With_Server(t *testing.T) {
 		{
 			name: "cookies",
 			handler: func(c fiber.Ctx) error {
-				return c.SendString(
-					c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"),
-				)
+				return c.SendString(c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
 			},
 			setup: func(c *Client) {
 				c.SetCookie("k1", "v1").
-					SetCookies(map[string]string{
-						"k2": "v2",
-						"k3": "v3",
-						"k4": "v4",
-					}).DelCookies("k4")
+					SetCookies(map[string]string{"k2": "v2", "k3": "v3", "k4": "v4"}).DelCookies("k4")
 			},
 			want: "v1v2v3",
 		},
@@ -1133,8 +1094,7 @@ func Test_Client_Settings_With_Server(t *testing.T) {
 				return nil
 			},
 			setup: func(c *Client) {
-				c.SetParam("k1", "v1").
-					AddParam("k2", "v2")
+				c.SetParam("k1", "v1").AddParam("k2", "v2")
 			},
 			want: "v1v2",
 		},
@@ -1179,16 +1139,11 @@ func (e clientTestASingleValue) run(t *testing.T, structArg any) {
 	t.Run("set "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
 
-		client := e.setMany(New(), map[string]string{
-			"foo": "bar",
-			"bar": "foo",
-		})
+		client := e.setMany(New(), map[string]string{"foo": "bar", "bar": "foo"})
 		require.Equal(t, "bar", e.get(client, "foo"))
 		require.Equal(t, "foo", e.get(client, "bar"))
 
-		e.setMany(client, map[string]string{
-			"foo": "bar1",
-		})
+		e.setMany(client, map[string]string{"foo": "bar1"})
 		require.Equal(t, "bar1", e.get(client, "foo"))
 		require.Equal(t, "foo", e.get(client, "bar"))
 	})
@@ -1205,10 +1160,7 @@ func (e clientTestASingleValue) run(t *testing.T, structArg any) {
 	t.Run("del "+e.noun+"s", func(t *testing.T) {
 		t.Parallel()
 
-		client := e.setMany(New(), map[string]string{
-			"foo": "bar",
-			"bar": "foo",
-		})
+		client := e.setMany(New(), map[string]string{"foo": "bar", "bar": "foo"})
 		require.Equal(t, "bar", e.get(client, "foo"))
 		require.Equal(t, "foo", e.get(client, "bar"))
 
@@ -1265,9 +1217,7 @@ func clientTestASeededJar(t *testing.T) *CookieJar {
 
 func Test_Client_CookieJar(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
-		return c.SendString(
-			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"),
-		)
+		return c.SendString(c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"))
 	}
 
 	jar := clientTestASeededJar(t)
@@ -1281,13 +1231,8 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 	t.Run("without expiration", func(t *testing.T) {
 		t.Parallel()
 		handler := func(c fiber.Ctx) error {
-			c.Cookie(&fiber.Cookie{
-				Name:  "k4",
-				Value: "v4",
-			})
-			return c.SendString(
-				c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"),
-			)
+			c.Cookie(&fiber.Cookie{Name: "k4", Value: "v4"})
+			return c.SendString(c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"))
 		}
 
 		jar := clientTestASeededJar(t)
@@ -1300,14 +1245,8 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 	t.Run("with expiration", func(t *testing.T) {
 		t.Parallel()
 		handler := func(c fiber.Ctx) error {
-			c.Cookie(&fiber.Cookie{
-				Name:    "k4",
-				Value:   "v4",
-				Expires: time.Now().Add(1 * time.Nanosecond),
-			})
-			return c.SendString(
-				c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"),
-			)
+			c.Cookie(&fiber.Cookie{Name: "k4", Value: "v4", Expires: time.Now().Add(1 * time.Nanosecond)})
+			return c.SendString(c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"))
 		}
 
 		jar := clientTestASeededJar(t)
@@ -1320,13 +1259,8 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 	t.Run("override cookie value", func(t *testing.T) {
 		t.Parallel()
 		handler := func(c fiber.Ctx) error {
-			c.Cookie(&fiber.Cookie{
-				Name:  "k1",
-				Value: "v2",
-			})
-			return c.SendString(
-				c.Cookies("k1") + c.Cookies("k2"),
-			)
+			c.Cookie(&fiber.Cookie{Name: "k1", Value: "v2"})
+			return c.SendString(c.Cookies("k1") + c.Cookies("k2"))
 		}
 
 		jar := AcquireCookieJar()
@@ -1412,11 +1346,7 @@ func Test_Client_QueryParam(t *testing.T) {
 	t.Run("del params", func(t *testing.T) {
 		t.Parallel()
 		req := New()
-		req.SetParam("foo", "bar").
-			SetParams(map[string]string{
-				"foo": "fiber",
-				"bar": "foo",
-			}).DelParams("foo", "bar")
+		req.SetParam("foo", "bar").SetParams(map[string]string{"foo": "fiber", "bar": "foo"}).DelParams("foo", "bar")
 
 		require.Empty(t, req.Param("foo"))
 		require.Empty(t, req.Param("bar"))
@@ -1439,9 +1369,7 @@ func Test_Client_PathParam_With_Server(t *testing.T) {
 
 	go start()
 
-	resp, err := New().SetDial(dial).
-		SetPathParam("path", "test").
-		Get("http://example.com/:path")
+	resp, err := New().SetDial(dial).SetPathParam("path", "test").Get("http://example.com/:path")
 
 	clientTestARequireOK(t, resp, err, "test")
 }
@@ -1793,10 +1721,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 func Test_Client_SetRetryConfig(t *testing.T) {
 	t.Parallel()
-	retryConfig := &retry.Config{
-		InitialInterval: 1 * time.Second,
-		MaxRetryCount:   3,
-	}
+	retryConfig := &retry.Config{InitialInterval: 1 * time.Second, MaxRetryCount: 3}
 
 	core, client, req := newCore(), New(), AcquireRequest()
 	req.SetURL("http://exampleretry.com")
@@ -1877,10 +1802,7 @@ func Benchmark_Client_Request_Send_ContextCancel(b *testing.B) {
 	for b.Loop() {
 		ctx, cancel := context.WithCancel(context.Background())
 
-		req := AcquireRequest().
-			SetClient(client).
-			SetURL("http://example.com").
-			SetMethod(fiber.MethodPost).
+		req := AcquireRequest().SetClient(client).SetURL("http://example.com").SetMethod(fiber.MethodPost).
 			SetContext(ctx)
 
 		go func(r *Request) {
@@ -1944,11 +1866,7 @@ func Test_Client_StreamResponseBody(t *testing.T) {
 	t.Run("with lb client", func(t *testing.T) {
 		t.Parallel()
 		hostClient := &fasthttp.HostClient{Addr: "example.com:80"}
-		lbClient := &fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{
-				hostClient,
-			},
-		}
+		lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hostClient}}
 		client := NewWithLBClient(lbClient)
 		client.SetStreamResponseBody(true)
 		require.True(t, client.StreamResponseBody())

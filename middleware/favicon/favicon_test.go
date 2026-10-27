@@ -136,9 +136,7 @@ func Benchmark_Middleware_Favicon(b *testing.B) {
 func Test_Favicon_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Use(New(Config{Next: func(_ fiber.Ctx) bool { return true }}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }

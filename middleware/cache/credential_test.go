@@ -1110,10 +1110,7 @@ func Test_refusalRecords_key(t *testing.T) {
 			return c
 		}
 		bearer := map[string]string{"Authorization": "Bearer one"}
-		for name, cfg := range map[string]Config{
-			"default key": {},
-			"custom key":  {KeyGenerator: pathKey},
-		} {
+		for name, cfg := range map[string]Config{"default key": {}, "custom key": {KeyGenerator: pathKey}} {
 			r := cacheTestCRecords(&cfg)
 			get := recordKeyOf(r, requestWith(bearer), "base", nil, true)
 			require.NotEmpty(t, get, name)

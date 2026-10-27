@@ -289,10 +289,7 @@ func Test_SessionLoggerTagRedactsSessionID(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New())
-	app.Use(logger.New(logger.Config{
-		Format: "${session-id}",
-		Stream: &buf,
-	}))
+	app.Use(logger.New(logger.Config{Format: "${session-id}", Stream: &buf}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	apptest.Expect(t, app, "/", fiber.StatusOK)
@@ -305,10 +302,7 @@ func Test_SessionLoggerTagWithOuterLoggerDoesNotPanic(t *testing.T) {
 	var buf bytes.Buffer
 
 	sessionHandler := New()
-	requestLogger := logger.New(logger.Config{
-		Format: "${session-id}",
-		Stream: &buf,
-	})
+	requestLogger := logger.New(logger.Config{Format: "${session-id}", Stream: &buf})
 
 	app := fiber.New()
 	app.Use(requestLogger)
@@ -350,10 +344,7 @@ func Test_Session_NewWithStore(t *testing.T) {
 	app.Post("/", func(c fiber.Ctx) error {
 		sess := FromContext(c)
 		id := sess.ID()
-		c.Cookie(&fiber.Cookie{
-			Name:  "session_id",
-			Value: id,
-		})
+		c.Cookie(&fiber.Cookie{Name: "session_id", Value: id})
 		return nil
 	})
 
@@ -429,10 +420,7 @@ func Test_Session_WithConfig(t *testing.T) {
 	app.Post("/", func(c fiber.Ctx) error {
 		sess := FromContext(c)
 		id := sess.ID()
-		c.Cookie(&fiber.Cookie{
-			Name:  "session_id_test",
-			Value: id,
-		})
+		c.Cookie(&fiber.Cookie{Name: "session_id_test", Value: id})
 		return nil
 	})
 

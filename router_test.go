@@ -117,9 +117,7 @@ func Test_hasFlashCookieExactMatch(t *testing.T) {
 	buildRequestWithCookie := func(t *testing.T, cookie string) *fasthttp.Request {
 		t.Helper()
 
-		rawRequest := strings.NewReader(
-			"GET / HTTP/1.1\r\nHost: localhost\r\nCookie: " + cookie + "\r\n\r\n",
-		)
+		rawRequest := strings.NewReader("GET / HTTP/1.1\r\nHost: localhost\r\nCookie: " + cookie + "\r\n\r\n")
 		req := new(fasthttp.Request)
 		require.NoError(t, req.Read(bufio.NewReader(rawRequest)))
 		return req
@@ -247,10 +245,7 @@ func Test_Route_Match_Param(t *testing.T) {
 			name: "same length", pattern: "/:param", param: "param",
 			requests: map[string]string{"/:param": ":param", "/test": "test"},
 		},
-		{
-			name: "star", pattern: "/*", param: "*",
-			requests: map[string]string{"/*": "*", "/test": "test"},
-		},
+		{name: "star", pattern: "/*", param: "*", requests: map[string]string{"/*": "*", "/test": "test"}},
 		{
 			name: "middleware", use: true, pattern: "/foo/*", param: "*",
 			requests: map[string]string{"/foo/*": "*", "/foo/bar/fasel": "bar/fasel"},
@@ -341,11 +336,7 @@ func Test_Route_Match_Star(t *testing.T) {
 	t.Parallel()
 
 	// without parameter
-	route := Route{
-		star:        true,
-		path:        "/*",
-		routeParser: routeParser{},
-	}
+	route := Route{star: true, path: "/*", routeParser: routeParser{}}
 	params := [maxParams]string{}
 	match := route.match("", "", &params, 0)
 	require.True(t, match)
@@ -900,11 +891,7 @@ func verifyRouteHandlerCounts(tb testing.TB, app *App, expectedRoutesCount int) 
 	var routes []RouteMessage
 	for _, routeStack := range app.stack {
 		for _, route := range routeStack {
-			routeMsg := RouteMessage{
-				name:   route.Name,
-				method: route.Method,
-				path:   route.Path,
-			}
+			routeMsg := RouteMessage{name: route.Name, method: route.Method, path: route.Path}
 
 			for _, handler := range route.Handlers {
 				routeMsg.handlers += runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name() + " "
@@ -1158,13 +1145,7 @@ func TestNormalizePath(t *testing.T) {
 		caseSensitive bool
 		strictRouting bool
 	}{
-		{
-			name:          "Empty path",
-			path:          "",
-			caseSensitive: true,
-			strictRouting: true,
-			expected:      "/",
-		},
+		{name: "Empty path", path: "", caseSensitive: true, strictRouting: true, expected: "/"},
 		{
 			name:          "No leading slash",
 			path:          "users",
@@ -1211,12 +1192,7 @@ func TestNormalizePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := &App{
-				config: Config{
-					CaseSensitive: tt.caseSensitive,
-					StrictRouting: tt.strictRouting,
-				},
-			}
+			app := &App{config: Config{CaseSensitive: tt.caseSensitive, StrictRouting: tt.strictRouting}}
 			result := app.normalizePath(tt.path)
 			require.Equal(t, tt.expected, result)
 		})
@@ -1453,10 +1429,7 @@ func Benchmark_Router_Handler(b *testing.B) {
 }
 
 func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
-	app := New(Config{
-		StrictRouting: true,
-		CaseSensitive: true,
-	})
+	app := New(Config{StrictRouting: true, CaseSensitive: true})
 	registerDummyRoutes(app)
 	appHandler := app.Handler()
 
@@ -3661,8 +3634,7 @@ func assertScanMatchesReference(t *testing.T, cfg *Config, withMiddleware, filte
 			require.Nil(t, hitRoute,
 				"router matched %q via %q but the reference scan found nothing",
 				path, routeLabel(hitRoute))
-			require.NotEqual(t, StatusOK, resp.StatusCode,
-				"unmatched path %q should not answer 200", path)
+			require.NotEqual(t, StatusOK, resp.StatusCode, "unmatched path %q should not answer 200", path)
 			continue
 		}
 
@@ -3704,12 +3676,7 @@ func routeLabel(r *Route) string {
 func Test_ResolveSkip_StaticSlashGate(t *testing.T) {
 	t.Parallel()
 
-	statics := []string{
-		"/health",
-		"/api/status",
-		"/a/b/c/d",
-		"/one/two/three/four/five/six",
-	}
+	statics := []string{"/health", "/api/status", "/a/b/c/d", "/one/two/three/four/five/six"}
 
 	app := New(Config{SkipUnmatchedRoutes: true})
 	app.Use(func(c Ctx) error { return c.Next() })
@@ -3835,11 +3802,9 @@ func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
 		if s := tree.slot(hash); s > maxSlot {
 			maxSlot = s
 		}
-		require.Less(t, tree.slot(hash), uint32(len(tree.hashes)),
-			"slot out of range for hash %#x", hash)
+		require.Less(t, tree.slot(hash), uint32(len(tree.hashes)), "slot out of range for hash %#x", hash)
 	}
-	require.Greater(t, maxSlot, uint32(len(tree.hashes)/2),
-		"probe starts never reach the upper half of the table")
+	require.Greater(t, maxSlot, uint32(len(tree.hashes)/2), "probe starts never reach the upper half of the table")
 
 	// The table still resolves every key to its own bucket.
 	for hash, want := range buckets {

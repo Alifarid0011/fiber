@@ -26,9 +26,7 @@ import (
 
 const CorrectKey = "correct-token_123./~+"
 
-var testConfig = fiber.TestConfig{
-	Timeout: 0,
-}
+var testConfig = fiber.TestConfig{Timeout: 0}
 
 const (
 	paramExtractorName      = "param"
@@ -423,10 +421,7 @@ func Test_TokenFromContext_None(t *testing.T) {
 func Test_TokenFromContext(t *testing.T) {
 	app := fiber.New()
 	// Wire up keyauth middleware to set TokenFromContext now
-	app.Use(New(Config{
-		Extractor: extractors.FromAuthHeader("Basic"),
-		Validator: validateCorrectKey,
-	}))
+	app.Use(New(Config{Extractor: extractors.FromAuthHeader("Basic"), Validator: validateCorrectKey}))
 	// Define a test handler that checks TokenFromContext
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
 
@@ -443,10 +438,7 @@ func Test_LogTagsRedactToken(t *testing.T) {
 		Extractor: extractors.FromAuthHeader("Bearer"),
 		Validator: func(_ fiber.Ctx, key string) (bool, error) { return key == CorrectKey, nil },
 	}))
-	app.Use(logger.New(logger.Config{
-		Format: "${api-key}",
-		Stream: &buf,
-	}))
+	app.Use(logger.New(logger.Config{Format: "${api-key}", Stream: &buf}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", bearerCorrectKey), fiber.StatusOK)
@@ -476,10 +468,7 @@ func Test_TokenFromContext_Types(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New(fiber.Config{PassLocalsToContext: true})
-	app.Use(New(Config{
-		Extractor: extractors.FromAuthHeader("Basic"),
-		Validator: validateCorrectKey,
-	}))
+	app.Use(New(Config{Extractor: extractors.FromAuthHeader("Basic"), Validator: validateCorrectKey}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		require.Equal(t, CorrectKey, TokenFromContext(c))
@@ -514,10 +503,7 @@ func Test_AuthScheme(t *testing.T) {
 			t.Parallel()
 
 			app := fiber.New()
-			app.Use(New(Config{
-				Extractor: extractors.FromAuthHeader(tc.scheme),
-				Validator: validateCorrectKey,
-			}))
+			app.Use(New(Config{Extractor: extractors.FromAuthHeader(tc.scheme), Validator: validateCorrectKey}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("API key is valid") })
 
 			req := apptest.Req(fiber.MethodGet, "/")

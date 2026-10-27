@@ -10,9 +10,7 @@ import (
 func Benchmark_CookieBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &CookieBinding{
-		EnableSplitting: true,
-	}
+	binder := &CookieBinding{EnableSplitting: true}
 
 	type User struct {
 		Name  string   `query:"name"`

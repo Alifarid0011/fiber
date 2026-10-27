@@ -23,9 +23,7 @@ func envvarTestVars(t *testing.T, app *fiber.App, target string) EnvVar {
 func Test_EnvVarStructWithExportVars(t *testing.T) {
 	t.Setenv("testKey", "testEnvValue")
 	t.Setenv("anotherEnvKey", "anotherEnvVal")
-	vars := newEnvVar(Config{
-		ExportVars: map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
-	})
+	vars := newEnvVar(Config{ExportVars: map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"}})
 
 	require.Equal(t, "testEnvValue", vars.Vars["testKey"])
 	require.Equal(t, "testDefaultVal", vars.Vars["testDefaultKey"])
@@ -45,18 +43,14 @@ func Test_EnvVarHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	app := fiber.New()
-	app.Use("/envvars", New(Config{
-		ExportVars: map[string]string{"testKey": ""},
-	}))
+	app.Use("/envvars", New(Config{ExportVars: map[string]string{"testKey": ""}}))
 
 	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "http://localhost/envvars"), fiber.StatusOK, string(expectedEnvVarResponse))
 }
 
 func Test_EnvVarHandlerNotMatched(t *testing.T) {
 	app := fiber.New()
-	app.Use("/envvars", New(Config{
-		ExportVars: map[string]string{"testKey": ""},
-	}))
+	app.Use("/envvars", New(Config{ExportVars: map[string]string{"testKey": ""}}))
 
 	app.Get("/another-path", func(ctx fiber.Ctx) error {
 		require.NoError(t, ctx.SendString("OK"))

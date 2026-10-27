@@ -87,10 +87,7 @@ type mutatingStorage struct {
 }
 
 func newFailingCacheStorage() *failingCacheStorage {
-	return &failingCacheStorage{
-		data: make(map[string][]byte),
-		errs: make(map[string]error),
-	}
+	return &failingCacheStorage{data: make(map[string][]byte), errs: make(map[string]error)}
 }
 
 var storageKinds = []string{"memory", "external"}
@@ -131,10 +128,7 @@ func getRoot(t *testing.T, app *fiber.App, headers map[string]string) reply {
 }
 
 func newMutatingStorage(mutate func(key string, value []byte) []byte) *mutatingStorage {
-	return &mutatingStorage{
-		data:   make(map[string][]byte),
-		mutate: mutate,
-	}
+	return &mutatingStorage{data: make(map[string][]byte), mutate: mutate}
 }
 
 func (s *mutatingStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
@@ -334,10 +328,7 @@ func newContextRecorderStorage() *contextRecorderStorage {
 }
 
 func contextRecordFrom(ctx context.Context, key string) contextRecord {
-	record := contextRecord{
-		key:      key,
-		canceled: errors.Is(ctx.Err(), context.Canceled),
-	}
+	record := contextRecord{key: key, canceled: errors.Is(ctx.Err(), context.Canceled)}
 	if value, ok := ctx.Value(markerKey).(string); ok {
 		record.value = value
 	}
@@ -594,8 +585,7 @@ func Test_Cache_CacheControl(t *testing.T) {
 	resp := apptest.Do(t, app, "/")
 	// max-age can be 10 or 11 depending on sub-second timing between store and read
 	cc := resp.Header.Get(fiber.HeaderCacheControl)
-	require.True(t, cc == "public, max-age=10" || cc == "public, max-age=11",
-		"unexpected Cache-Control: %s", cc)
+	require.True(t, cc == "public, max-age=10" || cc == "public, max-age=11", "unexpected Cache-Control: %s", cc)
 }
 
 func Test_Cache_CacheControl_Disabled(t *testing.T) {
@@ -603,10 +593,7 @@ func Test_Cache_CacheControl_Disabled(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Expiration:          10 * time.Second,
-		DisableCacheControl: true,
-	}))
+	app.Use(New(Config{Expiration: 10 * time.Second, DisableCacheControl: true}))
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
@@ -847,9 +834,7 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Expiration: 10 * time.Second,
-	}))
+	app.Use(New(Config{Expiration: 10 * time.Second}))
 
 	app.Get("/:id", func(c fiber.Ctx) error { return c.SendString(c.Params("id")) })
 
@@ -1095,10 +1080,7 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 		storage := newMutatingStorage(nil)
 		oversizedPath := "/" + strings.Repeat("a", maxKeyDimensionSegmentLength+1)
 		app := fiber.New()
-		app.Use(New(Config{
-			Expiration: 1 * time.Hour,
-			Storage:    storage,
-		}))
+		app.Use(New(Config{Expiration: 1 * time.Hour, Storage: storage}))
 		app.Get(oversizedPath, func(c fiber.Ctx) error { return c.SendString("ok") })
 
 		cacheTestAExpect(t, app, oversizedPath, cacheMiss)
@@ -1263,9 +1245,7 @@ func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		StoreResponseHeaders: true,
-	}))
+	app.Use(New(Config{StoreResponseHeaders: true}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Response().Header.Add("X-Foobar", "foobar")
@@ -1418,9 +1398,7 @@ func Test_StoreResponseHeaders_DropsSetCookie(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		StoreResponseHeaders: true,
-	}))
+	app.Use(New(Config{StoreResponseHeaders: true}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
@@ -1453,9 +1431,7 @@ func Test_StoreResponseHeaders_KeepsRepeatedFieldLines(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		StoreResponseHeaders: true,
-	}))
+	app.Use(New(Config{StoreResponseHeaders: true}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Response().Header.Add("Vary", "Cookie")
@@ -1473,10 +1449,7 @@ func Test_StoreResponseHeaders_KeepsRepeatedFieldLines(t *testing.T) {
 	// Vary is carried by the entry itself rather than by the stored header
 	// list, and comes back on one line with every name (RFC 9110 §5.3).
 	require.Equal(t, []string{"Cookie,Accept-Encoding"}, resp.Header.Values("Vary"))
-	require.Equal(t,
-		[]string{"default-src 'none'", "script-src 'self'"},
-		resp.Header.Values("Content-Security-Policy"),
-	)
+	require.Equal(t, []string{"default-src 'none'", "script-src 'self'"}, resp.Header.Values("Content-Security-Policy"))
 	// A name sent once is still restored once, so the fix did not turn Set into
 	// an unconditional Add.
 	require.Equal(t, []string{"only"}, resp.Header.Values("X-Single"))
@@ -1544,9 +1517,7 @@ func Test_CustomCacheHeader(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(New(Config{
-		CacheHeader: "Cache-Status",
-	}))
+	app.Use(New(Config{CacheHeader: "Cache-Status"}))
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello, World!") })
 
@@ -1849,10 +1820,7 @@ func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
 func Test_CacheStorage_CustomHeaders(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		Storage:  memory.New(),
-		MaxBytes: 10 * 1024 * 1024,
-	}))
+	app.Use(New(Config{Storage: memory.New(), MaxBytes: 10 * 1024 * 1024}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Response().Header.Set("Content-Type", "text/xml")
@@ -1947,11 +1915,7 @@ func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 
 			probe := &accountingProbe{}
 			app := fiber.New()
-			app.Use(New(Config{
-				MaxBytes:   1500,
-				Expiration: time.Hour,
-				accounting: probe.record,
-			}))
+			app.Use(New(Config{MaxBytes: 1500, Expiration: time.Hour, accounting: probe.record}))
 			app.Get("/*", func(c fiber.Ctx) error { return c.Send(make([]byte, 600)) })
 
 			cacheTestAExpect(t, app, "/x", cacheMiss)
@@ -2001,12 +1965,7 @@ func Test_Cache_FailedRefresh(t *testing.T) {
 			storage := newFailingCacheStorage()
 			probe := &accountingProbe{}
 			app := fiber.New()
-			app.Use(New(Config{
-				Storage:    storage,
-				MaxBytes:   1500,
-				Expiration: time.Hour,
-				accounting: probe.record,
-			}))
+			app.Use(New(Config{Storage: storage, MaxBytes: 1500, Expiration: time.Hour, accounting: probe.record}))
 			app.Get("/", func(c fiber.Ctx) error { return c.Send(make([]byte, 600)) })
 
 			apptest.Expect(t, app, "/", fiber.StatusOK)
@@ -2034,11 +1993,7 @@ func Test_Cache_UncacheableResponseDoesNotEvict(t *testing.T) {
 
 	probe := &accountingProbe{}
 	app := fiber.New()
-	app.Use(New(Config{
-		MaxBytes:   10,
-		Expiration: time.Hour,
-		accounting: probe.record,
-	}))
+	app.Use(New(Config{MaxBytes: 10, Expiration: time.Hour, accounting: probe.record}))
 	app.Get("/a", func(c fiber.Ctx) error { return c.SendString("aaaaa") })
 	app.Get("/b", func(c fiber.Ctx) error {
 		// max-age=0 is never stored, and the body only fits if /a is evicted.
@@ -2058,10 +2013,7 @@ func Test_Cache_UncacheableResponseDoesNotEvict(t *testing.T) {
 func Test_Cache_MaxBytesOrder(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		MaxBytes:            2,
-		ExpirationGenerator: stableAscendingExpiration(),
-	}))
+	app.Use(New(Config{MaxBytes: 2, ExpirationGenerator: stableAscendingExpiration()}))
 
 	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("1") })
 
@@ -2092,10 +2044,7 @@ func Test_Cache_MaxBytesSizes(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{
-		MaxBytes:            7,
-		ExpirationGenerator: stableAscendingExpiration(),
-	}))
+	app.Use(New(Config{MaxBytes: 7, ExpirationGenerator: stableAscendingExpiration()}))
 
 	app.Get("/*", func(c fiber.Ctx) error {
 		path := c.RequestCtx().URI().LastPathSegment()
@@ -2954,9 +2903,7 @@ func Test_CacheVarySeparatesVariants(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|vary-separated" },
-	}))
+	app.Use(New(Config{KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|vary-separated" }}))
 
 	var count int
 	app.Get("/", func(c fiber.Ctx) error {
@@ -3146,10 +3093,7 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 			name:                  "no-store",
 			setUncacheableHeaders: func(c fiber.Ctx) { c.Set(fiber.HeaderCacheControl, "no-store") },
 		},
-		{
-			name:                  "vary-star",
-			setUncacheableHeaders: func(c fiber.Ctx) { c.Set(fiber.HeaderVary, "*") },
-		},
+		{name: "vary-star", setUncacheableHeaders: func(c fiber.Ctx) { c.Set(fiber.HeaderVary, "*") }},
 	}
 
 	for _, tt := range tests {
@@ -3879,11 +3823,7 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 
 	storage := newMutatingStorage(nil)
 	app := fiber.New()
-	app.Use(New(Config{
-		CacheHeader: cacheHeader,
-		Expiration:  time.Hour,
-		Storage:     storage,
-	}))
+	app.Use(New(Config{CacheHeader: cacheHeader, Expiration: time.Hour, Storage: storage}))
 
 	var originCalls atomic.Int32
 	app.Get("/", func(c fiber.Ctx) error {
@@ -4206,9 +4146,7 @@ func Benchmark_Cache_Miss(b *testing.B) {
 func Benchmark_Cache_Storage(b *testing.B) {
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Storage: memory.New(),
-	}))
+	app.Use(New(Config{Storage: memory.New()}))
 
 	app.Get("/demo", func(c fiber.Ctx) error {
 		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
@@ -4241,9 +4179,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 
 func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 	app := fiber.New()
-	app.Use(New(Config{
-		StoreResponseHeaders: true,
-	}))
+	app.Use(New(Config{StoreResponseHeaders: true}))
 
 	app.Get("/demo", func(c fiber.Ctx) error {
 		c.Response().Header.Add("X-Foobar", "foobar")
@@ -4280,9 +4216,7 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 
 func Benchmark_Cache_QueryMethod(b *testing.B) {
 	app := fiber.New()
-	app.Use(New(Config{
-		Methods: []string{fiber.MethodQuery},
-	}))
+	app.Use(New(Config{Methods: []string{fiber.MethodQuery}}))
 
 	app.Query("/demo", func(c fiber.Ctx) error { return c.SendString("ok") })
 
@@ -4371,9 +4305,7 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 
 			app := fiber.New()
 
-			app.Use(New(Config{
-				MaxBytes: 100,
-			}))
+			app.Use(New(Config{MaxBytes: 100}))
 
 			requestCount := 0
 			app.Get("/test", func(c fiber.Ctx) error {
@@ -4439,9 +4371,7 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 
 		app := fiber.New()
 
-		app.Use(New(Config{
-			MaxBytes: 100,
-		}))
+		app.Use(New(Config{MaxBytes: 100}))
 
 		requestCount := 0
 		app.Get("/test", func(c fiber.Ctx) error {
@@ -4479,90 +4409,49 @@ func Test_parseCacheControlDirectives_QuotedStrings(t *testing.T) {
 		expected map[string]string
 		input    string
 	}{
+		{name: "simple quoted value", input: `community="UCI"`, expected: map[string]string{"community": "UCI"}},
 		{
-			name:  "simple quoted value",
-			input: `community="UCI"`,
-			expected: map[string]string{
-				"community": "UCI",
-			},
+			name:     "multiple directives with quoted values",
+			input:    `max-age=3600, community="UCI", custom="value"`,
+			expected: map[string]string{"max-age": "3600", "community": "UCI", "custom": "value"},
 		},
 		{
-			name:  "multiple directives with quoted values",
-			input: `max-age=3600, community="UCI", custom="value"`,
-			expected: map[string]string{
-				"max-age":   "3600",
-				"community": "UCI",
-				"custom":    "value",
-			},
+			name:     "quoted value with spaces",
+			input:    `custom="value with spaces"`,
+			expected: map[string]string{"custom": "value with spaces"},
 		},
 		{
-			name:  "quoted value with spaces",
-			input: `custom="value with spaces"`,
-			expected: map[string]string{
-				"custom": "value with spaces",
-			},
+			name:     "quoted value with escaped quote",
+			input:    `custom="value with \"quotes\""`,
+			expected: map[string]string{"custom": `value with "quotes"`},
 		},
 		{
-			name:  "quoted value with escaped quote",
-			input: `custom="value with \"quotes\""`,
-			expected: map[string]string{
-				"custom": `value with "quotes"`,
-			},
+			name:     "quoted value with escaped backslash",
+			input:    `custom="value with \\ backslash"`,
+			expected: map[string]string{"custom": `value with \ backslash`},
 		},
 		{
-			name:  "quoted value with escaped backslash",
-			input: `custom="value with \\ backslash"`,
-			expected: map[string]string{
-				"custom": `value with \ backslash`,
-			},
+			name:     "mixed quoted and unquoted values",
+			input:    `max-age=3600, community="UCI", no-cache, custom="test"`,
+			expected: map[string]string{"max-age": "3600", "community": "UCI", "no-cache": "", "custom": "test"},
+		},
+		{name: "quoted empty value", input: `custom=""`, expected: map[string]string{"custom": ""}},
+		{
+			name:     "spaces around quoted value",
+			input:    `custom = "value" , another="test"`,
+			expected: map[string]string{"custom": "value", "another": "test"},
 		},
 		{
-			name:  "mixed quoted and unquoted values",
-			input: `max-age=3600, community="UCI", no-cache, custom="test"`,
-			expected: map[string]string{
-				"max-age":   "3600",
-				"community": "UCI",
-				"no-cache":  "",
-				"custom":    "test",
-			},
+			name:     "tabs around directives and values",
+			input:    "\tmax-age\t=\t3600\t,\tcommunity\t=\t\"UCI\"\t",
+			expected: map[string]string{"max-age": "3600", "community": "UCI"},
 		},
 		{
-			name:  "quoted empty value",
-			input: `custom=""`,
-			expected: map[string]string{
-				"custom": "",
-			},
+			name:     "whitespace other than SP and HTAB is kept",
+			input:    "max-age=\v3600",
+			expected: map[string]string{"max-age": "\v3600"},
 		},
-		{
-			name:  "spaces around quoted value",
-			input: `custom = "value" , another="test"`,
-			expected: map[string]string{
-				"custom":  "value",
-				"another": "test",
-			},
-		},
-		{
-			name:  "tabs around directives and values",
-			input: "\tmax-age\t=\t3600\t,\tcommunity\t=\t\"UCI\"\t",
-			expected: map[string]string{
-				"max-age":   "3600",
-				"community": "UCI",
-			},
-		},
-		{
-			name:  "whitespace other than SP and HTAB is kept",
-			input: "max-age=\v3600",
-			expected: map[string]string{
-				"max-age": "\v3600",
-			},
-		},
-		{
-			name:  "unquoted token value",
-			input: `max-age=3600`,
-			expected: map[string]string{
-				"max-age": "3600",
-			},
-		},
+		{name: "unquoted token value", input: `max-age=3600`, expected: map[string]string{"max-age": "3600"}},
 		{
 			name:  "complex mixed case",
 			input: `max-age=3600, s-maxage=7200, community="UCI", no-store, custom="value with \"escaped\" quotes"`,
@@ -4615,10 +4504,7 @@ func Test_Cache_MaxBytes_InsufficientSpace(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
 
-		app.Use(New(Config{
-			MaxBytes:            15,
-			ExpirationGenerator: stableAscendingExpiration(),
-		}))
+		app.Use(New(Config{MaxBytes: 15, ExpirationGenerator: stableAscendingExpiration()}))
 
 		app.Get("/*", func(c fiber.Ctx) error {
 			path := c.Path()
@@ -4642,11 +4528,7 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 	storage := newFailingCacheStorage()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		MaxBytes:   4,
-		Expiration: 1 * time.Hour,
-		Storage:    storage,
-	}))
+	app.Use(New(Config{MaxBytes: 4, Expiration: 1 * time.Hour, Storage: storage}))
 
 	app.Get("/:name", func(c fiber.Ctx) error { return c.SendString("data") })
 
@@ -4699,10 +4581,7 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 		const numGoroutines = 20
 		const requestsPerGoroutine = 5
 
-		app.Use(New(Config{
-			MaxBytes:   maxBytes,
-			Expiration: 10 * time.Second,
-		}))
+		app.Use(New(Config{MaxBytes: maxBytes, Expiration: 10 * time.Second}))
 
 		app.Get("/*", func(c fiber.Ctx) error {
 			// Return data that will fill up the cache
@@ -4744,10 +4623,7 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 		const maxBytes = uint(200)
 		const numRequests = 10
 
-		app.Use(New(Config{
-			MaxBytes:   maxBytes,
-			Expiration: 10 * time.Second,
-		}))
+		app.Use(New(Config{MaxBytes: maxBytes, Expiration: 10 * time.Second}))
 
 		app.Get("/*", func(c fiber.Ctx) error {
 			// Each response is about 50 bytes, so we'll exceed capacity
@@ -5114,10 +4990,8 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 			second:       cacheHit,
 		},
 		{
-			name: "custom key generator",
-			cfg: Config{
-				KeyGenerator: func(c fiber.Ctx) string { return "custom-" + c.Path() },
-			},
+			name:   "custom key generator",
+			cfg:    Config{KeyGenerator: func(c fiber.Ctx) string { return "custom-" + c.Path() }},
 			first:  cacheMiss,
 			second: cacheHit,
 		},
@@ -5214,10 +5088,7 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 		t.Parallel()
 		storage := newFailingCacheStorage()
 		app := fiber.New()
-		app.Use(New(Config{
-			Expiration: 1 * time.Hour,
-			Storage:    storage,
-		}))
+		app.Use(New(Config{Expiration: 1 * time.Hour, Storage: storage}))
 		app.Get("/test", func(c fiber.Ctx) error { return c.SendString("test content") })
 
 		cacheTestBExpect(t, app, "/test", cacheMiss)
@@ -5332,10 +5203,7 @@ func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 	t.Run("body larger than MaxBytes", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
-		app.Use(New(Config{
-			Expiration: 1 * time.Hour,
-			MaxBytes:   10,
-		}))
+		app.Use(New(Config{Expiration: 1 * time.Hour, MaxBytes: 10}))
 		app.Get("/test", func(c fiber.Ctx) error { return c.Send(make([]byte, 100)) })
 
 		cacheTestBExpect(t, app, "/test", cacheUnreachable)
@@ -6051,11 +5919,7 @@ func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 			t.Parallel()
 
 			clock := newTestClock(time.Unix(1_700_000_000, 0))
-			cfg := Config{
-				Expiration:   time.Minute,
-				clock:        clock.Now,
-				KeyGenerator: pathKey,
-			}
+			cfg := Config{Expiration: time.Minute, clock: clock.Now, KeyGenerator: pathKey}
 			if tc.declared {
 				cfg.KeyCredentialHeaders = []string{"X-Company-Token"}
 			}
@@ -6103,10 +5967,7 @@ func Test_configDefault_KeyCredentialHeaders(t *testing.T) {
 		wantCarrying    []string // the KeyHeaders that carry a credential
 		cfg             Config
 	}{
-		{
-			name:           "unset",
-			wantKeyHeaders: []string{"accept", "accept-encoding", "accept-language"},
-		},
+		{name: "unset", wantKeyHeaders: []string{"accept", "accept-encoding", "accept-language"}},
 		{
 			name:            "joins the default key headers",
 			cfg:             Config{KeyCredentialHeaders: []string{"X-Company-Token"}},
@@ -6125,11 +5986,8 @@ func Test_configDefault_KeyCredentialHeaders(t *testing.T) {
 			wantCarrying:    []string{"x-company-token", "x-other"},
 		},
 		{
-			name: "with header partitioning otherwise disabled",
-			cfg: Config{
-				KeyHeaders:           []string{},
-				KeyCredentialHeaders: []string{"X-Company-Token"},
-			},
+			name:            "with header partitioning otherwise disabled",
+			cfg:             Config{KeyHeaders: []string{}, KeyCredentialHeaders: []string{"X-Company-Token"}},
 			wantKeyHeaders:  []string{"x-company-token"},
 			wantCredentials: []string{"x-company-token"},
 			wantCarrying:    []string{"x-company-token"},

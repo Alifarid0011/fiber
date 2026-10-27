@@ -32,12 +32,7 @@ func Test_ConfigDefault(t *testing.T) {
 func Test_ConfigOverride(t *testing.T) {
 	t.Parallel()
 
-	cfg := configDefault(Config{
-		PageKey:      "p",
-		LimitKey:     "l",
-		DefaultPage:  5,
-		DefaultLimit: 50,
-	})
+	cfg := configDefault(Config{PageKey: "p", LimitKey: "l", DefaultPage: 5, DefaultLimit: 50})
 	require.Equal(t, "p", cfg.PageKey)
 	require.Equal(t, "l", cfg.LimitKey)
 	require.Equal(t, 5, cfg.DefaultPage)
@@ -54,10 +49,7 @@ func Test_ConfigDefaultCursorKey(t *testing.T) {
 func Test_ConfigOverrideCursorKey(t *testing.T) {
 	t.Parallel()
 
-	cfg := configDefault(Config{
-		CursorKey:   "after",
-		CursorParam: "starting_after",
-	})
+	cfg := configDefault(Config{CursorKey: "after", CursorParam: "starting_after"})
 	require.Equal(t, "after", cfg.CursorKey)
 	require.Equal(t, "starting_after", cfg.CursorParam)
 }
@@ -65,10 +57,7 @@ func Test_ConfigOverrideCursorKey(t *testing.T) {
 func Test_ConfigNegativeDefaults(t *testing.T) {
 	t.Parallel()
 
-	cfg := configDefault(Config{
-		DefaultPage:  -1,
-		DefaultLimit: -1,
-	})
+	cfg := configDefault(Config{DefaultPage: -1, DefaultLimit: -1})
 	require.Equal(t, 1, cfg.DefaultPage)
 	require.Equal(t, 10, cfg.DefaultLimit)
 }
@@ -209,11 +198,7 @@ func Test_PageInfoPreviousPageURLWithExistingQueryParams(t *testing.T) {
 func Test_PageInfoCursorFields(t *testing.T) {
 	t.Parallel()
 
-	p := &PageInfo{
-		Cursor:     "abc123",
-		HasMore:    true,
-		NextCursor: "def456",
-	}
+	p := &PageInfo{Cursor: "abc123", HasMore: true, NextCursor: "def456"}
 
 	require.Equal(t, "abc123", p.Cursor)
 	require.True(t, p.HasMore)
@@ -223,10 +208,7 @@ func Test_PageInfoCursorFields(t *testing.T) {
 func Test_CursorValuesRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	original := map[string]any{
-		"id":         float64(42),
-		"created_at": "2026-01-01T00:00:00Z",
-	}
+	original := map[string]any{"id": float64(42), "created_at": "2026-01-01T00:00:00Z"}
 
 	p := &PageInfo{}
 	require.NoError(t, p.SetNextCursor(original))
@@ -339,9 +321,7 @@ func Test_PaginateWithQueries(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{
-		DefaultSort: "id",
-	}))
+	app.Use(New(Config{DefaultSort: "id"}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		pageInfo, ok := FromContext(c)
@@ -398,16 +378,8 @@ func Test_PaginateRequests(t *testing.T) {
 			want:   PageInfo{Page: 1, Limit: 20, Offset: 20, Sort: idAsc},
 			start:  20,
 		},
-		{
-			name:   "defaults when no queries",
-			target: "/",
-			want:   PageInfo{Page: 1, Limit: 10, Sort: idAsc},
-		},
-		{
-			name:   "defaults when no page",
-			target: "/?limit=20",
-			want:   PageInfo{Page: 1, Limit: 20, Sort: idAsc},
-		},
+		{name: "defaults when no queries", target: "/", want: PageInfo{Page: 1, Limit: 10, Sort: idAsc}},
+		{name: "defaults when no page", target: "/?limit=20", want: PageInfo{Page: 1, Limit: 20, Sort: idAsc}},
 		{
 			name:   "defaults when no limit",
 			target: "/?page=2",
@@ -504,9 +476,7 @@ func Test_PaginateFromContextWithoutNew(t *testing.T) {
 func Test_PaginateNextSkip(t *testing.T) {
 	t.Parallel()
 
-	app := paginateTestApp(Config{
-		Next: func(_ fiber.Ctx) bool { return true },
-	})
+	app := paginateTestApp(Config{Next: func(_ fiber.Ctx) bool { return true }})
 
 	apptest.Expect(t, app, "/", fiber.StatusBadRequest)
 }
@@ -576,13 +546,7 @@ func Test_ParseSortQuery(t *testing.T) {
 		defaultSort  string
 		expected     []SortField
 	}{
-		{
-			"Empty query",
-			"",
-			[]string{"id", "name", "date"},
-			"id",
-			[]SortField{{Field: "id", Order: ASC}},
-		},
+		{"Empty query", "", []string{"id", "name", "date"}, "id", []SortField{{Field: "id", Order: ASC}}},
 		{
 			"Single allowed field",
 			"name",
@@ -595,11 +559,7 @@ func Test_ParseSortQuery(t *testing.T) {
 			"name,-date,id",
 			[]string{"id", "name", "date"},
 			"id",
-			[]SortField{
-				{Field: "name", Order: ASC},
-				{Field: "date", Order: DESC},
-				{Field: "id", Order: ASC},
-			},
+			[]SortField{{Field: "name", Order: ASC}, {Field: "date", Order: DESC}, {Field: "id", Order: ASC}},
 		},
 		{
 			"Disallowed field",
@@ -629,20 +589,8 @@ func Test_ParseSortQuery(t *testing.T) {
 			"id",
 			[]SortField{{Field: "id", Order: ASC}},
 		},
-		{
-			"Bare dash is skipped",
-			"-",
-			nil,
-			"id",
-			[]SortField{{Field: "id", Order: ASC}},
-		},
-		{
-			"Dash in comma list is skipped",
-			"name,-,email",
-			nil,
-			"id",
-			[]SortField{{Field: "id", Order: ASC}},
-		},
+		{"Bare dash is skipped", "-", nil, "id", []SortField{{Field: "id", Order: ASC}}},
+		{"Dash in comma list is skipped", "name,-,email", nil, "id", []SortField{{Field: "id", Order: ASC}}},
 	}
 
 	for _, tt := range tests {
@@ -809,11 +757,7 @@ func Benchmark_PaginateMiddlewareWithCustomConfig(b *testing.B) {
 
 func Benchmark_PaginateCursorMiddleware(b *testing.B) {
 	app := fiber.New()
-	app.Use(New(Config{
-		SortKey:      "sort",
-		DefaultSort:  "id",
-		AllowedSorts: []string{"id", "name", "date"},
-	}))
+	app.Use(New(Config{SortKey: "sort", DefaultSort: "id", AllowedSorts: []string{"id", "name", "date"}}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		pageInfo, _ := FromContext(c)

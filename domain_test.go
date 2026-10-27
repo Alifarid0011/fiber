@@ -398,8 +398,7 @@ func Test_Domain_RouteChain(t *testing.T) {
 
 	app := New()
 
-	app.Domain("api.example.com").RouteChain("/api/users").
-		Get(func(c Ctx) error { return c.SendString("get users") }).
+	app.Domain("api.example.com").RouteChain("/api/users").Get(func(c Ctx) error { return c.SendString("get users") }).
 		Post(func(c Ctx) error { return c.SendString("create user") })
 
 	// GET
@@ -480,8 +479,7 @@ func Test_Domain_Chaining(t *testing.T) {
 
 	// Methods should return the domain router for chaining
 	domain := app.Domain("api.example.com")
-	domain.
-		Get("/a", func(c Ctx) error { return c.SendString("a") }).
+	domain.Get("/a", func(c Ctx) error { return c.SendString("a") }).
 		Post("/b", func(c Ctx) error { return c.SendString("b") })
 
 	domainTestExpect(t, app, "api.example.com", "/a", StatusOK)

@@ -54,10 +54,7 @@ func Test_Redirect_To(t *testing.T) {
 func Test_Redirect_WithFlashMessages(t *testing.T) {
 	t.Parallel()
 
-	flash := redirectionMsgs{
-		{key: "success", value: "1"},
-		{key: "message", value: "test"},
-	}
+	flash := redirectionMsgs{{key: "success", value: "1"}, {key: "message", value: "test"}}
 	flashWithInput := redirectionMsgs{
 		{key: "success", value: "1"},
 		{key: "message", value: "test"},
@@ -89,10 +86,7 @@ func Test_Redirect_WithFlashMessages(t *testing.T) {
 				return r.With("success", "2").With("success", "1").With("message", "test", 2).To("http://example.com")
 			},
 			location: "http://example.com",
-			want: redirectionMsgs{
-				{key: "success", value: "1"},
-				{key: "message", value: "test", level: 2},
-			},
+			want:     redirectionMsgs{{key: "success", value: "1"}, {key: "message", value: "test", level: 2}},
 		},
 		{
 			name:     "Back",
@@ -190,11 +184,7 @@ func Test_Redirect_Route_Location(t *testing.T) {
 			config:  []RedirectConfig{{Params: Map{"name": "fiber"}}},
 			want:    "/user/fiber",
 		},
-		{
-			name:    "optional param without a value",
-			pattern: "/user/:name?",
-			want:    "/user/",
-		},
+		{name: "optional param without a value", pattern: "/user/:name?", want: "/user/"},
 		{
 			name:    "greedy param",
 			pattern: "/user/+",
@@ -248,10 +238,7 @@ func Test_Redirect_Route_WithQueries(t *testing.T) {
 			app.Get("/user/:name", emptyHandler).Name("user")
 			c := apptest.Ctx(t, app)
 
-			err := c.Redirect().Route("user", RedirectConfig{
-				Params:  Map{"name": "fiber"},
-				Queries: tc.queries,
-			})
+			err := c.Redirect().Route("user", RedirectConfig{Params: Map{"name": "fiber"}, Queries: tc.queries})
 			require.NoError(t, err)
 			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
 
@@ -272,11 +259,7 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 		param string
 		want  string
 	}{
-		{
-			name:  "plain",
-			param: "fiber",
-			want:  "/user/fiber?q=1",
-		},
+		{name: "plain", param: "fiber", want: "/user/fiber?q=1"},
 		{
 			// A parameter cannot introduce an earlier query string.
 			name:  "param opens a query",
@@ -289,11 +272,7 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 			param: "a#b",
 			want:  "/user/a%23b?q=1",
 		},
-		{
-			name:  "param opens both",
-			param: "a?b=2#c",
-			want:  "/user/a%3Fb=2%23c?q=1",
-		},
+		{name: "param opens both", param: "a?b=2#c", want: "/user/a%3Fb=2%23c?q=1"},
 	}
 
 	for _, tc := range tests {
@@ -321,48 +300,24 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 		param string
 		want  string
 	}{
-		{
-			name:  "embedded slash",
-			param: "docs/index.html",
-			want:  "/docs/index.html",
-		},
-		{
-			name:  "query delimiter",
-			param: "a?b=2",
-			want:  "/a%3Fb=2",
-		},
-		{
-			name:  "fragment delimiter",
-			param: "a#b",
-			want:  "/a%23b",
-		},
-		{
-			name:  "percent",
-			param: "100%",
-			want:  "/100%25",
-		},
+		{name: "embedded slash", param: "docs/index.html", want: "/docs/index.html"},
+		{name: "query delimiter", param: "a?b=2", want: "/a%3Fb=2"},
+		{name: "fragment delimiter", param: "a#b", want: "/a%23b"},
+		{name: "percent", param: "100%", want: "/100%25"},
 		{
 			// A leading slash stays on-origin after URL normalization.
 			name:  "leading slash",
 			param: "/evil.com",
 			want:  "/evil.com",
 		},
-		{
-			name:  "leading slash run",
-			param: "//evil.com",
-			want:  "/evil.com",
-		},
+		{name: "leading slash run", param: "//evil.com", want: "/evil.com"},
 		{
 			// A backslash is encoded before a WHATWG parser can fold it.
 			name:  "leading backslash",
 			param: `\evil.com`,
 			want:  "/%5Cevil.com",
 		},
-		{
-			name:  "mixed slash run",
-			param: `/\/evil.com`,
-			want:  "/%5C/evil.com",
-		},
+		{name: "mixed slash run", param: `/\/evil.com`, want: "/%5C/evil.com"},
 		{
 			// Controls are encoded before URL input preprocessing can remove them.
 			name:  "tab before the slash",
@@ -384,9 +339,7 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 			app.Get("/*", func(c Ctx) error { return c.JSON(c.Params("*")) }).Name("wildcard")
 			c := apptest.Ctx(t, app)
 
-			err := c.Redirect().Route("wildcard", RedirectConfig{
-				Params: Map{"*": tc.param},
-			})
+			err := c.Redirect().Route("wildcard", RedirectConfig{Params: Map{"*": tc.param}})
 			require.NoError(t, err)
 			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
 
@@ -620,24 +573,10 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	c := apptest.CtxAs[*DefaultCtx](t, app)
 
 	msgs := redirectionMsgs{
-		{
-			key:   "success",
-			value: "1",
-		},
-		{
-			key:   "message",
-			value: "test",
-		},
-		{
-			key:        "name",
-			value:      "tom",
-			isOldInput: true,
-		},
-		{
-			key:        "id",
-			value:      "1",
-			isOldInput: true,
-		},
+		{key: "success", value: "1"},
+		{key: "message", value: "test"},
+		{key: "name", value: "tom", isOldInput: true},
+		{key: "id", value: "1", isOldInput: true},
 	}
 
 	val, err := msgs.MarshalMsg(nil)
@@ -647,45 +586,22 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 
 	c.Redirect().parseAndClearFlashMessages()
 
-	require.Equal(t, FlashMessage{
-		Key:   "success",
-		Value: "1",
-		Level: 0,
-	}, c.Redirect().Message("success"))
+	require.Equal(t, FlashMessage{Key: "success", Value: "1", Level: 0}, c.Redirect().Message("success"))
 
-	require.Equal(t, FlashMessage{
-		Key:   "message",
-		Value: "test",
-		Level: 0,
-	}, c.Redirect().Message("message"))
+	require.Equal(t, FlashMessage{Key: "message", Value: "test", Level: 0}, c.Redirect().Message("message"))
 
 	require.Equal(t, FlashMessage{}, c.Redirect().Message("success"))
 	require.Equal(t, FlashMessage{}, c.Redirect().Message("not_message"))
 
 	require.Empty(t, c.Redirect().Messages())
 
-	require.Equal(t, OldInputData{
-		Key:   "id",
-		Value: "1",
-	}, c.Redirect().OldInput("id"))
+	require.Equal(t, OldInputData{Key: "id", Value: "1"}, c.Redirect().OldInput("id"))
 
-	require.Equal(t, OldInputData{
-		Key:   "name",
-		Value: "tom",
-	}, c.Redirect().OldInput("name"))
+	require.Equal(t, OldInputData{Key: "name", Value: "tom"}, c.Redirect().OldInput("name"))
 
 	require.Equal(t, OldInputData{}, c.Redirect().OldInput("not_name"))
 
-	require.Equal(t, []OldInputData{
-		{
-			Key:   "name",
-			Value: "tom",
-		},
-		{
-			Key:   "id",
-			Value: "1",
-		},
-	}, c.Redirect().OldInputs())
+	require.Equal(t, []OldInputData{{Key: "name", Value: "tom"}, {Key: "id", Value: "1"}}, c.Redirect().OldInputs())
 
 	assertFlashCookieCleared(t, string(c.Response().Header.Peek(HeaderSetCookie)))
 
@@ -729,31 +645,14 @@ func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {
 	c.Redirect().parseAndClearFlashMessages()
 
 	require.Equal(t, []FlashMessage{
-		{
-			Key:   "success",
-			Value: "1",
-			Level: 0,
-		},
-		{
-			Key:   "message",
-			Value: "test",
-			Level: 0,
-		},
+		{Key: "success", Value: "1", Level: 0},
+		{Key: "message", Value: "test", Level: 0},
 	}, c.Redirect().Messages())
 
 	require.Empty(t, c.Redirect().Messages())
 	require.Equal(t, FlashMessage{}, c.Redirect().Message("success"))
 
-	require.Equal(t, []OldInputData{
-		{
-			Key:   "name",
-			Value: "tom",
-		},
-		{
-			Key:   "id",
-			Value: "1",
-		},
-	}, c.Redirect().OldInputs())
+	require.Equal(t, []OldInputData{{Key: "name", Value: "tom"}, {Key: "id", Value: "1"}}, c.Redirect().OldInputs())
 }
 
 func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
@@ -850,11 +749,7 @@ func Benchmark_Redirect_Route(b *testing.B) {
 	var err error
 
 	for b.Loop() {
-		err = c.Redirect().Route("user", RedirectConfig{
-			Params: Map{
-				"name": "fiber",
-			},
-		})
+		err = c.Redirect().Route("user", RedirectConfig{Params: Map{"name": "fiber"}})
 	}
 
 	require.NoError(b, err)
@@ -874,9 +769,7 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 
 	for b.Loop() {
 		err = c.Redirect().Route("user", RedirectConfig{
-			Params: Map{
-				"name": "fiber",
-			},
+			Params:  Map{"name": "fiber"},
 			Queries: map[string]string{"a": "a", "b": "b"},
 		})
 	}
@@ -1012,24 +905,10 @@ func Benchmark_Redirect_FlashCookieCheck(b *testing.B) {
 }
 
 var testredirectionMsgs = redirectionMsgs{
-	{
-		key:   "success",
-		value: "1",
-	},
-	{
-		key:   "message",
-		value: "test",
-	},
-	{
-		key:        "name",
-		value:      "tom",
-		isOldInput: true,
-	},
-	{
-		key:        "id",
-		value:      "1",
-		isOldInput: true,
-	},
+	{key: "success", value: "1"},
+	{key: "message", value: "test"},
+	{key: "name", value: "tom", isOldInput: true},
+	{key: "id", value: "1", isOldInput: true},
 }
 
 func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
@@ -1049,25 +928,13 @@ func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 		c.Redirect().parseAndClearFlashMessages()
 	}
 
-	require.Equal(b, FlashMessage{
-		Key:   "success",
-		Value: "1",
-	}, c.Redirect().Message("success"))
+	require.Equal(b, FlashMessage{Key: "success", Value: "1"}, c.Redirect().Message("success"))
 
-	require.Equal(b, FlashMessage{
-		Key:   "message",
-		Value: "test",
-	}, c.Redirect().Message("message"))
+	require.Equal(b, FlashMessage{Key: "message", Value: "test"}, c.Redirect().Message("message"))
 
-	require.Equal(b, OldInputData{
-		Key:   "id",
-		Value: "1",
-	}, c.Redirect().OldInput("id"))
+	require.Equal(b, OldInputData{Key: "id", Value: "1"}, c.Redirect().OldInput("id"))
 
-	require.Equal(b, OldInputData{
-		Key:   "name",
-		Value: "tom",
-	}, c.Redirect().OldInput("name"))
+	require.Equal(b, OldInputData{Key: "name", Value: "tom"}, c.Redirect().OldInput("name"))
 }
 
 func Benchmark_Redirect_processFlashMessages(b *testing.B) {
@@ -1121,17 +988,9 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 		msgs = c.Redirect().Messages()
 	}
 
-	require.Contains(b, msgs, FlashMessage{
-		Key:   "success",
-		Value: "1",
-		Level: 0,
-	})
+	require.Contains(b, msgs, FlashMessage{Key: "success", Value: "1", Level: 0})
 
-	require.Contains(b, msgs, FlashMessage{
-		Key:   "message",
-		Value: "test",
-		Level: 0,
-	})
+	require.Contains(b, msgs, FlashMessage{Key: "message", Value: "test", Level: 0})
 }
 
 func Benchmark_Redirect_OldInputs(b *testing.B) {
@@ -1154,15 +1013,9 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 		oldInputs = c.Redirect().OldInputs()
 	}
 
-	require.Contains(b, oldInputs, OldInputData{
-		Key:   "name",
-		Value: "tom",
-	})
+	require.Contains(b, oldInputs, OldInputData{Key: "name", Value: "tom"})
 
-	require.Contains(b, oldInputs, OldInputData{
-		Key:   "id",
-		Value: "1",
-	})
+	require.Contains(b, oldInputs, OldInputData{Key: "id", Value: "1"})
 }
 
 func Benchmark_Redirect_Message(b *testing.B) {
@@ -1189,11 +1042,7 @@ func Benchmark_Redirect_Message(b *testing.B) {
 		msg = c.Redirect().Message("message")
 	}
 
-	require.Equal(b, FlashMessage{
-		Key:   "message",
-		Value: "test",
-		Level: 0,
-	}, msg)
+	require.Equal(b, FlashMessage{Key: "message", Value: "test", Level: 0}, msg)
 }
 
 func Benchmark_Redirect_OldInput(b *testing.B) {
@@ -1216,10 +1065,7 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 		input = c.Redirect().OldInput("name")
 	}
 
-	require.Equal(b, OldInputData{
-		Key:   "name",
-		Value: "tom",
-	}, input)
+	require.Equal(b, OldInputData{Key: "name", Value: "tom"}, input)
 }
 
 func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
@@ -1231,12 +1077,7 @@ func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
 	// reachable from document.cookie, and must not travel in the clear when the
 	// request that produced it was served over TLS.
 	newApp := func() *App {
-		app := New(Config{
-			TrustProxy: true,
-			TrustProxyConfig: TrustProxyConfig{
-				Proxies: []string{"0.0.0.0"},
-			},
-		})
+		app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}})
 		app.Post("/login", func(c Ctx) error {
 			return c.Redirect().With("error", "bad credentials").WithInput().To("/login")
 		})
@@ -1361,8 +1202,7 @@ func Test_Redirect_Back_IgnoresHeaderNameCase(t *testing.T) {
 				c.Request().Header.Set(sent, "/previous")
 
 				require.NoError(t, c.Redirect().Back("/fallback"))
-				require.Equal(t, "/previous", string(c.Response().Header.Peek(HeaderLocation)),
-					"sent as %q", sent)
+				require.Equal(t, "/previous", string(c.Response().Header.Peek(HeaderLocation)), "sent as %q", sent)
 				app.ReleaseCtx(c)
 			}
 		})
@@ -1489,10 +1329,7 @@ func Test_Redirect_Messages_ProgrammaticCookieHeader(t *testing.T) {
 		return c.SendString(c.Redirect().Message("success").Value + "," + c.Redirect().OldInput("id").Value)
 	})
 
-	msgs := redirectionMsgs{
-		{key: "success", value: "1"},
-		{key: "id", value: "42", isOldInput: true},
-	}
+	msgs := redirectionMsgs{{key: "success", value: "1"}, {key: "id", value: "42", isOldInput: true}}
 	val, err := msgs.MarshalMsg(nil)
 	require.NoError(t, err)
 

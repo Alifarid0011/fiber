@@ -466,10 +466,7 @@ func Test_Proxy_Balancer_RejectsAuthorityTarget(t *testing.T) {
 		before := hits.Load()
 		// Neither raw line holds "://": fasthttp's server would read one that
 		// did as the absolute form and split the host off before routing.
-		rejected := []string{
-			"//u:pw@evil.example/a:/x/..//b",
-			"//u:pw@evil.example/a:/x/%2E%2E//b",
-		}
+		rejected := []string{"//u:pw@evil.example/a:/x/..//b", "//u:pw@evil.example/a:/x/%2E%2E//b"}
 		if unescape {
 			rejected = append(rejected, "//u:pw@evil.example/a%3A%2F%2Fb")
 		}

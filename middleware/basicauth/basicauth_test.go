@@ -38,9 +38,7 @@ func sha512Hash(p string) string {
 func Test_BasicAuth_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Use(New(Config{Next: func(_ fiber.Ctx) bool { return true }}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
@@ -59,12 +57,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 	hashedAdmin, err := bcrypt.GenerateFromPassword([]byte("123456"), bcrypt.MinCost)
 	require.NoError(t, err)
 
-	app.Use(New(Config{
-		Users: map[string]string{
-			"john":  hashedJohn,
-			"admin": string(hashedAdmin),
-		},
-	}))
+	app.Use(New(Config{Users: map[string]string{"john": hashedJohn, "admin": string(hashedAdmin)}}))
 
 	app.Get("/testauth", func(c fiber.Ctx) error {
 		username := UsernameFromContext(c)
@@ -102,15 +95,8 @@ func Test_BasicAuthLoggerTagWritesUsername(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Users: map[string]string{
-			"john": sha256Hash("doe"),
-		},
-	}))
-	app.Use(logger.New(logger.Config{
-		Format: "${username}",
-		Stream: &buf,
-	}))
+	app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}}))
+	app.Use(logger.New(logger.Config{Format: "${username}", Stream: &buf}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
@@ -125,11 +111,7 @@ func Test_BasicAuthLogContextTagWritesUsername(t *testing.T) {
 	buf := loggertest.CaptureContextLog(t, "username=${username} ")
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Users: map[string]string{
-			"john": sha256Hash("doe"),
-		},
-	}))
+	app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}}))
 	app.Get("/", func(c fiber.Ctx) error {
 		fiberlog.WithContext(c).Info("start")
 		return c.SendStatus(fiber.StatusOK)
@@ -145,11 +127,7 @@ func Test_BasicAuth_UsernameFromContext_Types(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New(fiber.Config{PassLocalsToContext: true})
-	app.Use(New(Config{
-		Users: map[string]string{
-			"john": sha256Hash("doe"),
-		},
-	}))
+	app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		require.Equal(t, "john", UsernameFromContext(c))
@@ -192,10 +170,7 @@ func Test_BasicAuth_AuthorizerCtx(t *testing.T) {
 func Test_BasicAuth_NoConfig(t *testing.T) {
 	t.Parallel()
 
-	for name, handler := range map[string]fiber.Handler{
-		"New()":         New(),
-		"New(Config{})": New(Config{}),
-	} {
+	for name, handler := range map[string]fiber.Handler{"New()": New(), "New(Config{})": New(Config{})} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -399,11 +374,7 @@ func Test_BasicAuth_RepeatedAuthorizationIsRefused(t *testing.T) {
 		t.Parallel()
 		app := newApp()
 
-		for _, lines := range [][]string{
-			{"", creds},
-			{creds, ""},
-			{creds, creds},
-		} {
+		for _, lines := range [][]string{{"", creds}, {creds, ""}, {creds, creds}} {
 			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 			req.Header[fiber.HeaderAuthorization] = lines
 			resp := apptest.Do(t, app, req)
@@ -591,11 +562,7 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 
 	hashedJohn := sha256Hash("doe")
 
-	app.Use(New(Config{
-		Users: map[string]string{
-			"john": hashedJohn,
-		},
-	}))
+	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
 	h := app.Handler()
@@ -619,11 +586,7 @@ func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
 
 	hashedJohn := sha256Hash("doe")
 
-	app.Use(New(Config{
-		Users: map[string]string{
-			"john": hashedJohn,
-		},
-	}))
+	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
 	h := app.Handler()
@@ -873,11 +836,7 @@ func Test_containsCTL(t *testing.T) {
 }
 
 func Benchmark_containsCTL(b *testing.B) {
-	inputs := []string{
-		"john",
-		"a-much-longer-username",
-		"s3cr3t-p4ssw0rd-with-length",
-	}
+	inputs := []string{"john", "a-much-longer-username", "s3cr3t-p4ssw0rd-with-length"}
 	var got bool
 	b.ReportAllocs()
 	for b.Loop() {

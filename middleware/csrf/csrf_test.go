@@ -37,10 +37,7 @@ type failingCSRFStorage struct {
 }
 
 func newFailingCSRFStorage() *failingCSRFStorage {
-	return &failingCSRFStorage{
-		data: make(map[string][]byte),
-		errs: make(map[string]error),
-	}
+	return &failingCSRFStorage{data: make(map[string][]byte), errs: make(map[string]error)}
 }
 
 func (s *failingCSRFStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
@@ -54,10 +51,8 @@ func (s *failingCSRFStorage) GetWithContext(_ context.Context, key string) ([]by
 }
 
 var trustedProxyConfig = fiber.Config{
-	TrustProxy: true,
-	TrustProxyConfig: fiber.TrustProxyConfig{
-		Proxies: []string{"0.0.0.0"},
-	},
+	TrustProxy:       true,
+	TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
 }
 
 func newTrustedApp() *fiber.App {
@@ -182,9 +177,7 @@ func csrfTestSessionPost(t *testing.T, h fasthttp.RequestHandler, ctx *fasthttp.
 func csrfTestSession(t *testing.T, app *fiber.App, cfg *Config) (fasthttp.RequestHandler, *fasthttp.RequestCtx, string) {
 	t.Helper()
 
-	store := session.NewStore(session.Config{
-		Extractor: extractors.FromCookie("_session"),
-	})
+	store := session.NewStore(session.Config{Extractor: extractors.FromCookie("_session")})
 	ctx := &fasthttp.RequestCtx{}
 
 	sess, err := store.Get(apptest.CtxFor(t, app, ctx))
@@ -485,9 +478,7 @@ func Test_CSRF_WithSession_Middleware(t *testing.T) {
 	smh, sstore := session.NewWithStore()
 
 	// csrf mw
-	cmh := New(Config{
-		Session: sstore,
-	})
+	cmh := New(Config{Session: sstore})
 
 	app.Use(smh)
 
@@ -618,9 +609,7 @@ func Test_CSRF_SingleUseToken(t *testing.T) {
 func Test_CSRF_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Use(New(Config{Next: func(_ fiber.Ctx) bool { return true }}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
@@ -632,10 +621,7 @@ func Test_CSRFLoggerTagRedactsToken(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New())
-	app.Use(logger.New(logger.Config{
-		Format: "${csrf-token}",
-		Stream: &buf,
-	}))
+	app.Use(logger.New(logger.Config{Format: "${csrf-token}", Stream: &buf}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	apptest.Expect(t, app, "/", fiber.StatusOK)
@@ -902,13 +888,10 @@ func Test_CSRF_Origin(t *testing.T) {
 			status:  fiber.StatusForbidden,
 		},
 		{
-			name:   "Wrong Origin",
-			origin: "http://csrf.example.com",
-			headers: map[string]string{
-				fiber.HeaderXForwardedProto: "http",
-				fiber.HeaderXForwardedHost:  "example.com",
-			},
-			status: fiber.StatusForbidden,
+			name:    "Wrong Origin",
+			origin:  "http://csrf.example.com",
+			headers: map[string]string{fiber.HeaderXForwardedProto: "http", fiber.HeaderXForwardedHost: "example.com"},
+			status:  fiber.StatusForbidden,
 		},
 	})
 }
@@ -977,10 +960,7 @@ func Test_CSRF_TrustedOrigins_InvalidOrigins(t *testing.T) {
 			t.Parallel()
 			require.Panics(t, func() {
 				app := fiber.New()
-				app.Use(New(Config{
-					CookieSecure:   true,
-					TrustedOrigins: []string{origin},
-				}))
+				app.Use(New(Config{CookieSecure: true, TrustedOrigins: []string{origin}}))
 			}, "Expected panic")
 		})
 	}
@@ -1168,12 +1148,9 @@ func Test_CSRF_ErrorHandler_MissingReferer(t *testing.T) {
 	}, "https")
 
 	csrfTestPostCases(t, h, token, []csrfTestPostCase{{
-		name: "no Referer over HTTPS",
-		headers: map[string]string{
-			fiber.HeaderXForwardedProto: "https",
-			fiber.HeaderXForwardedHost:  "example.com",
-		},
-		status: 419,
+		name:    "no Referer over HTTPS",
+		headers: map[string]string{fiber.HeaderXForwardedProto: "https", fiber.HeaderXForwardedHost: "example.com"},
+		status:  419,
 	}})
 }
 
@@ -1232,10 +1209,7 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	getReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	getReq.Header.Set(fiber.HeaderCacheControl, "no")
 	getReq.Header.Set(HeaderName, token)
-	getReq.AddCookie(&http.Cookie{
-		Name:  ConfigDefault.CookieName,
-		Value: token,
-	})
+	getReq.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: token})
 
 	apptest.Expect(t, app, getReq, fiber.StatusOK)
 
@@ -1246,10 +1220,7 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	postReq := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
 	postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	postReq.Header.Set(HeaderName, token)
-	postReq.AddCookie(&http.Cookie{
-		Name:  ConfigDefault.CookieName,
-		Value: token,
-	})
+	postReq.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: token})
 	apptest.Expect(t, app, postReq, fiber.StatusOK)
 }
 
@@ -1468,10 +1439,7 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 		Key:    "X-Custom-CSRF",
 	}
 	// Chain: try the header first, fall back to the form
-	chain := extractors.Chain(
-		extractors.FromHeader("X-Csrf-Token"),
-		extractors.FromForm("_csrf"),
-	)
+	chain := extractors.Chain(extractors.FromHeader("X-Csrf-Token"), extractors.FromForm("_csrf"))
 
 	// postWithHeader sends the token in the named header and in the cookie.
 	postWithHeader := func(header string) func(ctx *fasthttp.RequestCtx, token string) {
@@ -1643,12 +1611,7 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 			},
 			expectStatus: 200,
 		},
-		{
-			name:         "Chain_NoToken",
-			extractor:    chain,
-			setupRequest: postEmptyForm,
-			expectStatus: 403,
-		},
+		{name: "Chain_NoToken", extractor: chain, setupRequest: postEmptyForm, expectStatus: 403},
 		{
 			name:      "Chain_WrongTokenInBothLocations",
 			extractor: chain,
@@ -1894,10 +1857,7 @@ func Test_CSRF_DisableValueRedaction_TrustedOrigin(t *testing.T) {
 			t.Parallel()
 
 			require.PanicsWithValue(t, "[CSRF] Invalid origin format in configuration:"+tc.origin, func() {
-				New(Config{
-					TrustedOrigins:        []string{tc.origin},
-					DisableValueRedaction: true,
-				})
+				New(Config{TrustedOrigins: []string{tc.origin}, DisableValueRedaction: true})
 			})
 		})
 	}
@@ -2620,8 +2580,7 @@ func Test_CSRF_CrossSiteWithoutOriginOverPlaintext(t *testing.T) {
 
 	require.Equal(t, fiber.StatusOK, post(true),
 		"over plaintext with no Origin, the token is what the request rests on")
-	require.Equal(t, fiber.StatusForbidden, post(false),
-		"and without it nothing else lets the request through")
+	require.Equal(t, fiber.StatusForbidden, post(false), "and without it nothing else lets the request through")
 }
 
 // varyMutatingCtx is a custom context whose Vary rewrites the field list it is

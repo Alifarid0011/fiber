@@ -1957,8 +1957,7 @@ func Test_Resolve_Winner(t *testing.T) {
 		require.Equal(t, "planted", res.Value)
 		require.NotEqual(t, "tenant", res.Key,
 			"a record made by a chain the child merely ran must not become this chain's provenance")
-		require.False(t, res.Resolved,
-			"with no origin we can vouch for, the provenance must be unresolved")
+		require.False(t, res.Resolved, "with no origin we can vouch for, the provenance must be unresolved")
 	})
 
 	t.Run("a chain that re-enters itself is reported as a cycle", func(t *testing.T) {

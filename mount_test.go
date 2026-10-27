@@ -23,10 +23,7 @@ func Test_App_Mount_PreservesSubAppRegexHandler(t *testing.T) {
 		},
 	})
 
-	sub := New(Config{
-		CaseSensitive: true,
-		RegexHandler:  regexp.MustCompile,
-	})
+	sub := New(Config{CaseSensitive: true, RegexHandler: regexp.MustCompile})
 	sub.Get("/resource/:id<regex(ALLOW)>", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	parent.Use("/mounted", sub)
@@ -267,22 +264,16 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	app := New()
 
 	tsf := func(c Ctx, _ error) error { return c.Status(200).SendString("hi, i'm a custom sub fiber error 2") }
-	tripleSubFiber := New(Config{
-		ErrorHandler: tsf,
-	})
+	tripleSubFiber := New(Config{ErrorHandler: tsf})
 	tripleSubFiber.Get("/", func(_ Ctx) error { return errors.New("something happened") })
 
 	sf := func(c Ctx, _ error) error { return c.Status(200).SendString("hi, i'm a custom sub fiber error") }
-	subfiber := New(Config{
-		ErrorHandler: sf,
-	})
+	subfiber := New(Config{ErrorHandler: sf})
 	subfiber.Get("/", func(_ Ctx) error { return errors.New("something happened") })
 	subfiber.Use("/third", tripleSubFiber)
 
 	f := func(c Ctx, _ error) error { return c.Status(200).SendString("hi, i'm a custom error") }
-	fiber := New(Config{
-		ErrorHandler: f,
-	})
+	fiber := New(Config{ErrorHandler: f})
 	fiber.Get("/", func(_ Ctx) error { return errors.New("something happened") })
 	fiber.Use("/sub", subfiber)
 
@@ -358,14 +349,10 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	err := engine.Load()
 	require.NoError(t, err)
 
-	sub := New(Config{
-		Views: engine,
-	})
+	sub := New(Config{Views: engine})
 
 	sub.Get("/:name", func(c Ctx) error {
-		return c.Render("hello_world.tmpl", Map{
-			"Name": c.Params("name"),
-		})
+		return c.Render("hello_world.tmpl", Map{"Name": c.Params("name")})
 	})
 
 	app := New()
@@ -389,28 +376,18 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	err = engine3.Load()
 	require.NoError(t, err)
 
-	sub := New(Config{
-		Views: engine3,
-	})
+	sub := New(Config{Views: engine3})
 
-	sub2 := New(Config{
-		Views: engine2,
-	})
+	sub2 := New(Config{Views: engine2})
 
-	app := New(Config{
-		Views: engine,
-	})
+	app := New(Config{Views: engine})
 
 	app.Get("/test", func(c Ctx) error {
-		return c.Render("index.tmpl", Map{
-			"Title": "Hello, World!",
-		})
+		return c.Render("index.tmpl", Map{"Title": "Hello, World!"})
 	})
 
 	sub.Get("/world/:name", func(c Ctx) error {
-		return c.Render("hello_world.tmpl", Map{
-			"Name": c.Params("name"),
-		})
+		return c.Render("hello_world.tmpl", Map{"Name": c.Params("name")})
 	})
 
 	sub2.Get("/moment", func(c Ctx) error { return c.Render("bruh.tmpl", Map{}) })
@@ -430,14 +407,10 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 	err := engine.Load()
 	require.NoError(t, err)
 
-	micro := New(Config{
-		Views: engine,
-	})
+	micro := New(Config{Views: engine})
 
 	micro.Get("/doe", func(c Ctx) error {
-		return c.Render("hello_world.tmpl", Map{
-			"Name": "doe",
-		})
+		return c.Render("hello_world.tmpl", Map{"Name": "doe"})
 	})
 
 	app := New()
@@ -613,9 +586,7 @@ func Test_App_Mount_PreservesNestedCustomConstraint(t *testing.T) {
 func Test_App_Mount_CarriesDomainMount(t *testing.T) {
 	t.Parallel()
 
-	micro := New(Config{
-		ErrorHandler: func(c Ctx, _ error) error { return c.Status(596).SendString("micro error") },
-	})
+	micro := New(Config{ErrorHandler: func(c Ctx, _ error) error { return c.Status(596).SendString("micro error") }})
 	micro.Get("/doe", func(_ Ctx) error { return errors.New("boom") })
 
 	sub := New()
@@ -716,9 +687,7 @@ func Test_App_Mount_ParametricPrefixNested(t *testing.T) {
 func Test_App_Mount_CaseInsensitivePath(t *testing.T) {
 	t.Parallel()
 
-	micro := New(Config{
-		ErrorHandler: func(c Ctx, _ error) error { return c.Status(599).SendString("micro error") },
-	})
+	micro := New(Config{ErrorHandler: func(c Ctx, _ error) error { return c.Status(599).SendString("micro error") }})
 	micro.Get("/doe", func(_ Ctx) error { return errors.New("boom") })
 
 	app := New()

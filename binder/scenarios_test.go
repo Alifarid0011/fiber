@@ -103,11 +103,7 @@ func Test_FormSources_PointerScalars(t *testing.T) {
 			input: "id=123&name=test&active=true&score=98.5",
 			want:  Scalars{ID: new(int64(123)), Name: new("test"), Active: new(true), Score: new(98.5)},
 		},
-		{
-			name:  "no fields provided",
-			input: "",
-			want:  Scalars{},
-		},
+		{name: "no fields provided", input: "", want: Scalars{}},
 		{
 			name:  "partial fields provided",
 			input: "id=456&active=false",

@@ -228,10 +228,7 @@ func TestTimeout_OnTimeoutChoosesStatus(t *testing.T) {
 				<-c.Context().Done()
 				<-release
 				return nil
-			}, Config{
-				Timeout:   20 * time.Millisecond,
-				OnTimeout: func(_ fiber.Ctx) error { return tc.want },
-			}))
+			}, Config{Timeout: 20 * time.Millisecond, OnTimeout: func(_ fiber.Ctx) error { return tc.want }}))
 
 			resp := apptest.Expect(t, app, "/slow", tc.want.Code)
 			require.Equal(t, tc.want.Message, apptest.Body(t, resp))
@@ -654,11 +651,7 @@ func Test_Timeout_ResponseUnwritten(t *testing.T) {
 		name  string
 		want  bool
 	}{
-		{
-			name:  "nothing written",
-			setup: func(_ *fasthttp.Response) {},
-			want:  true,
-		},
+		{name: "nothing written", setup: func(_ *fasthttp.Response) {}, want: true},
 		{
 			name:  "stream with a payload",
 			setup: func(resp *fasthttp.Response) { resp.SetBodyStream(strings.NewReader("streamed"), -1) },

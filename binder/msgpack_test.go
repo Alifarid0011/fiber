@@ -10,9 +10,7 @@ import (
 func Test_Msgpack_Binding_Bind(t *testing.T) {
 	t.Parallel()
 
-	b := &MsgPackBinding{
-		MsgPackDecoder: msgpack.Unmarshal,
-	}
+	b := &MsgPackBinding{MsgPackDecoder: msgpack.Unmarshal}
 	require.Equal(t, "msgpack", b.Name())
 
 	type Post struct {
@@ -28,13 +26,9 @@ func Test_Msgpack_Binding_Bind(t *testing.T) {
 
 	// Prepare msgpack data
 	input := map[string]any{
-		"name": "john",
-		"age":  42,
-		"posts": []map[string]any{
-			{"title": "post1"},
-			{"title": "post2"},
-			{"title": "post3"},
-		},
+		"name":  "john",
+		"age":   42,
+		"posts": []map[string]any{{"title": "post1"}, {"title": "post2"}, {"title": "post3"}},
 	}
 	data, err := msgpack.Marshal(input)
 	require.NoError(t, err)
@@ -55,9 +49,7 @@ func Test_Msgpack_Binding_Bind(t *testing.T) {
 func Benchmark_Msgpack_Binding_Bind(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &MsgPackBinding{
-		MsgPackDecoder: msgpack.Unmarshal,
-	}
+	binder := &MsgPackBinding{MsgPackDecoder: msgpack.Unmarshal}
 
 	type User struct {
 		Name  string   `msgpack:"name"`

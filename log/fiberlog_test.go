@@ -15,10 +15,7 @@ func Test_DefaultSystemLogger(t *testing.T) {
 }
 
 func Test_SetLogger(t *testing.T) {
-	setLog := &defaultLogger{
-		stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
-		depth:  6,
-	}
+	setLog := &defaultLogger{stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds), depth: 6}
 
 	SetLogger(setLog)
 	require.Equal(t, logger, setLog)
@@ -55,10 +52,7 @@ func Benchmark_DefaultSystemLogger(b *testing.B) {
 }
 
 func Benchmark_SetLogger(b *testing.B) {
-	setLog := &defaultLogger{
-		stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
-		depth:  6,
-	}
+	setLog := &defaultLogger{stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds), depth: 6}
 
 	b.ReportAllocs()
 	for b.Loop() {
@@ -76,31 +70,11 @@ func Benchmark_Fiberlog_SetLevel(b *testing.B) {
 		level    Level
 		expected Level
 	}{
-		{
-			name:     "Test case 1",
-			level:    LevelDebug,
-			expected: LevelDebug,
-		},
-		{
-			name:     "Test case 2",
-			level:    LevelInfo,
-			expected: LevelInfo,
-		},
-		{
-			name:     "Test case 3",
-			level:    LevelWarn,
-			expected: LevelWarn,
-		},
-		{
-			name:     "Test case 4",
-			level:    LevelError,
-			expected: LevelError,
-		},
-		{
-			name:     "Test case 5",
-			level:    LevelFatal,
-			expected: LevelFatal,
-		},
+		{name: "Test case 1", level: LevelDebug, expected: LevelDebug},
+		{name: "Test case 2", level: LevelInfo, expected: LevelInfo},
+		{name: "Test case 3", level: LevelWarn, expected: LevelWarn},
+		{name: "Test case 4", level: LevelError, expected: LevelError},
+		{name: "Test case 5", level: LevelFatal, expected: LevelFatal},
 	}
 
 	for _, tc := range testCases {
@@ -124,10 +98,7 @@ func Benchmark_DefaultSystemLogger_Parallel(b *testing.B) {
 }
 
 func Benchmark_SetLogger_Parallel(b *testing.B) {
-	setLog := &defaultLogger{
-		stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
-		depth:  6,
-	}
+	setLog := &defaultLogger{stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds), depth: 6}
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -148,31 +119,11 @@ func Benchmark_Fiberlog_SetLevel_Parallel(b *testing.B) {
 		level    Level
 		expected Level
 	}{
-		{
-			name:     "Test case 1",
-			level:    LevelDebug,
-			expected: LevelDebug,
-		},
-		{
-			name:     "Test case 2",
-			level:    LevelInfo,
-			expected: LevelInfo,
-		},
-		{
-			name:     "Test case 3",
-			level:    LevelWarn,
-			expected: LevelWarn,
-		},
-		{
-			name:     "Test case 4",
-			level:    LevelError,
-			expected: LevelError,
-		},
-		{
-			name:     "Test case 5",
-			level:    LevelFatal,
-			expected: LevelFatal,
-		},
+		{name: "Test case 1", level: LevelDebug, expected: LevelDebug},
+		{name: "Test case 2", level: LevelInfo, expected: LevelInfo},
+		{name: "Test case 3", level: LevelWarn, expected: LevelWarn},
+		{name: "Test case 4", level: LevelError, expected: LevelError},
+		{name: "Test case 5", level: LevelFatal, expected: LevelFatal},
 	}
 
 	for _, tc := range testCases {

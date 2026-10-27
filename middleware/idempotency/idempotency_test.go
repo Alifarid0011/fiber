@@ -64,9 +64,7 @@ func Test_Idempotency(t *testing.T) {
 	// timeout used in doReq.
 	const lifetime = 3 * time.Second
 
-	app.Use(New(Config{
-		Lifetime: lifetime,
-	}))
+	app.Use(New(Config{Lifetime: lifetime}))
 
 	nextCount := func() func() int {
 		var count atomic.Int32
@@ -90,10 +88,7 @@ func Test_Idempotency(t *testing.T) {
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
-		resp := apptest.Do(t, app, req, fiber.TestConfig{
-			Timeout:       15 * time.Second,
-			FailOnTimeout: true,
-		})
+		resp := apptest.Do(t, app, req, fiber.TestConfig{Timeout: 15 * time.Second, FailOnTimeout: true})
 		body := apptest.Body(t, resp)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, body)
 		return body
@@ -144,9 +139,7 @@ func Benchmark_Idempotency(b *testing.B) {
 	// Needs to be at least a second as the memory storage doesn't support shorter durations.
 	const lifetime = 1 * time.Second
 
-	app.Use(New(Config{
-		Lifetime: lifetime,
-	}))
+	app.Use(New(Config{Lifetime: lifetime}))
 
 	app.Post("/", func(_ fiber.Ctx) error { return nil })
 
@@ -176,10 +169,7 @@ func Benchmark_Idempotency(b *testing.B) {
 	})
 
 	scoped := fiber.New()
-	scoped.Use(New(Config{
-		Lifetime: lifetime,
-		KeyScope: func(c fiber.Ctx) string { return c.Get("X-User") },
-	}))
+	scoped.Use(New(Config{Lifetime: lifetime, KeyScope: func(c fiber.Ctx) string { return c.Get("X-User") }}))
 	scoped.Post("/", func(_ fiber.Ctx) error { return nil })
 	hs := scoped.Handler()
 
@@ -357,11 +347,7 @@ func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	s := &stubStorage{}
-	app.Use(New(Config{
-		Storage:             s,
-		Lock:                &stubLock{},
-		KeepResponseHeaders: []string{"Foo"},
-	}))
+	app.Use(New(Config{Storage: s, Lock: &stubLock{}, KeepResponseHeaders: []string{"Foo"}}))
 
 	var count int
 	app.Post("/", func(c fiber.Ctx) error {
@@ -394,11 +380,7 @@ func Test_New_StoreRetrieve_FilterHeadersCaseInsensitiveSnapshot(t *testing.T) {
 	app := fiber.New()
 	s := &stubStorage{}
 	keep := []string{"fOO"}
-	app.Use(New(Config{
-		Storage:             s,
-		Lock:                &stubLock{},
-		KeepResponseHeaders: keep,
-	}))
+	app.Use(New(Config{Storage: s, Lock: &stubLock{}, KeepResponseHeaders: keep}))
 	// Post-construction mutation must not affect the handler.
 	keep[0] = "Bar"
 

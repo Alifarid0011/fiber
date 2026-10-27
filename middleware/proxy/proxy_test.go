@@ -34,9 +34,7 @@ func TestMain(m *testing.M) {
 
 func startServer(app *fiber.App, ln net.Listener) {
 	go func() {
-		err := app.Listener(ln, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		})
+		err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
 		if err != nil {
 			panic(err)
 		}
@@ -210,10 +208,7 @@ func Test_Proxy_ConfigDefault_MaxConnsPerHost(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := configDefault(Config{
-				Servers:         []string{"127.0.0.1"},
-				MaxConnsPerHost: tc.set,
-			})
+			cfg := configDefault(Config{Servers: []string{"127.0.0.1"}, MaxConnsPerHost: tc.set})
 			require.Equal(t, tc.want, cfg.MaxConnsPerHost)
 		})
 	}
@@ -248,10 +243,7 @@ func Test_Proxy_Next(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(Balancer(Config{
-		Servers: []string{"127.0.0.1"},
-		Next:    func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Use(Balancer(Config{Servers: []string{"127.0.0.1"}, Next: func(_ fiber.Ctx) bool { return true }}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
@@ -322,10 +314,7 @@ func Test_Proxy_Balancer_Upstream(t *testing.T) {
 
 			target, addr := tc.server(t, func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
-			resp := apptest.Do(t, target, "/", fiber.TestConfig{
-				Timeout:       2 * time.Second,
-				FailOnTimeout: true,
-			})
+			resp := apptest.Do(t, target, "/", fiber.TestConfig{Timeout: 2 * time.Second, FailOnTimeout: true})
 			require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
 			app := fiber.New(tc.appCfg...)
@@ -353,10 +342,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 		TLSConfig: &tls.Config{InsecureSkipVerify: true},
 	}))
 
-	resp := apptest.Do(t, app, "/tlsbalancer", fiber.TestConfig{
-		Timeout:       5 * time.Second,
-		FailOnTimeout: true,
-	})
+	resp := apptest.Do(t, app, "/tlsbalancer", fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
 	body := apptest.Body(t, resp)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, body)
@@ -397,10 +383,7 @@ func Test_Proxy_Balancer_MixedSchemes(t *testing.T) {
 
 	seen := map[string]int{}
 	for range 6 {
-		resp := apptest.Do(t, app, "/", fiber.TestConfig{
-			Timeout:       5 * time.Second,
-			FailOnTimeout: true,
-		})
+		resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
 		body := apptest.Body(t, resp)
 		require.NoError(t, resp.Body.Close())
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, body)
@@ -780,9 +763,7 @@ func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 	clientTLSConf := &tls.Config{InsecureSkipVerify: true}
 
 	// disable certificate verification
-	WithClient(&fasthttp.Client{
-		TLSConfig: clientTLSConf,
-	})
+	WithClient(&fasthttp.Client{TLSConfig: clientTLSConf})
 	app.Use(Forward("https://" + addr + "/tlsfwd"))
 
 	startServer(app, ln)
@@ -852,15 +833,9 @@ func Test_Proxy_Timeout(t *testing.T) {
 			})
 
 			app := fiber.New()
-			app.Use(Balancer(Config{
-				Servers: []string{addr},
-				Timeout: tc.timeout,
-			}))
+			app.Use(Balancer(Config{Servers: []string{addr}, Timeout: tc.timeout}))
 
-			resp := apptest.Do(t, app, "/", fiber.TestConfig{
-				Timeout:       2 * time.Second,
-				FailOnTimeout: true,
-			})
+			resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 2 * time.Second, FailOnTimeout: true})
 			require.Equal(t, tc.status, resp.StatusCode)
 
 			require.Equal(t, tc.body, apptest.Body(t, resp))
@@ -883,10 +858,7 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 
 	app = fiber.New()
-	app.Use(Balancer(Config{
-		Servers:        []string{addr},
-		ReadBufferSize: 1024 * 8,
-	}))
+	app.Use(Balancer(Config{Servers: []string{addr}, ReadBufferSize: 1024 * 8}))
 
 	apptest.Expect(t, app, "/", fiber.StatusOK)
 }
@@ -951,10 +923,7 @@ func Test_Proxy_DoHelpers(t *testing.T) {
 		{
 			name: "Do with a client of its own",
 			do: func(c fiber.Ctx, target string) error {
-				return Do(c, target, &fasthttp.Client{
-					NoDefaultUserAgentHeader: true,
-					DisablePathNormalizing:   true,
-				})
+				return Do(c, target, &fasthttp.Client{NoDefaultUserAgentHeader: true, DisablePathNormalizing: true})
 			},
 			status: fiber.StatusOK,
 			body:   "proxied",
@@ -973,10 +942,7 @@ func Test_Proxy_DoHelpers(t *testing.T) {
 			app := fiber.New()
 			app.Get("/test", func(c fiber.Ctx) error { return tc.do(c, "http://"+addr) })
 
-			resp := apptest.Do(t, app, "/test", fiber.TestConfig{
-				Timeout:       2 * time.Second,
-				FailOnTimeout: true,
-			})
+			resp := apptest.Do(t, app, "/test", fiber.TestConfig{Timeout: 2 * time.Second, FailOnTimeout: true})
 			require.Equal(t, tc.body, apptest.Body(t, resp))
 			require.Equal(t, tc.status, resp.StatusCode)
 			require.Equal(t, "/test", resp.Request.URL.String())
@@ -998,10 +964,7 @@ func Test_Proxy_DoRedirects_AliasedAddr(t *testing.T) {
 		return DoRedirects(c, aliased, 1)
 	})
 
-	resp := apptest.Do(t, app, "/http://"+addr, fiber.TestConfig{
-		Timeout:       2 * time.Second,
-		FailOnTimeout: true,
-	})
+	resp := apptest.Do(t, app, "/http://"+addr, fiber.TestConfig{Timeout: 2 * time.Second, FailOnTimeout: true})
 	require.Equal(t, "final", apptest.Body(t, resp))
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
@@ -1016,10 +979,7 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 	app := fiber.New()
 	app.Get("/test", func(c fiber.Ctx) error { return DoTimeout(c, "http://"+addr, time.Second) })
 
-	resp := apptest.Do(t, app, "/test", fiber.TestConfig{
-		Timeout:       2 * time.Second,
-		FailOnTimeout: true,
-	})
+	resp := apptest.Do(t, app, "/test", fiber.TestConfig{Timeout: 2 * time.Second, FailOnTimeout: true})
 	require.Equal(t, fasthttp.ErrTimeout.Error(), apptest.Body(t, resp))
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Equal(t, "/test", resp.Request.URL.String())

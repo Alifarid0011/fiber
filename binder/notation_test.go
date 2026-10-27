@@ -44,11 +44,7 @@ func Test_Notation_FormAndQuery(t *testing.T) {
 			input: "colors[0]=red&colors[1]=blue",
 			want:  notationTarget{},
 		},
-		{
-			name:  "dot index on a scalar slice is dropped",
-			input: "colors.0=red&colors.1=blue",
-			want:  notationTarget{},
-		},
+		{name: "dot index on a scalar slice is dropped", input: "colors.0=red&colors.1=blue", want: notationTarget{}},
 		{
 			name:  "bracket struct field",
 			input: "inner[name]=bob&inner[age]=7",

@@ -368,9 +368,7 @@ func Test_BindError_All(t *testing.T) {
 
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
-	c := apptest.Ctx(t, New(Config{
-		EnableSplittingOnParsers: true,
-	}))
+	c := apptest.Ctx(t, New(Config{EnableSplittingOnParsers: true}))
 
 	type Query struct {
 		Name  string
@@ -447,9 +445,7 @@ func Test_Bind_Query(t *testing.T) {
 func Test_Bind_Query_Map(t *testing.T) {
 	t.Parallel()
 
-	c := apptest.Ctx(t, New(Config{
-		EnableSplittingOnParsers: true,
-	}))
+	c := apptest.Ctx(t, New(Config{EnableSplittingOnParsers: true}))
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -992,10 +988,7 @@ func Test_Bind_WithSetParserDecoder(t *testing.T) {
 			require.Equal(t, "October", r.Body)
 
 			tc.blank(c)
-			r = &NonRFCTimeInput{
-				Title: "Existing title",
-				Body:  "Existing Body",
-			}
+			r = &NonRFCTimeInput{Title: "Existing title", Body: "Existing Body"}
 			require.NoError(t, tc.src.bind(c, r))
 			require.Empty(t, r.Title)
 		})
@@ -1014,10 +1007,7 @@ func Test_Bind_WithSetParserDecoder(t *testing.T) {
 
 		testDecodeParser := func(contentType, body string) {
 			(&RequestConfig{ContentType: contentType, Body: []byte(body)}).ApplyTo(c)
-			d := Demo{
-				Title: "Existing title",
-				Body:  "Existing Body",
-			}
+			d := Demo{Title: "Existing title", Body: "Existing Body"}
 			require.NoError(t, c.Bind().Body(&d))
 			date := fmt.Sprintf("%v", d.Date)
 			require.Equal(t, "{0 63743587200 <nil>}", date)
@@ -1127,9 +1117,7 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 func Benchmark_Bind_Query_Comma(b *testing.B) {
 	var err error
 
-	c := apptest.Ctx(b, New(Config{
-		EnableSplittingOnParsers: true,
-	}))
+	c := apptest.Ctx(b, New(Config{EnableSplittingOnParsers: true}))
 
 	type Query struct {
 		Name  string
@@ -1459,10 +1447,7 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 func Benchmark_Bind_Body_CBOR(b *testing.B) {
 	var err error
 
-	c := apptest.Ctx(b, New(Config{
-		CBOREncoder: cbor.Marshal,
-		CBORDecoder: cbor.Unmarshal,
-	}))
+	c := apptest.Ctx(b, New(Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}))
 
 	type Demo struct {
 		Name string `json:"name"`
@@ -1646,14 +1631,8 @@ func Benchmark_Bind_URI(b *testing.B) {
 
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
-	c.route = &Route{
-		Params: []string{
-			"param1", "param2", "param3", "param4",
-		},
-	}
-	c.values = [maxParams]string{
-		"john", "doe", "is", "awesome",
-	}
+	c.route = &Route{Params: []string{"param1", "param2", "param3", "param4"}}
+	c.values = [maxParams]string{"john", "doe", "is", "awesome"}
 
 	var res struct {
 		Param1 string `uri:"param1"`
@@ -1680,14 +1659,8 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 
 	c := apptest.CtxAs[*DefaultCtx](b, New())
 
-	c.route = &Route{
-		Params: []string{
-			"param1", "param2", "param3", "param4",
-		},
-	}
-	c.values = [maxParams]string{
-		"john", "doe", "is", "awesome",
-	}
+	c.route = &Route{Params: []string{"param1", "param2", "param3", "param4"}}
+	c.values = [maxParams]string{"john", "doe", "is", "awesome"}
 
 	res := make(map[string]string)
 
@@ -2036,10 +2009,7 @@ func Test_Bind_StructValidator(t *testing.T) {
 
 func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	t.Parallel()
-	c := apptest.Ctx(t, New(Config{
-		CBOREncoder: cbor.Marshal,
-		CBORDecoder: cbor.Unmarshal,
-	}))
+	c := apptest.Ctx(t, New(Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}))
 
 	type Request struct {
 		QueryParam  string `query:"query_param"`
@@ -2127,22 +2097,16 @@ func Test_Bind_All(t *testing.T) {
 		ID        int                   `uri:"id" query:"id" json:"id" form:"id"`
 	}
 	newBind := func(app *App) *Bind {
-		return &Bind{
-			ctx: app.AcquireCtx(&fasthttp.RequestCtx{}),
-		}
+		return &Bind{ctx: app.AcquireCtx(&fasthttp.RequestCtx{})}
 	}
 
 	defaultConfig := func() *RequestConfig {
 		return &RequestConfig{
 			ContentType: MIMEApplicationJSON,
 			Body:        []byte(`{"name":"john", "email": "john@doe.com", "session_id": "abc1234", "id": 1}`),
-			Headers: map[string]string{
-				"X-User-Role": "admin",
-			},
-			Cookies: map[string]string{
-				"session_id": "abc123",
-			},
-			Query: "id=1&name=john",
+			Headers:     map[string]string{"X-User-Role": "admin"},
+			Cookies:     map[string]string{"session_id": "abc123"},
+			Query:       "id=1&name=john",
 		}
 	}
 
@@ -2153,11 +2117,7 @@ func Test_Bind_All(t *testing.T) {
 		name     string
 		wantErr  bool
 	}{
-		{
-			name:    "Invalid output type",
-			out:     123,
-			wantErr: true,
-		},
+		{name: "Invalid output type", out: 123, wantErr: true},
 		{
 			name:   "Successful binding",
 			out:    new(User),
@@ -2171,15 +2131,10 @@ func Test_Bind_All(t *testing.T) {
 			},
 		},
 		{
-			name: "Missing fields (partial JSON only)",
-			out:  new(User),
-			config: &RequestConfig{
-				ContentType: MIMEApplicationJSON,
-				Body:        []byte(`{"name":"partial"}`),
-			},
-			expected: &User{
-				Name: "partial",
-			},
+			name:     "Missing fields (partial JSON only)",
+			out:      new(User),
+			config:   &RequestConfig{ContentType: MIMEApplicationJSON, Body: []byte(`{"name":"partial"}`)},
+			expected: &User{Name: "partial"},
 		},
 		{
 			name: "Override query with JSON",
@@ -2189,10 +2144,7 @@ func Test_Bind_All(t *testing.T) {
 				Body:        []byte(`{"name":"fromjson", "id": 99}`),
 				Query:       "id=1&name=queryname",
 			},
-			expected: &User{
-				Name: "fromjson",
-				ID:   99,
-			},
+			expected: &User{Name: "fromjson", ID: 99},
 		},
 		{
 			name: "Form binding",
@@ -2201,22 +2153,13 @@ func Test_Bind_All(t *testing.T) {
 				ContentType: MIMEApplicationForm,
 				Body:        []byte("id=2&name=formname&email=form@doe.com"),
 			},
-			expected: &User{
-				ID:    2,
-				Name:  "formname",
-				Email: "form@doe.com",
-			},
+			expected: &User{ID: 2, Name: "formname", Email: "form@doe.com"},
 		},
 		{
-			name: "Skip body when content-type missing",
-			out:  new(User),
-			config: &RequestConfig{
-				Body:  []byte(`{"name":"bodyname"}`),
-				Query: "name=queryname",
-			},
-			expected: &User{
-				Name: "queryname",
-			},
+			name:     "Skip body when content-type missing",
+			out:      new(User),
+			config:   &RequestConfig{Body: []byte(`{"name":"bodyname"}`), Query: "name=queryname"},
+			expected: &User{Name: "queryname"},
 		},
 		{
 			name: "Skip empty body despite content-type",
@@ -2226,9 +2169,7 @@ func Test_Bind_All(t *testing.T) {
 				Body:        []byte{},
 				Query:       "name=queryname",
 			},
-			expected: &User{
-				Name: "queryname",
-			},
+			expected: &User{Name: "queryname"},
 		},
 	}
 
@@ -2343,18 +2284,12 @@ func BenchmarkBind_All(b *testing.B) {
 	config := &RequestConfig{
 		ContentType: MIMEApplicationJSON,
 		Body:        []byte(`{"name":"john", "email": "john@doe.com", "session_id": "abc1234", "id": 1}`),
-		Headers: map[string]string{
-			"X-User-Role": "admin",
-		},
-		Cookies: map[string]string{
-			"session_id": "abc123",
-		},
-		Query: "id=1&name=john",
+		Headers:     map[string]string{"X-User-Role": "admin"},
+		Cookies:     map[string]string{"session_id": "abc123"},
+		Query:       "id=1&name=john",
 	}
 
-	bind := &Bind{
-		ctx: c,
-	}
+	bind := &Bind{ctx: c}
 
 	for b.Loop() {
 		user := &User{}
@@ -2530,18 +2465,12 @@ func BenchmarkBind_All_CustomPrecedence(b *testing.B) {
 	config := &RequestConfig{
 		ContentType: MIMEApplicationJSON,
 		Body:        []byte(`{"name":"john", "email": "john@doe.com", "session_id": "abc1234", "id": 1}`),
-		Headers: map[string]string{
-			"X-User-Role": "admin",
-		},
-		Cookies: map[string]string{
-			"session_id": "abc123",
-		},
-		Query: "id=1&name=john",
+		Headers:     map[string]string{"X-User-Role": "admin"},
+		Cookies:     map[string]string{"session_id": "abc123"},
+		Query:       "id=1&name=john",
 	}
 
-	bind := &Bind{
-		ctx: c,
-	}
+	bind := &Bind{ctx: c}
 
 	for b.Loop() {
 		user := &User{}
@@ -2666,9 +2595,7 @@ func Test_Bind_CustomBinder_CustomCtx(t *testing.T) {
 	t.Parallel()
 
 	app := NewWithCustomCtx(func(app *App) CustomCtx {
-		return &customCtx{
-			DefaultCtx: *NewDefaultCtx(app),
-		}
+		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
 	})
 	typeBinder := &ctxTypeBinder{}
 	app.RegisterCustomBinder(typeBinder)

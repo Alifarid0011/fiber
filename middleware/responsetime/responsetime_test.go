@@ -23,11 +23,7 @@ func TestResponseTimeMiddleware(t *testing.T) {
 		expectHeader          bool
 		skipWithNext          bool
 	}{
-		{
-			name:           "sets duration header",
-			expectedStatus: fiber.StatusOK,
-			expectHeader:   true,
-		},
+		{name: "sets duration header", expectedStatus: fiber.StatusOK, expectHeader: true},
 		{
 			name:           "skips when Next returns true",
 			expectedStatus: fiber.StatusOK,
@@ -49,9 +45,7 @@ func TestResponseTimeMiddleware(t *testing.T) {
 
 			configs := []Config(nil)
 			if tt.skipWithNext {
-				configs = []Config{{
-					Next: func(fiber.Ctx) bool { return true },
-				}}
+				configs = []Config{{Next: func(fiber.Ctx) bool { return true }}}
 			}
 
 			appConfig := fiber.Config{}

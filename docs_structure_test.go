@@ -15,11 +15,7 @@ const middlewareDocsDir = "docs/middleware"
 
 // Sections every middleware page carries, so a reader can jump to the
 // signature or the config of any middleware without first reading the page.
-var middlewareDocSections = []string{
-	"## Signatures",
-	"## Config",
-	"## Examples",
-}
+var middlewareDocSections = []string{"## Signatures", "## Config", "## Examples"}
 
 type middlewareDocException struct {
 	file   string

@@ -24,18 +24,9 @@ func Test_Rand_String(t *testing.T) {
 		name string
 		args int
 	}{
-		{
-			name: "test generate",
-			args: 16,
-		},
-		{
-			name: "test generate smaller string",
-			args: 8,
-		},
-		{
-			name: "test generate larger string",
-			args: 32,
-		},
+		{name: "test generate", args: 16},
+		{name: "test generate smaller string", args: 8},
+		{name: "test generate larger string", args: 32},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -114,100 +105,67 @@ func Test_Parser_Request_URL(t *testing.T) {
 			want:   "http://example.com/api/v1",
 		},
 		{
-			name: "the path param from client",
-			client: New().
-				SetBaseURL("http://example.com/api/:id").
-				SetPathParam("id", "5"),
-			req:  AcquireRequest(),
-			want: "http://example.com/api/5",
+			name:   "the path param from client",
+			client: New().SetBaseURL("http://example.com/api/:id").SetPathParam("id", "5"),
+			req:    AcquireRequest(),
+			want:   "http://example.com/api/5",
 		},
 		{
-			name: "the path param from request",
-			client: New().
-				SetBaseURL("http://example.com/api/:id/:name").
-				SetPathParam("id", "5"),
-			req: AcquireRequest().
-				SetURL("/{key}").
-				SetPathParams(map[string]string{
-					"name": "fiber",
-					"key":  "val",
-				}).
+			name:   "the path param from request",
+			client: New().SetBaseURL("http://example.com/api/:id/:name").SetPathParam("id", "5"),
+			req: AcquireRequest().SetURL("/{key}").SetPathParams(map[string]string{"name": "fiber", "key": "val"}).
 				DelPathParams("key"),
 			want: "http://example.com/api/5/fiber/%7Bkey%7D",
 		},
 		{
-			name: "the path param from request and client",
-			client: New().
-				SetBaseURL("http://example.com/api/:id/:name").
-				SetPathParam("id", "5"),
-			req: AcquireRequest().
-				SetURL("/:key").
-				SetPathParams(map[string]string{
-					"name": "fiber",
-					"key":  "val",
-					"id":   "12",
-				}),
+			name:   "the path param from request and client",
+			client: New().SetBaseURL("http://example.com/api/:id/:name").SetPathParam("id", "5"),
+			req: AcquireRequest().SetURL("/:key").
+				SetPathParams(map[string]string{"name": "fiber", "key": "val", "id": "12"}),
 			want: "http://example.com/api/12/fiber/val",
 		},
 		{
-			name: "path param does not match a longer placeholder",
-			client: New().
-				SetBaseURL("http://example.com/api/:idx").
-				SetPathParam("id", "5"),
-			req:  AcquireRequest(),
-			want: "http://example.com/api/:idx",
+			name:   "path param does not match a longer placeholder",
+			client: New().SetBaseURL("http://example.com/api/:idx").SetPathParam("id", "5"),
+			req:    AcquireRequest(),
+			want:   "http://example.com/api/:idx",
 		},
 		{
 			name:   "path params sharing a prefix are resolved independently",
 			client: New().SetBaseURL("http://example.com/api/:idx/:id"),
-			req: AcquireRequest().
-				SetPathParams(map[string]string{
-					"id":  "5",
-					"idx": "9",
-				}),
-			want: "http://example.com/api/9/5",
+			req:    AcquireRequest().SetPathParams(map[string]string{"id": "5", "idx": "9"}),
+			want:   "http://example.com/api/9/5",
 		},
 		{
 			name:   "path param value cannot open a query",
 			client: New(),
-			req: AcquireRequest().
-				SetURL("http://example.com/api/:id").
-				SetPathParam("id", "a?b"),
-			want: "http://example.com/api/a%3Fb",
+			req:    AcquireRequest().SetURL("http://example.com/api/:id").SetPathParam("id", "a?b"),
+			want:   "http://example.com/api/a%3Fb",
 		},
 		{
 			name:   "path param value keeps its escaped separator when the client does not normalize",
 			client: New().SetDisablePathNormalizing(true),
-			req: AcquireRequest().
-				SetURL("http://example.com/api/:id").
-				SetPathParam("id", "a/b"),
-			want: "http://example.com/api/a%2Fb",
+			req:    AcquireRequest().SetURL("http://example.com/api/:id").SetPathParam("id", "a/b"),
+			want:   "http://example.com/api/a%2Fb",
 		},
 		{
 			name:   "a request can ask for its escaped separator from a client that does not normalize",
 			client: NewWithClient(&fasthttp.Client{DisablePathNormalizing: true}),
-			req: AcquireRequest().
-				SetURL("http://example.com/api/:id").
-				SetPathParam("id", "a/b").
+			req: AcquireRequest().SetURL("http://example.com/api/:id").SetPathParam("id", "a/b").
 				SetDisablePathNormalizing(true),
 			want: "http://example.com/api/a%2Fb",
 		},
 		{
 			name:   "a substituted value is not substituted again",
 			client: New(),
-			req: AcquireRequest().
-				SetURL("http://example.com/api/:id").
-				SetPathParams(map[string]string{
-					"id":   ":name",
-					"name": "fiber",
-				}),
+			req: AcquireRequest().SetURL("http://example.com/api/:id").
+				SetPathParams(map[string]string{"id": ":name", "name": "fiber"}),
 			want: "http://example.com/api/:name",
 		},
 		{
 			name:   "request disable path normalizing should be respected",
 			client: New(),
-			req: AcquireRequest().
-				SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123").
+			req: AcquireRequest().SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123").
 				SetDisablePathNormalizing(true),
 			want: "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123",
 		},
@@ -247,18 +205,14 @@ func Test_Parser_Request_URL(t *testing.T) {
 			// request alone cannot make a separator in a value safe.
 			name:   "a separator in a value is rejected when only the request disables normalizing",
 			client: New(),
-			req: AcquireRequest().
-				SetURL("http://example.com/api/:id").
-				SetPathParam("id", "a/b").
+			req: AcquireRequest().SetURL("http://example.com/api/:id").SetPathParam("id", "a/b").
 				SetDisablePathNormalizing(true),
 			wantErr: ErrPathParamInPath,
 		},
 		{
-			name:   "a separator in a value is rejected when only the fasthttp client does not normalize",
-			client: NewWithClient(&fasthttp.Client{DisablePathNormalizing: true}),
-			req: AcquireRequest().
-				SetURL("http://example.com/api/:id").
-				SetPathParam("id", "a/b"),
+			name:    "a separator in a value is rejected when only the fasthttp client does not normalize",
+			client:  NewWithClient(&fasthttp.Client{DisablePathNormalizing: true}),
+			req:     AcquireRequest().SetURL("http://example.com/api/:id").SetPathParam("id", "a/b"),
 			wantErr: ErrPathParamInPath,
 		},
 		{
@@ -266,21 +220,17 @@ func Test_Parser_Request_URL(t *testing.T) {
 			// the path while normalizing it, so an encoded "/" is indistinguishable
 			// from a real separator on the wire. Escaping still contains "?" and
 			// "#", which normalizing does not decode.
-			name:   "a separator in a value is rejected when normalizing will decode it",
-			client: New(),
-			req: AcquireRequest().
-				SetURL("http://example.com/api/:id").
-				SetPathParam("id", "a/b"),
+			name:    "a separator in a value is rejected when normalizing will decode it",
+			client:  New(),
+			req:     AcquireRequest().SetURL("http://example.com/api/:id").SetPathParam("id", "a/b"),
 			wantErr: ErrPathParamInPath,
 		},
 		{
 			// "@" ends a userinfo section, so this used to resolve to the host
 			// "evil.com" and the request left for another server.
-			name:   "path param value cannot rewrite the host",
-			client: New(),
-			req: AcquireRequest().
-				SetURL("http://:host/api").
-				SetPathParam("host", "x@evil.com"),
+			name:    "path param value cannot rewrite the host",
+			client:  New(),
+			req:     AcquireRequest().SetURL("http://:host/api").SetPathParam("host", "x@evil.com"),
 			wantErr: ErrPathParamInHost,
 		},
 	} {
@@ -295,9 +245,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	t.Run("a host path param keeps the rest of the URL intact", func(t *testing.T) {
 		t.Parallel()
 		client := New()
-		req := AcquireRequest().
-			SetURL("http://:host/api/v1?a=b").
-			SetPathParam("host", "\u00fcn\u00efcode.example.com")
+		req := AcquireRequest().SetURL("http://:host/api/v1?a=b").SetPathParam("host", "\u00fcn\u00efcode.example.com")
 
 		err := parserRequestURL(client, req)
 		require.NoError(t, err)
@@ -323,10 +271,8 @@ func Test_Parser_Request_URL(t *testing.T) {
 		{
 			name:   "query params from request should be set",
 			client: New(),
-			req: AcquireRequest().
-				SetURL("http://example.com/api/v1").
-				SetParam("bar", "foo"),
-			want: "bar=foo",
+			req:    AcquireRequest().SetURL("http://example.com/api/v1").SetParam("bar", "foo"),
+			want:   "bar=foo",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -340,11 +286,8 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("query params should be merged", func(t *testing.T) {
 		t.Parallel()
-		client := New().
-			SetParam("bar", "foo1")
-		req := AcquireRequest().
-			SetURL("http://example.com/api/v1?bar=foo2").
-			SetParam("bar", "foo")
+		client := New().SetParam("bar", "foo1")
+		req := AcquireRequest().SetURL("http://example.com/api/v1?bar=foo2").SetParam("bar", "foo")
 
 		err := parserRequestURL(client, req)
 		require.NoError(t, err)
@@ -383,33 +326,25 @@ func Test_Parser_Request_Header(t *testing.T) {
 		want   string
 	}{
 		{
-			name: "client header should be set",
-			client: New().
-				SetHeaders(map[string]string{
-					fiber.HeaderContentType: "application/json",
-				}),
-			req:  AcquireRequest(),
-			get:  (*fasthttp.RequestHeader).ContentType,
-			want: "application/json",
+			name:   "client header should be set",
+			client: New().SetHeaders(map[string]string{fiber.HeaderContentType: "application/json"}),
+			req:    AcquireRequest(),
+			get:    (*fasthttp.RequestHeader).ContentType,
+			want:   "application/json",
 		},
 		{
 			name:   "request header should be set",
 			client: New(),
-			req: AcquireRequest().
-				SetHeaders(map[string]string{
-					fiber.HeaderContentType: "application/json, utf-8",
-				}),
-			get:  (*fasthttp.RequestHeader).ContentType,
-			want: "application/json, utf-8",
+			req:    AcquireRequest().SetHeaders(map[string]string{fiber.HeaderContentType: "application/json, utf-8"}),
+			get:    (*fasthttp.RequestHeader).ContentType,
+			want:   "application/json, utf-8",
 		},
 		{
-			name: "request header should override client header",
-			client: New().
-				SetHeader(fiber.HeaderContentType, "application/xml"),
-			req: AcquireRequest().
-				SetHeader(fiber.HeaderContentType, "application/json, utf-8"),
-			get:  (*fasthttp.RequestHeader).ContentType,
-			want: "application/json, utf-8",
+			name:   "request header should override client header",
+			client: New().SetHeader(fiber.HeaderContentType, "application/xml"),
+			req:    AcquireRequest().SetHeader(fiber.HeaderContentType, "application/json, utf-8"),
+			get:    (*fasthttp.RequestHeader).ContentType,
+			want:   "application/json, utf-8",
 		},
 		{
 			name:   "auto set json header",
@@ -428,13 +363,9 @@ func Test_Parser_Request_Header(t *testing.T) {
 		{
 			name:   "auto set form data header",
 			client: New(),
-			req: AcquireRequest().
-				SetFormDataWithMap(map[string]string{
-					"foo":  "bar",
-					"ball": "circle and square",
-				}),
-			get:  (*fasthttp.RequestHeader).ContentType,
-			want: applicationForm,
+			req:    AcquireRequest().SetFormDataWithMap(map[string]string{"foo": "bar", "ball": "circle and square"}),
+			get:    (*fasthttp.RequestHeader).ContentType,
+			want:   applicationForm,
 		},
 		{
 			name:   "ua should have default value",
@@ -484,8 +415,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	t.Run("auto set file header", func(t *testing.T) {
 		t.Parallel()
 		client := New()
-		req := AcquireRequest().
-			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
+		req := AcquireRequest().AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
 			SetFormData("foo", "bar")
 
 		err := parserRequestHeader(client, req)
@@ -542,12 +472,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	}{
 		{
 			name: "client cookie should be set",
-			client: New().
-				SetCookie("foo", "bar").
-				SetCookies(map[string]string{
-					"bar":  "foo",
-					"bar1": "foo1",
-				}).
+			client: New().SetCookie("foo", "bar").SetCookies(map[string]string{"bar": "foo", "bar1": "foo1"}).
 				DelCookies("bar1"),
 			req:  AcquireRequest(),
 			want: map[string]string{"foo": "bar", "bar": "foo", "bar1": ""},
@@ -555,27 +480,14 @@ func Test_Parser_Request_Header(t *testing.T) {
 		{
 			name:   "request cookie should be set",
 			client: New(),
-			req: AcquireRequest().
-				SetCookiesWithStruct(&cookies{
-					Foo: "bar",
-					Bar: 67,
-				}),
-			want: map[string]string{"foo": "bar", "bar": "67", "bar1": ""},
+			req:    AcquireRequest().SetCookiesWithStruct(&cookies{Foo: "bar", Bar: 67}),
+			want:   map[string]string{"foo": "bar", "bar": "67", "bar1": ""},
 		},
 		{
-			name: "request cookie will override client cookie",
-			client: New().
-				SetCookie("foo", "bar").
-				SetCookies(map[string]string{
-					"bar":  "foo",
-					"bar1": "foo1",
-				}),
-			req: AcquireRequest().
-				SetCookiesWithStruct(&cookies{
-					Foo: "bar",
-					Bar: 67,
-				}),
-			want: map[string]string{"foo": "bar", "bar": "67", "bar1": "foo1"},
+			name:   "request cookie will override client cookie",
+			client: New().SetCookie("foo", "bar").SetCookies(map[string]string{"bar": "foo", "bar1": "foo1"}),
+			req:    AcquireRequest().SetCookiesWithStruct(&cookies{Foo: "bar", Bar: 67}),
+			want:   map[string]string{"foo": "bar", "bar": "67", "bar1": "foo1"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -598,10 +510,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 		Age  int    `cbor:"age"`
 	}
 
-	data := cborData{
-		Name: "foo",
-		Age:  12,
-	}
+	data := cborData{Name: "foo", Age: 12}
 	encoded, err := cbor.Marshal(data)
 	require.NoError(t, err)
 
@@ -621,25 +530,13 @@ func Test_Parser_Request_Body(t *testing.T) {
 			req:  AcquireRequest().SetXML(clientTestCXMLBody{Name: "foo"}),
 			want: "<body><name>foo</name></body>",
 		},
-		{
-			name: "CBOR body",
-			req:  AcquireRequest().SetCBOR(data),
-			want: string(encoded),
-		},
+		{name: "CBOR body", req: AcquireRequest().SetCBOR(data), want: string(encoded)},
 		{
 			name: "form data body",
-			req: AcquireRequest().
-				SetFormDataWithMap(map[string]string{
-					"ball": "circle and square",
-				}),
+			req:  AcquireRequest().SetFormDataWithMap(map[string]string{"ball": "circle and square"}),
 			want: "ball=circle+and+square",
 		},
-		{
-			name: "raw body",
-			req: AcquireRequest().
-				SetRawBody([]byte("hello world")),
-			want: "hello world",
-		},
+		{name: "raw body", req: AcquireRequest().SetRawBody([]byte("hello world")), want: "hello world"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -653,10 +550,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 	t.Run("form data body error", func(t *testing.T) {
 		t.Parallel()
 		client := New()
-		req := AcquireRequest().
-			SetFormDataWithMap(map[string]string{
-				"": "",
-			})
+		req := AcquireRequest().SetFormDataWithMap(map[string]string{"": ""})
 
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
@@ -668,15 +562,13 @@ func Test_Parser_Request_Body(t *testing.T) {
 		contains []string
 	}{
 		{
-			name: "file body",
-			req: AcquireRequest().
-				AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))),
+			name:     "file body",
+			req:      AcquireRequest().AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))),
 			contains: []string{"--FiberFormBoundary", "world"},
 		},
 		{
 			name: "file and form data",
-			req: AcquireRequest().
-				AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
+			req: AcquireRequest().AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
 				SetFormData("foo", "bar"),
 			contains: []string{"--FiberFormBoundary", "world", "bar"},
 		},
@@ -717,8 +609,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 	t.Run("raw body error", func(t *testing.T) {
 		t.Parallel()
 		client := New()
-		req := AcquireRequest().
-			SetRawBody([]byte("hello world"))
+		req := AcquireRequest().SetRawBody([]byte("hello world"))
 
 		req.body = nil
 
@@ -834,10 +725,7 @@ func Benchmark_Parser_Request_Body_File(b *testing.B) {
 		fileSize  = 32 << 10 // 32KB payload per file
 	)
 
-	formValues := map[string]string{
-		"username": "fiber",
-		"api_key":  "d5942ef5",
-	}
+	formValues := map[string]string{"username": "fiber", "api_key": "d5942ef5"}
 
 	fileContents := make([][]byte, fileCount)
 	for i := range fileContents {
@@ -901,12 +789,8 @@ func Benchmark_Parser_Request_URL_PathParams(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		req := AcquireRequest().
-			SetURL("/users/:id/posts/:postID").
-			SetPathParams(map[string]string{
-				"id":     "12345",
-				"postID": "67890",
-			})
+		req := AcquireRequest().SetURL("/users/:id/posts/:postID").
+			SetPathParams(map[string]string{"id": "12345", "postID": "67890"})
 		if err := parserRequestURL(client, req); err != nil {
 			b.Fatal(err)
 		}

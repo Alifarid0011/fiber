@@ -272,8 +272,7 @@ func Test_Execute(t *testing.T) {
 			t.Parallel()
 			core, client, req := newCore(), newClient(), AcquireRequest()
 			client.SetTimeout(tc.clientTimeout)
-			req.SetURL("http://example.com/hang-up").
-				SetTimeout(tc.requestTimeout)
+			req.SetURL("http://example.com/hang-up").SetTimeout(tc.requestTimeout)
 
 			resp, err := core.execute(context.Background(), client, req)
 			if tc.wantErr != nil {
@@ -669,10 +668,7 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 		resultCh := make(chan received, 1)
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Post("/check-length", func(c fiber.Ctx) error {
-				resultCh <- received{
-					body:   string(c.Body()),
-					length: c.Request().Header.ContentLength(),
-				}
+				resultCh <- received{body: string(c.Body()), length: c.Request().Header.ContentLength()}
 				return c.SendString("ok")
 			})
 		})
@@ -701,10 +697,7 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Post("/copy-to-body-stream", func(c fiber.Ctx) error {
 				body := string(c.Body())
-				resultCh <- received{
-					body:   body,
-					length: c.Request().Header.ContentLength(),
-				}
+				resultCh <- received{body: body, length: c.Request().Header.ContentLength()}
 				return c.SendString(body)
 			})
 		})

@@ -10,9 +10,7 @@ import (
 func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &HeaderBinding{
-		EnableSplitting: true,
-	}
+	binder := &HeaderBinding{EnableSplitting: true}
 
 	type User struct {
 		Name  string   `header:"Name"`
@@ -45,9 +43,7 @@ func Benchmark_HeaderBinder_Bind(b *testing.B) {
 func Test_HeaderBinder_Bind_Splitting_StringMapNotSplit(t *testing.T) {
 	t.Parallel()
 
-	b := &HeaderBinding{
-		EnableSplitting: true,
-	}
+	b := &HeaderBinding{EnableSplitting: true}
 
 	const userAgent = "Mozilla/5.0 (X11; Linux) AppleWebKit/537.36 (KHTML, like Gecko)"
 

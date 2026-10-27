@@ -198,16 +198,8 @@ func Test_HSTSHeaders(t *testing.T) {
 			scheme:   "https",
 			expected: "max-age=31536000; includeSubDomains; preload",
 		},
-		{
-			name:   "TLS request with zero max age omits header",
-			config: Config{HSTSMaxAge: 0},
-			scheme: "https",
-		},
-		{
-			name:   "HTTP request with max age omits header",
-			config: Config{HSTSMaxAge: 60},
-			scheme: "http",
-		},
+		{name: "TLS request with zero max age omits header", config: Config{HSTSMaxAge: 0}, scheme: "https"},
+		{name: "HTTP request with max age omits header", config: Config{HSTSMaxAge: 60}, scheme: "http"},
 	}
 
 	for _, tt := range tests {
@@ -231,11 +223,7 @@ func Test_HSTSExcludeSubdomainsAndPreload(t *testing.T) {
 	t.Parallel()
 
 	require.PanicsWithValue(t, "helmet: HSTSPreloadEnabled requires HSTSExcludeSubdomains to be false", func() {
-		New(Config{
-			HSTSMaxAge:            31536000,
-			HSTSExcludeSubdomains: true,
-			HSTSPreloadEnabled:    true,
-		})
+		New(Config{HSTSMaxAge: 31536000, HSTSExcludeSubdomains: true, HSTSPreloadEnabled: true})
 	})
 }
 
@@ -262,17 +250,10 @@ func hstsHeaderForRequest(t *testing.T, config *Config, scheme string) string {
 	tlsListener := tls.NewListener(ln, serverTLSConf)
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- app.Listener(tlsListener, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		})
+		errCh <- app.Listener(tlsListener, fiber.ListenConfig{DisableStartupMessage: true})
 	}()
 
-	client := &http.Client{
-		Timeout: time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: clientTLSConf,
-		},
-	}
+	client := &http.Client{Timeout: time.Second, Transport: &http.Transport{TLSClientConfig: clientTLSConf}}
 
 	var resp *http.Response
 	for deadline := time.Now().Add(time.Second); ; {

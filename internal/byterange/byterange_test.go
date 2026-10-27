@@ -148,11 +148,7 @@ func newFileServer(t *testing.T) fasthttp.RequestHandler {
 	require.NoError(t, os.WriteFile(name, []byte(fileContent), 0o600))
 	require.NoError(t, os.Chtimes(name, time.Time{}, time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)))
 
-	server := &fasthttp.FS{
-		Root:            dir,
-		AcceptByteRange: true,
-		SkipCache:       true,
-	}
+	server := &fasthttp.FS{Root: dir, AcceptByteRange: true, SkipCache: true}
 	return server.NewRequestHandler()
 }
 

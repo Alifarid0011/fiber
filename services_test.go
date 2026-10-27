@@ -185,10 +185,7 @@ func (m *mockService) Terminate(ctx context.Context) error {
 // rootMiscAServicesApp returns an App configured with services and an empty
 // state, built from the struct so that nothing is started and no hooks are set.
 func rootMiscAServicesApp(services ...Service) *App {
-	return &App{
-		configured: Config{Services: services},
-		state:      newState(),
-	}
+	return &App{configured: Config{Services: services}, state: newState()}
 }
 
 // rootMiscAStartedServicesApp is rootMiscAServicesApp for an app whose services
@@ -228,10 +225,7 @@ func Test_InitServices(t *testing.T) {
 	t.Run("start/success", func(t *testing.T) {
 		// Initialize the app using the struct and defining the state and hooks manually,
 		// because we are not checking the shutdown hooks in this test.
-		app := rootMiscAServicesApp(
-			&mockService{name: "dep1"},
-			&mockService{name: "dep2"},
-		)
+		app := rootMiscAServicesApp(&mockService{name: "dep1"}, &mockService{name: "dep2"})
 
 		app.hooks = newHooks(app)
 
@@ -255,9 +249,7 @@ func Test_InitServices(t *testing.T) {
 	t.Run("shutdown-hooks/success", func(t *testing.T) {
 		// Initialize the app using the New function to verify that the shutdown hooks are registered
 		// and the app mutex is not causing a deadlock.
-		app := New(Config{
-			Services: []Service{&mockService{name: "dep1"}},
-		})
+		app := New(Config{Services: []Service{&mockService{name: "dep1"}}})
 
 		require.NotPanics(t, app.initServices)
 
@@ -293,10 +285,7 @@ func Test_InitServices(t *testing.T) {
 		t.Parallel()
 
 		storage := &shutdownHookStorage{}
-		app := New(Config{
-			Services:      []Service{&mockService{name: "dep1"}},
-			SharedStorage: storage,
-		})
+		app := New(Config{Services: []Service{&mockService{name: "dep1"}}, SharedStorage: storage})
 
 		require.NotPanics(t, app.initServices)
 
@@ -344,10 +333,7 @@ func Test_StartServices(t *testing.T) {
 	})
 
 	t.Run("successful-start", func(t *testing.T) {
-		app := rootMiscAServicesApp(
-			&mockService{name: "dep1"},
-			&mockService{name: "dep2"},
-		)
+		app := rootMiscAServicesApp(&mockService{name: "dep1"}, &mockService{name: "dep2"})
 
 		err := app.startServices(context.Background())
 		require.NoError(t, err)
@@ -410,10 +396,7 @@ func Test_ShutdownServices(t *testing.T) {
 
 	t.Run("successful-shutdown", func(t *testing.T) {
 		// Both services have been started
-		app := rootMiscAStartedServicesApp(
-			&mockService{name: "dep1"},
-			&mockService{name: "dep2"},
-		)
+		app := rootMiscAStartedServicesApp(&mockService{name: "dep1"}, &mockService{name: "dep2"})
 
 		err := app.shutdownServices(context.Background())
 		require.NoError(t, err)
@@ -481,12 +464,7 @@ func Test_LogServices(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	colors := Colors{
-		Green: "\033[32m",
-		Reset: "\033[0m",
-		Blue:  "\033[34m",
-		Red:   "\033[31m",
-	}
+	colors := Colors{Green: "\033[32m", Reset: "\033[0m", Blue: "\033[34m", Red: "\033[31m"}
 
 	err := app.logServices(context.Background(), &buf, &colors)
 	require.NoError(t, err)
@@ -510,18 +488,13 @@ func Test_NewConfiguredServicesNil(t *testing.T) {
 	t.Parallel()
 
 	require.PanicsWithError(t, "fiber: service at index 0 is nil", func() {
-		New(Config{
-			Services: []Service{nil},
-		})
+		New(Config{Services: []Service{nil}})
 	})
 }
 
 func Test_ServiceContextProviders(t *testing.T) {
 	t.Run("no-provider", func(t *testing.T) {
-		app := &App{
-			configured: Config{},
-			state:      newState(),
-		}
+		app := &App{configured: Config{}, state: newState()}
 		require.Equal(t, context.Background(), app.servicesStartupCtx())
 		require.Equal(t, context.Background(), app.servicesShutdownCtx())
 	})
@@ -546,9 +519,7 @@ func Benchmark_StartServices(b *testing.B) {
 		b.Helper()
 
 		for b.Loop() {
-			app := New(Config{
-				Services: services,
-			})
+			app := New(Config{Services: services})
 
 			ctx := context.Background()
 			if err := app.startServices(ctx); err != nil {
@@ -560,17 +531,11 @@ func Benchmark_StartServices(b *testing.B) {
 	b.Run("no-services", func(b *testing.B) { benchmarkFn(b, []Service{}) })
 
 	b.Run("single-service", func(b *testing.B) {
-		benchmarkFn(b, []Service{
-			&mockService{name: "dep1"},
-		})
+		benchmarkFn(b, []Service{&mockService{name: "dep1"}})
 	})
 
 	b.Run("multiple-services", func(b *testing.B) {
-		benchmarkFn(b, []Service{
-			&mockService{name: "dep1"},
-			&mockService{name: "dep2"},
-			&mockService{name: "dep3"},
-		})
+		benchmarkFn(b, []Service{&mockService{name: "dep1"}, &mockService{name: "dep2"}, &mockService{name: "dep3"}})
 	})
 
 	b.Run("multiple-services-with-delays", func(b *testing.B) {
@@ -587,9 +552,7 @@ func Benchmark_ShutdownServices(b *testing.B) {
 		b.Helper()
 
 		for b.Loop() {
-			app := New(Config{
-				Services: services,
-			})
+			app := New(Config{Services: services})
 
 			ctx := context.Background()
 			if err := app.shutdownServices(ctx); err != nil {
@@ -601,17 +564,11 @@ func Benchmark_ShutdownServices(b *testing.B) {
 	b.Run("no-services", func(b *testing.B) { benchmarkFn(b, []Service{}) })
 
 	b.Run("single-service", func(b *testing.B) {
-		benchmarkFn(b, []Service{
-			&mockService{name: "dep1"},
-		})
+		benchmarkFn(b, []Service{&mockService{name: "dep1"}})
 	})
 
 	b.Run("multiple-services", func(b *testing.B) {
-		benchmarkFn(b, []Service{
-			&mockService{name: "dep1"},
-			&mockService{name: "dep2"},
-			&mockService{name: "dep3"},
-		})
+		benchmarkFn(b, []Service{&mockService{name: "dep1"}, &mockService{name: "dep2"}, &mockService{name: "dep3"}})
 	})
 
 	b.Run("multiple-services-with-delays", func(b *testing.B) {
@@ -628,9 +585,7 @@ func Benchmark_StartServices_withContextCancellation(b *testing.B) {
 		b.Helper()
 
 		for b.Loop() {
-			app := New(Config{
-				Services: services,
-			})
+			app := New(Config{Services: services})
 
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			err := app.startServices(ctx)
@@ -643,9 +598,7 @@ func Benchmark_StartServices_withContextCancellation(b *testing.B) {
 	}
 
 	b.Run("single-service/immediate-cancellation", func(b *testing.B) {
-		benchmarkFn(b, []Service{
-			&mockService{name: "dep1", startDelay: 100 * time.Millisecond},
-		}, 10*time.Millisecond)
+		benchmarkFn(b, []Service{&mockService{name: "dep1", startDelay: 100 * time.Millisecond}}, 10*time.Millisecond)
 	})
 
 	b.Run("multiple-services/immediate-cancellation", func(b *testing.B) {
@@ -683,9 +636,7 @@ func Benchmark_ShutdownServices_withContextCancellation(b *testing.B) {
 		b.Helper()
 
 		for b.Loop() {
-			app := New(Config{
-				Services: services,
-			})
+			app := New(Config{Services: services})
 
 			err := app.startServices(context.Background())
 			if err != nil {
@@ -751,9 +702,7 @@ func Benchmark_ServicesMemory(b *testing.B) {
 
 		var err error
 		for b.Loop() {
-			app := New(Config{
-				Services: services,
-			})
+			app := New(Config{Services: services})
 
 			ctx := context.Background()
 			err = app.startServices(ctx)
@@ -768,17 +717,11 @@ func Benchmark_ServicesMemory(b *testing.B) {
 	b.Run("no-services", func(b *testing.B) { benchmarkFn(b, []Service{}) })
 
 	b.Run("single-service", func(b *testing.B) {
-		benchmarkFn(b, []Service{
-			&mockService{name: "dep1"},
-		})
+		benchmarkFn(b, []Service{&mockService{name: "dep1"}})
 	})
 
 	b.Run("multiple-services", func(b *testing.B) {
-		benchmarkFn(b, []Service{
-			&mockService{name: "dep1"},
-			&mockService{name: "dep2"},
-			&mockService{name: "dep3"},
-		})
+		benchmarkFn(b, []Service{&mockService{name: "dep1"}, &mockService{name: "dep2"}, &mockService{name: "dep3"}})
 	})
 }
 

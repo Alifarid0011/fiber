@@ -559,14 +559,8 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 		name  string
 		order []string
 	}{
-		{
-			name:  "host-only first",
-			order: []string{"host-only", "domain"},
-		},
-		{
-			name:  "domain first",
-			order: []string{"domain", "host-only"},
-		},
+		{name: "host-only first", order: []string{"host-only", "domain"}},
+		{name: "domain first", order: []string{"domain", "host-only"}},
 	}
 
 	for _, testCase := range testCases {
@@ -670,8 +664,7 @@ func Test_CookieJar_SamePathAndPathMatchEdges(t *testing.T) {
 			{"", "/a", false},
 		}
 		for _, tc := range testCases {
-			require.Equal(t, tc.want, samePath([]byte(tc.a), []byte(tc.b)),
-				"samePath(%q, %q)", tc.a, tc.b)
+			require.Equal(t, tc.want, samePath([]byte(tc.a), []byte(tc.b)), "samePath(%q, %q)", tc.a, tc.b)
 		}
 	})
 
@@ -828,8 +821,7 @@ func Test_CookieJar_SetByHost_ReplacesOnNormalizedPath(t *testing.T) {
 			}
 
 			// Three writes of the same name and path must leave one entry.
-			require.Len(t, jar.hostCookies[host], 1,
-				"repeated SetByHost calls must replace, not accumulate")
+			require.Len(t, jar.hostCookies[host], 1, "repeated SetByHost calls must replace, not accumulate")
 
 			// And it must be the last value written.
 			require.Equal(t, "v2", string(jar.hostCookies[host][0].cookie.Value()))
@@ -965,11 +957,7 @@ func Test_CookieJar_MatchesStdlibJar(t *testing.T) {
 			sets: []setStep{{"http://example.com/", "a=1"}, {"http://example.com/", "a=2"}},
 			gets: []string{"http://example.com/"},
 		},
-		{
-			name: "ip host",
-			sets: []setStep{{"http://127.0.0.1/", "a=1"}},
-			gets: []string{"http://127.0.0.1/"},
-		},
+		{name: "ip host", sets: []setStep{{"http://127.0.0.1/", "a=1"}}, gets: []string{"http://127.0.0.1/"}},
 		{
 			name: "ip domain",
 			sets: []setStep{{"http://127.0.0.1/", "a=1; Domain=127.0.0.1"}},
@@ -1307,8 +1295,7 @@ func Test_CookieJar_BoundsCookiesPerRequest(t *testing.T) {
 	uri := clientTestCURI(t, "http://"+host+"/")
 
 	got := jar.Get(uri)
-	require.Greater(t, len(got), maxCookiesPerRequest,
-		"Get must not apply the per-request wire cap")
+	require.Greater(t, len(got), maxCookiesPerRequest, "Get must not apply the per-request wire cap")
 	for _, c := range got {
 		fasthttp.ReleaseCookie(c)
 	}

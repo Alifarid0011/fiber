@@ -97,12 +97,7 @@ func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 			canonical: true,
 			want:      "",
 		},
-		{
-			name:      "absent",
-			raw:       "GET / HTTP/1.1\r\nHost: app.example\r\n\r\n",
-			canonical: true,
-			want:      "",
-		},
+		{name: "absent", raw: "GET / HTTP/1.1\r\nHost: app.example\r\n\r\n", canonical: true, want: ""},
 	}
 
 	for _, tc := range tests {

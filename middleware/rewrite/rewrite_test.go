@@ -116,11 +116,7 @@ func Test_Rewrite_StartAnchor(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/users/*": "/u/$1",
-		},
-	}))
+	app.Use(New(Config{Rules: map[string]string{"/users/*": "/u/$1"}}))
 	app.Get("/u/:id", func(c fiber.Ctx) error { return c.SendString("rewritten:" + c.Params("id")) })
 	app.Get("/api/users/:id", func(c fiber.Ctx) error { return c.SendString("api:" + c.Params("id")) })
 
@@ -141,12 +137,7 @@ func Benchmark_Rewrite(b *testing.B) {
 
 	// Benchmark: Rewrite with Next function always returns true
 	b.Run("Next always true", func(b *testing.B) {
-		app := createApp(Config{
-			Next: func(fiber.Ctx) bool { return true },
-			Rules: map[string]string{
-				"/old": "/new",
-			},
-		})
+		app := createApp(Config{Next: func(fiber.Ctx) bool { return true }, Rules: map[string]string{"/old": "/new"}})
 
 		reqCtx := &fasthttp.RequestCtx{}
 		reqCtx.Request.SetRequestURI("/old")
@@ -158,12 +149,7 @@ func Benchmark_Rewrite(b *testing.B) {
 
 	// Benchmark: Rewrite with Next function always returns false
 	b.Run("Next always false", func(b *testing.B) {
-		app := createApp(Config{
-			Next: func(fiber.Ctx) bool { return false },
-			Rules: map[string]string{
-				"/old": "/new",
-			},
-		})
+		app := createApp(Config{Next: func(fiber.Ctx) bool { return false }, Rules: map[string]string{"/old": "/new"}})
 
 		reqCtx := &fasthttp.RequestCtx{}
 		reqCtx.Request.SetRequestURI("/old")
@@ -175,11 +161,7 @@ func Benchmark_Rewrite(b *testing.B) {
 
 	// Benchmark: Rewrite with tokens
 	b.Run("Rewrite with tokens", func(b *testing.B) {
-		app := createApp(Config{
-			Rules: map[string]string{
-				"/users/*/orders/*": "/user/$1/order/$2",
-			},
-		})
+		app := createApp(Config{Rules: map[string]string{"/users/*/orders/*": "/user/$1/order/$2"}})
 
 		reqCtx := &fasthttp.RequestCtx{}
 		reqCtx.Request.SetRequestURI("/users/123/orders/456")
@@ -191,11 +173,7 @@ func Benchmark_Rewrite(b *testing.B) {
 
 	// Benchmark: Non-matching request, handled by default route
 	b.Run("NonMatch with default", func(b *testing.B) {
-		app := createApp(Config{
-			Rules: map[string]string{
-				"/users/*/orders/*": "/user/$1/order/$2",
-			},
-		})
+		app := createApp(Config{Rules: map[string]string{"/users/*/orders/*": "/user/$1/order/$2"}})
 		app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 		reqCtx := &fasthttp.RequestCtx{}
@@ -208,11 +186,7 @@ func Benchmark_Rewrite(b *testing.B) {
 
 	// Benchmark: Non-matching request, with no default route
 	b.Run("NonMatch without default", func(b *testing.B) {
-		app := createApp(Config{
-			Rules: map[string]string{
-				"/users/*/orders/*": "/user/$1/order/$2",
-			},
-		})
+		app := createApp(Config{Rules: map[string]string{"/users/*/orders/*": "/user/$1/order/$2"}})
 
 		reqCtx := &fasthttp.RequestCtx{}
 		reqCtx.Request.SetRequestURI("/not-matching-any-rule")
@@ -233,12 +207,7 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 
 	// Parallel Benchmark: Rewrite with Next function always returns true
 	b.Run("Next always true", func(b *testing.B) {
-		app := createApp(Config{
-			Next: func(fiber.Ctx) bool { return true },
-			Rules: map[string]string{
-				"/old": "/new",
-			},
-		})
+		app := createApp(Config{Next: func(fiber.Ctx) bool { return true }, Rules: map[string]string{"/old": "/new"}})
 		b.ReportAllocs()
 		b.ResetTimer()
 
@@ -253,12 +222,7 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 
 	// Parallel Benchmark: Rewrite with Next function always returns false
 	b.Run("Next always false", func(b *testing.B) {
-		app := createApp(Config{
-			Next: func(fiber.Ctx) bool { return false },
-			Rules: map[string]string{
-				"/old": "/new",
-			},
-		})
+		app := createApp(Config{Next: func(fiber.Ctx) bool { return false }, Rules: map[string]string{"/old": "/new"}})
 		b.ReportAllocs()
 		b.ResetTimer()
 
@@ -273,11 +237,7 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 
 	// Parallel Benchmark: Rewrite with tokens
 	b.Run("Rewrite with tokens", func(b *testing.B) {
-		app := createApp(Config{
-			Rules: map[string]string{
-				"/users/*/orders/*": "/user/$1/order/$2",
-			},
-		})
+		app := createApp(Config{Rules: map[string]string{"/users/*/orders/*": "/user/$1/order/$2"}})
 		b.ReportAllocs()
 		b.ResetTimer()
 
@@ -292,11 +252,7 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 
 	// Parallel Benchmark: Non-matching request, handled by default route
 	b.Run("NonMatch with default", func(b *testing.B) {
-		app := createApp(Config{
-			Rules: map[string]string{
-				"/users/*/orders/*": "/user/$1/order/$2",
-			},
-		})
+		app := createApp(Config{Rules: map[string]string{"/users/*/orders/*": "/user/$1/order/$2"}})
 		app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -312,11 +268,7 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 
 	// Parallel Benchmark: Non-matching request, with no default route
 	b.Run("NonMatch without default", func(b *testing.B) {
-		app := createApp(Config{
-			Rules: map[string]string{
-				"/users/*/orders/*": "/user/$1/order/$2",
-			},
-		})
+		app := createApp(Config{Rules: map[string]string{"/users/*/orders/*": "/user/$1/order/$2"}})
 		b.ReportAllocs()
 		b.ResetTimer()
 
@@ -345,14 +297,8 @@ func rewritten(t *testing.T, cfg Config, path string) string {
 func Test_Rewrite_RuleListOrderWins(t *testing.T) {
 	t.Parallel()
 
-	narrowFirst := Config{RuleList: []Rule{
-		{From: "/p/a*", To: "/narrow/$1"},
-		{From: "/p/*", To: "/broad/$1"},
-	}}
-	broadFirst := Config{RuleList: []Rule{
-		{From: "/p/*", To: "/broad/$1"},
-		{From: "/p/a*", To: "/narrow/$1"},
-	}}
+	narrowFirst := Config{RuleList: []Rule{{From: "/p/a*", To: "/narrow/$1"}, {From: "/p/*", To: "/broad/$1"}}}
+	broadFirst := Config{RuleList: []Rule{{From: "/p/*", To: "/broad/$1"}, {From: "/p/a*", To: "/narrow/$1"}}}
 
 	require.Equal(t, "/narrow/bc", rewritten(t, narrowFirst, "/p/abc"))
 	require.Equal(t, "/broad/abc", rewritten(t, broadFirst, "/p/abc"))
@@ -363,10 +309,7 @@ func Test_Rewrite_DeprecatedRulesOrderIsStable(t *testing.T) {
 
 	// A map has no order, so this pins that the ranking decides the winner
 	// rather than Go's randomized iteration.
-	cfg := Config{Rules: map[string]string{
-		"/p/*":  "/broad/$1",
-		"/p/a*": "/narrow/$1",
-	}}
+	cfg := Config{Rules: map[string]string{"/p/*": "/broad/$1", "/p/a*": "/narrow/$1"}}
 	for range 25 {
 		require.Equal(t, "/narrow/bc", rewritten(t, cfg, "/p/abc"))
 	}
@@ -423,10 +366,7 @@ func Test_Rewrite_BothRuleFieldsPanic(t *testing.T) {
 	t.Parallel()
 
 	require.Panics(t, func() {
-		New(Config{
-			Rules:    map[string]string{"/old": "/new"},
-			RuleList: []Rule{{From: "/old", To: "/new"}},
-		})
+		New(Config{Rules: map[string]string{"/old": "/new"}, RuleList: []Rule{{From: "/old", To: "/new"}}})
 	})
 }
 
@@ -494,9 +434,7 @@ func Test_Rewrite_TwoDigitCaptures(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		RuleList: []Rule{{From: "/t/*/*/*/*/*/*/*/*/*/*/*", To: "/r/$11/$10/$1"}},
-	}))
+	app.Use(New(Config{RuleList: []Rule{{From: "/t/*/*/*/*/*/*/*/*/*/*/*", To: "/r/$11/$10/$1"}}}))
 	app.Get("/r/:a/:b/:c", func(c fiber.Ctx) error {
 		return c.SendString(c.Params("a") + " " + c.Params("b") + " " + c.Params("c"))
 	})
@@ -555,9 +493,7 @@ func Test_Rewrite_UnescapePathDecodesOnce(t *testing.T) {
 					t.Parallel()
 
 					app := fiber.New(fiber.Config{UnescapePath: unescape})
-					app.Use(New(Config{
-						RuleList: []Rule{{From: "/files/*", To: "/public/$1"}},
-					}))
+					app.Use(New(Config{RuleList: []Rule{{From: "/files/*", To: "/public/$1"}}}))
 					app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
 
 					want := tc.raw

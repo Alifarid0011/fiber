@@ -199,10 +199,7 @@ func Test_Security_Balancer_BlocksPrivateByDefault(t *testing.T) {
 	// the panic surfaces at Balancer construction time.
 	policy := DefaultSecurityPolicy()
 	require.PanicsWithError(t, ErrUpstreamHostBlocked.Error()+": 127.0.0.1", func() {
-		Balancer(Config{
-			Servers:        []string{addr},
-			SecurityPolicy: &policy,
-		})
+		Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy})
 	})
 }
 
@@ -212,10 +209,7 @@ func Test_Security_Balancer_AllowsPrivateOptIn(t *testing.T) {
 
 	policy := proxyTestAllowPrivatePolicy()
 	app := fiber.New()
-	app.Use(Balancer(Config{
-		Servers:        []string{addr},
-		SecurityPolicy: &policy,
-	}))
+	app.Use(Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy}))
 
 	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost(addr)), fiber.StatusTeapot)
 }
@@ -323,10 +317,7 @@ func Test_Security_KeepConnectionPreservesOtherHopByHop(t *testing.T) {
 	})
 
 	app := fiber.New()
-	app.Use(Balancer(Config{
-		Servers:              []string{addr},
-		KeepConnectionHeader: true,
-	}))
+	app.Use(Balancer(Config{Servers: []string{addr}, KeepConnectionHeader: true}))
 
 	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost(addr),
 		apptest.WithHeader(fiber.HeaderConnection, "keep-alive"),
@@ -899,9 +890,7 @@ func Test_Security_FollowRedirects_PropagatesClientError(t *testing.T) {
 	t.Parallel()
 
 	sentinel := errors.New("dial failure")
-	cli := &fasthttp.Client{
-		Dial: func(string) (net.Conn, error) { return nil, sentinel },
-	}
+	cli := &fasthttp.Client{Dial: func(string) (net.Conn, error) { return nil, sentinel }}
 
 	err := proxyTestFollow(t, cli, "http://example.com/", 1, DefaultSecurityPolicy())
 	require.ErrorIs(t, err, sentinel)
@@ -1049,10 +1038,7 @@ func Test_Security_Balancer_BuildsHTTPSHostClient(t *testing.T) {
 	// installed without panicking and the TLS flag was set by inspecting
 	// the resulting LBClient via the public Balancer (which would have
 	// panicked at construction time for an invalid TLS upstream).
-	h := Balancer(Config{
-		Servers:        []string{"https://127.0.0.1:0"},
-		SecurityPolicy: &policy,
-	})
+	h := Balancer(Config{Servers: []string{"https://127.0.0.1:0"}, SecurityPolicy: &policy})
 	require.NotNil(t, h)
 }
 
@@ -1099,10 +1085,7 @@ func Test_Security_Balancer_HostnameDefersToDial(t *testing.T) {
 	// Must not panic even though the host cannot be resolved right now.
 	var h fiber.Handler
 	require.NotPanics(t, func() {
-		h = Balancer(Config{
-			Servers:        []string{"http://does-not-exist.invalid:80"},
-			SecurityPolicy: &policy,
-		})
+		h = Balancer(Config{Servers: []string{"http://does-not-exist.invalid:80"}, SecurityPolicy: &policy})
 	})
 	require.NotNil(t, h)
 

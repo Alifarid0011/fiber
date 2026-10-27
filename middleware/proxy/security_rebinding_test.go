@@ -103,11 +103,7 @@ func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) (string, *atomic.
 // included for each of the IPv4 addresses in ips; with none the reply is a
 // NODATA answer (used for AAAA queries).
 func buildDNSResponse(id uint16, q *dnsmessage.Question, ips ...net.IP) ([]byte, error) {
-	b := dnsmessage.NewBuilder(nil, dnsmessage.Header{
-		ID:            id,
-		Response:      true,
-		Authoritative: true,
-	})
+	b := dnsmessage.NewBuilder(nil, dnsmessage.Header{ID: id, Response: true, Authoritative: true})
 	b.EnableCompression()
 	if err := b.StartQuestions(); err != nil {
 		return nil, fmt.Errorf("dns build questions: %w", err)
@@ -286,8 +282,7 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 			// allowed) happened AND a second dial-time lookup (rebound,
 			// blocked) happened — i.e. the block is genuinely at dial time,
 			// not an up-front block masking a broken guard.
-			require.GreaterOrEqual(t, aQueries.Load(), int64(2),
-				"expected an up-front and a dial-time DNS lookup")
+			require.GreaterOrEqual(t, aQueries.Load(), int64(2), "expected an up-front and a dial-time DNS lookup")
 		})
 	}
 }
@@ -772,9 +767,7 @@ func Test_Security_EnsureClientGuarded_ComposePropagatesError(t *testing.T) {
 	t.Parallel()
 
 	wantErr := errors.New("configure boom")
-	cli := &fasthttp.Client{
-		ConfigureClient: func(_ *fasthttp.HostClient) error { return wantErr },
-	}
+	cli := &fasthttp.Client{ConfigureClient: func(_ *fasthttp.HostClient) error { return wantErr }}
 	ensureClientGuarded(cli)
 
 	err := cli.ConfigureClient(&fasthttp.HostClient{})

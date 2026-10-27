@@ -113,11 +113,7 @@ func Test_ContextTemplate_ValueTagWritesSupportedValues(t *testing.T) {
 
 	tmpl := buildTestTemplate(t, "${value:bytes}|${value:string}|${value:number}|${value:missing}", nil)
 
-	ctx := testUserValueContext{
-		"bytes":  []byte("raw"),
-		"string": "text",
-		"number": 42,
-	}
+	ctx := testUserValueContext{"bytes": []byte("raw"), "string": "text", "number": 42}
 	require.Equal(t, "raw|text|42|", executeContextTemplate(t, tmpl, ctx))
 }
 
@@ -255,18 +251,14 @@ func Test_MustSetContextTemplate_PanicsOnBuildError(t *testing.T) {
 	t.Parallel()
 
 	require.PanicsWithError(t, `logtemplate: unknown tag: "missing:value"`, func() {
-		MustSetContextTemplate(ContextConfig{
-			Format: "${missing:value}",
-		})
+		MustSetContextTemplate(ContextConfig{Format: "${missing:value}"})
 	})
 }
 
 func Test_SetContextTemplate_ReturnsBuildError(t *testing.T) {
 	t.Parallel()
 
-	err := SetContextTemplate(ContextConfig{
-		Format: "${missing:value}",
-	})
+	err := SetContextTemplate(ContextConfig{Format: "${missing:value}"})
 	require.ErrorIs(t, err, logtemplate.ErrUnknownTag)
 
 	var typed *logtemplate.UnknownTagError
@@ -303,13 +295,8 @@ func Test_ContextValue(t *testing.T) {
 		want any
 		name string
 	}{
-		{
-			name: "nil",
-		},
-		{
-			name: "unsupported",
-			ctx:  "ctx",
-		},
+		{name: "nil"},
+		{name: "unsupported", ctx: "ctx"},
 	}
 
 	for _, tt := range tests {

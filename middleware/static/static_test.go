@@ -24,10 +24,7 @@ const (
 	testCSSDir = "../../.github/testdata/fs/css"
 )
 
-var testConfig = fiber.TestConfig{
-	Timeout:       10 * time.Second,
-	FailOnTimeout: true,
-}
+var testConfig = fiber.TestConfig{Timeout: 10 * time.Second, FailOnTimeout: true}
 
 // discardLogger drops what the file server of fasthttp logs for every path it
 // cannot open; the server of Fiber discards it as well.
@@ -54,9 +51,7 @@ func Test_Static_Index_Default(t *testing.T) {
 
 	app.Get("", New("../../.github/"))
 
-	app.Get("test", New("", Config{
-		IndexNames: []string{"index.html"},
-	}))
+	app.Get("test", New("", Config{IndexNames: []string{"index.html"}}))
 
 	resp := staticTestExpect(t, app, "/", 200, fiber.MIMETextHTMLCharsetUTF8)
 	require.Contains(t, apptest.Body(t, resp), "Hello, World!")
@@ -85,9 +80,7 @@ func Test_Static_MaxAge(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/*", New("../../.github", Config{
-		MaxAge: 100,
-	}))
+	app.Get("/*", New("../../.github", Config{MaxAge: 100}))
 
 	resp := staticTestExpect(t, app, "/index.html", 200, "text/html; charset=utf-8")
 	require.Equal(t, "public, max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
@@ -134,9 +127,7 @@ func Test_Static_Disable_Cache(t *testing.T) {
 		_ = os.Remove("../../.github/test.txt") //nolint:errcheck // not needed
 	}()
 
-	app.Get("/*", New("../../.github/", Config{
-		CacheDuration: -1,
-	}))
+	app.Get("/*", New("../../.github/", Config{CacheDuration: -1}))
 
 	resp := apptest.Do(t, app, "/test.txt")
 	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
@@ -169,9 +160,7 @@ func Test_Static_Download(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/fiber.png", New("../../.github/testdata/fs/img/fiber.png", Config{
-		Download: true,
-	}))
+	app.Get("/fiber.png", New("../../.github/testdata/fs/img/fiber.png", Config{Download: true}))
 
 	resp := apptest.Expect(t, app, "/fiber.png", 200)
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
@@ -381,10 +370,7 @@ func Test_Static_FS(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Get("/*", New("", Config{
-		FS:     os.DirFS("../../.github/testdata/fs"),
-		Browse: true,
-	}))
+	app.Get("/*", New("", Config{FS: os.DirFS("../../.github/testdata/fs"), Browse: true}))
 
 	resp := apptest.Expect(t, app, "/", 200)
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -431,15 +417,9 @@ func Test_Static_FS_Browse(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Get("/embed*", New("", Config{
-		FS:     fsTestFilesystem,
-		Browse: true,
-	}))
+	app.Get("/embed*", New("", Config{FS: fsTestFilesystem, Browse: true}))
 
-	app.Get("/dirfs*", New("", Config{
-		FS:     os.DirFS(testCSSDir),
-		Browse: true,
-	}))
+	app.Get("/dirfs*", New("", Config{FS: os.DirFS(testCSSDir), Browse: true}))
 
 	resp := apptest.Expect(t, app, "/dirfs", 200)
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -485,9 +465,7 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 
 	newApp := func() *fiber.App {
 		app := fiber.New()
-		app.Get("/static*", New("fs", Config{
-			FS: os.DirFS("../../.github/testdata"),
-		}))
+		app.Get("/static*", New("fs", Config{FS: os.DirFS("../../.github/testdata")}))
 
 		return app
 	}
@@ -553,9 +531,7 @@ func Test_Static_FS_MissingRootDoesNotFallback(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Get("/static*", New("missing", Config{
-		FS: os.DirFS("../../.github/testdata"),
-	}))
+	app.Get("/static*", New("missing", Config{FS: os.DirFS("../../.github/testdata")}))
 
 	apptest.Expect(t, app, "/static/index.html", fiber.StatusNotFound)
 }
@@ -589,9 +565,7 @@ func Test_Static_FS_RootLeadingSlash(t *testing.T) {
 			t.Parallel()
 
 			app := fiber.New()
-			app.Use("/", New(tc.root, Config{
-				FS: os.DirFS("../../.github/testdata/fs"),
-			}))
+			app.Use("/", New(tc.root, Config{FS: os.DirFS("../../.github/testdata/fs")}))
 
 			resp := apptest.Expect(t, app, tc.target, fiber.StatusOK)
 			require.Equal(t, tc.wantType, resp.Header.Get(fiber.HeaderContentType))
@@ -611,12 +585,7 @@ func Test_isFile(t *testing.T) {
 		path       string
 		expected   bool
 	}{
-		{
-			name:       "file",
-			path:       "index.html",
-			filesystem: os.DirFS("../../.github"),
-			expected:   true,
-		},
+		{name: "file", path: "index.html", filesystem: os.DirFS("../../.github"), expected: true},
 		{
 			name:       "file",
 			path:       "index2.html",
@@ -624,12 +593,7 @@ func Test_isFile(t *testing.T) {
 			expected:   false,
 			gotError:   fs.ErrNotExist,
 		},
-		{
-			name:       "directory",
-			path:       ".",
-			filesystem: os.DirFS("../../.github"),
-			expected:   false,
-		},
+		{name: "directory", path: ".", filesystem: os.DirFS("../../.github"), expected: false},
 		{
 			name:       "directory",
 			path:       "not_exists",
@@ -637,18 +601,8 @@ func Test_isFile(t *testing.T) {
 			expected:   false,
 			gotError:   fs.ErrNotExist,
 		},
-		{
-			name:       "directory",
-			path:       ".",
-			filesystem: os.DirFS(testCSSDir),
-			expected:   false,
-		},
-		{
-			name:       "file",
-			path:       testCSSDir + "/style.css",
-			filesystem: nil,
-			expected:   true,
-		},
+		{name: "directory", path: ".", filesystem: os.DirFS(testCSSDir), expected: false},
+		{name: "file", path: testCSSDir + "/style.css", filesystem: nil, expected: true},
 		{
 			name:       "file",
 			path:       testCSSDir + "/style2.css",
@@ -656,12 +610,7 @@ func Test_isFile(t *testing.T) {
 			expected:   false,
 			gotError:   fs.ErrNotExist,
 		},
-		{
-			name:       "directory",
-			path:       testCSSDir,
-			filesystem: nil,
-			expected:   false,
-		},
+		{name: "directory", path: testCSSDir, filesystem: nil, expected: false},
 	}
 
 	for _, c := range cases {
@@ -680,9 +629,7 @@ func Test_Static_Compress(t *testing.T) {
 	t.Parallel()
 	dir := "../../.github/testdata/fs"
 	app := fiber.New()
-	app.Get("/*", New(dir, Config{
-		Compress: true,
-	}))
+	app.Get("/*", New(dir, Config{Compress: true}))
 
 	// Note: deflate is not supported by fasthttp.FS
 	algorithms := []string{"zstd", "gzip", "br"}
@@ -713,10 +660,7 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 	t.Parallel()
 	dir := "../../.github/testdata/fs"
 	app := fiber.New()
-	app.Get("/*", New(dir, Config{
-		Compress:      true,
-		CacheDuration: 1 * time.Second,
-	}))
+	app.Get("/*", New(dir, Config{Compress: true, CacheDuration: 1 * time.Second}))
 
 	// request compressible file without encoding
 	req := httptest.NewRequest(fiber.MethodGet, "/index.html", http.NoBody)
@@ -727,11 +671,7 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 
 	// request compressible file with different encodings
 	algorithms := []string{"zstd", "gzip", "br"}
-	fileSuffixes := map[string]string{
-		"gzip": ".fiber.gz",
-		"br":   ".fiber.br",
-		"zstd": ".fiber.zst",
-	}
+	fileSuffixes := map[string]string{"gzip": ".fiber.gz", "br": ".fiber.br", "zstd": ".fiber.zst"}
 
 	for _, algo := range algorithms {
 		// Wait for cache to expire
@@ -755,19 +695,10 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 func Test_Static_Compress_WithFileSuffixes(t *testing.T) {
 	t.Parallel()
 	dir := "../../.github/testdata/fs"
-	fileSuffixes := map[string]string{
-		"gzip": ".test.gz",
-		"br":   ".test.br",
-		"zstd": ".test.zst",
-	}
+	fileSuffixes := map[string]string{"gzip": ".test.gz", "br": ".test.br", "zstd": ".test.zst"}
 
-	app := fiber.New(fiber.Config{
-		CompressedFileSuffixes: fileSuffixes,
-	})
-	app.Get("/*", New(dir, Config{
-		Compress:      true,
-		CacheDuration: 1 * time.Second,
-	}))
+	app := fiber.New(fiber.Config{CompressedFileSuffixes: fileSuffixes})
+	app.Get("/*", New(dir, Config{Compress: true, CacheDuration: 1 * time.Second}))
 
 	// request compressible file with different encodings
 	algorithms := []string{"zstd", "gzip", "br"}
@@ -848,8 +779,7 @@ func Test_Static_PathTraversal(t *testing.T) {
 
 		// If we got a 404, we expect the "Not Found" message because that's how fiber handles NotFound by default.
 		if status == 404 {
-			require.Contains(t, body, "Not Found",
-				"Blocked traversal should have a \"Not Found\" message for %s", path)
+			require.Contains(t, body, "Not Found", "Blocked traversal should have a \"Not Found\" message for %s", path)
 		} else {
 			require.Contains(t, body, "Are you a hacker?",
 				"Blocked traversal should have a \"Not Found\" message for %s", path)
@@ -1413,11 +1343,7 @@ func Test_Static_RootMount_EmptyFirstSegment_NotFoundHandler(t *testing.T) {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode(), "unescape=%v", unescape)
 		require.Equal(t, "PUBLIC", string(resp.Body()), "unescape=%v", unescape)
 
-		for _, target := range []string{
-			"//public.txt",
-			"/%2Fpublic.txt",
-			"http://example.com//public.txt",
-		} {
+		for _, target := range []string{"//public.txt", "/%2Fpublic.txt", "http://example.com//public.txt"} {
 			resp = serveRaw(handler, fiber.MethodGet, target)
 			body := string(resp.Body())
 			require.Equal(t, fiber.StatusTeapot, resp.StatusCode(), "unescape=%v target=%s", unescape, target)
@@ -1741,10 +1667,7 @@ func Test_Static_ForgedEscapeCannotBypassGuard(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
 
 	// both spellings normalize to "/static/%70rivate/secret.txt"
-	forged := []string{
-		"/static/%%370rivate/secret.txt",
-		"/static/%7%30rivate/secret.txt",
-	}
+	forged := []string{"/static/%%370rivate/secret.txt", "/static/%7%30rivate/secret.txt"}
 
 	for _, unescape := range []bool{false, true} {
 		for _, mount := range []string{"wildcard", "prefix"} {

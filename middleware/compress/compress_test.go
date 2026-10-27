@@ -22,10 +22,7 @@ import (
 
 var filedata []byte
 
-var testConfig = fiber.TestConfig{
-	Timeout:       10 * time.Second,
-	FailOnTimeout: true,
-}
+var testConfig = fiber.TestConfig{Timeout: 10 * time.Second, FailOnTimeout: true}
 
 func init() {
 	dat, err := os.ReadFile("../../README.md")
@@ -199,9 +196,7 @@ func Test_Compress_Vary(t *testing.T) {
 func Test_Compress_RespectsBodyLimitOnCompressedRequestBody(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New(fiber.Config{
-		BodyLimit: 40,
-	})
+	app := fiber.New(fiber.Config{BodyLimit: 40})
 
 	app.Use(New())
 
@@ -409,9 +404,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 func Test_Compress_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool { return true },
-	}))
+	app.Use(New(Config{Next: func(_ fiber.Ctx) bool { return true }}))
 
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }

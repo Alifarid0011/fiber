@@ -63,12 +63,7 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 			vary:  strings.Join(varyNames, ", "),
 			cache: []string{cacheUnreachable, cacheUnreachable},
 		},
-		{
-			name:  "long path segment is hashed",
-			route: longPath,
-			url:   longPath,
-			cache: []string{cacheMiss, cacheHit},
-		},
+		{name: "long path segment is hashed", route: longPath, url: longPath, cache: []string{cacheMiss, cacheHit}},
 		{
 			// Malformed query string with invalid encoding: not a crash, and hashed as-is.
 			name:  "malformed query string",
@@ -150,12 +145,7 @@ func Test_Cache_Security_KeyValuesStayDistinct(t *testing.T) {
 		{
 			name:      "cookie delimiters",
 			dimension: credentialPartitions["keyCookies"],
-			values: []string{
-				"value|injected",
-				"value:injected",
-				"value|vary|injected",
-				"sha256:fakehash",
-			},
+			values:    []string{"value|injected", "value:injected", "value|vary|injected", "sha256:fakehash"},
 		},
 		{
 			// Test backslash escaping scenarios.
@@ -319,10 +309,7 @@ func Test_Cache_Security_KeyHeaderRepeatedFieldLines(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: 1 * time.Hour,
-		KeyHeaders: []string{"X-Tenant"},
-	}))
+	app.Use(New(Config{Expiration: 1 * time.Hour, KeyHeaders: []string{"X-Tenant"}}))
 	app.Get("/", cacheTestCEchoTenants)
 	wire := cacheTestCWire{t: t, app: app}
 
@@ -461,11 +448,7 @@ func Test_Cache_Security_DelimiterCollisionPrevention(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: 1 * time.Hour,
-		KeyHeaders: []string{"X-Header"},
-		KeyCookies: []string{"session"},
-	}))
+	app.Use(New(Config{Expiration: 1 * time.Hour, KeyHeaders: []string{"X-Header"}, KeyCookies: []string{"session"}}))
 
 	var responses []string
 	app.Get("/", func(c fiber.Ctx) error {
@@ -619,10 +602,7 @@ func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: 1 * time.Hour,
-		Methods:    []string{fiber.MethodQuery},
-	}))
+	app.Use(New(Config{Expiration: 1 * time.Hour, Methods: []string{fiber.MethodQuery}}))
 
 	var count atomic.Int32
 	app.Query("/", func(c fiber.Ctx) error {
@@ -655,10 +635,7 @@ func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T)
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: 1 * time.Hour,
-		Methods:    []string{fiber.MethodQuery},
-	}))
+	app.Use(New(Config{Expiration: 1 * time.Hour, Methods: []string{fiber.MethodQuery}}))
 
 	var count atomic.Int32
 	app.Query("/", func(c fiber.Ctx) error {
@@ -872,10 +849,7 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 
 			var calls atomic.Int32
 			app := fiber.New()
-			app.Use(New(Config{
-				Expiration: time.Hour,
-				Methods:    []string{fiber.MethodGet, fiber.MethodPost},
-			}))
+			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}}))
 			app.Post("/", func(c fiber.Ctx) error {
 				calls.Add(1)
 				c.Response().Header.Set(fiber.HeaderVary, fiber.HeaderContentType)
@@ -914,10 +888,7 @@ func Test_Vary_PartitionsWithoutHeaderNormalizing(t *testing.T) {
 			t.Parallel()
 
 			app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
-			app.Use(New(Config{
-				Expiration: time.Hour,
-				Methods:    []string{fiber.MethodGet, fiber.MethodPost},
-			}))
+			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}}))
 			app.Post("/", func(c fiber.Ctx) error {
 				c.Response().Header.Set(fiber.HeaderVary, fiber.HeaderContentType)
 				return c.SendString("body-for:" + c.Get(fiber.HeaderContentType))
@@ -1564,8 +1535,7 @@ func Test_Cache_LegacyStoredSetCookieIsUnsafe(t *testing.T) {
 	require.NoError(t, m.set(context.Background(), key, e, time.Minute))
 
 	resp := apptest.Do(t, app, "/")
-	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"),
-		"an entry carrying a cookie is not replayed")
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"), "an entry carrying a cookie is not replayed")
 	require.Equal(t, int64(2), handlerRuns.Load(), "the handler answers instead")
 	require.Empty(t, resp.Header.Get(fiber.HeaderSetCookie), "and the stored cookie goes nowhere")
 }

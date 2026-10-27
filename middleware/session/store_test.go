@@ -224,9 +224,7 @@ func Test_Store_getSessionID_SkipsChildrenWithoutExtract(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	store := NewStore(Config{
-		Extractor: extractors.Chain(extractors.Extractor{}, extractors.FromCookie("session_id")),
-	})
+	store := NewStore(Config{Extractor: extractors.Chain(extractors.Extractor{}, extractors.FromCookie("session_id"))})
 
 	ctx := apptest.Ctx(t, app)
 	ctx.Request().Header.SetCookie("session_id", "abc123")
@@ -336,10 +334,7 @@ func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	chain := extractors.Chain(
-		extractors.FromCookie("sid_cookie"),
-		extractors.FromHeader("X-Sid"),
-	)
+	chain := extractors.Chain(extractors.FromCookie("sid_cookie"), extractors.FromHeader("X-Sid"))
 
 	for _, tc := range []struct {
 		plant func(ctx fiber.Ctx) // puts the request in the state under test; nil leaves it blank
@@ -623,8 +618,7 @@ func Test_Store_CachedIDKeepsProvenance(t *testing.T) {
 
 	second, err := store.Get(ctx)
 	require.NoError(t, err)
-	require.Equal(t, first.extractor, second.extractor,
-		"the cached path must recover the provenance from the box")
+	require.Equal(t, first.extractor, second.extractor, "the cached path must recover the provenance from the box")
 }
 
 // Test_ProvenanceBox_PoolHoldsSomethingElse covers the guard on what the pool

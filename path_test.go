@@ -54,9 +54,7 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/v1/some/resource/name\\:customVerb", regexp.MustCompile)
 	require.Equal(t, routeParser{
-		segs: []*routeSegment{
-			{Const: "/v1/some/resource/name:customVerb", Length: 33, IsLast: true},
-		},
+		segs:       []*routeSegment{{Const: "/v1/some/resource/name:customVerb", Length: 33, IsLast: true}},
 		params:     nil,
 		minSlashes: 4,
 		maxSlashes: 4,
@@ -287,12 +285,7 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 			// non-parametric routes never take the filtered getMatch path
 			continue
 		}
-		route := &Route{
-			routeParser: parser,
-			Params:      parser.params,
-			path:        pattern,
-			Path:        pattern,
-		}
+		route := &Route{routeParser: parser, Params: parser.params, path: pattern, Path: pattern}
 		for _, use := range []bool{false, true} {
 			route.use = use
 			for _, path := range paths {
@@ -369,30 +362,10 @@ func TestHasPartialMatchBoundary(t *testing.T) {
 		matchedLength int
 		expected      bool
 	}{
-		{
-			name:          "negative length",
-			path:          "/demo",
-			matchedLength: -1,
-			expected:      false,
-		},
-		{
-			name:          "greater than length",
-			path:          "/demo",
-			matchedLength: 6,
-			expected:      false,
-		},
-		{
-			name:          "exact match",
-			path:          "/demo",
-			matchedLength: len("/demo"),
-			expected:      true,
-		},
-		{
-			name:          "zero length",
-			path:          "/demo",
-			matchedLength: 0,
-			expected:      false,
-		},
+		{name: "negative length", path: "/demo", matchedLength: -1, expected: false},
+		{name: "greater than length", path: "/demo", matchedLength: 6, expected: false},
+		{name: "exact match", path: "/demo", matchedLength: len("/demo"), expected: true},
+		{name: "zero length", path: "/demo", matchedLength: 0, expected: false},
 		{
 			name:          "previous rune slash",
 			path:          "/demo/child",
@@ -405,12 +378,7 @@ func TestHasPartialMatchBoundary(t *testing.T) {
 			matchedLength: len("/demo"),
 			expected:      true,
 		},
-		{
-			name:          "no boundary",
-			path:          "/demo/child",
-			matchedLength: len("/dem"),
-			expected:      false,
-		},
+		{name: "no boundary", path: "/demo/child", matchedLength: len("/dem"), expected: false},
 	}
 
 	for _, testCase := range testCases {
@@ -752,9 +720,7 @@ func mockRegexHandler(lastPattern *string, compileCalled *bool) any {
 	return func(pattern string) regexMatcher {
 		*compileCalled = true
 		*lastPattern = pattern
-		return &mockRegexCompiler{
-			Regexp: regexp.MustCompile(pattern),
-		}
+		return &mockRegexCompiler{Regexp: regexp.MustCompile(pattern)}
 	}
 }
 
@@ -766,9 +732,7 @@ func Test_RegexHandler_Custom(t *testing.T) {
 	var compileCalled bool
 
 	// Create app with custom regex handler
-	app := New(Config{
-		RegexHandler: mockRegexHandler(&lastPattern, &compileCalled),
-	})
+	app := New(Config{RegexHandler: mockRegexHandler(&lastPattern, &compileCalled)})
 
 	// Register a route with regex constraint
 	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error { return c.SendString("matched") })
@@ -948,9 +912,7 @@ func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
 func Test_RegexHandler_NilReturnPanics(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{
-		RegexHandler: func(string) *regexp.Regexp { return nil },
-	})
+	app := New(Config{RegexHandler: func(string) *regexp.Regexp { return nil }})
 
 	require.PanicsWithValue(t, "fiber: Config.RegexHandler must not return nil", func() {
 		app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error { return c.SendString("matched") })
@@ -982,8 +944,7 @@ func Test_RoutePatternMatch_NormalizesInputs(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, RoutePatternMatch(tc.path, tc.pattern),
-				"path=%q pattern=%q", tc.path, tc.pattern)
+			require.Equal(t, tc.want, RoutePatternMatch(tc.path, tc.pattern), "path=%q pattern=%q", tc.path, tc.pattern)
 		})
 	}
 }
@@ -1003,10 +964,7 @@ func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
 func Test_RouteParser_ConstParamShape(t *testing.T) {
 	t.Parallel()
 
-	specialized := []string{
-		"/user/keys/:key_id", "/api/v1/:param", "/:param", "/a/:b",
-		"/repos/:owner", "/x/:y",
-	}
+	specialized := []string{"/user/keys/:key_id", "/api/v1/:param", "/:param", "/a/:b", "/repos/:owner", "/x/:y"}
 	generic := []string{
 		"/", "/const", "/*", "/+", "/api/*", "/api/+",
 		"/api/:a/:b",           // two params
@@ -1367,12 +1325,7 @@ func Test_RoutePatternNormalization_RegistrationMountAndRemoval(t *testing.T) {
 		{pattern: `/Literal/\:id/`, path: "/Literal/:id/"},
 		{pattern: "/File%20Name/", path: "/File%20Name/"},
 	}
-	configs := []Config{
-		{},
-		{CaseSensitive: true},
-		{StrictRouting: true},
-		{CaseSensitive: true, StrictRouting: true},
-	}
+	configs := []Config{{}, {CaseSensitive: true}, {StrictRouting: true}, {CaseSensitive: true, StrictRouting: true}}
 	for _, cfg := range configs {
 		t.Run(fmt.Sprintf("case=%v/strict=%v", cfg.CaseSensitive, cfg.StrictRouting), func(t *testing.T) {
 			t.Parallel()

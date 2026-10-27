@@ -10,9 +10,7 @@ import (
 func Test_JSON_Binding_Bind(t *testing.T) {
 	t.Parallel()
 
-	b := &JSONBinding{
-		JSONDecoder: json.Unmarshal,
-	}
+	b := &JSONBinding{JSONDecoder: json.Unmarshal}
 	require.Equal(t, "json", b.Name())
 
 	type Post struct {
@@ -42,9 +40,7 @@ func Test_JSON_Binding_Bind(t *testing.T) {
 func Test_JSON_Binding_Bind_OptionalIDParam(t *testing.T) {
 	t.Parallel()
 
-	b := &JSONBinding{
-		JSONDecoder: json.Unmarshal,
-	}
+	b := &JSONBinding{JSONDecoder: json.Unmarshal}
 
 	// Use case from original issue
 	type OptionalIDParam struct {
@@ -76,9 +72,7 @@ func Test_JSON_Binding_Bind_OptionalIDParam(t *testing.T) {
 func Benchmark_JSON_Binding_Bind(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &JSONBinding{
-		JSONDecoder: json.Unmarshal,
-	}
+	binder := &JSONBinding{JSONDecoder: json.Unmarshal}
 
 	type User struct {
 		Name  string   `json:"name"`

@@ -102,19 +102,10 @@ func Test_Redirect(t *testing.T) {
 		RuleList:   []Rule{{From: "/default/*", To: "fiber.wiki"}},
 		StatusCode: fiber.StatusTemporaryRedirect,
 	}))
-	app.Use(New(Config{
-		RuleList:   []Rule{{From: "/redirect/*", To: "$1"}},
-		StatusCode: fiber.StatusSeeOther,
-	}))
-	app.Use(New(Config{
-		RuleList:   []Rule{{From: "/pattern/*", To: "golang.org"}},
-		StatusCode: fiber.StatusFound,
-	}))
+	app.Use(New(Config{RuleList: []Rule{{From: "/redirect/*", To: "$1"}}, StatusCode: fiber.StatusSeeOther}))
+	app.Use(New(Config{RuleList: []Rule{{From: "/pattern/*", To: "golang.org"}}, StatusCode: fiber.StatusFound}))
 
-	app.Use(New(Config{
-		RuleList:   []Rule{{From: "/", To: "/swagger"}},
-		StatusCode: fiber.StatusMovedPermanently,
-	}))
+	app.Use(New(Config{RuleList: []Rule{{From: "/", To: "/swagger"}}, StatusCode: fiber.StatusMovedPermanently}))
 	app.Use(New(Config{
 		RuleList:   []Rule{{From: "/params", To: "/with_params"}},
 		StatusCode: fiber.StatusMovedPermanently,
@@ -154,27 +145,15 @@ func Test_Redirect(t *testing.T) {
 			redirectTo: "golang.org",
 			statusCode: fiber.StatusFound,
 		},
-		{
-			name:       "access URL without rule",
-			url:        "/new",
-			statusCode: fiber.StatusOK,
-		},
+		{name: "access URL without rule", url: "/new", statusCode: fiber.StatusOK},
 		{
 			name:       "redirect to swagger route",
 			url:        "/",
 			redirectTo: "/swagger",
 			statusCode: fiber.StatusMovedPermanently,
 		},
-		{
-			name:       "no redirect to swagger route",
-			url:        "/api/",
-			statusCode: fiber.StatusOK,
-		},
-		{
-			name:       "no redirect to swagger route #2",
-			url:        "/api/test",
-			statusCode: fiber.StatusOK,
-		},
+		{name: "no redirect to swagger route", url: "/api/", statusCode: fiber.StatusOK},
+		{name: "no redirect to swagger route #2", url: "/api/test", statusCode: fiber.StatusOK},
 		{
 			name:       "redirect with query params",
 			url:        "/params?query=abc",
@@ -196,10 +175,7 @@ func Test_Redirect_StartAnchor(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		RuleList:   []Rule{{From: "/old", To: "/new"}},
-		StatusCode: fiber.StatusMovedPermanently,
-	}))
+	app.Use(New(Config{RuleList: []Rule{{From: "/old", To: "/new"}}, StatusCode: fiber.StatusMovedPermanently}))
 	app.Get("/very/old", func(c fiber.Ctx) error { return c.SendString("not redirected") })
 
 	// The rule matches the whole path and redirects.
@@ -262,8 +238,7 @@ func Test_Redirect_TenthCaptureInAuthority(t *testing.T) {
 func Test_Redirect_TwoDigitCaptures(t *testing.T) {
 	t.Parallel()
 
-	requireRule(t, false, "/t/*/*/*/*/*/*/*/*/*/*/*", "/r/$11/$10/$1",
-		"/t/a/b/c/d/e/f/g/h/i/j/k", "/r/k/j/a")
+	requireRule(t, false, "/t/*/*/*/*/*/*/*/*/*/*/*", "/r/$11/$10/$1", "/t/a/b/c/d/e/f/g/h/i/j/k", "/r/k/j/a")
 }
 
 // Test_Redirect_ExtraSlashesBeforeTheCapture covers a target opening its authority with more than two slashes.
@@ -416,15 +391,8 @@ func Test_Redirect_ConfigOutcomes(t *testing.T) {
 			cfg:    []Config{{StatusCode: fiber.StatusMovedPermanently}},
 			status: fiber.StatusNotFound,
 		},
-		{
-			name:   "default config and no default route",
-			status: fiber.StatusNotFound,
-		},
-		{
-			name:   "default config and default route",
-			route:  true,
-			status: fiber.StatusOK,
-		},
+		{name: "default config and no default route", status: fiber.StatusNotFound},
+		{name: "default config and default route", route: true, status: fiber.StatusOK},
 		{
 			name:   "empty rules",
 			cfg:    []Config{{RuleList: []Rule{}, StatusCode: fiber.StatusMovedPermanently}},
@@ -746,20 +714,14 @@ func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 func Test_Redirect_FiniteRepetitionIsCounted(t *testing.T) {
 	t.Parallel()
 
-	requireWin(t, []Rule{
-		{From: `/p/[a][ab]?`, To: "/narrow"},
-		{From: `/p/[ab]{1,2}`, To: "/broad"},
-	}, "/p/a", "/narrow")
+	requireWin(t, []Rule{{From: `/p/[a][ab]?`, To: "/narrow"}, {From: `/p/[ab]{1,2}`, To: "/broad"}}, "/p/a", "/narrow")
 }
 
 // Test_Redirect_UnboundedRulesKeepTheirBreadth covers two rules that both run on: "/p/[z]+" and "/p/[a-z]+".
 func Test_Redirect_UnboundedRulesKeepTheirBreadth(t *testing.T) {
 	t.Parallel()
 
-	requireWin(t, []Rule{
-		{From: `/p/[z]+`, To: "/narrow"},
-		{From: `/p/[a-z]+`, To: "/broad"},
-	}, "/p/z", "/narrow")
+	requireWin(t, []Rule{{From: `/p/[z]+`, To: "/narrow"}, {From: `/p/[a-z]+`, To: "/broad"}}, "/p/z", "/narrow")
 }
 
 // Test_Redirect_EscapedByteIsOneMember covers the class escape spelling one byte: "[\.]" lists the dot alone.
@@ -772,14 +734,8 @@ func Test_Redirect_UnterminatedQuoteRuleIsRejected(t *testing.T) {
 func Test_Redirect_HexEscapeOutranksAClass(t *testing.T) {
 	t.Parallel()
 
-	rules := []Rule{
-		{From: `/p/\x{61}`, To: "/exact"},
-		{From: "/p/[a-z]", To: "/class"},
-	}
-	for _, tc := range []struct{ request, want string }{
-		{"/p/a", "/exact"},
-		{"/p/b", "/class"},
-	} {
+	rules := []Rule{{From: `/p/\x{61}`, To: "/exact"}, {From: "/p/[a-z]", To: "/class"}}
+	for _, tc := range []struct{ request, want string }{{"/p/a", "/exact"}, {"/p/b", "/class"}} {
 		requireWin(t, rules, tc.request, tc.want)
 	}
 }
@@ -825,10 +781,7 @@ func Test_Redirect_BothRuleFieldsPanic(t *testing.T) {
 	t.Parallel()
 
 	require.Panics(t, func() {
-		New(Config{
-			Rules:    map[string]string{"/old": "/new"},
-			RuleList: []Rule{{From: "/old", To: "/new"}},
-		})
+		New(Config{Rules: map[string]string{"/old": "/new"}, RuleList: []Rule{{From: "/old", To: "/new"}}})
 	})
 
 	// Either alone is fine.

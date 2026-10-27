@@ -22,28 +22,19 @@ func Test_ParseSameSite(t *testing.T) {
 		{
 			name:  "disabled",
 			value: "DISABLED",
-			want: SameSite{
-				HTTPMode:     0,
-				FastHTTPMode: fasthttp.CookieSameSiteDisabled,
-			},
+			want:  SameSite{HTTPMode: 0, FastHTTPMode: fasthttp.CookieSameSiteDisabled},
 			valid: true,
 		},
 		{
 			name:  "lax",
 			value: "lax",
-			want: SameSite{
-				HTTPMode:     http.SameSiteLaxMode,
-				FastHTTPMode: fasthttp.CookieSameSiteLaxMode,
-			},
+			want:  SameSite{HTTPMode: http.SameSiteLaxMode, FastHTTPMode: fasthttp.CookieSameSiteLaxMode},
 			valid: true,
 		},
 		{
 			name:  "strict",
 			value: "STRICT",
-			want: SameSite{
-				HTTPMode:     http.SameSiteStrictMode,
-				FastHTTPMode: fasthttp.CookieSameSiteStrictMode,
-			},
+			want:  SameSite{HTTPMode: http.SameSiteStrictMode, FastHTTPMode: fasthttp.CookieSameSiteStrictMode},
 			valid: true,
 		},
 		{
@@ -59,10 +50,7 @@ func Test_ParseSameSite(t *testing.T) {
 		{
 			name:  "invalid falls back to lax",
 			value: "invalid",
-			want: SameSite{
-				HTTPMode:     http.SameSiteLaxMode,
-				FastHTTPMode: fasthttp.CookieSameSiteLaxMode,
-			},
+			want:  SameSite{HTTPMode: http.SameSiteLaxMode, FastHTTPMode: fasthttp.CookieSameSiteLaxMode},
 			valid: false,
 		},
 	}

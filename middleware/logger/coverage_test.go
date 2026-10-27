@@ -58,9 +58,7 @@ func Test_statusColor_AllRanges(t *testing.T) {
 func Test_customLoggerWriter_InvalidLevel(t *testing.T) {
 	t.Parallel()
 
-	cl := &customLoggerWriter[any]{
-		level: fiberlog.LevelFatal,
-	}
+	cl := &customLoggerWriter[any]{level: fiberlog.LevelFatal}
 
 	n, err := cl.Write([]byte("ignored"))
 	require.NoError(t, err)
