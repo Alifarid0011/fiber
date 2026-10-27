@@ -14,7 +14,6 @@ import (
 
 func Test_BoundKey(t *testing.T) {
 	t.Parallel()
-
 	t.Run("short key unchanged", func(t *testing.T) {
 		t.Parallel()
 		require.Equal(t, "1.2.3.4", boundKey("1.2.3.4"))

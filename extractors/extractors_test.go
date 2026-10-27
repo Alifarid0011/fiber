@@ -1238,9 +1238,7 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		// base Extract. Outer fallback is query — source must be SourceQuery,
 		// not the rejected nested cookie capture.
 		inner := extractorsTestDecorate(Chain(FromCookie("session"), FromHeader("X-Missing")),
-			func(fiber.Ctx, string) (string, error) {
-				return "", errors.New("cookie rejected")
-			})
+			func(fiber.Ctx, string) (string, error) { return "", errors.New("cookie rejected") })
 		outer := Chain(inner, FromQuery("token"))
 
 		extractorsTestExpectResolved(t, outer, ctx, "from-query", SourceQuery)
@@ -1251,9 +1249,7 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		ctx := extractorsTestQueryCtx(t)
 
 		chain := extractorsTestDecorate(Chain(FromHeader("X-Token"), FromQuery("token")),
-			func(_ fiber.Ctx, v string) (string, error) {
-				return "normalized:" + v, nil
-			})
+			func(_ fiber.Ctx, v string) (string, error) { return "normalized:" + v, nil })
 
 		extractorsTestExpectResolved(t, chain, ctx, "normalized:from-query", SourceQuery)
 	})

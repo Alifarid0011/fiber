@@ -2006,10 +2006,8 @@ func Test_FiberApp_TLS(t *testing.T) {
 		wantPlain string
 	}{
 		{
-			name: "scheme propagated",
-			handler: func(c fiber.Ctx) error {
-				return c.SendString(c.Scheme() + " " + strconv.FormatBool(c.Secure()))
-			},
+			name:      "scheme propagated",
+			handler:   func(c fiber.Ctx) error { return c.SendString(c.Scheme() + " " + strconv.FormatBool(c.Secure())) },
 			state:     &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com"},
 			wantTLS:   "https true",
 			wantPlain: "http false",
@@ -2023,9 +2021,7 @@ func Test_FiberApp_TLS(t *testing.T) {
 				}
 				return c.SendString(state.ServerName + " " + state.NegotiatedProtocol)
 			},
-			state: &tls.ConnectionState{
-				Version: tls.VersionTLS13, ServerName: "example.com", NegotiatedProtocol: "h2",
-			},
+			state:     &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com", NegotiatedProtocol: "h2"},
 			wantTLS:   "example.com h2",
 			wantPlain: "none",
 		},
@@ -2075,9 +2071,7 @@ func Test_HTTPMiddleware_NextCalledAfterReturn(t *testing.T) {
 
 	// The Fiber context is released by now, so a late next must be a no-op.
 	next := <-saved
-	require.NotPanics(t, func() {
-		adaptorTestServe(next, apptest.Req(http.MethodPost, "/late"))
-	})
+	require.NotPanics(t, func() { adaptorTestServe(next, apptest.Req(http.MethodPost, "/late")) })
 }
 
 func Test_CopyContextToFiberContext_DeepChain(t *testing.T) {

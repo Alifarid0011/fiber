@@ -147,9 +147,7 @@ func Test_Domain_Routing(t *testing.T) {
 		{name: "nested groups", register: func(app *App) {
 			users := app.Domain("api.example.com").Group("/v1").Group("/users")
 			users.Get("/", func(c Ctx) error { return c.SendString("v1 users") })
-		}, checks: []routerReq{
-			{host: "api.example.com", path: "/v1/users/", status: StatusOK, body: "v1 users"},
-		}},
+		}, checks: []routerReq{{host: "api.example.com", path: "/v1/users/", status: StatusOK, body: "v1 users"}}},
 		{name: "path params", register: func(app *App) {
 			app.Domain(":tenant.example.com").Get("/users/:id", func(c Ctx) error {
 				return c.SendString(DomainParam(c, "tenant") + ":" + c.Params("id"))
