@@ -105,18 +105,18 @@ func bindTestRequireMultiError(t *testing.T, err error, msg string) {
 
 // bindTestMultipart encodes fields as a multipart/form-data body. It returns the body with the Content-Type that names
 // its boundary, which is the given one or, when it is empty, a random one.
-func bindTestMultipart(t *testing.T, boundary string, fields ...[2]string) *RequestConfig {
-	t.Helper()
+func bindTestMultipart(tb testing.TB, boundary string, fields ...[2]string) *RequestConfig {
+	tb.Helper()
 
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 	if boundary != "" {
-		require.NoError(t, w.SetBoundary(boundary))
+		require.NoError(tb, w.SetBoundary(boundary))
 	}
 	for _, field := range fields {
-		require.NoError(t, w.WriteField(field[0], field[1]))
+		require.NoError(tb, w.WriteField(field[0], field[1]))
 	}
-	require.NoError(t, w.Close())
+	require.NoError(tb, w.Close())
 	return &RequestConfig{ContentType: w.FormDataContentType(), Body: body.Bytes()}
 }
 
@@ -164,6 +164,20 @@ func bindBenchSource(b *testing.B, src bindTestSource) CustomCtx {
 	c.Request().Header.SetContentType("")
 	src.set(c, "id", "1", "Name", "John Doe", "Hobby", "golang,fiber")
 	return c
+}
+
+// bindBenchBody returns a context of app whose request carries body as contentType.
+func bindBenchBody(b *testing.B, app *App, contentType string, body []byte) CustomCtx {
+	b.Helper()
+
+	c := apptest.Ctx(b, app)
+	(&RequestConfig{ContentType: contentType, Body: body}).ApplyTo(c)
+	return c
+}
+
+// bindBenchDemo is what the body benchmarks bind: a name that every body format spells the same way.
+type bindBenchDemo struct {
+	Name string `json:"name" xml:"name" form:"name" msgpack:"name"`
 }
 
 // bindBenchFields is the struct the query, header and cookie benchmarks bind.
@@ -401,6 +415,16 @@ func Test_BindError_All(t *testing.T) {
 	})
 }
 
+// bindTestHobbyQueries are queries with the number of hobbies a query bind with splitting on commas finds in them.
+var bindTestHobbyQueries = []struct {
+	query   string
+	hobbies int
+}{
+	{query: "id=1&name=tom&hobby=basketball&hobby=football", hobbies: 2},
+	{query: "id=1&name=tom&hobby=basketball,football", hobbies: 2},
+	{query: "id=1&name=tom&hobby=soccer&hobby=basketball,football", hobbies: 3},
+}
+
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New(Config{EnableSplittingOnParsers: true}))
@@ -412,20 +436,12 @@ func Test_Bind_Query(t *testing.T) {
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
-	q := new(Query)
-	require.NoError(t, c.Bind().Query(q))
-	require.Len(t, q.Hobby, 2)
-
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
-	q = new(Query)
-	require.NoError(t, c.Bind().Query(q))
-	require.Len(t, q.Hobby, 2)
-
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=soccer&hobby=basketball,football")
-	q = new(Query)
-	require.NoError(t, c.Bind().Query(q))
-	require.Len(t, q.Hobby, 3)
+	for _, tc := range bindTestHobbyQueries {
+		c.Request().URI().SetQueryString(tc.query)
+		q := new(Query)
+		require.NoError(t, c.Bind().Query(q))
+		require.Len(t, q.Hobby, tc.hobbies, tc.query)
+	}
 
 	empty := new(Query)
 	c.Request().URI().SetQueryString("")
@@ -483,20 +499,12 @@ func Test_Bind_Query_Map(t *testing.T) {
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
-	q := make(map[string][]string)
-	require.NoError(t, c.Bind().Query(&q))
-	require.Len(t, q["hobby"], 2)
-
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
-	q = make(map[string][]string)
-	require.NoError(t, c.Bind().Query(&q))
-	require.Len(t, q["hobby"], 2)
-
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=soccer&hobby=basketball,football")
-	q = make(map[string][]string)
-	require.NoError(t, c.Bind().Query(&q))
-	require.Len(t, q["hobby"], 3)
+	for _, tc := range bindTestHobbyQueries {
+		c.Request().URI().SetQueryString(tc.query)
+		q := make(map[string][]string)
+		require.NoError(t, c.Bind().Query(&q))
+		require.Len(t, q["hobby"], tc.hobbies, tc.query)
+	}
 
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=soccer")
 	qq := make(map[string]string)
@@ -617,6 +625,19 @@ func Test_Bind_Body_MapField(t *testing.T) {
 func Test_Bind_Query_Schema(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	// bindQuery binds query into out and requires either success, or the failed check named by wantErr.
+	bindQuery := func(out any, query, wantErr string) {
+		t.Helper()
+		c.Request().URI().SetQueryString(query)
+		if wantErr == "" {
+			require.NoError(t, c.Bind().Query(out))
+			return
+		}
+		bindTestRequireMultiError(t, c.Bind().Query(out), wantErr)
+	}
 
 	type Query1 struct {
 		Name   string `query:"name,required"`
@@ -624,23 +645,10 @@ func Test_Bind_Query_Schema(t *testing.T) {
 			Age int `query:"age"`
 		} `query:"nested,required"`
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("name=tom&nested.age=10")
-	q := new(Query1)
-	require.NoError(t, c.Bind().Query(q))
-
-	c.Request().URI().SetQueryString("namex=tom&nested.age=10")
-	q = new(Query1)
-	bindTestRequireMultiError(t, c.Bind().Query(q), `bind "name" from query: name is empty`)
-
-	c.Request().URI().SetQueryString("name=tom&nested.agex=10")
-	q = new(Query1)
-	require.NoError(t, c.Bind().Query(q))
-
-	c.Request().URI().SetQueryString("name=tom&test.age=10")
-	q = new(Query1)
-	bindTestRequireMultiError(t, c.Bind().Query(q), `bind "nested" from query: nested is empty`)
+	bindQuery(new(Query1), "name=tom&nested.age=10", "")
+	bindQuery(new(Query1), "namex=tom&nested.age=10", `bind "name" from query: name is empty`)
+	bindQuery(new(Query1), "name=tom&nested.agex=10", "")
+	bindQuery(new(Query1), "name=tom&test.age=10", `bind "nested" from query: nested is empty`)
 
 	type Query2 struct {
 		Name   string `query:"name"`
@@ -648,40 +656,24 @@ func Test_Bind_Query_Schema(t *testing.T) {
 			Age int `query:"age,required"`
 		} `query:"nested"`
 	}
-	c.Request().URI().SetQueryString("name=tom&nested.age=10")
-	q2 := new(Query2)
-	require.NoError(t, c.Bind().Query(q2))
-
-	c.Request().URI().SetQueryString("nested.age=10")
-	q2 = new(Query2)
-	require.NoError(t, c.Bind().Query(q2))
-
-	c.Request().URI().SetQueryString("nested.agex=10")
-	q2 = new(Query2)
-	bindTestRequireMultiError(t, c.Bind().Query(q2), `bind "nested.age" from query: nested.age is empty`)
-
-	c.Request().URI().SetQueryString("nested.agex=10")
-	q2 = new(Query2)
-	bindTestRequireMultiError(t, c.Bind().Query(q2), `bind "nested.age" from query: nested.age is empty`)
+	bindQuery(new(Query2), "name=tom&nested.age=10", "")
+	bindQuery(new(Query2), "nested.age=10", "")
+	bindQuery(new(Query2), "nested.agex=10", `bind "nested.age" from query: nested.age is empty`)
+	bindQuery(new(Query2), "nested.agex=10", `bind "nested.age" from query: nested.age is empty`)
 
 	type Node struct {
 		Next  *Node `query:"next,required"`
 		Value int   `query:"val,required"`
 	}
-	c.Request().URI().SetQueryString("val=1&next.val=3")
 	n := new(Node)
-	require.NoError(t, c.Bind().Query(n))
+	bindQuery(n, "val=1&next.val=3", "")
 	require.Equal(t, 1, n.Value)
 	require.Equal(t, 3, n.Next.Value)
 
-	c.Request().URI().SetQueryString("next.val=2")
-	n = new(Node)
-	bindTestRequireMultiError(t, c.Bind().Query(n), `bind "val" from query: val is empty`)
+	bindQuery(new(Node), "next.val=2", `bind "val" from query: val is empty`)
 
-	c.Request().URI().SetQueryString("val=3&next.value=2")
-	n = new(Node)
-	n.Next = new(Node)
-	require.NoError(t, c.Bind().Query(n))
+	n = &Node{Next: new(Node)}
+	bindQuery(n, "val=3&next.value=2", "")
 	require.Equal(t, 3, n.Value)
 	require.Equal(t, 0, n.Next.Value)
 
@@ -1276,47 +1268,34 @@ func Test_Bind_Body(t *testing.T) {
 	}
 
 	// Two elements of Data bound from a form, spelled in each notation the decoder understands.
-	testCollection := func(t *testing.T, contentType string, body []byte) {
-		t.Helper()
-		cq := new(CollectionQuery)
-		require.NoError(t, bindBody(t, contentType, body, cq))
-		require.Len(t, cq.Data, 2)
-		require.Equal(t, "john", cq.Data[0].Name)
-		require.Equal(t, "doe", cq.Data[1].Name)
+	dotForm := bindTestMultipart(t, "", [2]string{"data.0.name", "john"}, [2]string{"data.1.name", "doe"})
+	bracketForm := bindTestMultipart(t, "", [2]string{"data[0][name]", "john"}, [2]string{"data[1][name]", "doe"})
+	for _, tc := range []struct {
+		name        string
+		contentType string
+		body        []byte
+	}{
+		{name: "MultipartCollectionQueryDotNotation", contentType: dotForm.ContentType, body: dotForm.Body},
+		{name: "MultipartCollectionQuerySquareBrackets", contentType: bracketForm.ContentType, body: bracketForm.Body},
+		{name: "CollectionQuerySquareBrackets", contentType: MIMEApplicationForm, body: []byte("data[0][name]=john&data[1][name]=doe")},
+		{name: "CollectionQueryDotNotation", contentType: MIMEApplicationForm, body: []byte("data.0.name=john&data.1.name=doe")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cq := new(CollectionQuery)
+			require.NoError(t, bindBody(t, tc.contentType, tc.body, cq))
+			require.Len(t, cq.Data, 2)
+			require.Equal(t, "john", cq.Data[0].Name)
+			require.Equal(t, "doe", cq.Data[1].Name)
+		})
 	}
-
-	t.Run("MultipartCollectionQueryDotNotation", func(t *testing.T) {
-		t.Parallel()
-		form := bindTestMultipart(t, "", [2]string{"data.0.name", "john"}, [2]string{"data.1.name", "doe"})
-		testCollection(t, form.ContentType, form.Body)
-	})
-
-	t.Run("MultipartCollectionQuerySquareBrackets", func(t *testing.T) {
-		t.Parallel()
-		form := bindTestMultipart(t, "", [2]string{"data[0][name]", "john"}, [2]string{"data[1][name]", "doe"})
-		testCollection(t, form.ContentType, form.Body)
-	})
-
-	t.Run("CollectionQuerySquareBrackets", func(t *testing.T) {
-		t.Parallel()
-		testCollection(t, MIMEApplicationForm, []byte("data[0][name]=john&data[1][name]=doe"))
-	})
-
-	t.Run("CollectionQueryDotNotation", func(t *testing.T) {
-		t.Parallel()
-		testCollection(t, MIMEApplicationForm, []byte("data.0.name=john&data.1.name=doe"))
-	})
 }
 
 func Benchmark_Bind_Body_JSON(b *testing.B) {
-	c := apptest.Ctx(b, New())
-	type Demo struct {
-		Name string `json:"name"`
-	}
-	body, err := json.Marshal(&Demo{Name: "john"})
+	body, err := json.Marshal(&bindBenchDemo{Name: "john"})
 	require.NoError(b, err)
-	(&RequestConfig{ContentType: MIMEApplicationJSON, Body: body}).ApplyTo(c)
-	d := new(Demo)
+	c := bindBenchBody(b, New(), MIMEApplicationJSON, body)
+	d := new(bindBenchDemo)
 
 	b.ReportAllocs()
 
@@ -1329,18 +1308,14 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 
 func Benchmark_Bind_Body_MsgPack(b *testing.B) {
 	var err error
-	c := apptest.Ctx(b, New(Config{
+	body := []byte{0x81, 0xa4, 0x6e, 0x61, 0x6d, 0x65, 0xa4, 0x6a, 0x6f, 0x68, 0x6e} // {"name":"john"}
+	c := bindBenchBody(b, New(Config{
 		MsgPackEncoder: msgpack.Marshal,
 		MsgPackDecoder: msgpack.Unmarshal,
 		CBOREncoder:    cbor.Marshal,
 		CBORDecoder:    cbor.Unmarshal,
-	}))
-	type Demo struct {
-		Name string `msgpack:"name"`
-	}
-	body := []byte{0x81, 0xa4, 0x6e, 0x61, 0x6d, 0x65, 0xa4, 0x6a, 0x6f, 0x68, 0x6e} // {"name":"john"}
-	(&RequestConfig{ContentType: MIMEApplicationMsgPack, Body: body}).ApplyTo(c)
-	d := new(Demo)
+	}), MIMEApplicationMsgPack, body)
+	d := new(bindBenchDemo)
 
 	b.ReportAllocs()
 
@@ -1353,12 +1328,8 @@ func Benchmark_Bind_Body_MsgPack(b *testing.B) {
 
 func Benchmark_Bind_Body_XML(b *testing.B) {
 	var err error
-	c := apptest.Ctx(b, New())
-	type Demo struct {
-		Name string `xml:"name"`
-	}
-	(&RequestConfig{ContentType: MIMEApplicationXML, Body: []byte("<Demo><name>john</name></Demo>")}).ApplyTo(c)
-	d := new(Demo)
+	c := bindBenchBody(b, New(), MIMEApplicationXML, []byte("<Demo><name>john</name></Demo>"))
+	d := new(bindBenchDemo)
 
 	b.ReportAllocs()
 
@@ -1370,14 +1341,10 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 }
 
 func Benchmark_Bind_Body_CBOR(b *testing.B) {
-	c := apptest.Ctx(b, New(Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}))
-	type Demo struct {
-		Name string `json:"name"`
-	}
-	body, err := cbor.Marshal(&Demo{Name: "john"})
+	body, err := cbor.Marshal(&bindBenchDemo{Name: "john"})
 	require.NoError(b, err)
-	(&RequestConfig{ContentType: MIMEApplicationCBOR, Body: body}).ApplyTo(c)
-	d := new(Demo)
+	c := bindBenchBody(b, New(Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}), MIMEApplicationCBOR, body)
+	d := new(bindBenchDemo)
 
 	b.ReportAllocs()
 
@@ -1390,12 +1357,8 @@ func Benchmark_Bind_Body_CBOR(b *testing.B) {
 
 func Benchmark_Bind_Body_Form(b *testing.B) {
 	var err error
-	c := apptest.Ctx(b, New())
-	type Demo struct {
-		Name string `form:"name"`
-	}
-	(&RequestConfig{ContentType: MIMEApplicationForm, Body: []byte("name=john")}).ApplyTo(c)
-	d := new(Demo)
+	c := bindBenchBody(b, New(), MIMEApplicationForm, []byte("name=john"))
+	d := new(bindBenchDemo)
 
 	b.ReportAllocs()
 
@@ -1408,16 +1371,9 @@ func Benchmark_Bind_Body_Form(b *testing.B) {
 
 func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	var err error
-	c := apptest.Ctx(b, New())
-	type Demo struct {
-		Name string `form:"name"`
-	}
-	buf := &bytes.Buffer{}
-	writer := multipart.NewWriter(buf)
-	require.NoError(b, writer.WriteField("name", "john"))
-	require.NoError(b, writer.Close())
-	(&RequestConfig{ContentType: MIMEMultipartForm + `;boundary=` + writer.Boundary(), Body: buf.Bytes()}).ApplyTo(c)
-	d := new(Demo)
+	form := bindTestMultipart(b, "", [2]string{"name", "john"})
+	c := bindBenchBody(b, New(), form.ContentType, form.Body)
+	d := new(bindBenchDemo)
 
 	b.ReportAllocs()
 
@@ -1431,7 +1387,6 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 
 func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 	var err error
-	c := apptest.Ctx(b, New())
 	type Person struct {
 		Name string `form:"name"`
 		Age  int    `form:"age"`
@@ -1440,15 +1395,10 @@ func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 		Name    string   `form:"name"`
 		Persons []Person `form:"persons"`
 	}
-	buf := &bytes.Buffer{}
-	writer := multipart.NewWriter(buf)
-	require.NoError(b, writer.WriteField("name", "john"))
-	require.NoError(b, writer.WriteField("persons.0.name", "john"))
-	require.NoError(b, writer.WriteField("persons[0][age]", "10"))
-	require.NoError(b, writer.WriteField("persons[1][name]", "doe"))
-	require.NoError(b, writer.WriteField("persons.1.age", "20"))
-	require.NoError(b, writer.Close())
-	(&RequestConfig{ContentType: MIMEMultipartForm + `;boundary=` + writer.Boundary(), Body: buf.Bytes()}).ApplyTo(c)
+	form := bindTestMultipart(b, "",
+		[2]string{"name", "john"}, [2]string{"persons.0.name", "john"}, [2]string{"persons[0][age]", "10"},
+		[2]string{"persons[1][name]", "doe"}, [2]string{"persons.1.age", "20"})
+	c := bindBenchBody(b, New(), form.ContentType, form.Body)
 	d := new(Demo)
 
 	b.ReportAllocs()
@@ -1467,8 +1417,7 @@ func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 
 func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 	var err error
-	c := apptest.Ctx(b, New())
-	(&RequestConfig{ContentType: MIMEApplicationForm, Body: []byte("name=john")}).ApplyTo(c)
+	c := bindBenchBody(b, New(), MIMEApplicationForm, []byte("name=john"))
 	d := make(map[string]string)
 
 	b.ReportAllocs()

@@ -65,6 +65,30 @@ func redirBenchCtx(b *testing.B, path string) *DefaultCtx {
 	return apptest.CtxAs[*DefaultCtx](b, app)
 }
 
+// redirBenchParsedCtx is redirBenchCtx for a request that carries the flash cookie, which the context has parsed.
+func redirBenchParsedCtx(b *testing.B) *DefaultCtx {
+	b.Helper()
+
+	c := redirBenchCtx(b, "/user")
+	c.Request().Header.Set(HeaderCookie, redirFlashCookie(b))
+	c.Redirect().parseAndClearFlashMessages()
+	return c
+}
+
+// redirRouteLocation redirects a context to the route "user", registered at pattern, with config, and returns the
+// Location of the 303 it answers with.
+func redirRouteLocation(t *testing.T, pattern string, config ...RedirectConfig) string {
+	t.Helper()
+
+	app := New()
+	app.Get(pattern, emptyHandler).Name("user")
+	c := apptest.Ctx(t, app)
+
+	require.NoError(t, c.Redirect().Route("user", config...))
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+	return string(c.Response().Header.Peek(HeaderLocation))
+}
+
 func Test_Redirect_To(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -209,13 +233,7 @@ func Test_Redirect_Route_Location(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := New()
-			app.Get(tc.pattern, emptyHandler).Name("user")
-			c := apptest.Ctx(t, app)
-
-			require.NoError(t, c.Redirect().Route("user", tc.config...))
-			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
+			require.Equal(t, tc.want, redirRouteLocation(t, tc.pattern, tc.config...))
 		})
 	}
 }
@@ -244,16 +262,10 @@ func Test_Redirect_Route_WithQueries(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := New()
-			app.Get("/user/:name", emptyHandler).Name("user")
-			c := apptest.Ctx(t, app)
-
-			err := c.Redirect().Route("user", RedirectConfig{Params: Map{"name": "fiber"}, Queries: tc.queries})
-			require.NoError(t, err)
-			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+			locationHeader := redirRouteLocation(t, "/user/:name", RedirectConfig{Params: Map{"name": "fiber"}, Queries: tc.queries})
 
 			// analysis of query parameters with url parsing, since a map pass is always randomly ordered
-			location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
+			location, err := url.Parse(locationHeader)
 			require.NoError(t, err, "url.Parse(location)")
 			require.Equal(t, "/user/fiber", location.Path)
 			require.Equal(t, tc.want, location.Query())
@@ -287,15 +299,10 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := New()
-			app.Get("/user/:name", func(c Ctx) error { return c.JSON(c.Params("name")) }).Name("user")
-			c := apptest.Ctx(t, app)
-
-			require.NoError(t, c.Redirect().Route("user", RedirectConfig{
+			require.Equal(t, tc.want, redirRouteLocation(t, "/user/:name", RedirectConfig{
 				Params:  Map{"name": tc.param},
 				Queries: map[string]string{"q": "1"},
 			}))
-			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
 		})
 	}
 }
@@ -432,17 +439,32 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 			rootMiscBExpectBackTo(t, tc.referer, "/", tc.want)
 		})
 	}
+}
 
-	t.Run("cross-origin referer with no fallback is an error", func(t *testing.T) {
-		t.Parallel()
-		c := apptest.Ctx(t, New())
-		c.Request().Header.Set(HeaderReferer, "https://evil.com/phishing")
-		c.Request().URI().SetHost("example.com")
+// Test_Redirect_Back_NoFallback pins that Back without a fallback is an error when there is no referer to go back
+// to: none was sent, or the one that was sent is cross-origin.
+func Test_Redirect_Back_NoFallback(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		referer string
+	}{
+		{name: "no referer at all"},
+		{name: "cross-origin referer", referer: "https://evil.com/phishing"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, New())
+			if tc.referer != "" {
+				c.Request().Header.Set(HeaderReferer, tc.referer)
+				c.Request().URI().SetHost("example.com")
+			}
 
-		err := c.Redirect().Back()
-		require.Equal(t, 500, c.Response().StatusCode())
-		require.ErrorIs(t, err, ErrRedirectBackNoFallback)
-	})
+			err := c.Redirect().Back()
+			require.Equal(t, 500, c.Response().StatusCode())
+			require.ErrorIs(t, err, ErrRedirectBackNoFallback)
+		})
+	}
 }
 
 // Test_Redirect_Back_RejectsEmptyAuthorityReferer covers a network-path
@@ -863,9 +885,7 @@ func Benchmark_Redirect_processFlashMessages(b *testing.B) {
 }
 
 func Benchmark_Redirect_Messages(b *testing.B) {
-	c := redirBenchCtx(b, "/user")
-	c.Request().Header.Set(HeaderCookie, redirFlashCookie(b))
-	c.Redirect().parseAndClearFlashMessages()
+	c := redirBenchParsedCtx(b)
 
 	var msgs []FlashMessage
 	msgTemplate := testredirectionMsgs
@@ -882,9 +902,7 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 }
 
 func Benchmark_Redirect_OldInputs(b *testing.B) {
-	c := redirBenchCtx(b, "/user")
-	c.Request().Header.Set(HeaderCookie, redirFlashCookie(b))
-	c.Redirect().parseAndClearFlashMessages()
+	c := redirBenchParsedCtx(b)
 
 	var oldInputs []OldInputData
 
@@ -898,9 +916,7 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 }
 
 func Benchmark_Redirect_Message(b *testing.B) {
-	c := redirBenchCtx(b, "/user")
-	c.Request().Header.Set(HeaderCookie, redirFlashCookie(b))
-	c.Redirect().parseAndClearFlashMessages()
+	c := redirBenchParsedCtx(b)
 
 	var msg FlashMessage
 	msgTemplate := testredirectionMsgs
@@ -916,9 +932,7 @@ func Benchmark_Redirect_Message(b *testing.B) {
 }
 
 func Benchmark_Redirect_OldInput(b *testing.B) {
-	c := redirBenchCtx(b, "/user")
-	c.Request().Header.Set(HeaderCookie, redirFlashCookie(b))
-	c.Redirect().parseAndClearFlashMessages()
+	c := redirBenchParsedCtx(b)
 
 	var input OldInputData
 
@@ -1113,13 +1127,6 @@ func Test_Redirect_Back_RejectsAnUnusableReferer(t *testing.T) {
 
 		require.NoError(t, c.Redirect().Back("/fallback"))
 		require.Equal(t, "/fallback", string(c.Response().Header.Peek(HeaderLocation)))
-	})
-
-	t.Run("no referer and no fallback is an error", func(t *testing.T) {
-		t.Parallel()
-		c := apptest.Ctx(t, New())
-
-		require.ErrorIs(t, c.Redirect().Back(), ErrRedirectBackNoFallback)
 	})
 }
 

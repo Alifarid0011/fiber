@@ -650,7 +650,6 @@ func Test_Utils_TestConn_ReadWrite(t *testing.T) {
 	t.Parallel()
 	conn := &testConn{}
 
-	// Verify read of request
 	_, err := conn.r.Write([]byte("Request"))
 	require.NoError(t, err)
 
@@ -659,7 +658,6 @@ func Test_Utils_TestConn_ReadWrite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("Request"), req)
 
-	// Verify write of response
 	_, err = conn.Write([]byte("Response"))
 	require.NoError(t, err)
 
@@ -673,7 +671,6 @@ func Test_Utils_TestConn_Closed_Write(t *testing.T) {
 	t.Parallel()
 	conn := &testConn{}
 
-	// Verify write of response
 	_, err := conn.Write([]byte("Response 1\n"))
 	require.NoError(t, err)
 
@@ -978,37 +975,36 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 	})
 }
 
+// benchGenericParseType times genericParseType[V](str) in parallel and hands the last result to check.
+func benchGenericParseType[V GenericType](b *testing.B, name, str string, check func(v V, err error)) {
+	b.Helper()
+	b.Run(name, func(b *testing.B) {
+		var v V
+		var err error
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				v, err = genericParseType[V](str)
+			}
+		})
+		check(v, err)
+	})
+}
+
 func Benchmark_GenericParseTypeFloats(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	for _, test := range miscParseFloats {
-		b.Run("benchmark_genericParseTypeFloat32s", func(t *testing.B) {
-			var v float32
-			var err error
-			b.ReportAllocs()
-			b.ResetTimer()
-			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					v, err = genericParseType[float32](test.str)
-				}
-			})
-			require.NoError(t, err)
-			require.InEpsilon(t, float32(test.value), v, epsilon)
+		benchGenericParseType(b, "benchmark_genericParseTypeFloat32s", test.str, func(v float32, err error) {
+			require.NoError(b, err)
+			require.InEpsilon(b, float32(test.value), v, epsilon)
 		})
 	}
 
 	for _, test := range miscParseFloats {
-		b.Run("benchmark_genericParseTypeFloat64s", func(t *testing.B) {
-			var v float64
-			var err error
-			b.ReportAllocs()
-			b.ResetTimer()
-			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					v, err = genericParseType[float64](test.str)
-				}
-			})
-			require.NoError(t, err)
-			require.InEpsilon(t, test.value, v, epsilon)
+		benchGenericParseType(b, "benchmark_genericParseTypeFloat64s", test.str, func(v float64, err error) {
+			require.NoError(b, err)
+			require.InEpsilon(b, test.value, v, epsilon)
 		})
 	}
 }
@@ -1016,16 +1012,7 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 func Benchmark_GenericParseTypeBytes(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	for _, test := range miscParseBytes {
-		b.Run("benchmark_genericParseTypeBytes", func(b *testing.B) {
-			var v []byte
-			var err error
-			b.ReportAllocs()
-			b.ResetTimer()
-			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					v, err = genericParseType[[]byte](test.str)
-				}
-			})
+		benchGenericParseType(b, "benchmark_genericParseTypeBytes", test.str, func(v []byte, err error) {
 			if test.err == nil {
 				require.NoError(b, err)
 			} else {
@@ -1041,16 +1028,7 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 	tests := []string{"john", "doe", "hello", "fiber"}
 
 	for _, test := range tests {
-		b.Run("benchmark_genericParseTypeString", func(b *testing.B) {
-			var v string
-			var err error
-			b.ReportAllocs()
-			b.ResetTimer()
-			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					v, err = genericParseType[string](test)
-				}
-			})
+		benchGenericParseType(b, "benchmark_genericParseTypeString", test, func(v string, err error) {
 			require.NoError(b, err)
 			require.Equal(b, test, v)
 		})
@@ -1060,16 +1038,7 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	for _, test := range miscParseBools {
-		b.Run("benchmark_genericParseTypeBoolean", func(b *testing.B) {
-			var v bool
-			var err error
-			b.ReportAllocs()
-			b.ResetTimer()
-			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					v, err = genericParseType[bool](test.str)
-				}
-			})
+		benchGenericParseType(b, "benchmark_genericParseTypeBoolean", test.str, func(v bool, err error) {
 			require.NoError(b, err)
 			if test.value {
 				require.True(b, v)
@@ -1224,29 +1193,33 @@ func TestValueFromContext(t *testing.T) {
 	})
 }
 
-func Test_IsMethodSafe(t *testing.T) {
+func Test_IsMethodSafe_Idempotent(t *testing.T) {
 	t.Parallel()
-	safeMethods := []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery}
-	unsafeMethods := []string{MethodPost, MethodPut, MethodPatch, MethodDelete, MethodConnect}
-
-	for _, m := range safeMethods {
-		require.True(t, IsMethodSafe(m), "%s should be safe", m)
-	}
-	for _, m := range unsafeMethods {
-		require.False(t, IsMethodSafe(m), "%s should not be safe", m)
-	}
-}
-
-func Test_IsMethodIdempotent(t *testing.T) {
-	t.Parallel()
-	idempotent := []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery, MethodPut, MethodDelete}
-	notIdempotent := []string{MethodPost, MethodPatch, MethodConnect}
-
-	for _, m := range idempotent {
-		require.True(t, IsMethodIdempotent(m), "%s should be idempotent", m)
-	}
-	for _, m := range notIdempotent {
-		require.False(t, IsMethodIdempotent(m), "%s should not be idempotent", m)
+	for _, tc := range []struct {
+		is       func(string) bool
+		name     string
+		yes, not []string
+	}{
+		{
+			name: "IsMethodSafe", is: IsMethodSafe,
+			yes: []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery},
+			not: []string{MethodPost, MethodPut, MethodPatch, MethodDelete, MethodConnect},
+		},
+		{
+			name: "IsMethodIdempotent", is: IsMethodIdempotent,
+			yes: []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery, MethodPut, MethodDelete},
+			not: []string{MethodPost, MethodPatch, MethodConnect},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			for _, m := range tc.yes {
+				require.True(t, tc.is(m), "%s should be accepted", m)
+			}
+			for _, m := range tc.not {
+				require.False(t, tc.is(m), "%s should not be accepted", m)
+			}
+		})
 	}
 }
 

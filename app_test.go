@@ -491,32 +491,11 @@ func Test_App_serverErrorHandler_Unsupported_Method_Request(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/bar", func(c Ctx) error { return c.SendString("bar") })
-	ln := fasthttputil.NewInmemoryListener()
-	serverStarted := make(chan struct{}, 1)
-	serverErr := make(chan error, 1)
-	go func() {
-		serverStarted <- struct{}{}
-		if err := app.Listener(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serverErr <- err
-			return
-		}
-		serverErr <- nil
-	}()
-	<-serverStarted
+	ln := startRawServer(t, app)
 
-	conn, err := ln.Dial()
-	require.NoError(t, err)
-	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
-	_, err = conn.Write([]byte("FOO /bar HTTP/1.1\r\nHost: example.com\r\n\r\n"))
-	require.NoError(t, err)
-	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotImplemented, resp.StatusCode)
-	require.Equal(t, utils.StatusMessage(StatusNotImplemented), apptest.Body(t, resp))
-	require.NoError(t, resp.Body.Close())
-	require.NoError(t, conn.Close())
-	require.NoError(t, app.Shutdown())
-	require.NoError(t, <-serverErr)
+	responses, _ := rawExchange(t, ln, "FOO /bar HTTP/1.1\r\nHost: example.com\r\n\r\n", 1)
+	require.Equal(t, StatusNotImplemented, responses[0].status)
+	require.Equal(t, utils.StatusMessage(StatusNotImplemented), responses[0].body)
 }
 
 func Test_App_Nested_Params(t *testing.T) {
@@ -682,7 +661,6 @@ func Test_App_All_Method_Test(t *testing.T) {
 	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
 	app := New(Config{RequestMethods: methods})
 
-	// Add a new method with All
 	app.All("/doe", testEmptyHandler)
 
 	apptest.Expect(t, app, apptest.Req("JOHN", "/doe"), StatusOK)
@@ -1157,11 +1135,7 @@ func Test_App_Shutdown_ContextNotCanceled(t *testing.T) {
 		assert.NoError(t, conn.Close())
 	}()
 
-	select {
-	case <-handlerStarted:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the handler never ran; the client goroutine could not reach it")
-	}
+	rootrestAwait(t, handlerStarted, 5*time.Second, "the handler never ran; the client goroutine could not reach it")
 	require.NoError(t, app.ShutdownWithTimeout(5*time.Second))
 	<-clientDone
 
@@ -1183,7 +1157,6 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
 		require.NoError(t, err)
 
-		// Shutdown with sufficient timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		require.NoError(t, app.ShutdownWithContext(ctx), "Expected successful shutdown")
@@ -1237,14 +1210,9 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 			}
 		}()
 
-		// Wait for request to start
-		select {
-		case <-requestStarted:
-			// Request has started, signal to continue processing
-			close(requestProcessing)
-		case <-time.After(2 * time.Second):
-			t.Fatal("Request did not start in time")
-		}
+		rootrestAwait(t, requestStarted, 2*time.Second, "Request did not start in time")
+		// Request has started, signal to continue processing
+		close(requestProcessing)
 
 		// Attempt shutdown, should timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -1270,18 +1238,7 @@ func Test_App_OptionsAsterisk(t *testing.T) {
 		return nil
 	})
 
-	ln := fasthttputil.NewInmemoryListener()
-	errCh := make(chan error, 1)
-	serverReady := make(chan struct{})
-	go func() {
-		serverReady <- struct{}{}
-		errCh <- app.Listener(ln)
-	}()
-	<-serverReady
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-		require.NoError(t, <-errCh)
-	})
+	ln := startRawServer(t, app)
 
 	for _, tc := range []struct {
 		target, allow string
@@ -1290,18 +1247,15 @@ func Test_App_OptionsAsterisk(t *testing.T) {
 		{target: "*", allow: "GET, POST", status: StatusOK},
 		{target: "/resource", allow: "GET", status: StatusNoContent}, // the control request
 	} {
-		conn, err := ln.Dial()
-		require.NoError(t, err)
-		_, err = conn.Write([]byte("OPTIONS " + tc.target + " HTTP/1.1\r\nHost: example.com\r\n\r\n"))
-		require.NoError(t, err)
-		resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodOptions})
-		require.NoError(t, err)
-		require.Equal(t, tc.status, resp.StatusCode, tc.target)
-		require.Equal(t, tc.allow, resp.Header.Get(HeaderAllow), tc.target)
-		require.Zero(t, resp.ContentLength, tc.target)
-		require.Empty(t, apptest.BodyBytes(t, resp), tc.target)
-		require.NoError(t, resp.Body.Close())
-		require.NoError(t, conn.Close())
+		t.Run(tc.target, func(t *testing.T) {
+			t.Parallel()
+			responses, _ := rawExchange(t, ln, "OPTIONS "+tc.target+" HTTP/1.1\r\nHost: example.com\r\n\r\n", 1)
+			resp := responses[0]
+			require.Equal(t, tc.status, resp.status)
+			require.Equal(t, tc.allow, resp.header.Get(HeaderAllow))
+			require.Zero(t, resp.contentLength)
+			require.Empty(t, resp.body)
+		})
 	}
 }
 
@@ -1309,7 +1263,6 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	// middleware
 	app.Use(func(c Ctx) error {
 		c.Set("TestHeader", "TestValue")
 		return c.Next()
@@ -1717,18 +1670,25 @@ func runGetHandlerRequest(handler fasthttp.RequestHandler, path string) int {
 	return request.Response.StatusCode()
 }
 
-// rootMiscBRecv returns what ch delivers within a second, and fails the test with msg if nothing arrives.
-func rootMiscBRecv[T any](t *testing.T, ch <-chan T, msg string) T {
+// rootrestAwait returns what ch delivers within timeout, and fails the test with msg if nothing arrives.
+func rootrestAwait[T any](t *testing.T, ch <-chan T, timeout time.Duration, msg string) T {
 	t.Helper()
 
 	select {
 	case v := <-ch:
 		return v
-	case <-time.After(time.Second):
+	case <-time.After(timeout):
 		t.Fatal(msg)
 		var zero T
 		return zero
 	}
+}
+
+// rootMiscBRecv is rootrestAwait with a second to wait.
+func rootMiscBRecv[T any](t *testing.T, ch <-chan T, msg string) T {
+	t.Helper()
+
+	return rootrestAwait(t, ch, time.Second, msg)
 }
 
 // rootMiscBRequireNothing fails the test with msg if ch delivers within 20ms: the way to show that the
@@ -1765,26 +1725,71 @@ func (*panicRenderView) Render(io.Writer, string, any, ...string) error { panic(
 
 func Test_App_ReloadViews_Success(t *testing.T) {
 	t.Parallel()
-	view := &countingView{}
-	app := New(Config{Views: view})
-	initialLoads := view.loads
+	for _, tc := range []struct {
+		name   string
+		subs   int  // sub apps with views of their own, mounted under the app
+		parent bool // the app has views of its own
+	}{
+		{name: "app without mounted apps", parent: true},
+		{name: "mounted apps", subs: 2},
+		{name: "app with a mounted app", parent: true, subs: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var views []*countingView
+			newView := func() *countingView {
+				view := &countingView{}
+				views = append(views, view)
+				return view
+			}
+			var cfg Config
+			if tc.parent {
+				cfg.Views = newView()
+			}
+			app := New(cfg)
+			for i := range tc.subs {
+				app.Use("/"+strconv.Itoa(i), New(Config{Views: newView()}))
+			}
+			initialLoads := make([]int, len(views))
+			for i, view := range views {
+				initialLoads[i] = view.loads
+			}
 
-	require.NoError(t, app.ReloadViews())
-	require.Equal(t, initialLoads+1, view.loads)
-
-	require.NoError(t, app.ReloadViews())
-	require.Equal(t, initialLoads+2, view.loads)
+			for round := 1; round <= 2; round++ {
+				require.NoError(t, app.ReloadViews())
+				for i, view := range views {
+					require.Equal(t, initialLoads[i]+round, view.loads, "view %d after reload %d", i, round)
+				}
+			}
+		})
+	}
 }
 
 func Test_App_ReloadViews_Error(t *testing.T) {
 	t.Parallel()
-	wantedErr := errors.New("boom")
-	view := &countingView{loadErr: wantedErr}
-	app := New(Config{Views: view})
+	for _, tc := range []struct {
+		name    string
+		mounted bool // the failing views belong to a mounted app
+	}{
+		{name: "own views"},
+		{name: "mounted app's views", mounted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			wantedErr := errors.New("boom")
+			view := &countingView{loadErr: wantedErr}
+			app := New()
+			if tc.mounted {
+				app.Use("/sub", New(Config{Views: view}))
+			} else {
+				app = New(Config{Views: view})
+			}
 
-	err := app.ReloadViews()
-	require.Error(t, err)
-	require.ErrorIs(t, err, wantedErr)
+			err := app.ReloadViews()
+			require.Error(t, err)
+			require.ErrorIs(t, err, wantedErr)
+		})
+	}
 }
 
 func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
@@ -1795,6 +1800,20 @@ func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
 	appRequireRenderWaitsForReload(t, view, app.ReloadViews, app.Handler(), "/", "render should wait until ReloadViews Load finishes")
 }
 
+// rootrestRecoverFrom runs fn on a new goroutine and returns what it panicked with, nil when it did not. It
+// fails the test with msg if fn has not ended within a second.
+func rootrestRecoverFrom(t *testing.T, fn func(), msg string) any {
+	t.Helper()
+
+	recovered := make(chan any, 1)
+	go func() {
+		defer func() { recovered <- recover() }()
+		fn()
+	}()
+
+	return rootMiscBRecv(t, recovered, msg)
+}
+
 func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 	t.Parallel()
 	view := &panicLoadView{}
@@ -1802,25 +1821,10 @@ func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 	app.Get("/", func(c Ctx) error { return c.Render("home", nil) })
 	handler := app.Handler()
 
-	type reloadResult struct {
-		err       error
-		recovered any
-	}
-
-	reloadDone := make(chan reloadResult, 1)
-	go func() {
-		result := reloadResult{}
-		defer func() {
-			result.recovered = recover()
-			reloadDone <- result
-		}()
-
-		result.err = app.ReloadViews()
-	}()
-
-	result := rootMiscBRecv(t, reloadDone, "reload panic was not recovered")
-	require.NoError(t, result.err)
-	require.Equal(t, "panic load", result.recovered)
+	var reloadErr error
+	recovered := rootrestRecoverFrom(t, func() { reloadErr = app.ReloadViews() }, "reload panic was not recovered")
+	require.NoError(t, reloadErr)
+	require.Equal(t, "panic load", recovered)
 
 	renderDone := make(chan int, 1)
 	go func() { renderDone <- runGetHandlerRequest(handler, "/") }()
@@ -1833,23 +1837,7 @@ func Test_App_InitPanicUnlocksRouteRegistration(t *testing.T) {
 	view := &panicLoadView{}
 	app := New(Config{Views: view})
 
-	type initResult struct {
-		recovered any
-	}
-
-	initDone := make(chan initResult, 1)
-	go func() {
-		result := initResult{}
-		defer func() {
-			result.recovered = recover()
-			initDone <- result
-		}()
-
-		app.init()
-	}()
-
-	result := rootMiscBRecv(t, initDone, "init panic was not recovered")
-	require.Equal(t, "panic load", result.recovered)
+	require.Equal(t, "panic load", rootrestRecoverFrom(t, func() { app.init() }, "init panic was not recovered"))
 
 	registerDone := make(chan struct{}, 1)
 	go func() {
@@ -1865,19 +1853,7 @@ func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
 	app := New(Config{Views: &panicRenderView{}})
 	app.Get("/", func(c Ctx) error { return c.Render("home", nil) })
 
-	type renderResult struct {
-		err       error
-		recovered any
-	}
-
-	renderDone := make(chan renderResult, 1)
-	go func() {
-		result := renderResult{}
-		defer func() {
-			result.recovered = recover()
-			renderDone <- result
-		}()
-
+	recovered := rootrestRecoverFrom(t, func() {
 		app.startupProcess()
 
 		request := &fasthttp.RequestCtx{}
@@ -1885,11 +1861,8 @@ func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
 		request.URI().SetPath("/")
 
 		app.defaultRequestHandler(request)
-	}()
-
-	result := rootMiscBRecv(t, renderDone, "render panic was not recovered")
-	require.NoError(t, result.err)
-	require.Equal(t, "panic render", result.recovered)
+	}, "render panic was not recovered")
+	require.Equal(t, "panic render", recovered)
 
 	reloadDone := make(chan error, 1)
 	go func() { reloadDone <- app.ReloadViews() }()
@@ -2035,36 +2008,6 @@ func Test_App_ReloadViews_MountedViews(t *testing.T) {
 	require.Greater(t, view.loads, initialLoads)
 }
 
-func Test_App_ReloadViews_MountedViews_Error(t *testing.T) {
-	t.Parallel()
-	expectedErr := errors.New("sub view error")
-	subView := &countingView{loadErr: expectedErr}
-	subApp := New(Config{Views: subView})
-	app := New()
-	app.Use("/sub", subApp)
-
-	require.ErrorIs(t, app.ReloadViews(), expectedErr)
-}
-
-func Test_App_ReloadViews_MountedViews_MultipleApps(t *testing.T) {
-	t.Parallel()
-	viewA := &countingView{}
-	viewB := &countingView{}
-	subAppA := New(Config{Views: viewA})
-	subAppB := New(Config{Views: viewB})
-	app := New()
-	app.Use("/a", subAppA)
-	app.Use("/b", subAppB)
-
-	initialLoadsA := viewA.loads
-	initialLoadsB := viewB.loads
-
-	require.NoError(t, app.ReloadViews())
-
-	require.Equal(t, initialLoadsA+1, viewA.loads)
-	require.Equal(t, initialLoadsB+1, viewB.loads)
-}
-
 func Test_App_ReloadViews_MountedViews_ConcurrentMount(t *testing.T) {
 	t.Parallel()
 	view := &countingView{}
@@ -2127,23 +2070,6 @@ func Test_App_ReloadViews_SharedEngineBlocksRenderAfterReusableMount(t *testing.
 	parentAppB.Use("/shared", reusableSubApp)
 	appRequireRenderWaitsForReload(t, view, siblingApp.ReloadViews, parentAppA.Handler(), "/shared/render",
 		"render should wait until shared view engine reload finishes")
-}
-
-func Test_App_ReloadViews_MountedViews_WithParentViews(t *testing.T) {
-	t.Parallel()
-	parentView := &countingView{}
-	subView := &countingView{}
-	subApp := New(Config{Views: subView})
-	app := New(Config{Views: parentView})
-	app.Use("/sub", subApp)
-
-	initialParentLoads := parentView.loads
-	initialSubLoads := subView.loads
-
-	require.NoError(t, app.ReloadViews())
-
-	require.Equal(t, initialParentLoads+1, parentView.loads)
-	require.Equal(t, initialSubLoads+1, subView.loads)
 }
 
 func Test_App_Init_Error_View(t *testing.T) {
@@ -2212,6 +2138,10 @@ func Test_App_RefusedRequest(t *testing.T) {
 			route:  "/read-timeout", raw: "HEAD /read-timeout HTTP/1.1\r\n", want: "408 Request Timeout",
 		},
 		{name: "bad request", route: "/bad-request", raw: "BadRequest\r\n", want: "400 Bad Request"},
+		{
+			name: "small read buffer", config: Config{ReadBufferSize: 1}, route: "/small-read-buffer",
+			raw: "GET /small-read-buffer HTTP/1.1\r\nHost: example.com\r\n\r\n", want: "431 Request Header Fields Too Large",
+		},
 	}
 
 	for _, tc := range tests {
@@ -2221,8 +2151,7 @@ func Test_App_RefusedRequest(t *testing.T) {
 
 			app.Get(tc.route, func(c Ctx) error { return c.SendString("I should not be sent") })
 
-			ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-			require.NoError(t, err)
+			ln := newLocalListener(t)
 			addr := ln.Addr().String()
 
 			go func() {
@@ -2253,30 +2182,6 @@ func Test_App_RefusedRequest(t *testing.T) {
 	}
 }
 
-func Test_App_SmallReadBuffer(t *testing.T) {
-	t.Parallel()
-	app := New(Config{ReadBufferSize: 1})
-
-	app.Get("/small-read-buffer", func(c Ctx) error { return c.SendString("I should not be sent") })
-
-	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := ln.Addr().String()
-
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		req, err := http.NewRequestWithContext(context.Background(), MethodGet, fmt.Sprintf("http://%s/small-read-buffer", addr), http.NoBody)
-		assert.NoError(t, err)
-		var client http.Client
-		resp, err := client.Do(req)
-		assert.NoError(t, err)
-		assert.Equal(t, 431, resp.StatusCode)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listener(ln, ListenConfig{DisableStartupMessage: true}))
-}
-
 func Test_App_Server(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2294,16 +2199,12 @@ func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 
 func Test_App_New_Test_Parallel(t *testing.T) {
 	t.Parallel()
-	t.Run("Test_App_New_Test_Parallel_1", func(t *testing.T) {
-		t.Parallel()
-		app := New(Config{Immutable: true})
-		apptest.Do(t, app, "/")
-	})
-	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
-		t.Parallel()
-		app := New(Config{Immutable: true})
-		apptest.Do(t, app, "/")
-	})
+	for _, name := range []string{"Test_App_New_Test_Parallel_1", "Test_App_New_Test_Parallel_2"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			apptest.Do(t, New(Config{Immutable: true}), "/")
+		})
+	}
 }
 
 func Test_App_ReadBodyStream(t *testing.T) {
@@ -2397,14 +2298,28 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 
 func Test_App_Test_timeout(t *testing.T) {
 	t.Parallel()
-	app := New()
-	app.Get("/", func(_ Ctx) error {
-		time.Sleep(1 * time.Second)
-		return nil
-	})
+	for _, tc := range []struct {
+		name    string
+		method  string
+		delay   time.Duration // how long the handler takes
+		timeout time.Duration
+	}{
+		{name: "GET", method: MethodGet, delay: time.Second, timeout: 100 * time.Millisecond},
+		{name: "small timeout", method: MethodPost, delay: 100 * time.Millisecond, timeout: 10 * time.Millisecond},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Add([]string{tc.method}, "/", func(c Ctx) error {
+				time.Sleep(tc.delay)
+				return c.SendString("late")
+			})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{Timeout: 100 * time.Millisecond, FailOnTimeout: true})
-	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+			// With FailOnTimeout the timeout is an error, however short it is.
+			_, err := app.Test(httptest.NewRequest(tc.method, "/", http.NoBody), TestConfig{Timeout: tc.timeout, FailOnTimeout: true})
+			require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+		})
+	}
 }
 
 func Test_App_Test_timeout_empty_response(t *testing.T) {
@@ -2875,20 +2790,6 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutFalse(t *testing.T) {
 	require.Equal(t, "g.test123", response.GroupID)
 }
 
-func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Post("/admin/api/groups", func(c Ctx) error {
-		time.Sleep(100 * time.Millisecond)
-		groupID := "g.test123"
-		return c.JSON(groupIDResponse{GroupID: groupID})
-	})
-	req := httptest.NewRequest(MethodPost, "/admin/api/groups", http.NoBody)
-	// With FailOnTimeout: true (default), it should fail fast with timeout error
-	_, err := app.Test(req, TestConfig{Timeout: 10 * time.Millisecond, FailOnTimeout: true})
-	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
-}
-
 func Test_App_ShutdownWithTimeout_HandlerTakesAppMutex(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2911,11 +2812,7 @@ func Test_App_ShutdownWithTimeout_HandlerTakesAppMutex(t *testing.T) {
 
 	rootMiscBSendOnNewConn(t, ln, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
 
-	select {
-	case <-inHandler:
-	case <-time.After(2 * time.Second):
-		t.Fatal("request never reached the handler")
-	}
+	rootrestAwait(t, inHandler, 2*time.Second, "request never reached the handler")
 
 	const timeout = 3 * time.Second
 	start := time.Now()
@@ -3490,9 +3387,5 @@ func Test_App_SendStreamWriter_HTTP10_ClientLeaves(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
 
-	select {
-	case <-ended:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the writer kept running after the client left")
-	}
+	rootrestAwait(t, ended, 5*time.Second, "the writer kept running after the client left")
 }

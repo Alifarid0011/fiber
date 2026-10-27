@@ -144,6 +144,25 @@ func rootMiscBShutdownAfter(t *testing.T, app *App, d time.Duration) {
 	}()
 }
 
+// rootrestListenFor serves app with Listen on a free port until d has passed and requires the call to end without an
+// error.
+func rootrestListenFor(t *testing.T, app *App, d time.Duration, cfg ...ListenConfig) {
+	t.Helper()
+
+	rootMiscBShutdownAfter(t, app, d)
+	require.NoError(t, app.Listen(":0", cfg...))
+}
+
+// rootrestRequireOverRecovery requires a prefork master that listens with cfg to give up on its children at once.
+func rootrestRequireOverRecovery(t *testing.T, app *App, cfg *ListenConfig) {
+	t.Helper()
+
+	cfg.DisableStartupMessage = true
+	cfg.EnablePrefork = true
+	cfg.PreforkRecoverThreshold = 1
+	require.ErrorIs(t, app.Listen(":0", *cfg), prefork.ErrOverRecovery)
+}
+
 // rootMiscBWaitDialable waits until ln accepts a connection, which is when the server behind it is up.
 func rootMiscBWaitDialable(t *testing.T, ln *fasthttputil.InmemoryListener) {
 	t.Helper()
@@ -174,8 +193,7 @@ func rootMiscBSendOnNewConn(t *testing.T, ln *fasthttputil.InmemoryListener, raw
 func rootMiscBFreePort(t *testing.T) int {
 	t.Helper()
 
-	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := newLocalListener(t)
 	addr, ok := ln.Addr().(*net.TCPAddr)
 	require.True(t, ok)
 	require.NoError(t, ln.Close())
@@ -238,9 +256,7 @@ func Test_Listen(t *testing.T) {
 
 	require.Error(t, app.Listen(":99999"))
 
-	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
-
-	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true}))
+	rootrestListenFor(t, app, 1000*time.Millisecond, ListenConfig{DisableStartupMessage: true})
 }
 
 func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
@@ -296,47 +312,24 @@ func Test_ShutdownWithContext_PostShutdownHookReceivesError(t *testing.T) {
 	shutdownErr := app.ShutdownWithContext(ctx)
 	require.Error(t, shutdownErr)
 
-	select {
-	case got := <-hookErr:
-		// The hook must receive the actual shutdown error, not the nil value
-		// captured when the defer was registered.
-		require.Equal(t, shutdownErr, got)
-	case <-time.After(time.Second):
-		t.Fatal("OnPostShutdown hook was not called")
-	}
+	got := rootrestAwait(t, hookErr, time.Second, "OnPostShutdown hook was not called")
+	// The hook must receive the actual shutdown error, not the nil value
+	// captured when the defer was registered.
+	require.Equal(t, shutdownErr, got)
 }
 
 func Test_GracefulShutdown_PostShutdownFiresOnce(t *testing.T) {
-	app := New()
-	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+	t.Parallel()
+	f := newGracefulFixture(t)
+	f.start(listenerEntry.run)
+	rootMiscBWaitDialable(t, f.ln)
 
-	fires := make(chan error, 8)
-	app.Hooks().OnPostShutdown(func(err error) error {
-		fires <- err
-		return nil
-	})
-
-	ln := fasthttputil.NewInmemoryListener()
-	gctx, gcancel := context.WithCancel(context.Background())
-	go func() {
-		_ = app.Listener(ln, ListenConfig{DisableStartupMessage: true, GracefulContext: gctx}) //nolint:errcheck,contextcheck // not needed
-	}()
-
-	rootMiscBWaitDialable(t, ln)
-
-	gcancel() // trigger graceful shutdown
+	f.cancel() // trigger graceful shutdown
 
 	// The hook must fire exactly once.
-	select {
-	case <-fires:
-	case <-time.After(2 * time.Second):
-		t.Fatal("OnPostShutdown was not called")
-	}
-	select {
-	case <-fires:
-		t.Fatal("OnPostShutdown fired more than once")
-	case <-time.After(300 * time.Millisecond):
-	}
+	rootrestAwait(t, f.probe.posted, 2*time.Second, "OnPostShutdown was not called")
+	time.Sleep(300 * time.Millisecond)
+	require.Equal(t, int32(1), f.probe.post.Load(), "OnPostShutdown fired more than once")
 }
 
 func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
@@ -457,13 +450,7 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 func Test_Listen_Prefork(t *testing.T) {
 	enableTestPreforkMaster(t)
 
-	app := New()
-
-	require.ErrorIs(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage:   true,
-		EnablePrefork:           true,
-		PreforkRecoverThreshold: 1,
-	}), prefork.ErrOverRecovery)
+	rootrestRequireOverRecovery(t, New(), &ListenConfig{})
 }
 
 func Test_Listen_TLSMinVersion(t *testing.T) {
@@ -482,16 +469,10 @@ func Test_Listen_TLSMinVersion(t *testing.T) {
 	}
 
 	// Valid TLSMinVersion
-	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
-	require.NoError(t, app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS13}))
+	rootrestListenFor(t, app, 1000*time.Millisecond, ListenConfig{TLSMinVersion: tls.VersionTLS13})
 
 	// Valid TLSMinVersion with Prefork
-	require.ErrorIs(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage:   true,
-		EnablePrefork:           true,
-		TLSMinVersion:           tls.VersionTLS13,
-		PreforkRecoverThreshold: 1,
-	}), prefork.ErrOverRecovery)
+	rootrestRequireOverRecovery(t, app, &ListenConfig{TLSMinVersion: tls.VersionTLS13})
 }
 
 func Test_Listen_TLS(t *testing.T) {
@@ -515,9 +496,7 @@ func Test_Listen_TLS(t *testing.T) {
 
 			require.Error(t, app.Listen(":99999", cfg))
 
-			rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
-
-			require.NoError(t, app.Listen(":0", cfg))
+			rootrestListenFor(t, app, 1000*time.Millisecond, cfg)
 		})
 	}
 }
@@ -548,14 +527,11 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 				CertClientFile:        tc.certClientFile,
 			}))
 
-			require.ErrorIs(t, app.Listen(":0", ListenConfig{
-				DisableStartupMessage:   true,
-				EnablePrefork:           true,
-				CertFile:                "./.github/testdata/ssl.pem",
-				CertKeyFile:             "./.github/testdata/ssl.key",
-				CertClientFile:          tc.certClientFile,
-				PreforkRecoverThreshold: 1,
-			}), prefork.ErrOverRecovery)
+			rootrestRequireOverRecovery(t, app, &ListenConfig{
+				CertFile:       "./.github/testdata/ssl.pem",
+				CertKeyFile:    "./.github/testdata/ssl.key",
+				CertClientFile: tc.certClientFile,
+			})
 		})
 	}
 }
@@ -584,16 +560,13 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 
 func Test_Listen_TLSConfigFunc(t *testing.T) {
 	var callTLSConfig bool
-	app := New()
 
-	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	rootrestListenFor(t, New(), 1000*time.Millisecond, ListenConfig{
 		DisableStartupMessage: true,
 		TLSConfigFunc:         func(_ *tls.Config) { callTLSConfig = true },
 		CertFile:              "./.github/testdata/ssl.pem",
 		CertKeyFile:           "./.github/testdata/ssl.key",
-	}))
+	})
 
 	require.True(t, callTLSConfig)
 }
@@ -606,11 +579,7 @@ func Test_Listen_TLSConfig(t *testing.T) {
 	run := func(name string, cfg ListenConfig, checks ...func(t *testing.T)) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			app := New()
-
-			rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
-
-			require.NoError(t, app.Listen(":0", cfg))
+			rootrestListenFor(t, New(), 1000*time.Millisecond, cfg)
 			for _, check := range checks {
 				check(t)
 			}
@@ -666,10 +635,7 @@ func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 	var buf bytes.Buffer
 	withCapturedLogOutput(t, &buf)
 
-	app := New()
-	rootMiscBShutdownAfter(t, app, 500*time.Millisecond)
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	rootrestListenFor(t, New(), 500*time.Millisecond, ListenConfig{
 		DisableStartupMessage: true,
 		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
 		// Superseded by TLSConfig. CertClientFile is the one that matters: a
@@ -679,7 +645,7 @@ func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 		TLSConfigFunc:  func(*tls.Config) {},
 		// The supplied TLSConfig permits TLS 1.2, so this request is dropped.
 		TLSMinVersion: tls.VersionTLS13,
-	}))
+	})
 
 	rootMiscBRequireContains(t, buf.String(),
 		"CertClientFile",
@@ -699,13 +665,10 @@ func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
 	var buf bytes.Buffer
 	withCapturedLogOutput(t, &buf)
 
-	app := New()
-	rootMiscBShutdownAfter(t, app, 500*time.Millisecond)
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	rootrestListenFor(t, New(), 500*time.Millisecond, ListenConfig{
 		DisableStartupMessage: true,
 		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
-	}))
+	})
 
 	require.NotContains(t, buf.String(), "supersedes")
 }
@@ -715,8 +678,7 @@ func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
 	var buf bytes.Buffer
 	withCapturedLogOutput(t, &buf)
 
-	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := newLocalListener(t)
 
 	app := New()
 	rootMiscBShutdownAfter(t, app, 500*time.Millisecond)
@@ -813,16 +775,13 @@ func Test_Listen_ClientCertErrorDoesNotSetTLSHandler(t *testing.T) {
 
 func Test_Listen_ListenerAddrFunc(t *testing.T) {
 	var network string
-	app := New()
 
-	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	rootrestListenFor(t, New(), 1000*time.Millisecond, ListenConfig{
 		DisableStartupMessage: true,
 		ListenerAddrFunc:      func(addr net.Addr) { network = addr.Network() },
 		CertFile:              "./.github/testdata/ssl.pem",
 		CertKeyFile:           "./.github/testdata/ssl.key",
-	}))
+	})
 
 	require.Equal(t, "tcp", network)
 }
@@ -866,12 +825,7 @@ func Test_Listen_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 		require.NoError(t, <-errCh)
 	})
 
-	var addr string
-	select {
-	case addr = <-addrCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the server did not start")
-	}
+	addr := rootrestAwait(t, addrCh, 5*time.Second, "the server did not start")
 
 	responses, _ := rawExchange(t, tcpDialer(addr),
 		"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 1)
@@ -897,13 +851,11 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	app := New()
 
 	for _, tc := range []struct{ network, want string }{{NetworkTCP6, "[::]:"}, {NetworkTCP4, "0.0.0.0:"}} {
-		rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
-
-		require.NoError(t, app.Listen(":0", ListenConfig{
+		rootrestListenFor(t, app, 1000*time.Millisecond, ListenConfig{
 			DisableStartupMessage: true,
 			ListenerNetwork:       tc.network,
 			ListenerAddrFunc:      func(addr net.Addr) { network = addr.String() },
-		}))
+		})
 
 		require.Contains(t, network, tc.want)
 	}
@@ -1155,12 +1107,10 @@ func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
 	// Not parallel: captures the package-level log output.
 	cert := rootMiscBTestCert(t)
 
-	plain, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	plain := newLocalListener(t)
 	t.Cleanup(func() { _ = plain.Close() }) //nolint:errcheck // closing a test listener
 
-	secure, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	secure := newLocalListener(t)
 	tlsLn := tls.NewListener(secure, &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}})
 	t.Cleanup(func() { _ = tlsLn.Close() }) //nolint:errcheck // closing a test listener
 
@@ -1318,8 +1268,7 @@ func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
 		var buf bytes.Buffer
 		withCapturedLogOutput(t, &buf)
 
-		ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-		require.NoError(t, err)
+		ln := newLocalListener(t)
 		defer func() { require.NoError(t, ln.Close()) }()
 
 		cfg := listenConfigDefault(ListenConfig{TLSMinVersion: tls.VersionTLS11})
@@ -1345,42 +1294,17 @@ func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
 
 func Test_Listen_GracefulShutdown_HooksOnce(t *testing.T) {
 	t.Parallel()
-	app := New()
-	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+	f := newGracefulFixture(t)
+	errs := f.start(listenerEntry.run)
+	rootMiscBWaitDialable(t, f.ln)
 
-	var preShutdown, postShutdown atomic.Int32
-	app.Hooks().OnPreShutdown(func() error {
-		preShutdown.Add(1)
-		return nil
-	})
-	app.Hooks().OnPostShutdown(func(_ error) error {
-		postShutdown.Add(1)
-		return nil
-	})
-
-	gctx := t.Context()
-
-	ln := fasthttputil.NewInmemoryListener()
-	errs := make(chan error, 1)
-	go func() {
-		errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true, GracefulContext: gctx}) //nolint:contextcheck // the context is the shutdown trigger, not a request context
-	}()
-
-	rootMiscBWaitDialable(t, ln)
-
-	require.NoError(t, app.Shutdown())
-
-	select {
-	case err := <-errs:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Listener did not return after Shutdown")
-	}
+	require.NoError(t, f.app.Shutdown())
+	require.NoError(t, awaitServe(t, errs))
 
 	// Leave the graceful-shutdown goroutine time to misfire before asserting.
 	time.Sleep(300 * time.Millisecond)
-	require.Equal(t, int32(1), preShutdown.Load(), "OnPreShutdown must fire exactly once")
-	require.Equal(t, int32(1), postShutdown.Load(), "OnPostShutdown must fire exactly once")
+	require.Equal(t, int32(1), f.probe.pre.Load(), "OnPreShutdown must fire exactly once")
+	require.Equal(t, int32(1), f.probe.post.Load(), "OnPostShutdown must fire exactly once")
 }
 
 // Issue #3370: Listen must not hand control back while requests are draining.
@@ -1426,50 +1350,25 @@ func Test_Listen_GracefulShutdown_DrainsBeforeReturn(t *testing.T) {
 		responses <- fmt.Sprintf("%d %s", resp.StatusCode(), resp.Body())
 	}()
 
-	select {
-	case <-inHandler:
-	case <-time.After(2 * time.Second):
-		t.Fatal("request never reached the handler")
-	}
+	rootrestAwait(t, inHandler, 2*time.Second, "request never reached the handler")
 	gcancel()
 
-	select {
-	case err := <-errs:
-		require.NoError(t, err)
-		require.True(t, handlerDone.Load(), "Listener returned while a request was still in flight")
-	case <-time.After(3 * time.Second):
-		t.Fatal("Listener did not return")
-	}
+	require.NoError(t, rootrestAwait(t, errs, 3*time.Second, "Listener did not return"))
+	require.True(t, handlerDone.Load(), "Listener returned while a request was still in flight")
 
 	// Awaited rather than checked at the return: the client reads on its own goroutine.
-	select {
-	case got := <-responses:
-		require.Equal(t, "200 ok", got, "the drained request lost its response")
-	case <-time.After(time.Second):
-		t.Fatal("client never received the response")
-	}
+	got := rootrestAwait(t, responses, time.Second, "client never received the response")
+	require.Equal(t, "200 ok", got, "the drained request lost its response")
 }
 
 func Test_Listen_GracefulShutdown_NoHooksOnListenError(t *testing.T) {
 	t.Parallel()
-	app := New()
+	f := newGracefulFixture(t)
 
-	var fired atomic.Int32
-	app.Hooks().OnPreShutdown(func() error {
-		fired.Add(1)
-		return nil
-	})
-	app.Hooks().OnPostShutdown(func(_ error) error {
-		fired.Add(1)
-		return nil
-	})
-
-	gctx := t.Context()
-
-	require.Error(t, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, GracefulContext: gctx}))
+	require.Error(t, f.app.Listen(":99999", f.cfg))
 
 	time.Sleep(300 * time.Millisecond)
-	require.Zero(t, fired.Load(), "shutdown hooks must not run for a server that never started")
+	require.Zero(t, f.probe.pre.Load()+f.probe.post.Load(), "shutdown hooks must not run for a server that never started")
 }
 
 func Test_ListenConfigDefault_ShutdownTimeout(t *testing.T) {
@@ -1531,20 +1430,11 @@ func Test_GracefulShutdown_NegativeTimeoutWaitsIndefinitely(t *testing.T) {
 	// Keep a request in flight while the context is canceled.
 	rootMiscBSendOnNewConn(t, ln, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
 
-	select {
-	case <-inHandler:
-	case <-time.After(2 * time.Second):
-		t.Fatal("request never reached the handler")
-	}
+	rootrestAwait(t, inHandler, 2*time.Second, "request never reached the handler")
 
 	gcancel()
 
-	select {
-	case err := <-hookErr:
-		require.NoError(t, err)
-	case <-time.After(3 * time.Second):
-		t.Fatal("OnPostShutdown was not called")
-	}
+	require.NoError(t, rootrestAwait(t, hookErr, 3*time.Second, "OnPostShutdown was not called"))
 	require.NoError(t, <-errs)
 }
 
@@ -2071,53 +1961,80 @@ func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 	}
 }
 
-func Test_Listener_TLS_ClientHelloInfo_PerConnection(t *testing.T) {
-	t.Parallel()
-	cert := rootMiscBTestCert(t)
+// rootrestServeTLSHandler serves app on a TLS listener over base, whose certificate lookup records the
+// ClientHelloInfo of each connection in handler. The app is shut down, which has to end cleanly, when the test ends.
+func rootrestServeTLSHandler(t *testing.T, app *App, handler *TLSHandler, base net.Listener) {
+	t.Helper()
 
-	tlsHandler := &TLSHandler{}
-	app := New()
-	app.SetTLSHandler(tlsHandler)
-	app.Get("/", func(c Ctx) error {
-		if info := c.ClientHelloInfo(); info != nil {
-			return c.SendString(info.ServerName)
-		}
-		return c.SendString("<nil>")
-	})
-
-	ln := fasthttputil.NewInmemoryListener()
-	tlsLn := tls.NewListener(ln, &tls.Config{
+	app.SetTLSHandler(handler)
+	tlsLn := tls.NewListener(base, &tls.Config{
 		MinVersion:     tls.VersionTLS12,
-		Certificates:   []tls.Certificate{cert},
-		GetCertificate: tlsHandler.GetClientInfo,
+		Certificates:   []tls.Certificate{rootMiscBTestCert(t)},
+		GetCertificate: handler.GetClientInfo,
 	})
 
 	errs := make(chan error, 1)
 	go func() { errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true}) }()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		require.NoError(t, <-errs)
+	})
+}
 
-	rootMiscBWaitDialable(t, ln)
+func Test_Listener_TLS_ClientHelloInfo_PerConnection(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		// maxConnsPerIP makes fasthttp wrap every accepted connection for its accounting, and the wrapper is
+		// what the request side sees.
+		maxConnsPerIP int
+		inMemory      bool
+	}{
+		{name: "in-memory listener", inMemory: true},
+		{name: "MaxConnsPerIP", maxConnsPerIP: 8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Server().MaxConnsPerIP = tc.maxConnsPerIP
+			app.Get("/", func(c Ctx) error {
+				if info := c.ClientHelloInfo(); info != nil {
+					return c.SendString(info.ServerName)
+				}
+				return c.SendString("<nil>")
+			})
 
-	dial := func(serverName string) *tls.Conn {
-		t.Helper()
+			var dialRaw func() (net.Conn, error)
+			if tc.inMemory {
+				ln := fasthttputil.NewInmemoryListener()
+				rootrestServeTLSHandler(t, app, &TLSHandler{}, ln)
+				rootMiscBWaitDialable(t, ln)
+				dialRaw = ln.Dial
+			} else {
+				ln := newLocalListener(t)
+				rootrestServeTLSHandler(t, app, &TLSHandler{}, ln)
+				dialRaw = func() (net.Conn, error) { return net.Dial("tcp", ln.Addr().String()) }
+			}
 
-		raw, dialErr := ln.Dial()
-		require.NoError(t, dialErr)
-		conn := tls.Client(raw, rootMiscBTLSClientConfig(serverName))
-		require.NoError(t, conn.Handshake())
-		return conn
+			dial := func(serverName string) *tls.Conn {
+				t.Helper()
+
+				raw, dialErr := dialRaw()
+				require.NoError(t, dialErr)
+				conn := tls.Client(raw, rootMiscBTLSClientConfig(serverName))
+				require.NoError(t, conn.Handshake())
+				t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // not needed
+				return conn
+			}
+
+			first := dial("first.example")
+			second := dial("second.example")
+
+			// Both handshakes complete before either request, so a shared value would report second.example twice.
+			require.Equal(t, "first.example", rootMiscBTLSGet(t, first))
+			require.Equal(t, "second.example", rootMiscBTLSGet(t, second))
+		})
 	}
-
-	first := dial("first.example")
-	t.Cleanup(func() { _ = first.Close() }) //nolint:errcheck // not needed
-	second := dial("second.example")
-	t.Cleanup(func() { _ = second.Close() }) //nolint:errcheck // not needed
-
-	// Both handshakes complete before either request, so a shared value would report second.example twice.
-	require.Equal(t, "first.example", rootMiscBTLSGet(t, first))
-	require.Equal(t, "second.example", rootMiscBTLSGet(t, second))
-
-	require.NoError(t, app.Shutdown())
-	require.NoError(t, <-errs)
 }
 
 func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
@@ -2148,11 +2065,7 @@ func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
 
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the user ConnState callback was not called")
-	}
+	rootrestAwait(t, closed, 5*time.Second, "the user ConnState callback was not called")
 
 	require.NoError(t, app.Shutdown())
 	require.NoError(t, <-errs)
@@ -2160,24 +2073,13 @@ func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 
 func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP_NoLeak(t *testing.T) {
 	t.Parallel()
-	cert := rootMiscBTestCert(t)
-
 	tlsHandler := &TLSHandler{}
 	app := New()
-	app.SetTLSHandler(tlsHandler)
 	app.Server().MaxConnsPerIP = 8
 	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
 
-	raw, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	tlsLn := tls.NewListener(raw, &tls.Config{
-		MinVersion:     tls.VersionTLS12,
-		Certificates:   []tls.Certificate{cert},
-		GetCertificate: tlsHandler.GetClientInfo,
-	})
-
-	errs := make(chan error, 1)
-	go func() { errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true}) }()
+	raw := newLocalListener(t)
+	rootrestServeTLSHandler(t, app, tlsHandler, raw)
 
 	// Sequential handshakes: the per-IP cap bounds concurrency, not the total.
 	for range 12 {
@@ -2196,56 +2098,4 @@ func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP_NoLeak(t *testing.T) {
 		return count(&tlsHandler.clientHelloInfos) == 0 && count(&tlsHandler.serverConns) == 0
 	}, 5*time.Second, 20*time.Millisecond, "closed connections left %d ClientHelloInfo and %d wrapper entries behind",
 		count(&tlsHandler.clientHelloInfos), count(&tlsHandler.serverConns))
-
-	require.NoError(t, app.Shutdown())
-	require.NoError(t, <-errs)
-}
-
-func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP(t *testing.T) {
-	t.Parallel()
-	cert := rootMiscBTestCert(t)
-
-	tlsHandler := &TLSHandler{}
-	app := New()
-	app.SetTLSHandler(tlsHandler)
-	// fasthttp wraps every accepted connection for this accounting, and the
-	// wrapper is what the request side sees.
-	app.Server().MaxConnsPerIP = 8
-	app.Get("/", func(c Ctx) error {
-		if info := c.ClientHelloInfo(); info != nil {
-			return c.SendString(info.ServerName)
-		}
-		return c.SendString("<nil>")
-	})
-
-	raw, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	tlsLn := tls.NewListener(raw, &tls.Config{
-		MinVersion:     tls.VersionTLS12,
-		Certificates:   []tls.Certificate{cert},
-		GetCertificate: tlsHandler.GetClientInfo,
-	})
-
-	errs := make(chan error, 1)
-	go func() { errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true}) }()
-
-	addr := raw.Addr().String()
-	dial := func(serverName string) *tls.Conn {
-		t.Helper()
-
-		conn, dialErr := tls.Dial("tcp", addr, rootMiscBTLSClientConfig(serverName))
-		require.NoError(t, dialErr)
-		return conn
-	}
-
-	first := dial("first.example")
-	t.Cleanup(func() { _ = first.Close() }) //nolint:errcheck // not needed
-	second := dial("second.example")
-	t.Cleanup(func() { _ = second.Close() }) //nolint:errcheck // not needed
-
-	require.Equal(t, "first.example", rootMiscBTLSGet(t, first))
-	require.Equal(t, "second.example", rootMiscBTLSGet(t, second))
-
-	require.NoError(t, app.Shutdown())
-	require.NoError(t, <-errs)
 }

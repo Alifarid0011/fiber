@@ -57,22 +57,31 @@ func withCapturedLogOutput(t *testing.T, writer io.Writer) {
 	log.SetOutput(writer)
 }
 
-func (m *mockService) Start(ctx context.Context) error {
+// mockServiceWait fails if ctx is done at once, or before the delay has passed.
+func mockServiceWait(ctx context.Context, delay time.Duration) error {
 	select {
 	case <-ctx.Done():
 		return fmt.Errorf("context canceled: %w", ctx.Err())
 	default:
 	}
 
-	if m.startDelay > 0 {
-		timer := time.NewTimer(m.startDelay)
+	if delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
 		select {
 		case <-ctx.Done():
-			timer.Stop()
 			return fmt.Errorf("context canceled: %w", ctx.Err())
 		case <-timer.C:
 			// Continue after delay
 		}
+	}
+
+	return nil
+}
+
+func (m *mockService) Start(ctx context.Context) error {
+	if err := mockServiceWait(ctx, m.startDelay); err != nil {
+		return err
 	}
 
 	if m.startError != nil {
@@ -109,21 +118,8 @@ func (m *mockService) State(ctx context.Context) (string, error) {
 }
 
 func (m *mockService) Terminate(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("context canceled: %w", ctx.Err())
-	default:
-	}
-
-	if m.terminateDelay > 0 {
-		timer := time.NewTimer(m.terminateDelay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return fmt.Errorf("context canceled: %w", ctx.Err())
-		case <-timer.C:
-			// Continue after delay
-		}
+	if err := mockServiceWait(ctx, m.terminateDelay); err != nil {
+		return err
 	}
 
 	if m.terminateError != nil {
@@ -198,79 +194,65 @@ func Test_InitServices(t *testing.T) {
 		require.Panics(t, app.initServices)
 	})
 
-	t.Run("shutdown-hooks/success", func(t *testing.T) {
-		// Initialize the app using the New function to verify that the shutdown hooks are registered
-		// and the app mutex is not causing a deadlock.
-		app := New(Config{Services: []Service{&mockService{name: "dep1"}}})
-
-		require.NotPanics(t, app.initServices)
-
-		var buf strings.Builder
-		log.SetOutput(&buf)
-
-		app.Hooks().executeOnPostShutdownHooks(nil)
-
-		require.NotContains(t, buf.String(), "failed to call post shutdown hook:")
-	})
-
-	t.Run("shutdown-hooks/error", func(t *testing.T) {
-		// Initialize the app using the New function to verify that the shutdown hooks are registered
-		// and the app mutex is not causing a deadlock.
-		app := New(Config{
-			Services: []Service{
+	// An app made with New has the shutdown hooks registered, which also checks that the app mutex does not deadlock.
+	for _, tc := range []struct {
+		storage  *errorStorage // the shared storage of the app, if it has one
+		name     string
+		services []Service
+		contains []string // what the post shutdown hooks log
+		absent   []string
+	}{
+		{
+			name: "shutdown-hooks/success", services: []Service{&mockService{name: "dep1"}},
+			absent: []string{"failed to call post shutdown hook:"},
+		},
+		{
+			name: "shutdown-hooks/error",
+			services: []Service{
 				&mockService{name: "dep1"},
 				&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
 			},
-		})
-
-		require.NotPanics(t, app.initServices)
-
-		var buf strings.Builder
-		log.SetOutput(&buf)
-
-		app.Hooks().executeOnPostShutdownHooks(nil)
-
-		require.Contains(t, buf.String(), "failed to shutdown services: service dep2 terminate: terminate error 2")
-	})
-
-	t.Run("shutdown-hooks/close-shared-state", func(t *testing.T) {
-		t.Parallel()
-		storage := &errorStorage{}
-		app := New(Config{Services: []Service{&mockService{name: "dep1"}}, SharedStorage: storage})
-
-		require.NotPanics(t, app.initServices)
-
-		var buf strings.Builder
-		withCapturedLogOutput(t, &buf)
-
-		app.Hooks().executeOnPostShutdownHooks(nil)
-
-		require.True(t, storage.closeCalled.Load())
-		require.NotContains(t, buf.String(), "failed to close sharedState:")
-	})
-
-	t.Run("shutdown-hooks/close-shared-state-after-service-error", func(t *testing.T) {
-		t.Parallel()
-		storage := &errorStorage{closeErr: errors.New("close error")}
-		app := New(Config{
-			Services: []Service{
+			contains: []string{"failed to shutdown services: service dep2 terminate: terminate error 2"},
+		},
+		{
+			name: "shutdown-hooks/close-shared-state", services: []Service{&mockService{name: "dep1"}},
+			storage: &errorStorage{}, absent: []string{"failed to close sharedState:"},
+		},
+		{
+			name: "shutdown-hooks/close-shared-state-after-service-error",
+			services: []Service{
 				&mockService{name: "dep1"},
 				&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
 			},
-			SharedStorage: storage,
+			storage: &errorStorage{closeErr: errors.New("close error")},
+			contains: []string{
+				"failed to shutdown services: service dep2 terminate: terminate error 2",
+				"failed to close sharedState: close error",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Config{Services: tc.services}
+			if tc.storage != nil {
+				cfg.SharedStorage = tc.storage
+			}
+			app := New(cfg)
+
+			require.NotPanics(t, app.initServices)
+
+			var buf strings.Builder
+			withCapturedLogOutput(t, &buf)
+
+			app.Hooks().executeOnPostShutdownHooks(nil)
+
+			if tc.storage != nil {
+				require.True(t, tc.storage.closeCalled.Load())
+			}
+			rootMiscBRequireContains(t, buf.String(), tc.contains...)
+			rootMiscBRequireNotContains(t, buf.String(), tc.absent...)
 		})
-
-		require.NotPanics(t, app.initServices)
-
-		var buf strings.Builder
-		withCapturedLogOutput(t, &buf)
-
-		app.Hooks().executeOnPostShutdownHooks(nil)
-
-		require.True(t, storage.closeCalled.Load())
-		require.Contains(t, buf.String(), "failed to shutdown services: service dep2 terminate: terminate error 2")
-		require.Contains(t, buf.String(), "failed to close sharedState: close error")
-	})
+	}
 }
 
 func Test_StartServices(t *testing.T) {

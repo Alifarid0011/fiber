@@ -396,6 +396,19 @@ func TestToFiberHandler_ExpressNextNoArgMiddleware(t *testing.T) {
 	require.Equal(t, []string{"middleware", "handler"}, callOrder)
 }
 
+// adapterConvertAndRun converts handler with toFiberHandler and runs it on a new context, which it returns.
+func adapterConvertAndRun(t *testing.T, handler any) Ctx {
+	t.Helper()
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+	require.NotNil(t, converted)
+
+	ctx := apptest.Ctx(t, New())
+	require.NoError(t, converted(ctx))
+	return ctx
+}
+
 func TestCollectHandlers_HTTPHandler(t *testing.T) {
 	t.Parallel()
 	var writeErr error
@@ -427,13 +440,8 @@ func TestToFiberHandler_HTTPHandler(t *testing.T) {
 		_, writeErr = w.Write([]byte("through"))
 	})
 
-	converted, ok := toFiberHandler(handler)
-	require.True(t, ok)
-	require.NotNil(t, converted)
+	ctx := adapterConvertAndRun(t, handler)
 
-	ctx := apptest.Ctx(t, New())
-
-	require.NoError(t, converted(ctx))
 	require.Equal(t, "handler", string(ctx.Response().Header.Peek("X-HTTP")))
 	require.Equal(t, "through", string(ctx.Response().Body()))
 	require.NoError(t, writeErr)
@@ -467,13 +475,8 @@ func TestToFiberHandler_HTTPHandler_Flush(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	converted, ok := toFiberHandler(handler)
-	require.True(t, ok)
-	require.NotNil(t, converted)
+	ctx := adapterConvertAndRun(t, handler)
 
-	ctx := apptest.Ctx(t, New())
-
-	require.NoError(t, converted(ctx))
 	require.Equal(t, "handler", string(ctx.Response().Header.Peek("X-HTTP")))
 	require.Equal(t, "through", string(ctx.Response().Body()))
 }
@@ -530,13 +533,8 @@ func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
 	t.Parallel()
 	httpFunc := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
 
-	converted, ok := toFiberHandler(httpFunc)
-	require.True(t, ok)
-	require.NotNil(t, converted)
+	ctx := adapterConvertAndRun(t, httpFunc)
 
-	ctx := apptest.Ctx(t, New())
-
-	require.NoError(t, converted(ctx))
 	require.Equal(t, http.StatusNoContent, ctx.Response().StatusCode())
 }
 
