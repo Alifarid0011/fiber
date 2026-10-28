@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,28 +20,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ttlStorage keeps the TTL each key was last written with.
-type ttlStorage struct {
-	*storagetest.Memory
-	ttls  map[string]time.Duration
-	ttlMu sync.Mutex
-}
-
-func newTTLStorage() *ttlStorage {
-	return &ttlStorage{Memory: storagetest.New(), ttls: map[string]time.Duration{}}
-}
-
-func (s *ttlStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
-	s.ttlMu.Lock()
-	s.ttls[key] = exp
-	s.ttlMu.Unlock()
-	return s.Memory.SetWithContext(ctx, key, val, exp)
-}
-
-func (s *ttlStorage) ttl(key string) time.Duration {
-	s.ttlMu.Lock()
-	defer s.ttlMu.Unlock()
-	return s.ttls[key]
+// lastTTL returns the TTL key was last written with.
+func lastTTL(m *storagetest.Memory, key string) time.Duration {
+	for _, set := range slices.Backward(m.Calls(storagetest.OpSet)) {
+		if set.Key == key {
+			return set.TTL
+		}
+	}
+	return 0
 }
 
 func Test_carriesCredential(t *testing.T) {
@@ -425,7 +412,7 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 	t.Run("a record is not shortened by a later refusal with less left", func(t *testing.T) {
 		t.Parallel()
 		now := time.Unix(1_700_000_000, 0)
-		storage := newTTLStorage()
+		storage := storagetest.New()
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute, clock: func() time.Time { return now }})
 		group := records.group(c, "base")
 		records.record(ctx, group, "k", uint64(now.Unix())+3600)
@@ -433,18 +420,18 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 		require.GreaterOrEqual(t, lapse, uint64(utils.Timestamp())+3598)
 
 		records.record(ctx, group, "k", uint64(now.Unix())+10)
-		require.GreaterOrEqual(t, storage.ttl("k"), 3596*time.Second)
+		require.GreaterOrEqual(t, lastTTL(storage, "k"), 3596*time.Second)
 		require.Equal(t, lapse, lapseOf(storage.Data["k"]))
 	})
 
 	t.Run("a marker announced for later stays", func(t *testing.T) {
 		t.Parallel()
-		storage := newTTLStorage()
+		storage := storagetest.New()
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
 		later := uint64(utils.Timestamp()) + 3600
 		storage.Data[refusalMarker] = lapseValue(later) // another instance's, for an hour
 		records.record(ctx, records.group(c, "base"), "k", 0)
-		require.GreaterOrEqual(t, storage.ttl(refusalMarker), 3596*time.Second)
+		require.GreaterOrEqual(t, lastTTL(storage, refusalMarker), 3596*time.Second)
 		require.Equal(t, later, lapseOf(storage.Data[refusalMarker]))
 		require.GreaterOrEqual(t, records.all.until.Load(), later, "and this instance looks until then")
 	})

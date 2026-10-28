@@ -15,21 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// cacheTestCWait receives from ch, failing the test with msg unless a value
-// arrives within two seconds.
-func cacheTestCWait[T any](t *testing.T, ch <-chan T, msg string) T {
-	t.Helper()
-
-	select {
-	case v := <-ch:
-		return v
-	case <-time.After(2 * time.Second):
-		t.Fatal(msg)
-	}
-	var unreachable T // Fatal has stopped the test
-	return unreachable
-}
-
 // cacheTestCEvict sends GET /new through app in the background, a request the
 // test arranged to fail with a 500 because the eviction it starts cannot delete
 // the entry it picked. The channel yields what went wrong with the request or
@@ -85,7 +70,7 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	}
 	cacheTestBRequireAccounting(t, probe, 8, 2)
 
-	storage.SetErr("del", oldKey, errors.New("eviction delete failed"))
+	storage.SetErr(storagetest.OpDelete, oldKey, errors.New("eviction delete failed"))
 	armed.Store(true)
 
 	evictionDone := cacheTestCEvict(app)
@@ -94,7 +79,7 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	release := func() { resumeOnce.Do(func() { close(resume) }) }
 	defer release()
 
-	cacheTestCWait(t, started, "eviction did not reach restore read")
+	apptest.Recv(t, started, 2*time.Second, "eviction did not reach restore read")
 
 	hitDone := make(chan error, 1)
 	go func() {
@@ -110,12 +95,12 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 		hitDone <- err
 	}()
 
-	require.NoError(t, cacheTestCWait(t, hitDone, "unrelated cache hit blocked on restore storage I/O"))
+	require.NoError(t, apptest.Recv(t, hitDone, 2*time.Second, "unrelated cache hit blocked on restore storage I/O"))
 	require.Equal(t, uint(8), probe.counted(), "pending restore must retain its byte reservation")
 	require.Equal(t, 2, probe.nodes())
 
 	release()
-	require.NoError(t, cacheTestCWait(t, evictionDone, "eviction did not finish after storage resumed"))
+	require.NoError(t, apptest.Recv(t, evictionDone, 2*time.Second, "eviction did not finish after storage resumed"))
 	cacheTestBRequireAccounting(t, probe, 8, 2)
 }
 
@@ -156,11 +141,11 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 	var releaseOnce sync.Once
 	release := func() { releaseOnce.Do(func() { close(storage.continueDelete) }) }
 	defer release()
-	cacheTestCWait(t, storage.started, "eviction did not reach blocked deletion")
+	apptest.Recv(t, storage.started, 2*time.Second, "eviction did not reach blocked deletion")
 
 	cacheTestAExpect(t, app, "/slot", cacheMiss)
 	release()
-	require.NoError(t, cacheTestCWait(t, evictionDone, "eviction did not finish"))
+	require.NoError(t, apptest.Recv(t, evictionDone, 2*time.Second, "eviction did not finish"))
 	cacheTestBRequireAccounting(t, probe, 5, 2)
 
 	uncacheable.Store(true)

@@ -46,10 +46,7 @@ func compressTestApp(handler fiber.Handler, cfg ...Config) *fiber.App {
 func compressTestGet(t *testing.T, app *fiber.App, acceptEncoding string, opts ...apptest.Option) *http.Response {
 	t.Helper()
 
-	req := apptest.Req(fiber.MethodGet, "/", opts...)
-	if acceptEncoding != "" {
-		req.Header.Set(fiber.HeaderAcceptEncoding, acceptEncoding)
-	}
+	req := apptest.Req(fiber.MethodGet, "/", append(opts, apptest.WithHeaderIf(fiber.HeaderAcceptEncoding, acceptEncoding))...)
 	return apptest.Do(t, app, req, testConfig)
 }
 

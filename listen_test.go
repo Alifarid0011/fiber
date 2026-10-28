@@ -312,7 +312,7 @@ func Test_ShutdownWithContext_PostShutdownHookReceivesError(t *testing.T) {
 	shutdownErr := app.ShutdownWithContext(ctx)
 	require.Error(t, shutdownErr)
 
-	got := rootrestAwait(t, hookErr, time.Second, "OnPostShutdown hook was not called")
+	got := apptest.Recv(t, hookErr, time.Second, "OnPostShutdown hook was not called")
 	// The hook must receive the actual shutdown error, not the nil value
 	// captured when the defer was registered.
 	require.Equal(t, shutdownErr, got)
@@ -327,7 +327,7 @@ func Test_GracefulShutdown_PostShutdownFiresOnce(t *testing.T) {
 	f.cancel() // trigger graceful shutdown
 
 	// The hook must fire exactly once.
-	rootrestAwait(t, f.probe.posted, 2*time.Second, "OnPostShutdown was not called")
+	apptest.Recv(t, f.probe.posted, 2*time.Second, "OnPostShutdown was not called")
 	time.Sleep(300 * time.Millisecond)
 	require.Equal(t, int32(1), f.probe.post.Load(), "OnPostShutdown fired more than once")
 }
@@ -825,7 +825,7 @@ func Test_Listen_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 		require.NoError(t, <-errCh)
 	})
 
-	addr := rootrestAwait(t, addrCh, 5*time.Second, "the server did not start")
+	addr := apptest.Recv(t, addrCh, 5*time.Second, "the server did not start")
 
 	responses, _ := rawExchange(t, tcpDialer(addr),
 		"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 1)
@@ -1350,14 +1350,14 @@ func Test_Listen_GracefulShutdown_DrainsBeforeReturn(t *testing.T) {
 		responses <- fmt.Sprintf("%d %s", resp.StatusCode(), resp.Body())
 	}()
 
-	rootrestAwait(t, inHandler, 2*time.Second, "request never reached the handler")
+	apptest.Recv(t, inHandler, 2*time.Second, "request never reached the handler")
 	gcancel()
 
-	require.NoError(t, rootrestAwait(t, errs, 3*time.Second, "Listener did not return"))
+	require.NoError(t, apptest.Recv(t, errs, 3*time.Second, "Listener did not return"))
 	require.True(t, handlerDone.Load(), "Listener returned while a request was still in flight")
 
 	// Awaited rather than checked at the return: the client reads on its own goroutine.
-	got := rootrestAwait(t, responses, time.Second, "client never received the response")
+	got := apptest.Recv(t, responses, time.Second, "client never received the response")
 	require.Equal(t, "200 ok", got, "the drained request lost its response")
 }
 
@@ -1430,11 +1430,11 @@ func Test_GracefulShutdown_NegativeTimeoutWaitsIndefinitely(t *testing.T) {
 	// Keep a request in flight while the context is canceled.
 	rootMiscBSendOnNewConn(t, ln, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
 
-	rootrestAwait(t, inHandler, 2*time.Second, "request never reached the handler")
+	apptest.Recv(t, inHandler, 2*time.Second, "request never reached the handler")
 
 	gcancel()
 
-	require.NoError(t, rootrestAwait(t, hookErr, 3*time.Second, "OnPostShutdown was not called"))
+	require.NoError(t, apptest.Recv(t, hookErr, 3*time.Second, "OnPostShutdown was not called"))
 	require.NoError(t, <-errs)
 }
 
@@ -2065,7 +2065,7 @@ func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
 
-	rootrestAwait(t, closed, 5*time.Second, "the user ConnState callback was not called")
+	apptest.Recv(t, closed, 5*time.Second, "the user ConnState callback was not called")
 
 	require.NoError(t, app.Shutdown())
 	require.NoError(t, <-errs)

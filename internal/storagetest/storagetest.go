@@ -1,7 +1,9 @@
 // Package storagetest provides the fiber.Storage fakes that the tests of the
 // root package and of the storage-backed middleware keep needing: a map-backed
-// storage with a per-operation error table and call recording, a wrapper that
+// storage with a per-operation error table and call recording, which also
 // records the context each call received, and a storage that always fails.
+// The fakes ignore expirations; a test that needs entries to expire has to use
+// internal/storage/memory.
 //
 // Like internal/apptest, this package does not import fiber, so the in-package
 // tests of the fiber package itself can use it without an import cycle. Every
@@ -34,10 +36,15 @@ type Call struct {
 	Op string
 	// Key is the key the call named, empty for OpReset.
 	Key string
+	// Marker is the string the call's context holds under Memory.MarkerKey, or empty.
+	Marker string
 	// Value is a copy of the value an OpSet stored, nil for the other operations.
 	Value []byte
 	// TTL is the expiration an OpSet was given, which Memory otherwise ignores.
 	TTL time.Duration
+	// Canceled reports whether the call's context was already canceled. The
+	// methods without a context use a background context, which never is.
+	Canceled bool
 }
 
 // Memory is a map-backed storage for tests. Its zero value is ready to use.
@@ -50,6 +57,8 @@ type Call struct {
 // The methods lock Mu. Tests may read and write Data and Errs directly while
 // no request is in flight, or while holding Mu.
 type Memory struct {
+	// MarkerKey is the context key whose string value Call.Marker reports, nil for none.
+	MarkerKey any
 	// Data holds the stored values by key.
 	Data map[string][]byte
 	// Errs maps "<op>|<key>" and "<op>|*" to the error that operation returns.
@@ -67,6 +76,14 @@ type Memory struct {
 // write Errs directly.
 func New() *Memory {
 	return &Memory{Data: make(map[string][]byte), Errs: make(map[string]error)}
+}
+
+// NewMarked returns an empty Memory like New that reports, for every call, the
+// string its context holds under markerKey.
+func NewMarked(markerKey any) *Memory {
+	m := New()
+	m.MarkerKey = markerKey
+	return m
 }
 
 // SetErr makes op on key fail with err, key "*" making it fail on every key,
@@ -124,13 +141,17 @@ func (m *Memory) ClearCalls() {
 }
 
 // begin records c and returns the error it has to fail with. The caller holds Mu.
-func (m *Memory) begin(ctx context.Context, c Call) error {
+func (m *Memory) begin(ctx context.Context, c *Call) error {
 	if m.HonorContext {
 		if err := ctx.Err(); err != nil {
 			return err //nolint:wrapcheck // the fake returns the context error verbatim
 		}
 	}
-	m.calls = append(m.calls, c)
+	c.Canceled = errors.Is(ctx.Err(), context.Canceled)
+	if value, ok := ctx.Value(m.MarkerKey).(string); ok && m.MarkerKey != nil {
+		c.Marker = value
+	}
+	m.calls = append(m.calls, *c)
 	if err := m.Errs[c.Op+"|"+c.Key]; err != nil {
 		return err
 	}
@@ -141,7 +162,7 @@ func (m *Memory) begin(ctx context.Context, c Call) error {
 func (m *Memory) GetWithContext(ctx context.Context, key string) ([]byte, error) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	if err := m.begin(ctx, Call{Op: OpGet, Key: key}); err != nil {
+	if err := m.begin(ctx, &Call{Op: OpGet, Key: key}); err != nil {
 		return nil, err
 	}
 	return append([]byte(nil), m.Data[key]...), nil
@@ -154,7 +175,7 @@ func (m *Memory) Get(key string) ([]byte, error) { return m.GetWithContext(conte
 func (m *Memory) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	if err := m.begin(ctx, Call{Op: OpSet, Key: key, Value: append([]byte(nil), val...), TTL: exp}); err != nil {
+	if err := m.begin(ctx, &Call{Op: OpSet, Key: key, Value: append([]byte(nil), val...), TTL: exp}); err != nil {
 		return err
 	}
 	if m.Data == nil {
@@ -173,7 +194,7 @@ func (m *Memory) Set(key string, val []byte, exp time.Duration) error {
 func (m *Memory) DeleteWithContext(ctx context.Context, key string) error {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	if err := m.begin(ctx, Call{Op: OpDelete, Key: key}); err != nil {
+	if err := m.begin(ctx, &Call{Op: OpDelete, Key: key}); err != nil {
 		return err
 	}
 	delete(m.Data, key)
@@ -187,7 +208,7 @@ func (m *Memory) Delete(key string) error { return m.DeleteWithContext(context.B
 func (m *Memory) ResetWithContext(ctx context.Context) error {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	if err := m.begin(ctx, Call{Op: OpReset}); err != nil {
+	if err := m.begin(ctx, &Call{Op: OpReset}); err != nil {
 		return err
 	}
 	m.Data = make(map[string][]byte)
@@ -200,62 +221,6 @@ func (m *Memory) Reset() error { return m.ResetWithContext(context.Background())
 
 // Close does nothing and keeps the data.
 func (*Memory) Close() error { return nil }
-
-// Record is what a Recorder saw of one call.
-type Record struct {
-	// Key is the key the call named.
-	Key string
-	// Value is the string stored in the call's context under the recorder's marker key, or empty.
-	Value string
-	// Canceled reports whether the call's context was already canceled.
-	Canceled bool
-}
-
-// Recorder is a Memory that also records, for every Get, Set and Delete that
-// goes through a *WithContext method, the key, the marker value in the context
-// and whether the context was canceled. The plain Get, Set and Delete methods
-// are not recorded, as they use a background context.
-type Recorder struct {
-	*Memory
-	// MarkerKey is the context key whose string value Record.Value reports.
-	MarkerKey any
-	// Gets, Sets and Deletes are the recorded calls by operation, in order.
-	Gets, Sets, Deletes []Record
-	mu                  sync.Mutex
-}
-
-// NewRecorder returns an empty Recorder that reads the marker value from the context key markerKey.
-func NewRecorder(markerKey any) *Recorder {
-	return &Recorder{Memory: New(), MarkerKey: markerKey}
-}
-
-func (r *Recorder) record(ctx context.Context, log *[]Record, key string) {
-	rec := Record{Key: key, Canceled: errors.Is(ctx.Err(), context.Canceled)}
-	if value, ok := ctx.Value(r.MarkerKey).(string); ok {
-		rec.Value = value
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	*log = append(*log, rec)
-}
-
-// GetWithContext records the call and then behaves as Memory.GetWithContext.
-func (r *Recorder) GetWithContext(ctx context.Context, key string) ([]byte, error) {
-	r.record(ctx, &r.Gets, key)
-	return r.Memory.GetWithContext(ctx, key)
-}
-
-// SetWithContext records the call and then behaves as Memory.SetWithContext.
-func (r *Recorder) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
-	r.record(ctx, &r.Sets, key)
-	return r.Memory.SetWithContext(ctx, key, val, exp)
-}
-
-// DeleteWithContext records the call and then behaves as Memory.DeleteWithContext.
-func (r *Recorder) DeleteWithContext(ctx context.Context, key string) error {
-	r.record(ctx, &r.Deletes, key)
-	return r.Memory.DeleteWithContext(ctx, key)
-}
 
 // Failing is a storage whose every operation fails with Err, which may be nil.
 type Failing struct {

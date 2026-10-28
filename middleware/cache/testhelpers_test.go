@@ -20,13 +20,11 @@ import (
 func cacheTestCGet(t *testing.T, app *fiber.App, target string, headers ...string) reply {
 	t.Helper()
 
-	req := apptest.Req(fiber.MethodGet, target)
+	var opts []apptest.Option
 	for i := 0; i+1 < len(headers); i += 2 {
-		if headers[i+1] != "" {
-			req.Header.Set(headers[i], headers[i+1])
-		}
+		opts = append(opts, apptest.WithHeaderIf(headers[i], headers[i+1]))
 	}
-	return doRequest(t, app, req)
+	return doRequest(t, app, apptest.Req(fiber.MethodGet, target, opts...))
 }
 
 // cacheTestCRequireReply requires the X-Cache status and the body of got.

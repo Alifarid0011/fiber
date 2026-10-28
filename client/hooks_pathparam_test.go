@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -392,7 +393,7 @@ func startPathRecorder(t *testing.T) *pathRecorder {
 func (r *pathRecorder) next(t *testing.T) string {
 	t.Helper()
 
-	return clientBRecv(t, r.target, 5*time.Second, "the server saw no request")
+	return apptest.Recv(t, r.target, 5*time.Second, "the server saw no request")
 }
 
 // get sends a GET for rawURL through c and returns the request target the

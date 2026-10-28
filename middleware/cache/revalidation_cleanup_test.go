@@ -229,9 +229,9 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 				apptest.BodyBytes(t, apptest.Expect(t, app, path, status))
 			}
 			request("/a", fiber.StatusOK)
-			storage.SetErr("del", key+"_body", errors.New("body deletion failed"))
+			storage.SetErr(storagetest.OpDelete, key+"_body", errors.New("body deletion failed"))
 			if failBodyRead {
-				storage.SetErr("get", key+"_body", errors.New("body verification failed"))
+				storage.SetErr(storagetest.OpGet, key+"_body", errors.New("body verification failed"))
 			}
 			request("/b", fiber.StatusInternalServerError)
 			cacheTestBRequireAccounting(t, probe, 10, 1)

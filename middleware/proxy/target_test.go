@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"bufio"
-	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -66,13 +65,6 @@ func echoTarget(t *testing.T) string {
 // of realIPHandlers but Forward, which sends to the address it was given.
 func forwardingHandlers() []realIPHandler {
 	return slices.DeleteFunc(realIPHandlers(), func(h realIPHandler) bool { return h.name == "Forward" })
-}
-
-func readBody(t *testing.T, resp *http.Response) string {
-	t.Helper()
-	b := apptest.Body(t, resp)
-	require.NoError(t, resp.Body.Close())
-	return b
 }
 
 func forbid(c fiber.Ctx) error {
@@ -209,10 +201,10 @@ func Test_Proxy_Balancer_ModifyRequestCanRetarget(t *testing.T) {
 	}))
 
 	resp := apptest.Do(t, app, "/set-path?x=1")
-	require.Equal(t, "/other?x=1", readBody(t, resp))
+	require.Equal(t, "/other?x=1", apptest.Body(t, resp))
 
 	resp = apptest.Do(t, app, "/set-uri?x=1")
-	require.Equal(t, "/other?y=2", readBody(t, resp))
+	require.Equal(t, "/other?y=2", apptest.Body(t, resp))
 }
 
 func Test_Proxy_Balancer_RestoresRequestLine(t *testing.T) {
@@ -423,7 +415,7 @@ func Test_Proxy_Do_UserClientForwardsTargetAsGiven(t *testing.T) {
 	app.Get("/", func(c fiber.Ctx) error { return Do(c, target, &fasthttp.Client{}) })
 
 	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
-	require.Equal(t, "/a%2Fb//c/..%2Fd?q=%2F", readBody(t, resp))
+	require.Equal(t, "/a%2Fb//c/..%2Fd?q=%2F", apptest.Body(t, resp))
 }
 
 // Test_Proxy_Balancer_RejectsAuthorityTarget pins that a routed target

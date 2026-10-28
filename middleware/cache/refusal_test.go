@@ -1485,7 +1485,7 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) 
 				var reads atomic.Int32
 				cfg.Storage = &hookedStorage{Memory: base, onGet: func(read string) {
 					if read == key && reads.Add(1) == 2 {
-						base.SetErr("get", key, errors.New("storage unavailable"))
+						base.SetErr(storagetest.OpGet, key, errors.New("storage unavailable"))
 					}
 				}}
 				cfg.CacheInvalidator = func(fiber.Ctx) bool { return false }
@@ -1519,7 +1519,7 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 			storage := &hookedStorage{Memory: base, onGet: func(key string) {
 				// The first read of the key after the replacement is stored finds it, and the next removes it.
 				if w := watched.Load(); w != nil && key == *w && reads.Add(1) == 2 && failing == "read" {
-					base.SetErr("get", key, failure)
+					base.SetErr(storagetest.OpGet, key, failure)
 				}
 			}}
 			entryOf := func(session string) string {
@@ -1547,7 +1547,7 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 					key := entryOf("a")
 					require.NotEmpty(f.t, key)
 					if failing == "delete" {
-						base.SetErr("del", key, failure)
+						base.SetErr(storagetest.OpDelete, key, failure)
 					}
 					reads.Store(0)
 					watched.Store(&key)

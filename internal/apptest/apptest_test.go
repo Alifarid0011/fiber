@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -45,6 +46,8 @@ func (f *fakeTB) Fatalf(format string, args ...any) {
 	f.Errorf(format, args...)
 	f.FailNow()
 }
+
+func (f *fakeTB) Fatal(args ...any) { f.Fatalf("%s", fmt.Sprint(args...)) }
 
 func (f *fakeTB) FailNow() {
 	f.mu.Lock()
@@ -131,6 +134,10 @@ func Test_Req(t *testing.T) {
 	require.Equal(t, "b", req.Header.Get("X-Test"), "the last WithHeader wins")
 	require.Equal(t, "example.com", req.Host)
 	require.Equal(t, http.NoBody, req.Body)
+
+	optional := apptest.Req(http.MethodGet, "/", apptest.WithHeaderIf("X-Set", "v"), apptest.WithHeaderIf("X-Empty", ""))
+	require.Equal(t, "v", optional.Header.Get("X-Set"))
+	require.NotContains(t, optional.Header, "X-Empty", "WithHeaderIf leaves the header out for an empty value")
 }
 
 func Test_Do(t *testing.T) {
@@ -377,5 +384,21 @@ func Test_CtxAs(t *testing.T) {
 		out := failure(t, func(tb *fakeTB) { apptest.CtxAs[*realCtx](tb, &otherPool{}) })
 		require.Contains(t, out, "*apptest_test.otherCtx")
 		require.Contains(t, out, "*apptest_test.realCtx")
+	})
+}
+
+func Test_Recv(t *testing.T) {
+	t.Parallel()
+	t.Run("returns the value", func(t *testing.T) {
+		t.Parallel()
+		ch := make(chan int, 1)
+		ch <- 7
+		require.Equal(t, 7, apptest.Recv(t, ch, time.Second, "unused"))
+	})
+
+	t.Run("fails with the message after the timeout", func(t *testing.T) {
+		t.Parallel()
+		out := failure(t, func(tb *fakeTB) { apptest.Recv(tb, make(chan int), time.Millisecond, "nothing arrived") })
+		require.Contains(t, out, "nothing arrived")
 	})
 }

@@ -245,7 +245,7 @@ func canceledContextWithMarker(label string) context.Context {
 
 func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 	t.Parallel()
-	storage := storagetest.NewRecorder(markerKey)
+	storage := storagetest.NewMarked(markerKey)
 	app := fiber.New()
 
 	app.Use(func(c fiber.Ctx) error {
@@ -269,13 +269,13 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 
 	apptest.Expect(t, app, "/second", fiber.StatusOK)
 
-	records := storage.Deletes
+	records := storage.Calls(storagetest.OpDelete)
 	require.Len(t, records, 2)
 
 	var keys []string
 	for _, rec := range records {
 		keys = append(keys, rec.Key)
-		require.Equal(t, "evict", rec.Value)
+		require.Equal(t, "evict", rec.Marker)
 		require.True(t, rec.Canceled)
 	}
 
@@ -284,7 +284,7 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 
 func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 	t.Parallel()
-	storage := storagetest.NewRecorder(markerKey)
+	storage := storagetest.NewMarked(markerKey)
 	storage.Errs["set|"+cacheTestAKey("/")] = errors.New("boom")
 
 	var failures cacheTestAFailures
@@ -303,16 +303,16 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 	require.Error(t, failures.err)
 	require.ErrorContains(t, failures.err, "cache: failed to store key")
 
-	records := storage.Deletes
+	records := storage.Calls(storagetest.OpDelete)
 	require.Len(t, records, 1)
 	require.Equal(t, cacheTestAKey("/")+"_body", records[0].Key)
-	require.Equal(t, "cleanup", records[0].Value)
+	require.Equal(t, "cleanup", records[0].Marker)
 	require.True(t, records[0].Canceled)
 }
 
 func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 	t.Parallel()
-	storage := storagetest.NewRecorder(markerKey)
+	storage := storagetest.NewMarked(markerKey)
 	app := fiber.New()
 
 	app.Use(func(c fiber.Ctx) error {
@@ -341,20 +341,20 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 
 	entryKey := cacheTestAKey("/cache")
 
-	setRecords := storage.Sets
+	setRecords := storage.Calls(storagetest.OpSet)
 	require.Len(t, setRecords, 2)
 	for _, rec := range setRecords {
 		require.Contains(t, []string{entryKey, entryKey + "_body"}, rec.Key)
-		require.Equal(t, "store", rec.Value)
+		require.Equal(t, "store", rec.Marker)
 		require.True(t, rec.Canceled)
 	}
 
-	getRecords := storage.Gets
+	getRecords := storage.Calls(storagetest.OpGet)
 	require.NotEmpty(t, getRecords)
 
 	var fetchEntry, fetchBody bool
 	for _, rec := range getRecords {
-		if rec.Value != "fetch" {
+		if rec.Marker != "fetch" {
 			continue
 		}
 
@@ -1553,7 +1553,7 @@ func Test_Cache_FailedRefresh(t *testing.T) {
 			require.NotZero(t, counted)
 			require.Equal(t, 1, nodes)
 
-			storage.SetErr("set", tc.failedKey, errors.New("boom"))
+			storage.SetErr(storagetest.OpSet, tc.failedKey, errors.New("boom"))
 
 			apptest.Expect(t, app, cacheTestAGetCC("/", noCache), fiber.StatusInternalServerError)
 
@@ -2458,7 +2458,7 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 	for _, directive := range []string{"private", "no-cache", "no-store", "vary-star"} {
 		t.Run(directive, func(t *testing.T) {
 			t.Parallel()
-			storage := storagetest.NewRecorder(markerKey)
+			storage := storagetest.NewMarked(markerKey)
 			var returnUncacheable atomic.Bool
 
 			app := cacheTestBPathKeyedApp(&Config{
@@ -2492,15 +2492,16 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 			require.False(t, storage.Holds(key), key)
 			require.False(t, storage.Holds(bodyKey), bodyKey)
 
-			require.Equal(t, []storagetest.Record{{Key: key}, {Key: bodyKey}}, storage.Deletes)
-			for _, get := range storage.Gets {
+			require.Equal(t, []storagetest.Call{{Op: storagetest.OpDelete, Key: key}, {Op: storagetest.OpDelete, Key: bodyKey}},
+				storage.Calls(storagetest.OpDelete))
+			for _, get := range storage.Calls(storagetest.OpGet) {
 				require.NotEqual(t, bodyKey, get.Key, "revalidation must not fetch the stale body")
 			}
 
 			// If heap accounting retained the deleted entry, caching /next would
 			// try to evict it and encounter these sentinel errors.
-			storage.SetErr("del", key, errors.New("stale metadata remained in heap"))
-			storage.SetErr("del", bodyKey, errors.New("stale body remained in heap"))
+			storage.SetErr(storagetest.OpDelete, key, errors.New("stale metadata remained in heap"))
+			storage.SetErr(storagetest.OpDelete, bodyKey, errors.New("stale body remained in heap"))
 
 			cacheTestAExpect(t, app, "/next", cacheMiss)
 			cacheTestAExpect(t, app, "/next", cacheHit)
@@ -2546,15 +2547,15 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 	for _, tt := range []struct {
 		name              string
 		failedKeySuffix   string
-		wantDeletes       []storagetest.Record
+		wantDeletes       []storagetest.Call
 		metadataRemaining bool
 	}{
-		{name: "metadata", metadataRemaining: true, wantDeletes: []storagetest.Record{{Key: key}}},
-		{name: "body", failedKeySuffix: "_body", wantDeletes: []storagetest.Record{{Key: key}, {Key: bodyKey}}},
+		{name: "metadata", metadataRemaining: true, wantDeletes: []storagetest.Call{{Op: storagetest.OpDelete, Key: key}}},
+		{name: "body", failedKeySuffix: "_body", wantDeletes: []storagetest.Call{{Op: storagetest.OpDelete, Key: key}, {Op: storagetest.OpDelete, Key: bodyKey}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			storage := storagetest.NewRecorder(markerKey)
+			storage := storagetest.NewMarked(markerKey)
 			var returnNoCache atomic.Bool
 
 			app := cacheTestBPathKeyedApp(&Config{
@@ -2567,21 +2568,21 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 
 			cacheTestAExpect(t, app, "/cached", cacheMiss)
 
-			storage.SetErr("del", key+tt.failedKeySuffix, errors.New("delete failed"))
+			storage.SetErr(storagetest.OpDelete, key+tt.failedKeySuffix, errors.New("delete failed"))
 			returnNoCache.Store(true)
 
 			cacheTestBExpectNewer(t, app, "/cached?invalidate=true")
 			require.Equal(t, tt.metadataRemaining, storage.Holds(key))
 			require.True(t, storage.Holds(bodyKey))
 
-			require.Equal(t, tt.wantDeletes, storage.Deletes)
-			for _, get := range storage.Gets {
+			require.Equal(t, tt.wantDeletes, storage.Calls(storagetest.OpDelete))
+			for _, get := range storage.Calls(storagetest.OpGet) {
 				require.NotEqual(t, bodyKey, get.Key, "revalidation must not fetch the stale body")
 			}
 
 			// The old heap entry remains tracked after a deletion error so a later
 			// eviction can retry cleanup and restore byte accounting.
-			storage.SetErr("del", key+tt.failedKeySuffix, nil)
+			storage.SetErr(storagetest.OpDelete, key+tt.failedKeySuffix, nil)
 			cacheTestAExpect(t, app, "/next", cacheMiss)
 			require.False(t, storage.Holds(key), key)
 			require.False(t, storage.Holds(bodyKey), bodyKey)
@@ -3002,7 +3003,7 @@ func Test_CacheStorage_NoStoreRevalidationCleansVaryManifest(t *testing.T) {
 			manifestKey := cacheKeyVersion + "|GET|/cached|vary"
 			require.True(t, storage.Holds(manifestKey), "the manifest is stored")
 			if failDelete {
-				storage.SetErr("del", manifestKey, errors.New("manifest delete failed"))
+				storage.SetErr(storagetest.OpDelete, manifestKey, errors.New("manifest delete failed"))
 			}
 
 			noStore.Store(true)
@@ -4263,7 +4264,7 @@ func Test_Cache_BodyFetchFailure(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()
 		app, key := prime(t, storage)
-		storage.SetErr("get", key+"_body", errors.New("boom"))
+		storage.SetErr(storagetest.OpGet, key+"_body", errors.New("boom"))
 		apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 	})
 
@@ -4291,9 +4292,9 @@ func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 	})
 
 	manifestKey := cacheKeyVersion + "|GET|scheme=http|host=example.com|/a|q=|h=accept:0|accept-encoding:0|accept-language:0|vary"
-	storage.SetErr("set", manifestKey, errors.New("boom"))
+	storage.SetErr(storagetest.OpSet, manifestKey, errors.New("boom"))
 	apptest.Expect(t, app, "/a", fiber.StatusInternalServerError)
-	storage.SetErr("set", manifestKey, nil)
+	storage.SetErr(storagetest.OpSet, manifestKey, nil)
 
 	// The abandoned reservation must be gone, or the second entry evicts the first.
 	for _, want := range []string{cacheMiss, cacheHit} {

@@ -1135,7 +1135,7 @@ func Test_App_Shutdown_ContextNotCanceled(t *testing.T) {
 		assert.NoError(t, conn.Close())
 	}()
 
-	rootrestAwait(t, handlerStarted, 5*time.Second, "the handler never ran; the client goroutine could not reach it")
+	apptest.Recv(t, handlerStarted, 5*time.Second, "the handler never ran; the client goroutine could not reach it")
 	require.NoError(t, app.ShutdownWithTimeout(5*time.Second))
 	<-clientDone
 
@@ -1210,7 +1210,7 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 			}
 		}()
 
-		rootrestAwait(t, requestStarted, 2*time.Second, "Request did not start in time")
+		apptest.Recv(t, requestStarted, 2*time.Second, "Request did not start in time")
 		// Request has started, signal to continue processing
 		close(requestProcessing)
 
@@ -1658,8 +1658,8 @@ func appRequireRenderWaitsForReload(
 	rootMiscBRequireNothing(t, view.renderEntered, msg)
 	close(view.loadRelease)
 
-	require.NoError(t, rootMiscBRecv(t, reloadDone, "reload did not finish"))
-	require.Equal(t, StatusOK, rootMiscBRecv(t, renderDone, "render request did not finish"))
+	require.NoError(t, apptest.Recv(t, reloadDone, time.Second, "reload did not finish"))
+	require.Equal(t, StatusOK, apptest.Recv(t, renderDone, time.Second, "render request did not finish"))
 }
 
 func runGetHandlerRequest(handler fasthttp.RequestHandler, path string) int {
@@ -1668,27 +1668,6 @@ func runGetHandlerRequest(handler fasthttp.RequestHandler, path string) int {
 	request.Request.SetRequestURI(path)
 	handler(request)
 	return request.Response.StatusCode()
-}
-
-// rootrestAwait returns what ch delivers within timeout, and fails the test with msg if nothing arrives.
-func rootrestAwait[T any](t *testing.T, ch <-chan T, timeout time.Duration, msg string) T {
-	t.Helper()
-
-	select {
-	case v := <-ch:
-		return v
-	case <-time.After(timeout):
-		t.Fatal(msg)
-		var zero T
-		return zero
-	}
-}
-
-// rootMiscBRecv is rootrestAwait with a second to wait.
-func rootMiscBRecv[T any](t *testing.T, ch <-chan T, msg string) T {
-	t.Helper()
-
-	return rootrestAwait(t, ch, time.Second, msg)
 }
 
 // rootMiscBRequireNothing fails the test with msg if ch delivers within 20ms: the way to show that the
@@ -1811,7 +1790,7 @@ func rootrestRecoverFrom(t *testing.T, fn func(), msg string) any {
 		fn()
 	}()
 
-	return rootMiscBRecv(t, recovered, msg)
+	return apptest.Recv(t, recovered, time.Second, msg)
 }
 
 func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
@@ -1829,7 +1808,7 @@ func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 	renderDone := make(chan int, 1)
 	go func() { renderDone <- runGetHandlerRequest(handler, "/") }()
 
-	require.Equal(t, StatusOK, rootMiscBRecv(t, renderDone, "render request did not finish after reload panic"))
+	require.Equal(t, StatusOK, apptest.Recv(t, renderDone, time.Second, "render request did not finish after reload panic"))
 }
 
 func Test_App_InitPanicUnlocksRouteRegistration(t *testing.T) {
@@ -1845,7 +1824,7 @@ func Test_App_InitPanicUnlocksRouteRegistration(t *testing.T) {
 		registerDone <- struct{}{}
 	}()
 
-	rootMiscBRecv(t, registerDone, "route registration deadlocked after init panic")
+	apptest.Recv(t, registerDone, time.Second, "route registration deadlocked after init panic")
 }
 
 func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
@@ -1867,7 +1846,7 @@ func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
 	reloadDone := make(chan error, 1)
 	go func() { reloadDone <- app.ReloadViews() }()
 
-	require.NoError(t, rootMiscBRecv(t, reloadDone, "reload did not finish after render panic"))
+	require.NoError(t, apptest.Recv(t, reloadDone, time.Second, "reload did not finish after render panic"))
 }
 
 func Test_App_ReloadViews_InterfaceNilPointer(t *testing.T) {
@@ -1981,8 +1960,8 @@ func Test_App_Render_WaitsForReloadViews(t *testing.T) {
 
 	close(view.loadRelease)
 
-	require.NoError(t, rootMiscBRecv(t, reloadDone, "reload did not finish"))
-	require.NoError(t, rootMiscBRecv(t, renderDone, "Render did not finish"))
+	require.NoError(t, apptest.Recv(t, reloadDone, time.Second, "reload did not finish"))
+	require.NoError(t, apptest.Recv(t, renderDone, time.Second, "Render did not finish"))
 }
 
 func Test_App_ReloadViews_MountedViews(t *testing.T) {
@@ -2812,7 +2791,7 @@ func Test_App_ShutdownWithTimeout_HandlerTakesAppMutex(t *testing.T) {
 
 	rootMiscBSendOnNewConn(t, ln, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
 
-	rootrestAwait(t, inHandler, 2*time.Second, "request never reached the handler")
+	apptest.Recv(t, inHandler, 2*time.Second, "request never reached the handler")
 
 	const timeout = 3 * time.Second
 	start := time.Now()
@@ -3387,5 +3366,5 @@ func Test_App_SendStreamWriter_HTTP10_ClientLeaves(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
 
-	rootrestAwait(t, ended, 5*time.Second, "the writer kept running after the client left")
+	apptest.Recv(t, ended, 5*time.Second, "the writer kept running after the client left")
 }

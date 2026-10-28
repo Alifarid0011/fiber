@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -43,6 +44,15 @@ type Option func(*http.Request)
 // WithHeader sets a request header, replacing any value already present.
 func WithHeader(key, value string) Option {
 	return func(req *http.Request) { req.Header.Set(key, value) }
+}
+
+// WithHeaderIf is [WithHeader] that leaves the request alone when value is empty.
+func WithHeaderIf(key, value string) Option {
+	return func(req *http.Request) {
+		if value != "" {
+			req.Header.Set(key, value)
+		}
+	}
 }
 
 // WithHost sets the request's Host, which is how Fiber matches domain routes.
@@ -128,4 +138,18 @@ func Body(tb testing.TB, resp *http.Response) string {
 	tb.Helper()
 
 	return string(BodyBytes(tb, resp))
+}
+
+// Recv returns the next value from ch and fails the test with msg when none
+// arrives within timeout.
+func Recv[T any](tb testing.TB, ch <-chan T, timeout time.Duration, msg string) T {
+	tb.Helper()
+
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(timeout):
+		tb.Fatal(msg)
+		panic("unreachable") // Fatal stops the test
+	}
 }

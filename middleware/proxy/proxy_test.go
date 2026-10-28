@@ -346,7 +346,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	}))
 
 	resp := apptest.Do(t, app, "/tlsbalancer", fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
-	body := readBody(t, resp)
+	body := apptest.Body(t, resp)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, body)
 	require.Equal(t, "tls balancer", body)
 }
@@ -380,7 +380,7 @@ func Test_Proxy_Balancer_MixedSchemes(t *testing.T) {
 	seen := map[string]int{}
 	for range 6 {
 		resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
-		body := readBody(t, resp)
+		body := apptest.Body(t, resp)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, body)
 		seen[body]++
 	}

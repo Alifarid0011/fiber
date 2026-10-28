@@ -16,6 +16,7 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 )
 
 // clientTestCCore returns a core that sends a fresh request through client. It
@@ -27,19 +28,6 @@ func clientTestCCore(client *Client) *core {
 	c.req = AcquireRequest()
 
 	return c
-}
-
-// clientBRecv returns the next value from ch and fails the test with msg when none arrives within timeout.
-func clientBRecv[T any](t *testing.T, ch <-chan T, timeout time.Duration, msg string) T {
-	t.Helper()
-
-	select {
-	case v := <-ch:
-		return v
-	case <-time.After(timeout):
-		t.Fatal(msg)
-		panic("unreachable")
-	}
 }
 
 // clientBCore is clientTestCCore with its request released when the test ends.
@@ -165,17 +153,17 @@ func Test_Exec_Func(t *testing.T) {
 			resultCh <- execResult{resp: resp, err: err}
 		}()
 
-		clientBRecv(t, blockingTransport.called, time.Second, "transport Do was not invoked")
+		apptest.Recv(t, blockingTransport.called, time.Second, "transport Do was not invoked")
 
 		cancel()
 
-		result := clientBRecv(t, resultCh, time.Second, "execFunc did not return")
+		result := apptest.Recv(t, resultCh, time.Second, "execFunc did not return")
 		require.Nil(t, result.resp)
 		require.ErrorIs(t, result.err, ErrTimeoutOrCancel)
 
 		blockingTransport.release()
 
-		clientBRecv(t, blockingTransport.finished, time.Second, "transport Do did not finish")
+		apptest.Recv(t, blockingTransport.finished, time.Second, "transport Do did not finish")
 	})
 
 	t.Run("timeout snapshots ownership before transport", func(t *testing.T) {
@@ -200,7 +188,7 @@ func Test_Exec_Func(t *testing.T) {
 		require.Nil(t, resp)
 		require.ErrorIs(t, err, ErrTimeoutOrCancel)
 
-		clientBRecv(t, transport.finished, time.Second, "transport Do did not finish")
+		apptest.Recv(t, transport.finished, time.Second, "transport Do did not finish")
 
 		// Let the goroutine build and hand off its response after Do returned.
 		time.Sleep(50 * time.Millisecond)
@@ -326,11 +314,11 @@ func clientTestCConcurrentHooks(t *testing.T, kind string, addHook func(client *
 
 	firstDone := run()
 
-	clientBRecv(t, entered, time.Second, "first "+kind+" hook was not invoked")
+	apptest.Recv(t, entered, time.Second, "first "+kind+" hook was not invoked")
 
 	secondDone := run()
 
-	clientBRecv(t, entered, time.Second, "second "+kind+" hook execution was serialized by the client lock")
+	apptest.Recv(t, entered, time.Second, "second "+kind+" hook execution was serialized by the client lock")
 
 	close(release)
 

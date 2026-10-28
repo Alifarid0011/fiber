@@ -179,38 +179,30 @@ func Test_Memory_HonorContext(t *testing.T) {
 	})
 }
 
-func Test_Recorder(t *testing.T) {
+func Test_Memory_RecordsContext(t *testing.T) {
 	t.Parallel()
-	r := NewRecorder(markerKey{})
+	m := NewMarked(markerKey{})
 	marked, cancel := context.WithCancel(context.WithValue(context.Background(), markerKey{}, "label"))
 	cancel()
 	plain := context.Background()
 
-	require.NoError(t, r.SetWithContext(marked, "a", []byte("1"), 0))
-	_, err := r.GetWithContext(marked, "a")
+	require.NoError(t, m.SetWithContext(marked, "a", []byte("1"), 0))
+	_, err := m.GetWithContext(marked, "a")
 	require.NoError(t, err)
-	_, err = r.GetWithContext(plain, "b")
+	_, err = m.GetWithContext(plain, "b")
 	require.NoError(t, err)
-	require.NoError(t, r.DeleteWithContext(plain, "a"))
+	require.NoError(t, m.DeleteWithContext(plain, "a"))
 
-	require.Equal(t, []Record{{Key: "a", Value: "label", Canceled: true}}, r.Sets)
-	require.Equal(t, []Record{{Key: "a", Value: "label", Canceled: true}, {Key: "b"}}, r.Gets)
-	require.Equal(t, []Record{{Key: "a"}}, r.Deletes)
-	require.False(t, r.Holds("a"), "the recorder stores like a Memory")
+	require.Equal(t, []Call{{Op: OpSet, Key: "a", Value: []byte("1"), Marker: "label", Canceled: true}}, m.Calls(OpSet))
+	require.Equal(t, []Call{{Op: OpGet, Key: "a", Marker: "label", Canceled: true}, {Op: OpGet, Key: "b"}}, m.Calls(OpGet))
+	require.Equal(t, []Call{{Op: OpDelete, Key: "a"}}, m.Calls(OpDelete))
 
-	require.NoError(t, r.Set("c", []byte("3"), 0))
-	_, err = r.Get("c")
-	require.NoError(t, err)
-	require.NoError(t, r.Delete("c"))
-	require.Len(t, r.Sets, 1, "the calls without a context are not recorded")
-	require.Len(t, r.Gets, 2)
-	require.Len(t, r.Deletes, 1)
+	require.NoError(t, m.Set("c", []byte("3"), 0))
+	require.Equal(t, Call{Op: OpSet, Key: "c", Value: []byte("3")}, m.Calls(OpSet)[1], "a call without a context is a background one")
 
-	errBoom := errors.New("boom")
-	r.SetErr(OpGet, "*", errBoom)
-	_, err = r.GetWithContext(plain, "x")
-	require.ErrorIs(t, err, errBoom)
-	require.Len(t, r.Gets, 3, "a failed call is recorded")
+	unmarked := New()
+	require.NoError(t, unmarked.SetWithContext(marked, "a", nil, 0))
+	require.Equal(t, Call{Op: OpSet, Key: "a", Canceled: true}, unmarked.Calls(OpSet)[0], "no marker key, no marker")
 }
 
 func Test_Failing(t *testing.T) {

@@ -253,7 +253,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 			if test.APIKey != "" {
 				authorization = "Bearer " + test.APIKey
 			}
-			req := apptest.Req(fiber.MethodGet, test.route, withOptionalAuthorization(authorization))
+			req := apptest.Req(fiber.MethodGet, test.route, apptest.WithHeaderIf(fiber.HeaderAuthorization, authorization))
 			apptest.ExpectBody(t, app, req, test.expectedCode, test.expectedBody)
 		})
 	}
@@ -372,15 +372,6 @@ func Test_TokenFromContext_Types(t *testing.T) {
 	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, "Basic "+CorrectKey)), fiber.StatusOK)
 }
 
-// withOptionalAuthorization sets the Authorization header, or leaves the request without one when it is empty.
-func withOptionalAuthorization(authorization string) apptest.Option {
-	return func(req *http.Request) {
-		if authorization != "" {
-			req.Header.Set(fiber.HeaderAuthorization, authorization)
-		}
-	}
-}
-
 // Test_HeaderScheme covers how the Authorization header is split into a scheme
 // and the key, with the default Bearer extractor unless a row names another.
 func Test_HeaderScheme(t *testing.T) {
@@ -422,7 +413,7 @@ func Test_HeaderScheme(t *testing.T) {
 			app.Use(New(Config{Extractor: tc.extractor, Validator: tc.validator}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
-			req := apptest.Req(fiber.MethodGet, "/", withOptionalAuthorization(tc.authorization))
+			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeaderIf(fiber.HeaderAuthorization, tc.authorization))
 			resp := apptest.ExpectBody(t, app, req, tc.status, tc.body)
 			if tc.challenge != "" {
 				require.Equal(t, tc.challenge, resp.Header.Get(fiber.HeaderWWWAuthenticate))
@@ -563,7 +554,7 @@ func Test_Challenge(t *testing.T) {
 			app.Use(New(tc.config))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
-			resp := apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withOptionalAuthorization(tc.authorization)), tc.status)
+			resp := apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeaderIf(fiber.HeaderAuthorization, tc.authorization)), tc.status)
 			require.Equal(t, tc.www, resp.Header.Get(fiber.HeaderWWWAuthenticate), fiber.HeaderWWWAuthenticate)
 			require.Equal(t, tc.proxy, resp.Header.Get(fiber.HeaderProxyAuthenticate), fiber.HeaderProxyAuthenticate)
 		})

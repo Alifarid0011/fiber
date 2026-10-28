@@ -322,10 +322,10 @@ func Test_Limiter_StorageErrorMessages(t *testing.T) {
 	}
 }
 
-func requireContextRecords(t *testing.T, records []storagetest.Record, key, wantValue string, wantCanceled bool) {
+func requireContextRecords(t *testing.T, records []storagetest.Call, key, wantValue string, wantCanceled bool) {
 	t.Helper()
 
-	var matched []storagetest.Record
+	var matched []storagetest.Call
 	for _, rec := range records {
 		if rec.Key == key {
 			matched = append(matched, rec)
@@ -333,7 +333,7 @@ func requireContextRecords(t *testing.T, records []storagetest.Record, key, want
 	}
 	require.Len(t, matched, 2)
 	for _, rec := range matched {
-		require.Equal(t, wantValue, rec.Value)
+		require.Equal(t, wantValue, rec.Marker)
 		require.Equal(t, wantCanceled, rec.Canceled)
 	}
 }
@@ -343,7 +343,7 @@ func Test_Limiter_PropagatesRequestContextToStorage(t *testing.T) {
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-			storage := storagetest.NewRecorder(markerKey)
+			storage := storagetest.NewMarked(markerKey)
 
 			app := fiber.New()
 
@@ -373,12 +373,13 @@ func Test_Limiter_PropagatesRequestContextToStorage(t *testing.T) {
 				apptest.Expect(t, app, path, fiber.StatusOK)
 			}
 
-			require.Len(t, storage.Gets, 4)
-			require.Len(t, storage.Sets, 4)
-			requireContextRecords(t, storage.Gets, "/normal", strategy.name+"-normal", false)
-			requireContextRecords(t, storage.Gets, "/rollback", strategy.name+"-rollback", true)
-			requireContextRecords(t, storage.Sets, "/normal", strategy.name+"-normal", false)
-			requireContextRecords(t, storage.Sets, "/rollback", strategy.name+"-rollback", true)
+			gets, sets := storage.Calls(storagetest.OpGet), storage.Calls(storagetest.OpSet)
+			require.Len(t, gets, 4)
+			require.Len(t, sets, 4)
+			requireContextRecords(t, gets, "/normal", strategy.name+"-normal", false)
+			requireContextRecords(t, gets, "/rollback", strategy.name+"-rollback", true)
+			requireContextRecords(t, sets, "/normal", strategy.name+"-normal", false)
+			requireContextRecords(t, sets, "/rollback", strategy.name+"-rollback", true)
 		})
 	}
 }
@@ -1584,7 +1585,7 @@ func Test_Limiter_StorageRoundTrips(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			storage := storagetest.NewRecorder(markerKey)
+			storage := storagetest.NewMarked(markerKey)
 			cfg := tc.cfg
 			cfg.Max = 1
 			cfg.Expiration = time.Second
@@ -1592,8 +1593,8 @@ func Test_Limiter_StorageRoundTrips(t *testing.T) {
 
 			apptest.Expect(t, limiterTestApp(&cfg), "/", fiber.StatusOK)
 
-			require.Len(t, storage.Gets, tc.trips)
-			require.Len(t, storage.Sets, tc.trips)
+			require.Len(t, storage.Calls(storagetest.OpGet), tc.trips)
+			require.Len(t, storage.Calls(storagetest.OpSet), tc.trips)
 		})
 	}
 }
