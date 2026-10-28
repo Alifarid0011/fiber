@@ -1326,12 +1326,8 @@ func Test_Domain_UseMountSelf(t *testing.T) {
 		app.Domain("api.example.com").Use("/self", app)
 	}()
 
-	select {
-	case <-done:
-		require.Nil(t, mountPanic, "mounting an app on its own domain router panicked")
-	case <-time.After(10 * time.Second):
-		require.FailNow(t, "mounting an app on its own domain router did not return")
-	}
+	apptest.Recv(t, done, 10*time.Second, "mounting an app on its own domain router did not return")
+	require.Nil(t, mountPanic, "mounting an app on its own domain router panicked")
 }
 
 // Test_Domain_UseMountAfterOuterMount verifies that a domain mount registered

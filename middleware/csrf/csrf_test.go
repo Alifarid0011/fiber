@@ -281,7 +281,7 @@ func Test_CSRF_StorageErrors(t *testing.T) {
 	tests := []struct {
 		keyGenerator func() string
 		name         string
-		failing      string // the storage operation that fails: "<get|set|del>|<key>"
+		failing      string // the storage operation that fails on the token, one of the storagetest.Op constants
 		method       string
 		want         string
 		stored       bool // the token is in storage
@@ -290,20 +290,20 @@ func Test_CSRF_StorageErrors(t *testing.T) {
 		cookieToken  bool // the request carries the token in the CSRF cookie
 	}{
 		{
-			name: "get error", failing: "get|token", method: fiber.MethodGet, cookieToken: true,
+			name: "get error", failing: storagetest.OpGet, method: fiber.MethodGet, cookieToken: true,
 			want: "csrf: failed to fetch token from storage",
 		},
 		{
-			name: "set error", failing: "set|token", method: fiber.MethodGet,
+			name: "set error", failing: storagetest.OpSet, method: fiber.MethodGet,
 			keyGenerator: func() string { return "token" }, want: "csrf: failed to store token in storage",
 		},
 		{
-			name: "delete error", failing: "del|token", method: fiber.MethodPost, stored: true, singleUse: true,
-			headerToken: true, cookieToken: true, want: "csrf: failed to delete token from storage",
+			name: "delete error", failing: storagetest.OpDelete, method: fiber.MethodPost, stored: true,
+			singleUse: true, headerToken: true, cookieToken: true, want: "csrf: failed to delete token from storage",
 		},
 		// The fetch error path that runs after the double-submit cookie comparison succeeds.
 		{
-			name: "get error on validation", failing: "get|token", method: fiber.MethodPost, headerToken: true,
+			name: "get error on validation", failing: storagetest.OpGet, method: fiber.MethodPost, headerToken: true,
 			cookieToken: true, want: "csrf: failed to fetch token from storage",
 		},
 	}
@@ -315,7 +315,7 @@ func Test_CSRF_StorageErrors(t *testing.T) {
 			if tc.stored {
 				storage.Data["token"] = []byte("value")
 			}
-			storage.Errs[tc.failing] = errors.New("boom")
+			storage.SetErr(tc.failing, "token", errors.New("boom"))
 
 			var captured error
 			app := fiber.New()
@@ -1527,7 +1527,7 @@ func Test_CSRF_DeleteToken_Errors(t *testing.T) {
 			if tc.failing {
 				storage := storagetest.New()
 				storage.Data["token"] = []byte("value")
-				storage.Errs["del|token"] = errors.New("boom")
+				storage.SetErr(storagetest.OpDelete, "token", errors.New("boom"))
 				cfg.Storage = storage
 				req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
 			}
@@ -1626,11 +1626,12 @@ func Test_StorageManager_Storage_Success(t *testing.T) {
 }
 
 // newFlakySessionManager returns a session manager on a store whose storage
-// fails the operations ops names: "get" to load sessions, "set" to save them.
+// fails the operations ops names: storagetest.OpGet to load sessions,
+// storagetest.OpSet to save them.
 func newFlakySessionManager(ops ...string) *sessionManager {
 	storage := storagetest.New()
 	for _, op := range ops {
-		storage.Errs[op+"|*"] = errors.New(op + " failed")
+		storage.SetErr(op, "*", errors.New(op+" failed"))
 	}
 	return newSessionManager(session.NewStore(session.Config{
 		Storage:   storage,
@@ -1657,19 +1658,19 @@ func Test_SessionManager_StoreError(t *testing.T) {
 	t.Parallel()
 	t.Run("GetRaw", func(t *testing.T) {
 		t.Parallel()
-		m, c := newFlakySessionManager("get"), newSessionCtx(t, "abc")
+		m, c := newFlakySessionManager(storagetest.OpGet), newSessionCtx(t, "abc")
 		require.Nil(t, m.getRaw(c, "key", dummyValue))
 	})
 
 	t.Run("SetRaw", func(t *testing.T) {
 		t.Parallel()
-		m, c := newFlakySessionManager("get"), newSessionCtx(t, "abc")
+		m, c := newFlakySessionManager(storagetest.OpGet), newSessionCtx(t, "abc")
 		require.NotPanics(t, func() { m.setRaw(c, "key", dummyValue, time.Minute) })
 	})
 
 	t.Run("DelRaw", func(t *testing.T) {
 		t.Parallel()
-		m, c := newFlakySessionManager("get"), newSessionCtx(t, "abc")
+		m, c := newFlakySessionManager(storagetest.OpGet), newSessionCtx(t, "abc")
 		require.NotPanics(t, func() { m.delRaw(c) })
 	})
 }
@@ -1691,7 +1692,7 @@ func Test_SessionManager_SaveError(t *testing.T) {
 			fiberlog.SetOutput(&buf)
 			t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
 
-			tc.op(newFlakySessionManager("set"), newSessionCtx(t, ""))
+			tc.op(newFlakySessionManager(storagetest.OpSet), newSessionCtx(t, ""))
 			require.Contains(t, buf.String(), "failed to save session")
 		})
 	}

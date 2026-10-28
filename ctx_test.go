@@ -8387,10 +8387,7 @@ func Test_Ctx_AutoFormat_NoAcceptHeader(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			req := httptest.NewRequest(MethodGet, "/", http.NoBody)
-			if tc.accept != "" {
-				req.Header.Set(HeaderAccept, tc.accept)
-			}
+			req := apptest.Req(MethodGet, "/", apptest.WithHeaderIf(HeaderAccept, tc.accept))
 			resp := apptest.Expect(t, app, req, StatusOK)
 			require.Equal(t, tc.contentType, resp.Header.Get(HeaderContentType))
 			require.Equal(t, tc.body, apptest.Body(t, resp))
@@ -8461,10 +8458,7 @@ func Test_Ctx_Format_CustomCtx(t *testing.T) {
 	})
 
 	for _, accept := range []string{"", MIMETextPlain, "application/unsupported"} {
-		req := httptest.NewRequest(MethodGet, "/", http.NoBody)
-		if accept != "" {
-			req.Header.Set(HeaderAccept, accept)
-		}
+		req := apptest.Req(MethodGet, "/", apptest.WithHeaderIf(HeaderAccept, accept))
 		require.Equal(t, "custom", apptest.Body(t, apptest.Do(t, app, req)), "Accept %q", accept)
 	}
 }

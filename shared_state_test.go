@@ -1,7 +1,6 @@
 package fiber
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -21,50 +20,18 @@ func newSharedStateMemoryStorage(t *testing.T) *storagememory.Storage {
 	return store
 }
 
-type contextCheckingStorage struct {
-	base   Storage
-	ctxKey any
-}
+// stateTestRequireMarked requires that every call of the ops in store carries the Marked context label.
+func stateTestRequireMarked(t *testing.T, store *storagetest.Memory, label string, ops ...string) {
+	t.Helper()
 
-func (s *contextCheckingStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
-	if ctx.Value(s.ctxKey) == nil {
-		return errors.New("context value not found")
+	for _, op := range ops {
+		calls := store.Calls(op)
+		require.NotEmpty(t, calls, op)
+		for _, call := range calls {
+			require.Equal(t, label, call.Marker, op)
+		}
 	}
-	return s.base.SetWithContext(ctx, key, val, exp)
 }
-
-func (s *contextCheckingStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
-	if ctx.Value(s.ctxKey) == nil {
-		return nil, errors.New("context value not found")
-	}
-	return s.base.GetWithContext(ctx, key)
-}
-
-func (s *contextCheckingStorage) DeleteWithContext(ctx context.Context, key string) error {
-	if ctx.Value(s.ctxKey) == nil {
-		return errors.New("context value not found")
-	}
-	return s.base.DeleteWithContext(ctx, key)
-}
-
-func (s *contextCheckingStorage) Get(key string) ([]byte, error) {
-	return s.GetWithContext(context.Background(), key)
-}
-
-func (s *contextCheckingStorage) Set(key string, val []byte, exp time.Duration) error {
-	return s.SetWithContext(context.Background(), key, val, exp)
-}
-
-func (s *contextCheckingStorage) Delete(key string) error {
-	return s.DeleteWithContext(context.Background(), key)
-}
-
-func (s *contextCheckingStorage) ResetWithContext(ctx context.Context) error {
-	return s.base.ResetWithContext(ctx)
-}
-
-func (s *contextCheckingStorage) Reset() error { return s.base.Reset() }
-func (s *contextCheckingStorage) Close() error { return s.base.Close() }
 
 // stateTestExpectSharedOpsFail calls every SharedState operation on state and expects each one to fail
 // with wantErr and return no data, except Close, which must fail with wantCloseErr.
@@ -157,34 +124,24 @@ func TestSharedState_ExplicitSerializationError(t *testing.T) {
 
 func TestSharedState_ContextAwareVariants(t *testing.T) {
 	t.Parallel()
-	type testContextKey string
+	store := storagetest.New()
+	state := New(Config{SharedStorage: store}).SharedState()
+	ctx := storagetest.Marked("tenant")
 
-	ctxKey := testContextKey("tenant")
-	store := &contextCheckingStorage{ctxKey: ctxKey, base: newSharedStateMemoryStorage(t)}
-	app := New(Config{SharedStorage: store})
+	require.NoError(t, state.SetJSONWithContext(ctx, "key", Map{"ok": true}, time.Second))
 
-	t.Run("missing context", func(t *testing.T) {
-		t.Parallel()
-		require.Error(t, app.SharedState().SetJSONWithContext(context.Background(), "key", Map{"ok": true}, time.Second))
-	})
+	var out map[string]bool
+	_, found, err := state.GetJSONWithContext(ctx, "key", &out)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.True(t, out["ok"])
 
-	t.Run("context propagation", func(t *testing.T) {
-		t.Parallel()
-		ctx := context.WithValue(context.Background(), ctxKey, "value")
-		require.NoError(t, app.SharedState().SetJSONWithContext(ctx, "key", Map{"ok": true}, time.Second))
+	has, err := state.HasWithContext(ctx, "key")
+	require.NoError(t, err)
+	require.True(t, has)
 
-		var out map[string]bool
-		_, found, err := app.SharedState().GetJSONWithContext(ctx, "key", &out)
-		require.NoError(t, err)
-		require.True(t, found)
-		require.True(t, out["ok"])
-
-		has, err := app.SharedState().HasWithContext(ctx, "key")
-		require.NoError(t, err)
-		require.True(t, has)
-
-		require.NoError(t, app.SharedState().DeleteWithContext(ctx, "key"))
-	})
+	require.NoError(t, state.DeleteWithContext(ctx, "key"))
+	stateTestRequireMarked(t, store, "tenant", storagetest.OpSet, storagetest.OpGet, storagetest.OpDelete)
 }
 
 func TestSharedState_KeyNamespacing(t *testing.T) {
@@ -295,21 +252,17 @@ func TestSharedState_Get_ReturnsCopy(t *testing.T) {
 
 func TestSharedState_RawWithContextVariants(t *testing.T) {
 	t.Parallel()
-	type testContextKey string
+	store := storagetest.New()
+	state := New(Config{SharedStorage: store}).SharedState()
+	ctx := storagetest.Marked("tenant")
 
-	ctxKey := testContextKey("tenant")
-	store := &contextCheckingStorage{ctxKey: ctxKey, base: newSharedStateMemoryStorage(t)}
-	app := New(Config{SharedStorage: store})
+	require.NoError(t, state.SetWithContext(ctx, "raw", []byte("x"), time.Second))
 
-	require.Error(t, app.SharedState().SetWithContext(context.Background(), "raw", []byte("x"), time.Second))
-
-	ctx := context.WithValue(context.Background(), ctxKey, "value")
-	require.NoError(t, app.SharedState().SetWithContext(ctx, "raw", []byte("x"), time.Second))
-
-	raw, found, err := app.SharedState().GetWithContext(ctx, "raw")
+	raw, found, err := state.GetWithContext(ctx, "raw")
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, []byte("x"), raw)
+	stateTestRequireMarked(t, store, "tenant", storagetest.OpSet, storagetest.OpGet)
 }
 
 func TestSharedState_SetGet_RawDataKinds(t *testing.T) {

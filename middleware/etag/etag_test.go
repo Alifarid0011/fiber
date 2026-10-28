@@ -149,11 +149,9 @@ func Test_ETag_ConditionalGet(t *testing.T) {
 					app.Use(New(variant.cfg...))
 					app.Get("/", variant.handler)
 
-					var opts []apptest.Option
-					if tc.ifNoneMatch != "" {
-						opts = append(opts, apptest.WithHeader(fiber.HeaderIfNoneMatch, tc.ifNoneMatch))
-					}
-					resp := apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", opts...), tc.status)
+					ifNoneMatch := apptest.WithHeaderIf(fiber.HeaderIfNoneMatch, tc.ifNoneMatch)
+					req := apptest.Req(fiber.MethodGet, "/", ifNoneMatch)
+					resp := apptest.Expect(t, app, req, tc.status)
 
 					if tc.status == fiber.StatusOK {
 						require.Equal(t, variant.tag, resp.Header.Get(fiber.HeaderETag))

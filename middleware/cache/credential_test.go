@@ -359,8 +359,8 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 	t.Run("in a Storage that cannot answer, a record is taken to exist", func(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()
-		storage.Errs["get|"+refusalMarker] = errors.New("storage unavailable")
-		storage.Errs["get|"+groupMarkers[groupOf("/page")]] = errors.New("storage unavailable")
+		storage.SetErr(storagetest.OpGet, refusalMarker, errors.New("storage unavailable"))
+		storage.SetErr(storagetest.OpGet, groupMarkers[groupOf("/page")], errors.New("storage unavailable"))
 		require.True(t, cacheTestCRecords(&Config{Storage: storage}).mayHold(ctx, c, "base"))
 	})
 
@@ -668,7 +668,7 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 	t.Run("a record that cannot be written is remembered here, and the credential's hits fail closed until it would have lapsed", func(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()
-		storage.Errs["set|k"] = failure
+		storage.SetErr(storagetest.OpSet, "k", failure)
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
 		require.False(t, records.refused(ctx, "k"))
 
@@ -687,8 +687,8 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 	t.Run("a record or marker that cannot be read before the write is written as if there were none", func(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()
-		storage.Errs["get|k"] = failure
-		storage.Errs["get|"+refusalMarker] = failure
+		storage.SetErr(storagetest.OpGet, "k", failure)
+		storage.SetErr(storagetest.OpGet, refusalMarker, failure)
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
 		before := uint64(utils.Timestamp())
 		records.record(ctx, records.group(c, "base"), "k", 0)
@@ -701,7 +701,7 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 	t.Run("a marker that cannot be written leaves the record and the other marker", func(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()
-		storage.Errs["set|"+refusalMarker] = failure
+		storage.SetErr(storagetest.OpSet, refusalMarker, failure)
 		records := cacheTestCRecords(&Config{Storage: storage})
 		records.record(ctx, records.group(c, "base"), "k", 0)
 		require.Contains(t, storage.Data, "k")
@@ -723,7 +723,7 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 	t.Run("a record that cannot be dropped to make room is still remembered as dropped", func(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()
-		storage.Errs["del|k1"] = failure
+		storage.SetErr(storagetest.OpDelete, "k1", failure)
 		records := cacheTestCRecords(&Config{Storage: storage})
 		// Only an in-memory store is bounded, and deleting from it cannot fail.
 		records.keys.limit = 1
@@ -736,7 +736,7 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 	t.Run("a record that cannot be cleared stays until the Storage expires it", func(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()
-		storage.Errs["del|k"] = failure
+		storage.SetErr(storagetest.OpDelete, "k", failure)
 		records := cacheTestCRecords(&Config{Storage: storage})
 		records.record(ctx, records.group(c, "base"), "k", 0)
 		records.forget(ctx, "k")

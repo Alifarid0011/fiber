@@ -1019,14 +1019,9 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 	shutdownErr := make(chan error)
 	go func() { shutdownErr <- app.ShutdownWithTimeout(1 * time.Second) }()
 
-	timer := time.NewTimer(time.Second * 5)
-	select {
-	case <-timer.C:
-		t.Fatal("idle connections not closed on shutdown")
-	case err := <-shutdownErr:
-		if err == nil || !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("unexpected err %v. Expecting %v", err, context.DeadlineExceeded)
-		}
+	err := apptest.Recv(t, shutdownErr, 5*time.Second, "idle connections not closed on shutdown")
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("unexpected err %v. Expecting %v", err, context.DeadlineExceeded)
 	}
 }
 
@@ -2999,7 +2994,6 @@ func rawExchange(t *testing.T, server dialer, raw string, want int) (responses [
 		resp, readErr := http.ReadResponse(reader, request)
 		require.NoError(t, readErr, "reading response %d of %d", len(responses)+1, want)
 		body := apptest.Body(t, resp)
-		require.NoError(t, resp.Body.Close())
 		responses = append(responses, rawResponse{
 			status:        resp.StatusCode,
 			header:        resp.Header,

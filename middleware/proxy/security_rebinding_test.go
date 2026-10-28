@@ -269,7 +269,6 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 			resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 10 * time.Second, FailOnTimeout: false})
 
 			body := apptest.Body(t, resp)
-			require.NoError(t, resp.Body.Close())
 
 			// The dial-time guard must reject the rebound loopback address,
 			// so the internal secret is never proxied back.

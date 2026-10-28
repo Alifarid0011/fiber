@@ -186,10 +186,8 @@ func Test_BasicAuth_NoConfig(t *testing.T) {
 			for _, tc := range tests {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-					req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-					if tc.authorization != "" {
-						req.Header.Set(fiber.HeaderAuthorization, tc.authorization)
-					}
+					authorization := apptest.WithHeaderIf(fiber.HeaderAuthorization, tc.authorization)
+					req := apptest.Req(fiber.MethodGet, "/", authorization)
 
 					resp := apptest.Expect(t, app, req, tc.want)
 					if tc.want == fiber.StatusUnauthorized {
@@ -248,10 +246,7 @@ func Test_BasicAuth_Unauthorized_KeepsVary(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-			if tc.earlier != "" {
-				req.Header.Set("X-Earlier-Vary", tc.earlier)
-			}
+			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeaderIf("X-Earlier-Vary", tc.earlier))
 
 			resp := apptest.Expect(t, app, req, fiber.StatusUnauthorized)
 			require.Equal(t, []string{tc.want}, resp.Header.Values(fiber.HeaderVary))

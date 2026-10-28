@@ -1193,11 +1193,7 @@ func TestUnixSocketAdaptor(t *testing.T) {
 	defer cancel()
 	require.NoError(t, srv.Shutdown(ctx))
 
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("server shutdown timed out")
-	}
+	apptest.Recv(t, done, 5*time.Second, "server shutdown timed out")
 }
 
 // Test_ResolveRemoteAddr_FastPathEquivalence pins the ip:port fast path to

@@ -64,13 +64,7 @@ func sseTestOnClose(t *testing.T, handler func(fiber.Ctx, *Stream) error) error 
 	}))
 
 	apptest.Expect(t, app, "/events", fiber.StatusOK)
-	select {
-	case err := <-closed:
-		return err
-	case <-time.After(time.Second):
-		t.Fatal("OnClose was not called")
-		return nil
-	}
+	return apptest.Recv(t, closed, time.Second, "OnClose was not called")
 }
 
 // Test_SSE_EventFrames covers the frame writeEvent writes for an event.
@@ -288,11 +282,7 @@ func Test_SSE_StreamContextCanceledOnClose(t *testing.T) {
 	stream, _ := sseTestStream(t)
 	stream.closeStream()
 
-	select {
-	case <-stream.Context().Done():
-	case <-time.After(time.Second):
-		t.Fatal("stream context was not canceled")
-	}
+	apptest.Recv(t, stream.Context().Done(), time.Second, "stream context was not canceled")
 }
 
 func Test_SSE_NewStreamUsesBackgroundContextWhenNil(t *testing.T) {
@@ -330,11 +320,7 @@ func Test_SSE_StreamWriteError(t *testing.T) {
 
 	require.ErrorIs(t, stream.Event(Event{Data: "hello"}), writeErr)
 	require.ErrorIs(t, stream.Err(), writeErr)
-	select {
-	case <-stream.Done():
-	case <-time.After(time.Second):
-		t.Fatal("stream was not closed after write error")
-	}
+	apptest.Recv(t, stream.Done(), time.Second, "stream was not closed after write error")
 }
 
 func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
@@ -371,19 +357,9 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	require.True(t, err == nil || errors.Is(err, io.ErrUnexpectedEOF))
 	require.Contains(t, string(body), "data: ready\n\n")
 
-	select {
-	case err := <-handlerDone:
-		require.Error(t, err)
-	case <-time.After(disconnectObservationTimeout):
-		t.Fatal("handler did not observe the interrupted client")
-	}
-
-	select {
-	case err := <-onCloseDone:
-		require.Error(t, err)
-	case <-time.After(disconnectObservationTimeout):
-		t.Fatal("OnClose was not called after the interrupted client")
-	}
+	const wait = disconnectObservationTimeout
+	require.Error(t, apptest.Recv(t, handlerDone, wait, "handler did not observe the interrupted client"))
+	require.Error(t, apptest.Recv(t, onCloseDone, wait, "OnClose was not called after the interrupted client"))
 }
 
 func Test_SSE_HandlerErrorCallsOnClose(t *testing.T) {

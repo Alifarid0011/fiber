@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
@@ -85,10 +84,7 @@ func Test_Idempotency(t *testing.T) {
 	})
 
 	doReq := func(method, route, idempotencyKey string) string {
-		req := httptest.NewRequest(method, route, http.NoBody)
-		if idempotencyKey != "" {
-			req.Header.Set("X-Idempotency-Key", idempotencyKey)
-		}
+		req := apptest.Req(method, route, apptest.WithHeaderIf("X-Idempotency-Key", idempotencyKey))
 		resp := apptest.Do(t, app, req, fiber.TestConfig{Timeout: 15 * time.Second, FailOnTimeout: true})
 		body := apptest.Body(t, resp)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, body)
@@ -378,7 +374,7 @@ func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
 			require.Equal(t, "foo", resp2.Header.Get("Foo"), "the configured name must match whatever its case")
 			require.Empty(t, resp2.Header.Get("Bar"), "mutating the config slice after New must not change filtering")
 			require.Equal(t, 1, count)
-			require.Equal(t, 1, s.Count(storagetest.OpSet))
+			require.Len(t, s.Calls(storagetest.OpSet), 1)
 		})
 	}
 }
@@ -560,11 +556,7 @@ func Test_New_KeyScope(t *testing.T) {
 	})
 
 	post := func(user string) (*http.Response, string) {
-		var opts []apptest.Option
-		if user != "" {
-			opts = append(opts, apptest.WithHeader("X-User", user))
-		}
-		return idempotencyTestPost(t, app, "/", validKey, opts...)
+		return idempotencyTestPost(t, app, "/", validKey, apptest.WithHeaderIf("X-User", user))
 	}
 	requireReply := func(user, wantBody string, wantCalls int) {
 		t.Helper()
@@ -581,7 +573,7 @@ func Test_New_KeyScope(t *testing.T) {
 	requireReply("", ":3", 3) // a request without a user is a scope of its own
 	requireReply("", ":3", 3)
 
-	require.Equal(t, 3, s.Count(storagetest.OpSet))
+	require.Len(t, s.Calls(storagetest.OpSet), 3)
 	require.Len(t, s.Data, 3)
 	// Each entry holds its own user's cookie and nobody else's, under the key
 	// the scope and the idempotency key digest to.
@@ -692,7 +684,7 @@ func Test_New_Cache_WhenBodyTooLarge(t *testing.T) {
 	}
 
 	require.Equal(t, 1, count)
-	require.Equal(t, 1, s.Count(storagetest.OpSet))
+	require.Len(t, s.Calls(storagetest.OpSet), 1)
 	require.Len(t, wasPut, 2)
 	require.True(t, wasPut[0])
 	require.False(t, wasPut[1])
@@ -709,7 +701,7 @@ func Test_New_HandlerError(t *testing.T) {
 		resp, body := idempotencyTestPost(t, app, "/", validKey)
 		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 		require.Equal(t, "boom", body)
-		require.Equal(t, 0, s.Count(storagetest.OpSet))
+		require.Empty(t, s.Calls(storagetest.OpSet))
 	}
 }
 

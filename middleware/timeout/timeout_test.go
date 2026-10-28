@@ -280,16 +280,8 @@ func TestTimeout_ContextPropagation(t *testing.T) {
 
 	apptest.Expect(t, app, "/context-aware", fiber.StatusServiceUnavailable)
 
-	safety := time.NewTimer(1 * time.Second)
-	defer safety.Stop()
-
-	select {
-	case handlerErr := <-errCh:
-		require.ErrorIs(t, handlerErr, context.DeadlineExceeded, "handler should report DeadlineExceeded")
-
-	case <-safety.C:
-		t.Fatal("timed out waiting for handler to report context state")
-	}
+	handlerErr := apptest.Recv(t, errCh, time.Second, "timed out waiting for handler to report context state")
+	require.ErrorIs(t, handlerErr, context.DeadlineExceeded, "handler should report DeadlineExceeded")
 }
 
 // TestTimeout_DefaultResponseClearsBufferedBody verifies that the default timeout
@@ -461,11 +453,7 @@ func TestTimeout_PanicAfterTimeout(t *testing.T) {
 	apptest.Expect(t, app, "/panic-after-timeout", fiber.StatusServiceUnavailable)
 
 	// Wait for panic to occur and be handled by cleanup goroutine
-	select {
-	case <-panicDone:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("panic did not occur")
-	}
+	apptest.Recv(t, panicDone, 200*time.Millisecond, "panic did not occur")
 }
 
 // TestTimeout_ContextCleanup verifies that the context is properly released
@@ -486,13 +474,9 @@ func TestTimeout_ContextCleanup(t *testing.T) {
 	apptest.Expect(t, app, "/cleanup", fiber.StatusServiceUnavailable)
 
 	// Wait for handler to finish - cleanup goroutine should release context
-	select {
-	case <-handlerDone:
-		// Give cleanup goroutine time to run
-		time.Sleep(20 * time.Millisecond)
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("handler did not finish")
-	}
+	apptest.Recv(t, handlerDone, 200*time.Millisecond, "handler did not finish")
+	// Give cleanup goroutine time to run
+	time.Sleep(20 * time.Millisecond)
 }
 
 func TestTimeout_AbandonMechanism(t *testing.T) {
@@ -548,12 +532,7 @@ func TestTimeout_AbandonedCtxReclaimed(t *testing.T) {
 
 			apptest.Expect(t, app, "/reclaim", fiber.StatusServiceUnavailable)
 
-			var c fiber.Ctx
-			select {
-			case c = <-ctxCh:
-			case <-time.After(time.Second):
-				t.Fatal("handler did not start")
-			}
+			c := apptest.Recv(t, ctxCh, time.Second, "handler did not start")
 
 			// Handler is still running -> the abandoned context must NOT be reclaimed yet.
 			require.True(t, c.IsAbandoned(), "context reclaimed while handler still running")
@@ -677,12 +656,8 @@ func Test_Timeout_ReturnsErrServiceUnavailable(t *testing.T) {
 			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
 			require.Equal(t, fiber.ErrServiceUnavailable.Message, apptest.Body(t, resp))
 
-			select {
-			case err := <-seen:
-				require.ErrorIs(t, err, fiber.ErrServiceUnavailable)
-			case <-time.After(time.Second):
-				t.Fatal("outer middleware never observed the result")
-			}
+			observed := apptest.Recv(t, seen, time.Second, "outer middleware never observed the result")
+			require.ErrorIs(t, observed, fiber.ErrServiceUnavailable)
 			require.Equal(t, int32(0), errorHandlerCalls.Load())
 		})
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/prefork"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -177,12 +178,7 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 
 		app.hooks.executeOnPostShutdownHooks(expectedErr)
 
-		select {
-		case err := <-hookCalled:
-			require.Equal(t, expectedErr, err)
-		case <-time.After(time.Second):
-			t.Fatal("hook execution timeout")
-		}
+		require.Equal(t, expectedErr, apptest.Recv(t, hookCalled, time.Second, "hook execution timeout"))
 
 		require.NoError(t, app.Shutdown())
 	})

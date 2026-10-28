@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"runtime"
 	"slices"
@@ -46,8 +47,6 @@ func (f *fakeTB) Fatalf(format string, args ...any) {
 	f.Errorf(format, args...)
 	f.FailNow()
 }
-
-func (f *fakeTB) Fatal(args ...any) { f.Fatalf("%s", fmt.Sprint(args...)) }
 
 func (f *fakeTB) FailNow() {
 	f.mu.Lock()
@@ -398,7 +397,23 @@ func Test_Recv(t *testing.T) {
 
 	t.Run("fails with the message after the timeout", func(t *testing.T) {
 		t.Parallel()
-		out := failure(t, func(tb *fakeTB) { apptest.Recv(tb, make(chan int), time.Millisecond, "nothing arrived") })
-		require.Contains(t, out, "nothing arrived")
+		out := failure(t, func(tb *fakeTB) {
+			apptest.Recv(tb, make(chan int), time.Millisecond, "waiting for %s", "the signal")
+		})
+		require.Contains(t, out, "waiting for the signal")
 	})
+}
+
+func Test_Pairs(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, map[string]string{"a": "1", "b": "2"}, maps.Collect(apptest.Pairs([]string{"a", "1", "b", "2"})))
+
+	for range apptest.Pairs([]string{"a", "1", "b", "2"}) {
+		break // an early exit stops the iteration
+	}
+	for range apptest.Pairs(nil) {
+		t.Fatal("no pairs, no iteration")
+	}
+	odd := strings.Fields("name")
+	require.Panics(t, func() { apptest.Pairs(odd) }, "a name without a value is a mistake in the test")
 }

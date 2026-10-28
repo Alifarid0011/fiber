@@ -1,6 +1,7 @@
 // Package apptest provides the request/response plumbing that nearly every
 // Fiber test repeats: sending a request through an app, checking the transport
-// error, the status and the body, and borrowing a request context from an app.
+// error, the status and the body, borrowing a request context from an app, and
+// waiting on a channel with a deadline.
 //
 // The helpers are generic over the app type instead of naming *fiber.App, so
 // this package does not import fiber. That lets the in-package tests of the
@@ -21,7 +22,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -138,18 +138,4 @@ func Body(tb testing.TB, resp *http.Response) string {
 	tb.Helper()
 
 	return string(BodyBytes(tb, resp))
-}
-
-// Recv returns the next value from ch and fails the test with msg when none
-// arrives within timeout.
-func Recv[T any](tb testing.TB, ch <-chan T, timeout time.Duration, msg string) T {
-	tb.Helper()
-
-	select {
-	case v := <-ch:
-		return v
-	case <-time.After(timeout):
-		tb.Fatal(msg)
-		panic("unreachable") // Fatal stops the test
-	}
 }

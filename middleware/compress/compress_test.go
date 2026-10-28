@@ -565,10 +565,7 @@ func Test_Compress_AcceptEncoding_Negotiation(t *testing.T) {
 			t.Parallel()
 			app := compressTestApp(func(c fiber.Ctx) error { return c.SendString(compressible) })
 
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-			if tc.accept != "" {
-				req.Header.Set(fiber.HeaderAcceptEncoding, tc.accept)
-			}
+			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeaderIf(fiber.HeaderAcceptEncoding, tc.accept))
 			resp := apptest.Expect(t, app, req, fiber.StatusOK)
 			require.Equal(t, tc.encoding, resp.Header.Get(fiber.HeaderContentEncoding))
 			require.Contains(t, resp.Header.Get(fiber.HeaderVary), fiber.HeaderAcceptEncoding)

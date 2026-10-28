@@ -1192,7 +1192,6 @@ func Test_RoutePatternNormalization_RegistrationMountAndRemoval(t *testing.T) {
 							require.True(t, RoutePatternMatch(path, pattern, cfg))
 							resp := apptest.Expect(t, app, path, StatusOK)
 							body := apptest.Body(t, resp)
-							require.NoError(t, resp.Body.Close())
 							want := tc.param
 							if want == "" {
 								want = "literal"

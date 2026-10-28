@@ -443,7 +443,7 @@ func Test_manager_get_StorageErrors(t *testing.T) {
 	t.Parallel()
 	// Storage GetWithContext returns an error.
 	storage := storagetest.New()
-	storage.Errs["get|k"] = errors.New("boom")
+	storage.SetErr(storagetest.OpGet, "k", errors.New("boom"))
 	m := newManager(storage, true)
 	_, err := m.get(context.Background(), "k")
 	require.ErrorContains(t, err, redactedKey)
@@ -470,7 +470,7 @@ func Test_manager_getRaw_Paths(t *testing.T) {
 	t.Parallel()
 	// Storage error.
 	storage := storagetest.New()
-	storage.Errs["get|k"] = errors.New("boom")
+	storage.SetErr(storagetest.OpGet, "k", errors.New("boom"))
 	m := newManager(storage, false)
 	_, err := m.getRaw(context.Background(), "k")
 	require.ErrorContains(t, err, "boom")
@@ -502,7 +502,7 @@ func Test_manager_getRaw_Paths(t *testing.T) {
 func Test_manager_set_StorageError(t *testing.T) {
 	t.Parallel()
 	storage := storagetest.New()
-	storage.Errs["set|k"] = errors.New("boom")
+	storage.SetErr(storagetest.OpSet, "k", errors.New("boom"))
 	m := newManager(storage, false)
 
 	it := m.acquire()
@@ -557,7 +557,7 @@ func Test_varyManifest_StoreLoad(t *testing.T) {
 
 	// Storage error propagates.
 	storage := storagetest.New()
-	storage.Errs["get|mk"] = errors.New("boom")
+	storage.SetErr(storagetest.OpGet, "mk", errors.New("boom"))
 	mErr := newManager(storage, false)
 	_, _, err = loadVaryManifest(ctx, mErr, "mk")
 	require.ErrorContains(t, err, "boom")

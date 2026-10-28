@@ -9,8 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type markerKey struct{}
-
 func Test_Memory_StoresCopies(t *testing.T) {
 	t.Parallel()
 	var m Memory
@@ -42,10 +40,16 @@ func Test_Memory_DeleteResetAndKeys(t *testing.T) {
 	require.NoError(t, m.Delete("b"))
 	require.Equal(t, []string{"a", "c"}, m.Keys())
 
-	m.SetErr(OpGet, "a", errors.New("boom"))
+	errBoom := errors.New("boom")
+	m.SetErr(OpGet, "a", errBoom)
 	require.NoError(t, m.Reset())
 	require.Empty(t, m.Keys())
-	require.Empty(t, m.Errs)
+	_, err := m.Get("a")
+	require.ErrorIs(t, err, errBoom, "Reset keeps the configured errors, as a real storage does")
+
+	m.ClearErrs()
+	_, err = m.Get("a")
+	require.NoError(t, err)
 	require.NoError(t, m.Close())
 }
 
@@ -99,6 +103,12 @@ func Test_Memory_ErrorTable(t *testing.T) {
 		require.NoError(t, m.Set("k", nil, 0))
 	})
 
+	t.Run("an unknown operation panics", func(t *testing.T) {
+		t.Parallel()
+		want := `storagetest: unknown operation "delete"`
+		require.PanicsWithValue(t, want, func() { New().SetErr("delete", "k", errBoom) })
+	})
+
 	t.Run("the zero value takes an error", func(t *testing.T) {
 		t.Parallel()
 		var m Memory
@@ -122,12 +132,13 @@ func Test_Memory_RecordsCalls(t *testing.T) {
 		{Op: OpSet, Key: "a", Value: []byte("1"), TTL: time.Hour},
 		{Op: OpSet, Key: "bad", Value: []byte("2"), TTL: time.Minute},
 	}, m.Calls(OpSet), "failed calls are recorded too")
-	require.Equal(t, 1, m.Count(OpGet))
-	require.Equal(t, 1, m.Count(OpDelete))
-	require.Equal(t, 0, m.Count(OpReset))
+	require.Equal(t, []string{"a", "bad"}, m.CallKeys(OpSet))
+	require.Len(t, m.Calls(OpGet), 1)
+	require.Len(t, m.Calls(OpDelete), 1)
+	require.Empty(t, m.Calls(OpReset))
 
 	m.ClearCalls()
-	require.Zero(t, m.Count(OpSet))
+	require.Empty(t, m.Calls(OpSet))
 	require.False(t, m.Holds("a"), "ClearCalls keeps the data, and a was deleted")
 }
 
@@ -167,7 +178,7 @@ func Test_Memory_HonorContext(t *testing.T) {
 			require.ErrorIs(t, m.DeleteWithContext(ctx, "k"), tc.want)
 			require.ErrorIs(t, m.ResetWithContext(ctx), tc.want)
 			require.False(t, m.Holds("k"))
-			require.Zero(t, m.Count(OpSet), "a call refused for its context is not recorded")
+			require.Len(t, m.Calls(OpSet), 1, "a refused call is recorded too")
 		})
 	}
 
@@ -181,28 +192,23 @@ func Test_Memory_HonorContext(t *testing.T) {
 
 func Test_Memory_RecordsContext(t *testing.T) {
 	t.Parallel()
-	m := NewMarked(markerKey{})
-	marked, cancel := context.WithCancel(context.WithValue(context.Background(), markerKey{}, "label"))
-	cancel()
+	m := New()
+	marked, canceled := Marked("label"), MarkedCanceled("gone")
 	plain := context.Background()
 
-	require.NoError(t, m.SetWithContext(marked, "a", []byte("1"), 0))
+	require.NoError(t, m.SetWithContext(canceled, "a", []byte("1"), 0))
 	_, err := m.GetWithContext(marked, "a")
 	require.NoError(t, err)
 	_, err = m.GetWithContext(plain, "b")
 	require.NoError(t, err)
 	require.NoError(t, m.DeleteWithContext(plain, "a"))
 
-	require.Equal(t, []Call{{Op: OpSet, Key: "a", Value: []byte("1"), Marker: "label", Canceled: true}}, m.Calls(OpSet))
-	require.Equal(t, []Call{{Op: OpGet, Key: "a", Marker: "label", Canceled: true}, {Op: OpGet, Key: "b"}}, m.Calls(OpGet))
+	require.Equal(t, []Call{{Op: OpSet, Key: "a", Value: []byte("1"), Marker: "gone", Canceled: true}}, m.Calls(OpSet))
+	require.Equal(t, []Call{{Op: OpGet, Key: "a", Marker: "label"}, {Op: OpGet, Key: "b"}}, m.Calls(OpGet))
 	require.Equal(t, []Call{{Op: OpDelete, Key: "a"}}, m.Calls(OpDelete))
 
 	require.NoError(t, m.Set("c", []byte("3"), 0))
 	require.Equal(t, Call{Op: OpSet, Key: "c", Value: []byte("3")}, m.Calls(OpSet)[1], "a call without a context is a background one")
-
-	unmarked := New()
-	require.NoError(t, unmarked.SetWithContext(marked, "a", nil, 0))
-	require.Equal(t, Call{Op: OpSet, Key: "a", Canceled: true}, unmarked.Calls(OpSet)[0], "no marker key, no marker")
 }
 
 func Test_Failing(t *testing.T) {

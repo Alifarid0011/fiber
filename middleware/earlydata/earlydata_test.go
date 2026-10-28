@@ -93,11 +93,8 @@ func executeExpectations(t *testing.T, app *fiber.App, remoteAddr string, expect
 	t.Helper()
 
 	for _, expectation := range expectations {
-		req := httptest.NewRequest(expectation.method, "/", http.NoBody)
+		req := apptest.Req(expectation.method, "/", apptest.WithHeaderIf(headerName, expectation.header))
 		req.RemoteAddr = remoteAddr
-		if expectation.header != "" {
-			req.Header.Set(headerName, expectation.header)
-		}
 
 		apptest.Expect(t, app, req, expectation.status)
 	}

@@ -153,7 +153,6 @@ func Test_HealthCheck_Head(t *testing.T) {
 		}
 
 		body := apptest.BodyBytes(t, resp)
-		require.NoError(t, resp.Body.Close())
 		require.Empty(t, body)
 	}
 

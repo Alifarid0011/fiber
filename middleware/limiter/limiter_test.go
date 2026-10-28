@@ -132,20 +132,6 @@ func (s *expiringStorage) SetWithContext(ctx context.Context, key string, val []
 	return s.Memory.SetWithContext(ctx, key, val, exp)
 }
 
-type contextKey string
-
-const markerKey contextKey = "marker"
-
-func contextWithMarker(label string) context.Context {
-	return context.WithValue(context.Background(), markerKey, label)
-}
-
-func canceledContextWithMarker(label string) context.Context {
-	ctx, cancel := context.WithCancel(contextWithMarker(label))
-	cancel()
-	return ctx
-}
-
 // limiterTestApp returns an app, configured by appCfg if given, that serves GET on every path with a 200
 // behind the limiter New(cfg) builds.
 func limiterTestApp(cfg *Config, appCfg ...fiber.Config) *fiber.App {
@@ -279,20 +265,20 @@ func Test_getEffectiveStatusCode(t *testing.T) {
 func Test_Limiter_StorageErrorMessages(t *testing.T) {
 	t.Parallel()
 	steps := []struct {
-		name string
+		op   string
 		want []string
 	}{
-		{name: "get", want: []string{"limiter: failed to get key"}},
-		{name: "set", want: []string{"limiter: failed to persist state", "limiter: failed to store key"}},
+		{op: storagetest.OpGet, want: []string{"limiter: failed to get key"}},
+		{op: storagetest.OpSet, want: []string{"limiter: failed to persist state", "limiter: failed to store key"}},
 	}
 
 	for _, strategy := range windowStrategies {
 		for _, step := range steps {
 			for _, disableRedaction := range []bool{false, true} {
-				t.Run(fmt.Sprintf("%s/%s/DisableValueRedaction=%t", strategy.name, step.name, disableRedaction), func(t *testing.T) {
+				t.Run(fmt.Sprintf("%s/%s/DisableValueRedaction=%t", strategy.name, step.op, disableRedaction), func(t *testing.T) {
 					t.Parallel()
 					storage := storagetest.New()
-					storage.Errs[step.name+"|"+testLimiterClientKey] = errors.New("boom")
+					storage.SetErr(step.op, testLimiterClientKey, errors.New("boom"))
 
 					var captured limiterTestCapture
 					app := limiterTestApp(&Config{
@@ -343,17 +329,17 @@ func Test_Limiter_PropagatesRequestContextToStorage(t *testing.T) {
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-			storage := storagetest.NewMarked(markerKey)
+			storage := storagetest.New()
 
 			app := fiber.New()
 
 			app.Use(func(c fiber.Ctx) error {
 				path := c.Path()
 				if path == "/normal" {
-					c.SetContext(contextWithMarker(strategy.name + "-normal"))
+					c.SetContext(storagetest.Marked(strategy.name + "-normal"))
 				}
 				if path == "/rollback" {
-					c.SetContext(canceledContextWithMarker(strategy.name + "-rollback"))
+					c.SetContext(storagetest.MarkedCanceled(strategy.name + "-rollback"))
 				}
 				return c.Next()
 			})
@@ -384,13 +370,11 @@ func Test_Limiter_PropagatesRequestContextToStorage(t *testing.T) {
 	}
 }
 
-// limiterTestFailingFirst returns a constructor for a storage whose first op, "get" or "set", on the
-// client key fails.
+// limiterTestFailingFirst returns a constructor for a storage whose first op, storagetest.OpGet or
+// storagetest.OpSet, on the client key fails.
 func limiterTestFailingFirst(op string) func() fiber.Storage {
 	return func() fiber.Storage {
-		st := storagetest.New()
-		st.Errs[op+"|"+testLimiterClientKey] = errors.New("boom")
-		return st
+		return storagetest.New().SetErr(op, testLimiterClientKey, errors.New("boom"))
 	}
 }
 
@@ -423,12 +407,24 @@ func Test_Limiter_StorageErrorsReleaseShard(t *testing.T) {
 		wantErr        string
 		skipSuccessful bool
 	}{
-		{name: "sliding first get", middleware: SlidingWindow{}, newStorage: limiterTestFailingFirst("get"), wantErr: getErr},
-		{name: "sliding first set", middleware: SlidingWindow{}, newStorage: limiterTestFailingFirst("set"), wantErr: setErr},
+		{
+			name: "sliding first get", middleware: SlidingWindow{}, wantErr: getErr,
+			newStorage: limiterTestFailingFirst(storagetest.OpGet),
+		},
+		{
+			name: "sliding first set", middleware: SlidingWindow{}, wantErr: setErr,
+			newStorage: limiterTestFailingFirst(storagetest.OpSet),
+		},
 		{name: "sliding header get", middleware: SlidingWindow{}, newStorage: limiterTestFailingSecondGet, wantErr: getErr},
 		{name: "sliding header set", middleware: SlidingWindow{}, newStorage: limiterTestFailingSecondSet, wantErr: setErr},
-		{name: "fixed first get", middleware: FixedWindow{}, newStorage: limiterTestFailingFirst("get"), wantErr: getErr},
-		{name: "fixed first set", middleware: FixedWindow{}, newStorage: limiterTestFailingFirst("set"), wantErr: setErr},
+		{
+			name: "fixed first get", middleware: FixedWindow{}, wantErr: getErr,
+			newStorage: limiterTestFailingFirst(storagetest.OpGet),
+		},
+		{
+			name: "fixed first set", middleware: FixedWindow{}, wantErr: setErr,
+			newStorage: limiterTestFailingFirst(storagetest.OpSet),
+		},
 		{name: "fixed skip get", middleware: FixedWindow{}, newStorage: limiterTestFailingSecondGet, wantErr: getErr, skipSuccessful: true},
 		{name: "fixed skip set", middleware: FixedWindow{}, newStorage: limiterTestFailingSecondSet, wantErr: setErr, skipSuccessful: true},
 	}
@@ -801,11 +797,7 @@ func Test_Limiter_Concurrency_UnrelatedKeys(t *testing.T) {
 			_, err := app.Test(newReq("slow"), fiber.TestConfig{}) // no timeout, it waits for release
 			done <- err
 		}()
-		select {
-		case <-st.entered:
-		case <-time.After(time.Second):
-			t.Fatalf("%T: the slow request never reached the storage", mw)
-		}
+		apptest.Recv(t, st.entered, time.Second, "%T: the slow request never reached the storage", mw)
 
 		resp, err := app.Test(newReq(fast))
 		close(st.release)
@@ -1550,7 +1542,7 @@ func Test_Limiter_DisableValueRedaction_ShowsBoundedKey(t *testing.T) {
 	t.Parallel()
 	oversizedKey := strings.Repeat("k", maxKeyLength*2)
 	storage := storagetest.New()
-	storage.Errs["get|"+boundKey(oversizedKey)] = errors.New("boom")
+	storage.SetErr(storagetest.OpGet, boundKey(oversizedKey), errors.New("boom"))
 
 	var captured limiterTestCapture
 	app := limiterTestApp(&Config{
@@ -1585,7 +1577,7 @@ func Test_Limiter_StorageRoundTrips(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			storage := storagetest.NewMarked(markerKey)
+			storage := storagetest.New()
 			cfg := tc.cfg
 			cfg.Max = 1
 			cfg.Expiration = time.Second

@@ -1438,17 +1438,9 @@ func Test_GracefulShutdown_NegativeTimeoutWaitsIndefinitely(t *testing.T) {
 	require.NoError(t, <-errs)
 }
 
-// receiveOrTimeout returns what ch delivers, or false after five seconds. A hang is what these tests
+// listenWait is how long these tests wait for something that has to happen. A hang is what they
 // catch, so the bound only has to outlast a slow machine.
-func receiveOrTimeout[T any](ch <-chan T) (T, bool) {
-	select {
-	case v := <-ch:
-		return v, true
-	case <-time.After(5 * time.Second):
-		var zero T
-		return zero, false
-	}
-}
+const listenWait = 5 * time.Second
 
 func newShutdownProbe(app *App) *shutdownProbe {
 	p := &shutdownProbe{posted: make(chan struct{})}
@@ -1468,13 +1460,16 @@ func newShutdownProbe(app *App) *shutdownProbe {
 	return p
 }
 
-// await returns once the shutdown has finished, or when receiveOrTimeout gives up. Called from the
+// await returns once the shutdown has finished, or after listenWait. Called from the
 // startup, it puts the whole shutdown ahead of Serve without relying on timing. It reports nothing,
 // on purpose: when the shutdown does not come, Serve never returns and awaitServe fails the test
 // from the test goroutine, whereas a report from here could land after the test has completed,
 // which panics the whole test binary.
 func (p *shutdownProbe) await() {
-	_, _ = receiveOrTimeout(p.posted)
+	select {
+	case <-p.posted:
+	case <-time.After(listenWait):
+	}
 }
 
 // requireCleanShutdown expects one shutdown that finished without an error.
@@ -1496,12 +1491,7 @@ func (p *shutdownProbe) requireCleanShutdown(t *testing.T) {
 func awaitServe(t *testing.T, errs <-chan error) error {
 	t.Helper()
 
-	err, ok := receiveOrTimeout(errs)
-	if !ok {
-		t.Fatal("the server kept serving: it did not return")
-	}
-
-	return err
+	return apptest.Recv(t, errs, listenWait, "the server kept serving: it did not return")
 }
 
 // getOnNewConn makes one request over a new connection of ln, so that it needs an Accept.
@@ -1665,9 +1655,7 @@ func Test_gracefulRun_Draining_ClosesListenerOnce(t *testing.T) {
 	code, err := getOnNewConn(f.ln)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, code)
-	if _, ok := receiveOrTimeout(ln.closed); !ok {
-		t.Fatal("Accept did not see the drain")
-	}
+	apptest.Recv(t, ln.closed, listenWait, "Accept did not see the drain")
 	require.NoError(t, awaitServe(t, served))
 	graceful.stopAndWait()
 
@@ -1736,9 +1724,7 @@ func Test_GracefulContext_ServesDuringOnPreShutdown(t *testing.T) {
 				tc.trigger(t, f)
 			}
 
-			if _, ok := receiveOrTimeout(inHook); !ok {
-				t.Fatal("OnPreShutdown did not run")
-			}
+			apptest.Recv(t, inHook, listenWait, "OnPreShutdown did not run")
 			for i := range 3 {
 				code, err := getOnNewConn(f.ln)
 				require.NoError(t, err, "request %d while OnPreShutdown holds the shutdown", i)

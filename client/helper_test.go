@@ -8,6 +8,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -54,11 +55,7 @@ func (ts *testServer) stop() {
 		ts.tb.Fatal(err)
 	}
 
-	select {
-	case <-ts.ch:
-	case <-time.After(time.Second):
-		ts.tb.Fatalf("timeout when waiting for server close")
-	}
+	apptest.Recv(ts.tb, ts.ch, time.Second, "timeout when waiting for server close")
 }
 
 func (ts *testServer) dial() func(addr string) (net.Conn, error) {

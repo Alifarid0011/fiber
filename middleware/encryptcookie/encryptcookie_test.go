@@ -64,8 +64,8 @@ func serve(tb testing.TB, h fasthttp.RequestHandler, method string, cookies ...s
 	tb.Helper()
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(method)
-	for i := 0; i+1 < len(cookies); i += 2 {
-		ctx.Request.Header.SetCookie(cookies[i], cookies[i+1])
+	for name, value := range apptest.Pairs(cookies) {
+		ctx.Request.Header.SetCookie(name, value)
 	}
 	h(ctx)
 	require.Equal(tb, 200, ctx.Response.StatusCode())

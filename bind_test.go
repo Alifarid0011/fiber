@@ -77,8 +77,8 @@ func (s bindTestSource) del(c Ctx, key string) {
 
 // set adds each key/value pair of kv, given as alternating keys and values.
 func (s bindTestSource) set(c Ctx, kv ...string) {
-	for i := 0; i+1 < len(kv); i += 2 {
-		s.add(c, kv[i], kv[i+1])
+	for key, value := range apptest.Pairs(kv) {
+		s.add(c, key, value)
 	}
 }
 

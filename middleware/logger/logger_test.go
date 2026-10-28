@@ -334,11 +334,7 @@ func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
 	}, time.Second, time.Millisecond, "timestamp was never updated")
 
 	close(done)
-	select {
-	case <-stoppedCh:
-	case <-time.After(time.Second):
-		t.Fatal("timestamp updater did not stop")
-	}
+	apptest.Recv(t, stoppedCh, time.Second, "timestamp updater did not stop")
 	stopped, ok := timestamp.Load().(string)
 	require.True(t, ok)
 	time.Sleep(20 * time.Millisecond)
@@ -354,11 +350,7 @@ func Test_Logger_TimestampUpdater_StopsImmediatelyWithoutTimeTag(t *testing.T) {
 
 	stoppedCh := startTimestampUpdaterWithStop(&timestamp, &Config{Format: "${pid}"})
 
-	select {
-	case <-stoppedCh:
-	case <-time.After(time.Second):
-		t.Fatal("timestamp updater did not stop immediately")
-	}
+	apptest.Recv(t, stoppedCh, time.Second, "timestamp updater did not stop immediately")
 }
 
 func Test_Logger_Filter(t *testing.T) {

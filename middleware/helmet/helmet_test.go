@@ -242,12 +242,7 @@ func hstsHeaderForRequest(t *testing.T, config *Config, scheme string) string {
 	client.CloseIdleConnections()
 
 	require.NoError(t, app.Shutdown())
-	select {
-	case err = <-errCh:
-		require.NoError(t, err)
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for TLS test server shutdown")
-	}
+	require.NoError(t, apptest.Recv(t, errCh, time.Second, "timed out waiting for TLS test server shutdown"))
 
 	return header
 }

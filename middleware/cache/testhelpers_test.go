@@ -21,8 +21,8 @@ func cacheTestCGet(t *testing.T, app *fiber.App, target string, headers ...strin
 	t.Helper()
 
 	var opts []apptest.Option
-	for i := 0; i+1 < len(headers); i += 2 {
-		opts = append(opts, apptest.WithHeaderIf(headers[i], headers[i+1]))
+	for name, value := range apptest.Pairs(headers) {
+		opts = append(opts, apptest.WithHeaderIf(name, value))
 	}
 	return doRequest(t, app, apptest.Req(fiber.MethodGet, target, opts...))
 }

@@ -4,8 +4,6 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
-	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
@@ -228,10 +226,7 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 			}))
 			app.Get("/demo", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-			req := httptest.NewRequest(fiber.MethodGet, "/demo", http.NoBody)
-			if tc.auth != "" {
-				req.Header.Set(fiber.HeaderAuthorization, tc.auth)
-			}
+			req := apptest.Req(fiber.MethodGet, "/demo", apptest.WithHeaderIf(fiber.HeaderAuthorization, tc.auth))
 			apptest.Expect(t, app, req, fiber.StatusOK)
 
 			// The body is stored under its own key, which is the entry key plus

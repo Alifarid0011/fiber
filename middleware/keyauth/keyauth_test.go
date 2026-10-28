@@ -147,7 +147,6 @@ func Test_AuthSources(t *testing.T) {
 
 				res := apptest.Do(t, app, req, testConfig)
 				body := apptest.Body(t, res)
-				require.NoError(t, res.Body.Close())
 
 				expectedCode := test.expectedCode
 				expectedBody := test.expectedBody

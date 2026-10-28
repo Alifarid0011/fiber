@@ -1,9 +1,8 @@
 // Package storagetest provides the fiber.Storage fakes that the tests of the
 // root package and of the storage-backed middleware keep needing: a map-backed
-// storage with a per-operation error table and call recording, which also
-// records the context each call received, and a storage that always fails.
-// The fakes ignore expirations; a test that needs entries to expire has to use
-// internal/storage/memory.
+// storage with a per-operation error table and a log of the calls it served,
+// and a storage that always fails. The fakes do not expire entries; Call.TTL
+// records the expiration each Set was given.
 //
 // Like internal/apptest, this package does not import fiber, so the in-package
 // tests of the fiber package itself can use it without an import cycle. Every
@@ -16,6 +15,7 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,13 +30,30 @@ const (
 	OpReset  = "reset"
 )
 
+// markerKey is the context key under which Marked keeps its label.
+type markerKey struct{}
+
+// Marked returns a background context that carries label. Memory reports it as
+// Call.Marker for every call that receives the context, so a test can tell
+// which context reached the storage.
+func Marked(label string) context.Context {
+	return context.WithValue(context.Background(), markerKey{}, label)
+}
+
+// MarkedCanceled is Marked for a context that is already canceled.
+func MarkedCanceled(label string) context.Context {
+	ctx, cancel := context.WithCancel(Marked(label))
+	cancel()
+	return ctx
+}
+
 // Call is one operation a Memory served.
 type Call struct {
 	// Op is OpGet, OpSet, OpDelete or OpReset.
 	Op string
 	// Key is the key the call named, empty for OpReset.
 	Key string
-	// Marker is the string the call's context holds under Memory.MarkerKey, or empty.
+	// Marker is the label of the Marked context the call received, or empty.
 	Marker string
 	// Value is a copy of the value an OpSet stored, nil for the other operations.
 	Value []byte
@@ -50,56 +67,56 @@ type Call struct {
 // Memory is a map-backed storage for tests. Its zero value is ready to use.
 //
 // Values are copied on Set and on Get, and expirations are ignored. An
-// operation fails with the error stored in Errs under "<op>|<key>", or else
-// under "<op>|*" for any key, where op is one of the Op constants; SetErr
-// fills the table. Every call is recorded, failed or not.
+// operation fails with the error SetErr configured for its key, or else for
+// the key "*" that stands for any key. Every call is recorded, failed or not.
 //
-// The methods lock Mu. Tests may read and write Data and Errs directly while
-// no request is in flight, or while holding Mu.
+// The methods lock Mu. Tests may read and write Data directly while no request
+// is in flight, or while holding Mu.
 type Memory struct {
-	// MarkerKey is the context key whose string value Call.Marker reports, nil for none.
-	MarkerKey any
 	// Data holds the stored values by key.
 	Data map[string][]byte
-	// Errs maps "<op>|<key>" and "<op>|*" to the error that operation returns.
-	Errs map[string]error
+	// errs maps "<op>|<key>" to the error that operation returns, guarded by Mu.
+	errs map[string]error
 	// calls is the call log, guarded by Mu.
 	calls []Call
-	// Mu guards Data, Errs and the call log.
+	// Mu guards Data, the error table and the call log.
 	Mu sync.RWMutex
 	// HonorContext makes every *WithContext method fail with the error of an
 	// already canceled or expired context before it does anything else.
 	HonorContext bool
 }
 
-// New returns an empty Memory with an initialized error table, for tests that
-// write Errs directly.
+// New returns an empty Memory whose Data map is made, for tests that fill Data
+// directly.
 func New() *Memory {
-	return &Memory{Data: make(map[string][]byte), Errs: make(map[string]error)}
-}
-
-// NewMarked returns an empty Memory like New that reports, for every call, the
-// string its context holds under markerKey.
-func NewMarked(markerKey any) *Memory {
-	m := New()
-	m.MarkerKey = markerKey
-	return m
+	return &Memory{Data: make(map[string][]byte)}
 }
 
 // SetErr makes op on key fail with err, key "*" making it fail on every key,
-// or succeed again when err is nil. It returns m to chain.
+// or succeed again when err is nil. It returns m to chain, and panics when op
+// is none of the Op constants, which would otherwise inject nothing.
 func (m *Memory) SetErr(op, key string, err error) *Memory {
+	if !slices.Contains([]string{OpGet, OpSet, OpDelete, OpReset}, op) {
+		panic("storagetest: unknown operation " + strconv.Quote(op))
+	}
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	if err == nil {
-		delete(m.Errs, op+"|"+key)
+		delete(m.errs, op+"|"+key)
 		return m
 	}
-	if m.Errs == nil {
-		m.Errs = make(map[string]error)
+	if m.errs == nil {
+		m.errs = make(map[string]error)
 	}
-	m.Errs[op+"|"+key] = err
+	m.errs[op+"|"+key] = err
 	return m
+}
+
+// ClearErrs removes every error SetErr configured.
+func (m *Memory) ClearErrs() {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	clear(m.errs)
 }
 
 // Holds reports whether m stores a value under key.
@@ -130,8 +147,14 @@ func (m *Memory) Calls(op string) []Call {
 	return out
 }
 
-// Count returns how many calls of op were recorded.
-func (m *Memory) Count(op string) int { return len(m.Calls(op)) }
+// CallKeys returns the keys of the recorded calls of op in order.
+func (m *Memory) CallKeys(op string) []string {
+	var keys []string
+	for _, c := range m.Calls(op) {
+		keys = append(keys, c.Key)
+	}
+	return keys
+}
 
 // ClearCalls forgets the recorded calls and keeps the data.
 func (m *Memory) ClearCalls() {
@@ -142,20 +165,23 @@ func (m *Memory) ClearCalls() {
 
 // begin records c and returns the error it has to fail with. The caller holds Mu.
 func (m *Memory) begin(ctx context.Context, c *Call) error {
-	if m.HonorContext {
-		if err := ctx.Err(); err != nil {
-			return err //nolint:wrapcheck // the fake returns the context error verbatim
-		}
-	}
-	c.Canceled = errors.Is(ctx.Err(), context.Canceled)
-	if value, ok := ctx.Value(m.MarkerKey).(string); ok && m.MarkerKey != nil {
-		c.Marker = value
+	ctxErr := ctx.Err()
+	c.Canceled = errors.Is(ctxErr, context.Canceled)
+	if label, ok := ctx.Value(markerKey{}).(string); ok {
+		c.Marker = label
 	}
 	m.calls = append(m.calls, *c)
-	if err := m.Errs[c.Op+"|"+c.Key]; err != nil {
+
+	if m.HonorContext && ctxErr != nil {
+		return ctxErr //nolint:wrapcheck // the fake returns the context error verbatim
+	}
+	if len(m.errs) == 0 {
+		return nil
+	}
+	if err := m.errs[c.Op+"|"+c.Key]; err != nil {
 		return err
 	}
-	return m.Errs[c.Op+"|*"]
+	return m.errs[c.Op+"|*"]
 }
 
 // GetWithContext returns a copy of the value under key, or nil when there is none.
@@ -204,15 +230,15 @@ func (m *Memory) DeleteWithContext(ctx context.Context, key string) error {
 // Delete is DeleteWithContext with a background context.
 func (m *Memory) Delete(key string) error { return m.DeleteWithContext(context.Background(), key) }
 
-// ResetWithContext drops all data and clears the error table.
+// ResetWithContext drops all data. Like a real storage, it keeps the errors
+// SetErr configured; ClearErrs removes them.
 func (m *Memory) ResetWithContext(ctx context.Context) error {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	if err := m.begin(ctx, &Call{Op: OpReset}); err != nil {
 		return err
 	}
-	m.Data = make(map[string][]byte)
-	m.Errs = make(map[string]error)
+	clear(m.Data)
 	return nil
 }
 

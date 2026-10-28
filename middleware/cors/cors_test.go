@@ -44,8 +44,8 @@ func corsTestRequest(h fasthttp.RequestHandler, method, origin string, kv ...str
 	if origin != "" {
 		ctx.Request.Header.Set(fiber.HeaderOrigin, origin)
 	}
-	for i := 0; i+1 < len(kv); i += 2 {
-		ctx.Request.Header.Set(kv[i], kv[i+1])
+	for name, value := range apptest.Pairs(kv) {
+		ctx.Request.Header.Set(name, value)
 	}
 	h(ctx)
 	return ctx
@@ -67,9 +67,8 @@ func corsTestHeader(ctx *fasthttp.RequestCtx, name string) string {
 func corsTestExpectHeaders(t *testing.T, ctx *fasthttp.RequestCtx, kv ...string) {
 	t.Helper()
 
-	require.Zero(t, len(kv)%2, "corsTestExpectHeaders takes name and value pairs")
-	for i := 0; i+1 < len(kv); i += 2 {
-		require.Equal(t, kv[i+1], corsTestHeader(ctx, kv[i]), kv[i])
+	for name, want := range apptest.Pairs(kv) {
+		require.Equal(t, want, corsTestHeader(ctx, name), name)
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
@@ -215,15 +216,10 @@ func (f *credentialFixture) get(session, variant, cacheControl string) reply {
 func (f *credentialFixture) send(method, session, variant, cacheControl string) reply {
 	f.t.Helper()
 
-	req := httptest.NewRequest(method, fixturePath, http.NoBody)
+	req := apptest.Req(method, fixturePath,
+		apptest.WithHeaderIf(f.variantHeader, variant), apptest.WithHeaderIf(fiber.HeaderCacheControl, cacheControl))
 	if session != "" {
 		f.partition.send(req, session)
-	}
-	if variant != "" {
-		req.Header.Set(f.variantHeader, variant)
-	}
-	if cacheControl != "" {
-		req.Header.Set(fiber.HeaderCacheControl, cacheControl)
 	}
 	return doRequest(f.t, f.app, req)
 }
@@ -1490,7 +1486,7 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) 
 				}}
 				cfg.CacheInvalidator = func(fiber.Ctx) bool { return false }
 			} else {
-				base.Errs["del|"+key] = errors.New("storage unavailable")
+				base.SetErr(storagetest.OpDelete, key, errors.New("storage unavailable"))
 			}
 
 			var failures cacheTestAFailures
@@ -1560,10 +1556,8 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 			require.Equal(t, fiber.StatusUnauthorized, f.get("a", "", "no-cache").status)
 			require.False(t, armed.Load(), "the replacement was never stored")
 
-			base.Mu.Lock()
-			_, held := base.Data[*watched.Load()]
-			clear(base.Errs)
-			base.Mu.Unlock()
+			held := base.Holds(*watched.Load())
+			base.ClearErrs()
 			require.True(t, held, "the replacement could not be removed")
 
 			// Still stored, so still tracked and counted, beside the other session's entry.

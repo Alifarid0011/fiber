@@ -65,19 +65,19 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 									return errors.New("nested store failed")
 								}
 							} else if external {
-								storage.Mu.Lock()
 								switch scenario {
 								case "absent":
+									storage.Mu.Lock()
 									delete(storage.Data, key)
 									delete(storage.Data, key+"_body")
+									storage.Mu.Unlock()
 								case "readError":
-									storage.Errs["get|"+key] = errors.New("verification failed")
+									storage.SetErr(storagetest.OpGet, key, errors.New("verification failed"))
 								case "metadataDeleteError":
-									storage.Errs["del|"+key] = errors.New("metadata delete failed")
+									storage.SetErr(storagetest.OpDelete, key, errors.New("metadata delete failed"))
 								case "bodyDeleteError":
-									storage.Errs["del|"+key+"_body"] = errors.New("body delete failed")
+									storage.SetErr(storagetest.OpDelete, key+"_body", errors.New("body delete failed"))
 								}
-								storage.Mu.Unlock()
 							}
 							if directive == "VaryStar" {
 								c.Set(fiber.HeaderVary, "*")
@@ -112,10 +112,8 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 					require.Equal(t, cacheUnreachable, got.cache)
 					preserveManifest := scenario == "replaced" || scenario == "plainNoStoreMiss"
 					if external {
-						storage.Mu.Lock()
-						_, manifestPresent := storage.Data[manifestKey]
-						storage.Errs = make(map[string]error)
-						storage.Mu.Unlock()
+						manifestPresent := storage.Holds(manifestKey)
+						storage.ClearErrs()
 						require.Equal(t, preserveManifest, manifestPresent)
 					}
 					got = request("b", "")
@@ -237,9 +235,7 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			cacheTestBRequireAccounting(t, probe, 10, 1)
 			require.False(t, storage.Holds(key), key)
 			require.True(t, storage.Holds(key+"_body"), key+"_body")
-			storage.Mu.Lock()
-			storage.Errs = make(map[string]error)
-			storage.Mu.Unlock()
+			storage.ClearErrs()
 			request("/c", fiber.StatusOK)
 			require.False(t, storage.Holds(key+"_body"), key+"_body")
 			cacheTestBRequireAccounting(t, probe, 10, 1)
