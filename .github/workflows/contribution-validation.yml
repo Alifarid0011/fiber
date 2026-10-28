@@ -1,0 +1,62 @@
+name: Contribution validation
+on:
+  workflow_dispatch:
+    inputs:
+      patch:
+        description: Base64-encoded reviewed contribution patch
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: '-p=2'
+      GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: gofiber/fiber
+          ref: a362028a9fc8ba82edec4be76cb4ac475af48d45
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: true
+      - name: Apply reviewed patch
+        env:
+          PATCH_BASE64: ${{ inputs.patch }}
+        run: |
+          printf '%s' "$PATCH_BASE64" | base64 --decode > /tmp/contribution.patch
+          git apply --check /tmp/contribution.patch
+          git apply /tmp/contribution.patch
+          git add -N fresh_status_test.go
+          git diff > /tmp/before.patch
+          git diff --stat
+          go version
+      - name: make audit
+        if: always()
+        run: make audit
+      - name: make generate
+        if: always()
+        run: make generate
+      - name: make betteralign
+        if: always()
+        run: make betteralign
+      - name: make format
+        if: always()
+        run: make format
+      - name: make lint
+        if: always()
+        run: make lint
+      - name: make test
+        if: always()
+        run: make test
+      - name: Check generated and formatted output
+        if: always()
+        run: |
+          git diff > /tmp/after.patch
+          diff -u /tmp/before.patch /tmp/after.patch
